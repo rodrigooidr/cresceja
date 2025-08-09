@@ -22,6 +22,9 @@ const io = new Server(server, {
   cors: { origin: '*' }
 });
 
+const testWhatsappRoutes = require('./routes/testWhatsappRoutes');
+app.use('/api/test-whatsapp', testWhatsappRoutes);
+
 // Socket auth with JWT
 io.use((socket, next) => {
   const auth = socket.handshake.auth || {};

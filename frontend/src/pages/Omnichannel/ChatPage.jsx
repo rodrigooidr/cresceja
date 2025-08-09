@@ -1,11 +1,20 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { io } from 'socket.io-client';
+import { Navigate } from 'react-router-dom';
+
+// ajuste os caminhos conforme seu projeto
 import { useApi } from '../../contexts/useApi';
 import { useAuth } from '../../contexts/AuthContext';
-import { io } from 'socket.io-client';
 
-function ChatPage() {
+export default function ChatPage() {
   const api = useApi();
-  const { token, user } = useAuth();
+  const auth = useAuth();
+  const token = auth?.token;
+  const user  = auth?.user;
+
+  // se não estiver autenticado, redireciona
+  if (!token) return <Navigate to="/login" replace />;
+
   const [fila, setFila] = useState([]);
   const [meus, setMeus] = useState([]);
   const [mensagens, setMensagens] = useState([]);
@@ -17,8 +26,8 @@ function ChatPage() {
     try {
       const f = await api.get('/conversations?status=pendente');
       const m = await api.get('/conversations?assigned_to=me');
-      setFila(f.data);
-      setMeus(m.data);
+      setFila(f.data || []);
+      setMeus(m.data || []);
     } catch (err) {
       console.error('Erro ao carregar conversas', err);
     }
@@ -27,7 +36,7 @@ function ChatPage() {
   const carregarMensagens = async (id) => {
     try {
       const res = await api.get(`/messages/${id}`);
-      setMensagens(res.data);
+      setMensagens(res.data || []);
     } catch (err) {
       console.error('Erro ao carregar mensagens', err);
     }
@@ -65,7 +74,7 @@ function ChatPage() {
   useEffect(() => {
     if (!token) return;
 
-    const socket = io('ws://localhost:4000', {
+    const socket = io('http://localhost:4000', {
       auth: { token }
     });
 
@@ -85,9 +94,7 @@ function ChatPage() {
       console.log('❌ WebSocket desconectado');
     });
 
-    return () => {
-      socket.disconnect();
-    };
+    return () => socket.disconnect();
   }, [token, selecionada]);
 
   return (
@@ -113,7 +120,7 @@ function ChatPage() {
           <button
             key={conv.id}
             onClick={() => setSelecionada(conv)}
-            className={\`block w-full text-left p-2 rounded mb-2 \${selecionada?.id === conv.id ? 'bg-blue-500 text-white' : 'bg-white'}\`}
+            className={`block w-full text-left p-2 rounded mb-2 ${selecionada?.id === conv.id ? 'bg-blue-500 text-white' : 'bg-white'}`}
           >
             {conv.nome || 'Cliente'} <br />
             <span className="text-xs text-gray-500">{conv.canal}</span>
@@ -149,5 +156,3 @@ function ChatPage() {
     </div>
   );
 }
-
-export default ChatPage;

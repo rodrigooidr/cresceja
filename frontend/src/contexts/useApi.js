@@ -1,15 +1,12 @@
+
 import axios from 'axios';
 import { useAuth } from './AuthContext';
 
 export function useApi() {
   const { token } = useAuth();
-
-  const api = axios.create({
-    baseURL: 'http://localhost:4000/api',
-    headers: {
-      Authorization: token ? `Bearer ${token}` : undefined
-    }
+  const instance = axios.create({
+    baseURL: '/api',
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
-
-  return api;
+  return instance;
 }
