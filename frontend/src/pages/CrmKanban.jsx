@@ -54,6 +54,8 @@ function Modal({ open, onClose, onConfirm, values, setValues }) {
 
 function CrmKanban() {
   const api = useApi();
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
   const [itens, setItens] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [arrastando, setArrastando] = useState(null); // id do item arrastado
@@ -189,7 +191,7 @@ function CrmKanban() {
                     key={card.id}
                     draggable
                     onDragStart={(e) => onDragStart(e, card.id)}
-                    className={"bg-white rounded shadow p-3 border " + (arrastando === card.id ? "opacity-70 ring-2 ring-blue-400" : "")}
+                    className={`bg-white rounded shadow p-3 border " + (arrastando === card.id ? "opacity-70 ring-2 ring-blue-400" : "")}
                     title={card.email}
                   >
                     <p className="font-medium">{card.name}</p>

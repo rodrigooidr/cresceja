@@ -1,7 +1,7 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const pool = require('../db');
-const { sendWhatsApp } = require('../services/whatsapp'); // importar serviço
+import pool from '../db.js';
+import { sendWhatsApp } from '../services/whatsapp.js'; // importar serviço
 
 // POST /api/agenda
 // body: { title, date, channel, contact: { name, whatsapp }, opportunity_id }
@@ -49,4 +49,4 @@ router.post('/', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

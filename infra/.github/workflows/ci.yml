@@ -1,0 +1,20 @@
+
+name: ci
+on:
+  push:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Backend install & lint
+        working-directory: backend_sprint1
+        run: |
+          npm i
+          node -e "console.log('lint placeholder')"
+      - name: Frontend build
+        working-directory: frontend_sprint1
+        run: |
+          npm i
+          npm run build

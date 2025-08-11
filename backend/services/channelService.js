@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+import { v4 as uuidv4 } from 'uuid'
 
 let channels = [];
 
@@ -21,4 +21,4 @@ function getOrCreateChannelForOwner(companyId) {
   return channel.id;
 }
 
-module.exports = { getOrCreateChannelForOwner };
+export default { getOrCreateChannelForOwner };

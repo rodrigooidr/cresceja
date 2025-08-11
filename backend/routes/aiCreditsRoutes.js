@@ -1,9 +1,9 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const controller = require('../controllers/aiCreditsController');
-const authenticate = require('../middleware/authenticate');
+import controller from '../controllers/aiCreditsController.js';
+import authenticate from '../middleware/authenticate.js';
 
 router.use(authenticate);
 router.get('/status', controller.getStatus);
 
-module.exports = router;
+export default router;

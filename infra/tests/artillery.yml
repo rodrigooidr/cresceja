@@ -1,0 +1,18 @@
+
+config:
+  target: "http://localhost:4000"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+scenarios:
+  - name: Leads e Posts
+    flow:
+      - post:
+          url: "/api/leads"
+          json:
+            name: "Teste"
+            email: "user{{ $randomNumber(1,1000000) }}@exemplo.com"
+            phone: "55{{ $randomNumber(10000000000,99999999999) }}"
+            source_channel: "artillery"
+      - get:
+          url: "/api/subscription/status"

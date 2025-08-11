@@ -1,26 +1,90 @@
-version: '3.8'
 
 services:
   postgres:
-    image: postgres:16
-    container_name: cresceja_postgres
+    image: postgres:16-alpine
+    container_name: cresceja-postgres
     environment:
-      POSTGRES_USER: cresceja
-      POSTGRES_PASSWORD: cresceja123
-      POSTGRES_DB: cresceja_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cresceja
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cresceja"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
-  mongodb:
-    image: mongo:latest
-    container_name: cresceja_mongo
+  redis:
+    image: redis:7-alpine
+    container_name: cresceja-redis
     ports:
-      - "27017:27017"
+      - "6380:6379"     # host:container (evita conflito com 6379)
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: cresceja-backend
+    env_file:
+      - ../backend/.env   # opcional; use se já tiver um .env
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: http://localhost:3000
+      # IG_VERIFY_TOKEN: dev
+      # FB_VERIFY_TOKEN: dev
+      # OPENAI_API_KEY: sua_chave
+    depends_on:
+      - postgres
+      - redis
     volumes:
-      - mongo_data:/data/db
+      - uploads:/app/uploads   # persistir anexos
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: cresceja-worker
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja
+      REDIS_URL: redis://redis:6379
+    command: ["node", "queues/repurpose.worker.js"]
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      target: runtime
+    container_name: cresceja-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
 
 volumes:
-  postgres_data:
-  mongo_data:
+  pgdata:
+  uploads:

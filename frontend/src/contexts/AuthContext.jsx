@@ -5,37 +5,51 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(null);
   const [user,  setUser]  = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // carrega do localStorage ao iniciar
+  // Carrega dados do localStorage ao iniciar
   useEffect(() => {
-    const t = localStorage.getItem('token');
-    const u = localStorage.getItem('user');
-    if (t) setToken(t);
-    if (u) {
-      try { setUser(JSON.parse(u)); } catch { /* ignore */ }
-    }
+    try {
+      const t = localStorage.getItem('token');
+      const u = localStorage.getItem('user');
+      if (t) setToken(t);
+      if (u) setUser(JSON.parse(u));
+    } catch { /* ignore */ }
+    setLoading(false);
   }, []);
 
-  // helpers (opcionais)
-  const login = (newToken, userObj) => {
-    setToken(newToken);
-    setUser(userObj || null);
-    localStorage.setItem('token', newToken);
-    if (userObj) localStorage.setItem('user', JSON.stringify(userObj));
-  };
+  async function login(email, password) {
+    // Ajuste a URL se o backend estiver atrás de proxy diferente
+    const res = await fetch('http://localhost:4000/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err?.message || 'Falha no login');
+    }
+    const data = await res.json();
+    // Esperado: { token, user }
+    setToken(data.token);
+    setUser(data.user);
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    return data.user;
+  }
 
-  const logout = () => {
+  function logout() {
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-  };
+  }
 
   const isAuthenticated = !!token;
 
   const value = useMemo(
-    () => ({ token, user, setToken, setUser, login, logout, isAuthenticated }),
-    [token, user]
+    () => ({ token, user, loading, login, logout, isAuthenticated }),
+    [token, user, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

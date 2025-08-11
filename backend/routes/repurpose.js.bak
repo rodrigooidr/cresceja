@@ -1,0 +1,32 @@
+
+const express = require('express');
+const { enqueueRepurpose } = require('../services/repurposeQueue');
+const { Pool } = require('pg');
+const router = express.Router();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+router.post('/:postId', async (req,res)=>{
+  const { postId } = req.params;
+  const { modes } = req.body || {};
+  await enqueueRepurpose(postId, modes || ['story','email','video']);
+  await pool.query(`INSERT INTO repurpose_jobs (post_id, status, result) VALUES ($1,'queued','{}') ON CONFLICT (post_id) DO UPDATE SET status='queued'`, [postId]);
+  res.status(202).json({ ok:true, queued:true });
+});
+router.get('/:postId/status', async (req,res)=>{
+  const { postId } = req.params;
+  const r = await pool.query(`SELECT * FROM repurpose_jobs WHERE post_id=$1`, [postId]);
+  res.json(r.rows[0] || { status: 'unknown' });
+});
+router.get('/preview/:postId', async (req,res)=>{
+  const { postId } = req.params;
+  const channel = (req.query.channel || 'instagram').toLowerCase();
+  const post = (await pool.query('SELECT * FROM social_posts WHERE id=$1', [postId])).rows[0];
+  if(!post) return res.status(404).json({ error: 'not_found' });
+  const preview = {
+    instagram: { aspect: '1:1', maxText: 2200, content: post.content },
+    facebook: { aspect: '1.91:1', maxText: 63000, content: post.content },
+    linkedin: { aspect: '1.91:1', maxText: 3000, content: post.content },
+    gmb: { aspect: '4:3', maxText: 1500, content: post.content }
+  }[channel] || { aspect: '1:1', maxText: 2200, content: post.content };
+  res.json({ channel, preview });
+});
+export default router;

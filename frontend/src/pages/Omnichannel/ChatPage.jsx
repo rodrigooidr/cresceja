@@ -8,6 +8,8 @@ import { useAuth } from '../../contexts/AuthContext';
 
 export default function ChatPage() {
   const api = useApi();
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
   const auth = useAuth();
   const token = auth?.token;
   const user  = auth?.user;
@@ -130,7 +132,11 @@ export default function ChatPage() {
 
       {/* Chat */}
       <div className="flex-1 flex flex-col p-4">
+        <div className="flex items-center justify-between mb-3">
         <h1 className="text-xl font-bold mb-3">Atendimento</h1>
+        <button type="button" onClick={carregarConversas} className="text-sm px-3 py-2 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-60" disabled={loading}>Atualizar</button>
+      </div>
+      {erro && (<div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-4">{erro}</div>)}
 
         <div className="flex-1 bg-white border rounded p-3 overflow-y-auto">
           {mensagens.map((m, idx) => (

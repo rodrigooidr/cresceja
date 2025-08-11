@@ -1,0 +1,10 @@
+# Ignorar peso do contexto quando o contexto é a raiz (..)
+**/node_modules
+**/.git
+**/.cache
+**/.next
+**/dist
+**/build
+**/.DS_Store
+**/*.log
+uploads

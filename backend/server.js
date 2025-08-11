@@ -1,81 +1,104 @@
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const jwt = require('jsonwebtoken');
-const pool = require('./db');
+// backend/server.js
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import morgan from 'morgan';
+import * as Sentry from '@sentry/node';
+import path from 'path';
+
+// Rotas (ESM, cada uma com export default router)
+import healthRouter        from './routes/health.js';
+import lgpdRouter          from './routes/lgpd.js';
+import igRouter            from './routes/webhooks/instagram.js';
+import fbRouter            from './routes/webhooks/messenger.js';
+import wtplRouter          from './routes/whatsapp_templates.js';
+
+import attachmentsRouter   from './routes/attachments.js';
+import leadsImportRouter   from './routes/leads_import.js';
+import crmSegmentsRouter   from './routes/crm_segments.js';
+import repurposeRouter     from './routes/repurpose.js';
+import calGoogleRouter     from './routes/calendar_google.js';
+import calOutlookRouter    from './routes/calendar_outlook.js';
+import reportsRouter       from './routes/reports.js';
+
+// (Opcional) router agregador. Se não existir, a gente ignora com import dinâmico.
+let apiRouter = null;
+try {
+  const mod = await import('./routes/index.js'); // deve exportar { router }
+  apiRouter = mod?.router || null;
+} catch { /* sem problemas: arquivo opcional */ }
 
 const app = express();
-app.use(express.json({ type: '*/*' }));
-app.use(express.urlencoded({ extended: false }));
 
-// Routes
-app.use('/api', require('./routes'));
-app.use('/api/agenda', require('./routes/agenda_whatsapp'));
-app.use('/api/crm', require('./routes/crm'));
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/conversations', require('./routes/conversations'));
-app.use('/api/webhooks', require('./routes/webhooks_whatsapp'));
+// Sentry (opcional)
+if (process.env.SENTRY_DSN) {
+  Sentry.init({ dsn: process.env.SENTRY_DSN });
+  app.use(Sentry.Handlers.requestHandler());
+}
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: '*' }
+// Segurança e utilitários
+const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.set('trust proxy', 1); // atrás do Nginx/Proxy
+app.use(helmet());
+app.use(cors({ origin: corsOrigins, credentials: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(morgan('combined'));
+app.use(rateLimit({ windowMs: 60_000, max: 300 }));
+
+// Expor pasta de uploads
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+// Rotas principais
+app.use('/', healthRouter);
+app.use('/api/lgpd', lgpdRouter);
+app.use('/api/whatsapp/templates', wtplRouter);
+app.use('/api/webhooks/instagram', igRouter);
+app.use('/api/webhooks/messenger', fbRouter);
+
+app.use('/api/attachments', attachmentsRouter);
+app.use('/api/leads', leadsImportRouter);
+app.use('/api/crm', crmSegmentsRouter);
+app.use('/api/repurpose', repurposeRouter);
+app.use('/api/calendar/google', calGoogleRouter);
+app.use('/api/calendar/outlook', calOutlookRouter);
+app.use('/api/reports', reportsRouter);
+
+// (se existir) router agregador
+if (apiRouter) app.use('/api', apiRouter);
+
+// Health extra (ping simples)
+app.get('/healthz', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// Sentry error handler (depois das rotas)
+if (process.env.SENTRY_DSN) {
+  app.use(Sentry.Handlers.errorHandler());
+}
+
+// 404 padrão
+app.use((req, res, next) => {
+  if (res.headersSent) return next();
+  res.status(404).json({ error: 'not_found', path: req.originalUrl });
 });
 
-const testWhatsappRoutes = require('./routes/testWhatsappRoutes');
-app.use('/api/test-whatsapp', testWhatsappRoutes);
-
-// Socket auth with JWT
-io.use((socket, next) => {
-  const auth = socket.handshake.auth || {};
-  const token = auth.token || (socket.handshake.headers['authorization'] || '').replace(/^Bearer\s+/i,'');
-  if (!token) return next(new Error('Token ausente'));
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'segredo');
-    socket.user = decoded;
-    next();
-  } catch (err) {
-    next(new Error('Token inválido'));
-  }
-});
-
-io.on('connection', (socket) => {
-  console.log('🔌 WebSocket conectado:', socket.user?.email || socket.id);
-
-  socket.on('join_conversation', (conversation_id) => {
-    if (conversation_id) socket.join(`conv:${conversation_id}`);
-  });
-
-  socket.on('enviar_mensagem', async ({ conversation_id, texto, canal }) => {
-    if (!conversation_id || !texto) return;
-    try {
-      const q = `INSERT INTO public.messages (
-        id, conversation_id, content, sender_type, sender_id, ai_generated, media_url, media_type, created_at
-      ) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, now())
-      RETURNING *;`;
-      const params = [
-        conversation_id,
-        texto,
-        'agent',
-        socket.user?.id || null,
-        false,
-        null,
-        null
-      ];
-      const { rows } = await pool.query(q, params);
-      const msg = rows[0];
-      io.to(`conv:${conversation_id}`).emit('nova_mensagem', msg);
-    } catch (err) {
-      console.error('Erro ao gravar mensagem:', err);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('❌ WebSocket desconectado:', socket.user?.email || socket.id);
+// Error handler padrão
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, _next) => {
+  console.error('Unhandled error:', err);
+  const status = err.status || 500;
+  res.status(status).json({
+    error: 'internal_error',
+    message: err.message || 'Unexpected error',
   });
 });
 
+// Start
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
-  console.log(`🚀 Backend rodando em http://localhost:${PORT}`);
+app.listen(PORT, () => {
+  console.log(`CresceJá backend listening on :${PORT}`);
 });

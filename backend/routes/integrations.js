@@ -1,8 +1,8 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const { Pool } = require('pg');
-const authenticate = require('../middleware/authenticate');
-const isOwner = require('../middleware/isOwner');
+import { Pool } from 'pg';
+import authenticate from '../middleware/authenticate.js';
+import isOwner from '../middleware/isOwner.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -65,4 +65,4 @@ router.post('/whatsapp_web/allow-all', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

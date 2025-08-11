@@ -1,10 +1,10 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const controller = require('../controllers/auditController');
-const authenticate = require('../middleware/authenticate');
+import controller from '../controllers/auditController.js';
+import authenticate from '../middleware/authenticate.js';
 
 router.use(authenticate);
 router.get('/usage', controller.getIaUsage);
 router.get('/activity', controller.getActivityLog);
 
-module.exports = router;
+export default router;

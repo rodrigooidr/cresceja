@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const pool = require('../db');
+import pool from '../db.js';
 // GET /api/crm/oportunidades?status=novo
 router.get('/oportunidades', async (req, res) => {
   const { status } = req.query;
@@ -42,4 +42,4 @@ router.put('/oportunidades/:id', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

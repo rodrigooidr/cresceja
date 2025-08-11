@@ -1,10 +1,10 @@
 // routes/webhooks_whatsapp.js
 // Webhook para receber mensagens do WhatsApp (Meta Cloud API ou Twilio) e marcar agendamentos como confirmados.
 
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const pool = require('../db');
-const { PROVIDER } = require('../services/whatsapp');
+import pool from '../db.js';
+import { PROVIDER } from '../services/whatsapp.js';
 
 // GET verification (Meta WhatsApp Cloud)
 // Meta envia: hub.mode, hub.verify_token, hub.challenge
@@ -96,4 +96,4 @@ router.post('/whatsapp',
   }
 );
 
-module.exports = router;
+export default router;

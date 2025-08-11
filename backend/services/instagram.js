@@ -1,0 +1,26 @@
+
+const verifyToken = process.env.IG_VERIFY_TOKEN || 'verify_token';
+function verifyWebhook(req, res){
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+  if(mode === 'subscribe' && token === verifyToken){ return res.status(200).send(challenge); }
+  return res.sendStatus(403);
+}
+async function handleMessage(body){
+  const entries = body.entry || [];
+  const out = [];
+  for(const e of entries){
+    const changes = e.changes || [];
+    for(const c of changes){
+      const val = c.value || {};
+      if(val.messages){
+        for(const m of val.messages){
+          out.push({ from: m.from, text: m.text?.body || null, type: m.type || 'text', timestamp: m.timestamp });
+        }
+      }
+    }
+  }
+  return out;
+}
+export default { verifyWebhook, handleMessage };

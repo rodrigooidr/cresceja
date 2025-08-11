@@ -1,6 +1,6 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const pool = require('../db');
+import pool from '../db.js';
 // POST /api/agenda
 // body: { title, date, channel, contact: { name, whatsapp }, opportunity_id }
 router.post('/', async (req, res) => {
@@ -30,7 +30,7 @@ router.post('/', async (req, res) => {
 
     // (Opcional) Enviar confirmação via WhatsApp — stub/ponto de integração
     // Exemplo: integrar com sua função/metas API/Twilio aqui.
-    // await enviarWhatsapp(contact?.whatsapp, \`Confirmação: \${title} em \${new Date(date).toLocaleString()}\`);
+    // await enviarWhatsapp(contact?.whatsapp, `Confirmação: \${title} em \${new Date(date).toLocaleString()}`);
 
     return res.json({ success: true });
   } catch (err) {
@@ -39,4 +39,4 @@ router.post('/', async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

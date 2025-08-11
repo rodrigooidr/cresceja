@@ -1,6 +1,6 @@
-const makeWASocket = require('@whiskeysockets/baileys').default;
-const { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode');
+import makeWASocket from '@whiskeysockets/baileys';.default;
+import { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import qrcode from 'qrcode';
 
 let sock = null;
 let qrDataURL = null;
@@ -73,4 +73,4 @@ async function sendText(to, message) {
   return { ok: true };
 }
 
-module.exports = { createSession, getStatus, getQR, logout, sendText };
+export default { createSession, getStatus, getQR, logout, sendText };

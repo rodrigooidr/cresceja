@@ -1,0 +1,22 @@
+
+const express = require('express');
+const { Pool } = require('pg');
+const router = express.Router();
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+router.get('/costs', async (req,res)=>{
+  const rate_attend = Number(process.env.RATE_ATTEND || 0.0005);
+  const rate_content = Number(process.env.RATE_CONTENT || 0.02);
+  const r = await pool.query(`SELECT user_id, category, SUM(used)::int as used FROM ai_credit_usage GROUP BY user_id, category`);
+  const costs = r.rows.map(x => ({
+    user_id: x.user_id,
+    category: x.category,
+    used: Number(x.used),
+    cost: x.category === 'attend' ? Number(x.used) * rate_attend : Number(x.used) * rate_content
+  }));
+  res.json({ rates: { rate_attend, rate_content }, items: costs });
+});
+router.get('/credits', async (req,res)=>{
+  const r = await pool.query(`SELECT user_id, category, period_start, period_end, used FROM ai_credit_usage ORDER BY period_start DESC`);
+  res.json(r.rows);
+});
+export default router;

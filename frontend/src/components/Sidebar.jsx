@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const menu = [
@@ -10,11 +10,10 @@ const menu = [
   { path: '/aprovacao', label: 'Aprovações' },
   { path: '/creditos', label: 'Créditos IA' },
   { path: '/governanca', label: 'Governança' },
-  { path: '/onboarding', label: 'Onboarding' }
+  { path: '/onboarding', label: 'Onboarding' },
 ];
 
 function Sidebar() {
-  const { pathname } = useLocation();
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -24,20 +23,34 @@ function Sidebar() {
   };
 
   return (
-    <aside className="w-48 bg-white shadow h-screen p-4 space-y-4 fixed">
-      <h2 className="text-xl font-bold">CresceJá</h2>
+    <aside
+      className="w-52 bg-white shadow h-screen p-4 space-y-4 fixed left-0 top-0 overflow-y-auto"
+      role="navigation"
+      aria-label="Menu lateral"
+    >
+      <h1 className="text-xl font-bold">CresceJá</h1>
+
       <nav className="flex flex-col space-y-2">
-        {menu.map(item => (
-          <Link
+        {menu.map((item) => (
+          <NavLink
             key={item.path}
             to={item.path}
-            className={\`text-sm \${pathname === item.path ? 'font-bold text-blue-600' : 'text-gray-700'}\`}
+            end={item.path === '/'} // evita que "/" fique sempre ativo
+            className={({ isActive }) =>
+              `text-sm rounded px-2 py-1 transition-colors ${
+                isActive
+                  ? 'font-bold text-blue-700 bg-blue-50'
+                  : 'text-gray-700 hover:text-blue-700 hover:bg-gray-50'
+              }`
+            }
           >
             {item.label}
-          </Link>
+          </NavLink>
         ))}
+
         <button
-          className="text-sm text-red-600 text-left mt-6"
+          type="button"
+          className="text-sm text-red-600 text-left mt-6 hover:underline"
           onClick={handleLogout}
         >
           Sair

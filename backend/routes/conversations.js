@@ -1,7 +1,7 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const pool = require('../db');
-const jwt = require('jsonwebtoken');
+import pool from '../db.js';
+import jwt from 'jsonwebtoken';
 
 // Middleware para extrair user ID do token
 function autenticar(req, res, next) {
@@ -59,4 +59,4 @@ router.put('/:id/assumir', autenticar, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

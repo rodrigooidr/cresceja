@@ -1,10 +1,10 @@
-const express = require('express');
+import express from 'express';
 const router = express.Router();
-const controller = require('../controllers/onboardingController');
-const authenticate = require('../middleware/authenticate');
+import controller from '../controllers/onboardingController.js';
+import authenticate from '../middleware/authenticate.js';
 
 router.use(authenticate);
 router.post('/check', controller.checkStep);
 router.get('/progress', controller.getProgress);
 
-module.exports = router;
+export default router;

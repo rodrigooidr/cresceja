@@ -2,7 +2,7 @@
 // Suporte a dois provedores: 'meta' (WhatsApp Cloud API) e 'twilio' (Twilio WhatsApp)
 // Inclui envio de mensagens de texto e envio de mensagens de TEMPLATE (HSM) para iniciadas pela empresa.
 
-const axios = require('axios');
+import axios from 'axios';
 let twilioClient = null;
 
 const PROVIDER = process.env.WHATSAPP_PROVIDER || 'meta'; // 'meta' | 'twilio'
@@ -77,7 +77,7 @@ async function sendViaTwilio(toNumber, message) {
   if (!sid || !auth || !from) {
     throw new Error('Config Twilio ausente: defina TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN e TWILIO_WHATSAPP_FROM');
   }
-  if (!twilioClient) twilioClient = require('twilio')(sid, auth);
+  if (!twilioClient) twilioClient = import 'twilio';(sid, auth);
   const res = await twilioClient.messages.create({
     from,
     to: normalizeForTwilio(toNumber),
@@ -93,4 +93,4 @@ async function sendWhatsApp(toNumber, message) {
   return sendViaMeta(toNumber, message);
 }
 
-module.exports = { sendWhatsApp, sendTemplateMeta, normalizeToE164, PROVIDER };
+export default { sendWhatsApp, sendTemplateMeta, normalizeToE164, PROVIDER };
