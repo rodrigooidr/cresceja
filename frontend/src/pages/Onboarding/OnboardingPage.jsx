@@ -30,10 +30,10 @@ function EtapaItem({ etapa, onToggle, disabled = false }) {
             checked={!!etapa.concluido}
             onChange={() => onToggle(etapa)}
             disabled={disabled}
-            aria-label={`Marcar etapa "${etapa.titulo}" como ${etapa.concluido ? 'não concluída' : 'concluída'}`}
+            aria-label={`Marcar etapa "${etapa.titulo}" como ${etapa.concluido ? 'nao concluida' : 'concluida'}`}
           />
           <span className="font-medium truncate">{etapa.titulo}</span>
-          {etapa.concluido && <span className="text-green-600 text-xs">✔ Concluída</span>}
+          {etapa.concluido && <span className="text-green-600 text-xs">Concluida</span>}
         </div>
         {etapa.descricao && <p className="text-sm text-gray-600 mt-1">{etapa.descricao}</p>}
       </div>
@@ -56,7 +56,7 @@ function EtapaItem({ etapa, onToggle, disabled = false }) {
             disabled={disabled}
             type="button"
           >
-            Marcar como concluída
+            Marcar como concluida
           </button>
         )}
       </div>
@@ -85,7 +85,7 @@ export default function OnboardingPage() {
       setEtapas(ordenada);
     } catch (err) {
       console.error('Erro ao carregar onboarding', err);
-      setErro('Não foi possível carregar as etapas. Tente novamente.');
+      setErro('Nao foi possivel carregar as etapas. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -106,7 +106,7 @@ export default function OnboardingPage() {
       await carregarEtapas();
     } catch (err) {
       console.error('Erro ao atualizar etapa', err);
-      setErro('Não foi possível atualizar a etapa. Mudanças desfeitas.');
+      setErro('Nao foi possivel atualizar a etapa. Mudancas desfeitas.');
       setEtapas(anterior);
     }
   };
@@ -114,7 +114,7 @@ export default function OnboardingPage() {
   return (
     <div className="p-4 max-w-2xl mx-auto">
       <div className="flex items-center justify-between mb-3">
-        <h1 className="text-2xl font-bold">Comece seu CresceJá 🚀</h1>
+        <h1 className="text-2xl font-bold">Comece seu CresceJa</h1>
         <button
           type="button"
           onClick={carregarEtapas}
@@ -145,7 +145,7 @@ export default function OnboardingPage() {
           ))}
         </ul>
       ) : etapas.length === 0 ? (
-        <div className="text-sm text-gray-700">Nenhuma etapa de onboarding disponível no momento.</div>
+        <div className="text-sm text-gray-700">Nenhuma etapa de onboarding disponivel no momento.</div>
       ) : (
         <ul className="space-y-3" role="list" aria-label="Etapas de onboarding">
           {etapas.map(etapa => (

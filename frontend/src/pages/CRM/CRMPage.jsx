@@ -5,8 +5,6 @@ const stages = ['Novo', 'Contato', 'Qualificado', 'Proposta', 'Fechado'];
 
 function CRMPage() {
   const api = useApi();
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
   const [leads, setLeads] = useState([]);
   const [nome, setNome] = useState('');
 
@@ -45,11 +43,7 @@ function CRMPage() {
 
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-2xl font-bold mb-4">Funil de Leads (CRM)</h1>
-        <button type="button" onClick={carregarLeads} className="text-sm px-3 py-2 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-60" disabled={loading}>Atualizar</button>
-      </div>
-      {erro && (<div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-4">{erro}</div>)}
+      <h1 className="text-2xl font-bold mb-4">Funil de Leads (CRM)</h1>
 
       <div className="flex gap-2 mb-4">
         <input

@@ -1,28 +1,26 @@
-# syntax=docker/dockerfile:1.7
-
 # -------- builder --------
 FROM node:20-alpine AS builder
 WORKDIR /app
-ENV CI=true
 
-# Copia APENAS os manifests do frontend (a partir da raiz do repo)
-COPY frontend/package*.json ./
-# Usa ci se existir lock; senão, install
+# Só manifests
+COPY package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-# Copia o restante do código do frontend
-COPY frontend/ ./
-# CRA -> build; (se usar Vite, troque para "npm run build" que gera /dist)
-RUN npm run build
+# Só o código necessário pro build
+COPY public ./public
+COPY src ./src
+# (se existirem)
+COPY tailwind.config.js ./tailwind.config.js
+COPY postcss.config.js ./postcss.config.js
+# (se usar TS)
+# COPY tsconfig.json ./tsconfig.json
+
+# CRA: não tratar warnings como erro
+RUN CI= npm run build
 
 # -------- runtime --------
 FROM nginx:1.27-alpine AS runtime
-
-# Config do Nginx (ficará visível pois o contexto é a raiz do repo)
-COPY infra/nginx/default.conf /etc/nginx/conf.d/default.conf
-
-# Artefatos do frontend (CRA sai em /build; Vite seria /dist)
+# A config do Nginx virá pelo bind-mount do compose
 COPY --from=builder /app/build /usr/share/nginx/html
-
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

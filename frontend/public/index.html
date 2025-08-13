@@ -4,6 +4,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>CresceJá</title>
+  <script>
+  // Se você usa classes dinâmicas, pode safelist aqui:
+  tailwind = {
+    config: {
+      safelist: [
+        { pattern: /(bg|text|border)-(red|green|blue|gray|amber)-(100|200|300|400|500|600|700)/ },
+        { pattern: /col-span-(1|2|3|4|5|6|12)/ }
+      ]
+    }
+  }
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body>
   <div id="root"></div>

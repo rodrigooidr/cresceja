@@ -5,8 +5,6 @@ const canais = ['whatsapp', 'instagram', 'facebook'];
 
 function AgendaPage() {
   const api = useApi();
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
   const [eventos, setEventos] = useState([]);
   const [titulo, setTitulo] = useState('');
   const [data, setData] = useState('');
@@ -39,11 +37,7 @@ function AgendaPage() {
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-2xl font-bold mb-4">Agenda</h1>
-        <button type="button" onClick={carregarEventos} className="text-sm px-3 py-2 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-60" disabled={loading}>Atualizar</button>
-      </div>
-      {erro && (<div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-4">{erro}</div>)}
+      <h1 className="text-2xl font-bold mb-4">Agenda</h1>
 
       <div className="flex gap-2 mb-4">
         <input

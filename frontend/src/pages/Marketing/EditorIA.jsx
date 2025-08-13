@@ -1,40 +1,38 @@
 import React, { useEffect, useMemo, useState } from 'react';
-// import { useApi } from '../../contexts/useApi'; // opcional para futura API
 
 const TONS = [
   { id: 'neutro', label: 'Neutro' },
   { id: 'profissional', label: 'Profissional' },
-  { id: 'amigavel', label: 'Amigável' },
+  { id: 'amigavel', label: 'Amigavel' },
   { id: 'divertido', label: 'Divertido' },
 ];
 
 const CANAIS = [
-  { id: 'instagram', label: 'Instagram (até 2.200 caracteres)', limit: 2200 },
-  { id: 'facebook', label: 'Facebook (s/ limite prático)' },
+  { id: 'instagram', label: 'Instagram (ate 2.200 caracteres)', limit: 2200 },
+  { id: 'facebook', label: 'Facebook (sem limite pratico)' },
   { id: 'whatsapp', label: 'WhatsApp (mensagem curta)' },
   { id: 'linkedin', label: 'LinkedIn (profissional)' },
 ];
 
 function gerarHashtags(texto, max = 5) {
-  const stop = new Set(['de','da','do','e','a','o','os','as','um','uma','para','pra','com','sem','que','em','no','na','nos','nas']);
-  const palavras = (texto || '')
+  // Remove acentos sem usar \p{...}
+  const base = (texto || '')
     .toLowerCase()
-    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
-    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .split(/\s+/)
-    .filter(w => w && !stop.has(w) && w.length > 2);
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')              // remove diacriticos
+    .replace(/[^a-zA-Z0-9\s]/g, ' ');              // mantem apenas letras/numeros/espaco (ASCII)
 
-  const freq = palavras.reduce((acc,w)=> (acc[w]=(acc[w]||0)+1, acc), {});
-  const top = Object.entries(freq)
-    .sort((a,b)=>b[1]-a[1])
-    .slice(0, max)
-    .map(([w]) => `#${w.replace(/[^a-z0-9]/g,'')}`);
-
-  return [...new Set(top)];
+  const palavras = base.split(/\s+/).filter(w => w && w.length > 2);
+  const stop = new Set(['de','da','do','e','a','o','os','as','um','uma','para','pra','com','sem','que','em','no','na','nos','nas']);
+  const freq = {};
+  for (const w of palavras) {
+    if (!stop.has(w)) freq[w] = (freq[w] || 0) + 1;
+  }
+  const top = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0, max).map(([w]) => '#' + w.replace(/[^a-z0-9]/g,''));
+  return Array.from(new Set(top));
 }
 
 export default function EditorIA() {
-  // const api = useApi();
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
   const [tone, setTone] = useState('neutro');
@@ -46,12 +44,17 @@ export default function EditorIA() {
   const [erro, setErro] = useState('');
 
   useEffect(() => {
-    const draft = JSON.parse(localStorage.getItem('editorIA_draft') || '{}');
-    if (draft.title) setTitle(draft.title);
-    if (draft.caption) setCaption(draft.caption);
-    if (draft.tone) setTone(draft.tone);
-    if (draft.canal) setCanal(draft.canal);
-    if (typeof draft.usarHashtags === 'boolean') setUsarHashtags(draft.usarHashtags);
+    const saved = localStorage.getItem('editorIA_draft');
+    if (saved) {
+      try {
+        const draft = JSON.parse(saved);
+        if (draft.title) setTitle(draft.title);
+        if (draft.caption) setCaption(draft.caption);
+        if (draft.tone) setTone(draft.tone);
+        if (draft.canal) setCanal(draft.canal);
+        if (typeof draft.usarHashtags === 'boolean') setUsarHashtags(draft.usarHashtags);
+      } catch {}
+    }
   }, []);
 
   useEffect(() => {
@@ -68,47 +71,41 @@ export default function EditorIA() {
     const prefixoTom = {
       neutro: '',
       profissional: ' (tom profissional e claro)',
-      amigavel: ' (tom amigável e próximo)',
+      amigavel: ' (tom amigavel e proximo)',
       divertido: ' (tom leve e criativo)',
     }[tone] || '';
 
     const prefixoCanal = {
-      instagram: 'Formato focado em Instagram, com chamada breve e escaneável.',
+      instagram: 'Formato focado em Instagram, com chamada breve e escaneavel.',
       facebook: 'Formato descritivo, pode ter 2 a 3 frases.',
-      whatsapp: 'Mensagem curta e direta, 1–2 frases.',
-      linkedin: 'Texto conciso, com credibilidade e chamada para ação.',
+      whatsapp: 'Mensagem curta e direta, 1-2 frases.',
+      linkedin: 'Texto conciso, com credibilidade e chamada para acao.',
     }[canal] || '';
 
-    const base = `${prefixoCanal}${prefixoTom}`.trim();
-    const tags = usarHashtags ? gerarHashtags(`${title} ${caption}`).join(' ') : '';
-
+    const tags = usarHashtags ? gerarHashtags((title || '') + ' ' + (caption || '')).join(' ') : '';
     const partes = [
-      title ? `📣 ${title}` : null,
-      caption?.trim() || null,
-      tags ? `\n${tags}` : null,
+      title ? '📣 ' + title : null,
+      (caption || '').trim() || null,
+      tags ? '\n' + tags : null,
     ].filter(Boolean);
 
     const rascunho = partes.join('\n\n');
-    return base ? `${rascunho}\n\n` : rascunho;
+    const meta = (prefixoCanal + prefixoTom).trim();
+    return meta ? rascunho + '\n\n' : rascunho;
   };
 
   const gerarComIA = async () => {
     setErro('');
     if (!title && !caption) {
-      setErro('Inclua pelo menos um título ou um texto base.');
+      setErro('Inclua pelo menos um titulo ou um texto base.');
       return;
     }
     setLoading(true);
     try {
-      // Exemplo de chamada real:
-      // const res = await api.post('/ai/generate', { title, caption, tone, canal, usarHashtags });
-      // setGenerated(res.data.text);
-
-      // Fallback local
       setGenerated(montarTextoLocal());
     } catch (e) {
       console.error(e);
-      setErro('Falha ao gerar conteúdo. Tente novamente.');
+      setErro('Falha ao gerar conteudo. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -122,20 +119,20 @@ export default function EditorIA() {
 
   return (
     <div className="p-4 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-2">Editor de Conteúdo com IA</h1>
+      <h1 className="text-2xl font-bold mb-2">Editor de Conteudo com IA</h1>
       <p className="text-sm text-gray-600 mb-4">Gere textos para posts e mensagens com diferentes tons e canais.</p>
 
       <div className="grid gap-3">
         <input
           className="border p-2 rounded w-full"
-          placeholder="Título do post"
+          placeholder="Titulo do post"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
 
         <textarea
           className="border p-2 rounded w-full"
-          placeholder="Texto base ou instrução"
+          placeholder="Texto base ou instrucao"
           rows={5}
           value={caption}
           onChange={(e) => setCaption(e.target.value)}
@@ -184,7 +181,7 @@ export default function EditorIA() {
             disabled={loading}
             type="button"
           >
-            {loading ? 'Gerando…' : 'Gerar com IA'}
+            {loading ? 'Gerando...' : 'Gerar com IA'}
           </button>
 
           <button
@@ -199,11 +196,11 @@ export default function EditorIA() {
         {generated && (
           <div className="mt-4 p-3 border rounded bg-gray-50">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="font-semibold">Prévia do conteúdo</h3>
+              <h3 className="font-semibold">Previa do conteudo</h3>
               <div className="text-xs text-gray-600">
                 {Number.isFinite(lengthLimit) && (
                   <span className={overLimit ? 'text-red-600 font-medium' : ''}>
-                    {chars}/{lengthLimit} {overLimit ? '— ultrapassou o limite!' : ''}
+                    {chars}/{lengthLimit} {overLimit ? '- ultrapassou o limite!' : ''}
                   </span>
                 )}
               </div>

@@ -22,7 +22,7 @@ function BarraCredito({ tipo, usado = 0, limite = 0 }) {
           {usado} / {limite} ({pctClamped.toFixed(0)}%)
         </span>
       </div>
-      <div className="w-full bg-gray-200 h-3 rounded" role="progressbar" aria-valuemin={0} aria-valuemax={limite || 0} aria-valuenow={Math.min(usado, limite || usado)} aria-label={`Uso de créditos de ${tipo}`}>
+      <div className="w-full bg-gray-200 h-3 rounded" role="progressbar" aria-valuemin={0} aria-valuemax={limite || 0} aria-valuenow={Math.min(usado, limite || usado)} aria-label={`Uso de creditos de ${tipo}`}>
         <div className={`${cor} h-3 rounded transition-all`} style={{ width: `${pctClamped}%` }} />
       </div>
       <div className="text-xs text-gray-600 mt-1">Restante: <strong>{restante}</strong></div>
@@ -42,8 +42,8 @@ export default function CreditsPage() {
       const res = await api.get('/credits');
       setDados(res.data || null);
     } catch (err) {
-      console.error('Erro ao carregar créditos de IA', err);
-      setErro('Não foi possível carregar os créditos. Tente novamente.');
+      console.error('Erro ao carregar creditos de IA', err);
+      setErro('Nao foi possivel carregar os creditos. Tente novamente.');
       setDados(null);
     } finally { setLoading(false); }
   };
@@ -51,12 +51,12 @@ export default function CreditsPage() {
   useEffect(() => { carregarCreditos(); }, [api]);
   const limites = useMemo(() => dados?.limites || {}, [dados]);
 
-  if (loading) return <p className="p-4">Carregando créditos...</p>;
+  if (loading) return <p className="p-4">Carregando creditos...</p>;
 
   if (erro) {
     return (
       <div className="p-4 max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Créditos de IA</h1>
+        <h1 className="text-2xl font-bold mb-4">Creditos de IA</h1>
         <div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-4">{erro}</div>
         <button type="button" onClick={carregarCreditos} className="text-sm px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
           Tentar novamente
@@ -68,8 +68,8 @@ export default function CreditsPage() {
   if (!dados) {
     return (
       <div className="p-4 max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Créditos de IA</h1>
-        <p className="text-sm text-gray-700">Nenhuma informação de créditos disponível.</p>
+        <h1 className="text-2xl font-bold mb-6">Creditos de IA</h1>
+        <p className="text-sm text-gray-700">Nenhuma informacao de creditos disponivel.</p>
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function CreditsPage() {
   return (
     <div className="p-4 max-w-md mx-auto">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Créditos de IA</h1>
+        <h1 className="text-2xl font-bold">Creditos de IA</h1>
         <button type="button" onClick={carregarCreditos} className="text-sm px-3 py-2 bg-gray-100 rounded hover:bg-gray-200">
           Atualizar
         </button>
@@ -86,7 +86,7 @@ export default function CreditsPage() {
       <BarraCredito tipo="atendimento" usado={dados.atendimento} limite={limites.atendimento} />
       <BarraCredito tipo="texto" usado={dados.texto} limite={limites.texto} />
       <BarraCredito tipo="imagem" usado={dados.imagem} limite={limites.imagem} />
-      <BarraCredito tipo="vídeo" usado={dados.video} limite={limites.video} />
+      <BarraCredito tipo="video" usado={dados.video} limite={limites.video} />
     </div>
   );
 }

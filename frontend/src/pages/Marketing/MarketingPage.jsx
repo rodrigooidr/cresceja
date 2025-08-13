@@ -5,8 +5,6 @@ const canais = ['instagram', 'facebook', 'linkedin'];
 
 function MarketingPage() {
   const api = useApi();
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
   const [posts, setPosts] = useState([]);
   const [texto, setTexto] = useState('');
   const [canal, setCanal] = useState('instagram');
@@ -46,11 +44,7 @@ function MarketingPage() {
 
   return (
     <div className="p-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-2xl font-bold mb-4">Marketing com IA</h1>
-        <button type="button" onClick={carregarPosts} className="text-sm px-3 py-2 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-60" disabled={loading}>Atualizar</button>
-      </div>
-      {erro && (<div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-4">{erro}</div>)}
+      <h1 className="text-2xl font-bold mb-4">Marketing com IA</h1>
 
       <div className="flex flex-wrap gap-3 mb-6 items-end">
         <input

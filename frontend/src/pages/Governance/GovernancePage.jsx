@@ -3,8 +3,6 @@ import { useApi } from '../../contexts/useApi';
 
 function GovernancePage() {
   const api = useApi();
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
   const [logs, setLogs] = useState([]);
 
   const carregarLogs = async () => {
@@ -23,11 +21,7 @@ function GovernancePage() {
 
   return (
     <div className="p-4 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-3">
-        <h1 className="text-2xl font-bold mb-4">Governança e Logs de IA</h1>
-        <button type="button" onClick={carregarLogs} className="text-sm px-3 py-2 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-60" disabled={loading}>Atualizar</button>
-      </div>
-      {erro && (<div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-4">{erro}</div>)}
+      <h1 className="text-2xl font-bold mb-4">Governança e Logs de IA</h1>
       {logs.length === 0 ? (
         <p className="text-gray-500">Nenhuma atividade registrada ainda.</p>
       ) : (

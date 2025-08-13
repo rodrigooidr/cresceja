@@ -1,60 +1,49 @@
-import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
+// src/contexts/AuthContext.jsx
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 
 const AuthContext = createContext(null);
 
+function safeParse(s, fallback = null) {
+  try { return JSON.parse(s); } catch { return fallback; }
+}
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(null);
-  const [user,  setUser]  = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser]   = useState(() => safeParse(localStorage.getItem('user')));
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
+  const [loading, setLoading] = useState(false);
 
-  // Carrega dados do localStorage ao iniciar
+  // propaga token pro axios (usa o proxy /api do Nginx)
   useEffect(() => {
+    if (token) axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+    else delete axios.defaults.headers.common.Authorization;
+  }, [token]);
+
+  const login = async (email, password) => {
+    setLoading(true);
     try {
-      const t = localStorage.getItem('token');
-      const u = localStorage.getItem('user');
-      if (t) setToken(t);
-      if (u) setUser(JSON.parse(u));
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, []);
-
-  async function login(email, password) {
-    // Ajuste a URL se o backend estiver atrás de proxy diferente
-    const res = await fetch('http://localhost:4000/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.message || 'Falha no login');
+      const { data } = await axios.post('/api/auth/login', { email, password });
+      const tk = data?.token || null;
+      const usr = data?.user ?? null;
+      if (tk) localStorage.setItem('token', tk); else localStorage.removeItem('token');
+      if (usr !== null) localStorage.setItem('user', JSON.stringify(usr)); else localStorage.removeItem('user');
+      setToken(tk);
+      setUser(usr);
+      return true;
+    } finally {
+      setLoading(false);
     }
-    const data = await res.json();
-    // Esperado: { token, user }
-    setToken(data.token);
-    setUser(data.user);
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('user', JSON.stringify(data.user));
-    return data.user;
-  }
+  };
 
-  function logout() {
-    setToken(null);
-    setUser(null);
+  const logout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-  }
+    setToken(null);
+    setUser(null);
+  };
 
-  const isAuthenticated = !!token;
-
-  const value = useMemo(
-    () => ({ token, user, loading, login, logout, isAuthenticated }),
-    [token, user, loading]
-  );
-
+  const value = useMemo(() => ({ user, token, loading, login, logout }), [user, token, loading]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export function useAuth() {
-  return useContext(AuthContext);
-}
+export const useAuth = () => useContext(AuthContext);

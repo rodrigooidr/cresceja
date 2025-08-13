@@ -1,3 +1,4 @@
+name: infra
 
 services:
   postgres:
@@ -22,7 +23,7 @@ services:
     image: redis:7-alpine
     container_name: cresceja-redis
     ports:
-      - "6380:6379"     # host:container (evita conflito com 6379)
+      - "6380:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -37,21 +38,18 @@ services:
       dockerfile: Dockerfile
     container_name: cresceja-backend
     env_file:
-      - ../backend/.env   # opcional; use se já tiver um .env
+      - ../backend/.env
     environment:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: http://localhost:3000
-      # IG_VERIFY_TOKEN: dev
-      # FB_VERIFY_TOKEN: dev
-      # OPENAI_API_KEY: sua_chave
     depends_on:
       - postgres
       - redis
     volumes:
-      - uploads:/app/uploads   # persistir anexos
+      - uploads:/app/uploads
     ports:
       - "4000:4000"
     restart: unless-stopped
@@ -59,7 +57,6 @@ services:
   worker:
     build:
       context: ../backend
-      dockerfile: Dockerfile
     container_name: cresceja-worker
     environment:
       NODE_ENV: production
@@ -73,9 +70,8 @@ services:
 
   frontend:
     build:
-      context: ..
-      dockerfile: frontend/Dockerfile
-      target: runtime
+      context: ../frontend       # <— reduz o contexto pro Docker não tarrear a raiz
+      dockerfile: Dockerfile
     container_name: cresceja-frontend
     depends_on:
       - backend

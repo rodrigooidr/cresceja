@@ -11,8 +11,6 @@ const STATUS = [
 
 function CrmOportunidades() {
   const api = useApi();
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState("");
   const [oportunidades, setOportunidades] = useState([]);
   const [filtro, setFiltro] = useState('novo');
   const [salvando, setSalvando] = useState(null);
