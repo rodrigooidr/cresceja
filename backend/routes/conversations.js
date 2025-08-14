@@ -60,3 +60,5 @@ router.put('/:id/assumir', autenticar, async (req, res) => {
 });
 
 export default router;
+
+

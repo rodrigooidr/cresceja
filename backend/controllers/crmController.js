@@ -1,8 +1,21 @@
-exports.autoCreateLead = (req, res) => {
-    const { name, phone, email, source } = req.body;
+// controllers/crmController.js
 
-    // Aqui você integraria com o banco de dados real
-    console.log("Lead salvo:", { name, phone, email, source });
+export function list(req, res) {
+  return res.json([]);
+}
 
-    return res.status(201).json({ message: 'Lead salvo com sucesso.' });
-};
+export function get(req, res) {
+  return res.json({});
+}
+
+export function create(req, res) {
+  return res.status(201).json({ ok: true });
+}
+
+export function update(req, res) {
+  return res.json({ ok: true });
+}
+
+export function remove(req, res) {
+  return res.status(204).end();
+}

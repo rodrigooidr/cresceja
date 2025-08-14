@@ -1,7 +1,15 @@
+// controllers/approvalController.js
+
+// Armazenamento em memória para demonstração
 let approvals = [];
 
-exports.requestApproval = (req, res) => {
+/**
+ * POST /:postId/request
+ * Cria uma nova solicitação de aprovação para um post.
+ */
+export function requestApproval(req, res) {
   const { postId } = req.params;
+
   approvals.push({
     id: `apr-${Date.now()}`,
     post_id: postId,
@@ -12,10 +20,15 @@ exports.requestApproval = (req, res) => {
     created_at: new Date(),
     updated_at: new Date()
   });
-  res.status(201).json({ message: 'Aprovação solicitada.' });
-};
 
-exports.approvePost = (req, res) => {
+  return res.status(201).json({ message: 'Aprovação solicitada.' });
+}
+
+/**
+ * POST /:postId/approve
+ * Aprova o post.
+ */
+export function approvePost(req, res) {
   const { postId } = req.params;
   const { comment } = req.body;
   const user = req.user;
@@ -25,13 +38,17 @@ exports.approvePost = (req, res) => {
 
   approval.status = 'approved';
   approval.comment = comment || '';
-  approval.approved_by = user.id;
+  approval.approved_by = user?.id ?? null;
   approval.updated_at = new Date();
 
-  res.json({ message: 'Post aprovado com sucesso.' });
-};
+  return res.json({ message: 'Post aprovado com sucesso.' });
+}
 
-exports.rejectPost = (req, res) => {
+/**
+ * POST /:postId/reject
+ * Rejeita o post.
+ */
+export function rejectPost(req, res) {
   const { postId } = req.params;
   const { comment } = req.body;
   const user = req.user;
@@ -41,14 +58,28 @@ exports.rejectPost = (req, res) => {
 
   approval.status = 'rejected';
   approval.comment = comment || 'Sem justificativa.';
-  approval.approved_by = user.id;
+  approval.approved_by = user?.id ?? null;
   approval.updated_at = new Date();
 
-  res.json({ message: 'Post rejeitado.' });
-};
+  return res.json({ message: 'Post rejeitado.' });
+}
 
-exports.getApprovalHistory = (req, res) => {
+/**
+ * GET /:postId
+ * Retorna o histórico de aprovações do post.
+ */
+export function getApprovalHistory(req, res) {
   const { postId } = req.params;
   const history = approvals.filter(a => a.post_id === postId);
-  res.json(history);
-};
+  return res.json(history);
+}
+
+// Aliases opcionais para compatibilidade
+export const approveLevel = approvePost;
+export const reject = rejectPost;
+export const fetchApprovals = getApprovalHistory;
+
+// Utilitário para testes
+export function _resetApprovals() {
+  approvals = [];
+}

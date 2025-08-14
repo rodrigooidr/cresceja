@@ -1,7 +1,14 @@
-module.exports = function (req, res, next) {
-  const allowedEmail = "rodrigooidr@hotmail.com";
-  if (req.user?.email !== allowedEmail) {
-    return res.status(403).json({ error: "Acesso restrito ao modo de teste pessoal." });
+// backend/middleware/isOwner.js
+// Exige que o usuário autenticado tenha cargo de dono/owner (ou admin/superadmin).
+export function isOwner(req, res, next) {
+  try {
+    const role = req.user?.role;
+    if (role === 'owner' || role === 'admin' || role === 'superadmin') {
+      return next();
+    }
+    return res.status(403).json({ error: 'forbidden' });
+  } catch {
+    return res.status(401).json({ error: 'unauthorized' });
   }
-  next();
-};
+}
+export default isOwner;

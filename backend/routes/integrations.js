@@ -1,8 +1,8 @@
 import express from 'express';
 const router = express.Router();
 import { Pool } from 'pg';
-import authenticate from '../middleware/authenticate.js';
-import isOwner from '../middleware/isOwner.js';
+import { authenticate } from '../middleware/authenticate.js';
+import { isOwner } from '../middleware/isOwner.js';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -66,3 +66,6 @@ router.post('/whatsapp_web/allow-all', async (req, res) => {
 });
 
 export default router;
+
+
+

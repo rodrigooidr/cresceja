@@ -1,16 +1,16 @@
-
+// backend/config/db.js
 import pg from 'pg';
 const { Pool } = pg;
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/cresceja'
+const connectionString = process.env.DATABASE_URL || 'postgres://cresceja:cresceja123@localhost:5432/cresceja_db';
+
+const pool = new Pool({
+  connectionString,
+  ssl: process.env.PGSSL === 'true' ? { rejectUnauthorized: false } : false,
+  max: Number(process.env.PG_MAX || 10),
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
 });
 
-export async function query(q, params) {
-  const client = await pool.connect();
-  try {
-    return await client.query(q, params);
-  } finally {
-    client.release();
-  }
-}
+export const query = (text, params) => pool.query(text, params);
+export default pool;

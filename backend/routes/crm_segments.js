@@ -27,3 +27,5 @@ router.get('/segments/:id/leads', async (req,res)=>{
   res.json(r.rows);
 });
 export default router;
+
+

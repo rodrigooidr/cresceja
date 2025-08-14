@@ -1,10 +1,12 @@
-import express from 'express';
-const router = express.Router();
-import controller from '../controllers/onboardingController.js';
-import authenticate from '../middleware/authenticate.js';
+import { Router } from 'express';
+import { getProgress, check } from '../controllers/onboardingController.js';
+// se precisar proteger as rotas, descomente a linha abaixo e use: router.use(authenticate);
+// import { authenticate } from '../middleware/authenticate.js';
 
-router.use(authenticate);
-router.post('/check', controller.checkStep);
-router.get('/progress', controller.getProgress);
+const router = Router();
+
+// router.use(authenticate);
+router.get('/progress', getProgress);
+router.post('/check', check);
 
 export default router;

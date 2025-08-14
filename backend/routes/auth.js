@@ -1,57 +1,103 @@
+// backend/routes/auth.js
 import express from 'express';
-const router = express.Router();
-import pool from '../db.js';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-// POST /auth/register
+import { z } from 'zod';
+import pool from '../db.js';
+
+const router = express.Router();
+
+const JWT_SECRET = process.env.JWT_SECRET || 'segredo'; // defina no .env em produção
+const normEmail = (s) => String(s || '').trim().toLowerCase();
+
+const registerSchema = z.object({
+  name: z.string().trim().min(1, 'Nome é obrigatório').max(120),
+  email: z.string().email(),
+  password: z.string().min(6).max(100),
+});
+
+const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+
+const signToken = (user) =>
+  jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+
+/**
+ * POST /api/auth/register
+ * Cria usuário com hash feito pelo Postgres: crypt($senha, gen_salt('bf', 12))
+ */
 router.post('/register', async (req, res) => {
-  const { name, email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Campos obrigatórios' });
-
+  const client = await pool.connect();
   try {
-    const hashed = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      'INSERT INTO public.users (name, email, password) VALUES ($1, $2, $3) RETURNING id, email',
-      [name || '', email, hashed]
-    );
-    const user = result.rows[0];
+    const { name, email, password } = registerSchema.parse(req.body || {});
+    const emailN = normEmail(email);
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET || 'segredo',
-      { expiresIn: '7d' }
-    );
+    await client.query('BEGIN');
 
-    res.json({ token, user });
+    const exists = await client.query(
+      'SELECT 1 FROM public.users WHERE email = $1',
+      [emailN]
+    );
+    if (exists.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'E-mail já cadastrado' });
+    }
+
+    const insertSql = `
+      INSERT INTO public.users (email, full_name, role, password_hash, created_at, updated_at)
+      VALUES ($1, $2, 'agent', crypt($3, gen_salt('bf', 12)), now(), now())
+      RETURNING id, email, full_name, role
+    `;
+    const { rows } = await client.query(insertSql, [emailN, name.trim(), password]);
+    await client.query('COMMIT');
+
+    const user = rows[0];
+    const token = signToken(user);
+    return res.json({ token, user });
   } catch (err) {
-    console.error('Erro no registro:', err);
-    res.status(500).json({ error: 'Erro interno no servidor' });
+    try { await pool.query('ROLLBACK'); } catch {}
+    if (err?.issues) {
+      return res.status(400).json({ error: 'payload_invalido', details: err.issues });
+    }
+    console.error('REGISTER error:', err);
+    return res.status(500).json({ error: 'Erro interno no servidor' });
+  } finally {
+    client.release();
   }
 });
 
-// POST /auth/login
+/**
+ * POST /api/auth/login
+ * Verifica a senha usando crypt($senha, password_hash) no Postgres.
+ */
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Campos obrigatórios' });
-
   try {
-    const result = await pool.query('SELECT * FROM public.users WHERE email = $1', [email]);
-    const user = result.rows[0];
-    if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
+    const { email, password } = loginSchema.parse(req.body || {});
+    const emailN = normEmail(email);
 
-    const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(401).json({ error: 'Senha incorreta' });
+    const q = `
+      SELECT id, email, full_name, role
+        FROM public.users
+       WHERE email = $1
+         AND password_hash = crypt($2, password_hash)
+       LIMIT 1
+    `;
+    const { rows } = await pool.query(q, [emailN, password]);
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email },
-      process.env.JWT_SECRET || 'segredo',
-      { expiresIn: '7d' }
-    );
+    if (!rows.length) {
+      return res.status(401).json({ error: 'Credenciais inválidas' });
+    }
 
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+    const user = rows[0];
+    const token = signToken(user);
+    return res.json({ token, user });
   } catch (err) {
-    console.error('Erro no login:', err);
-    res.status(500).json({ error: 'Erro interno no servidor' });
+    if (err?.issues) {
+      return res.status(400).json({ error: 'payload_invalido', details: err.issues });
+    }
+    console.error('LOGIN error:', err);
+    return res.status(500).json({ error: 'Erro interno no servidor' });
   }
 });
 

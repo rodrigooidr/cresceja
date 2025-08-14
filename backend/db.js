@@ -1,16 +1,15 @@
-const { Pool } = require('pg');
-require('dotenv').config();
+// backend/db.js  (ESM)
+import 'dotenv/config';
+import pg from 'pg';
+const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  // ssl: { rejectUnauthorized: false } // habilite se precisar
+});
 
-const pool = connectionString
-  ? new Pool({ connectionString })
-  : new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 5432,
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_DATABASE || 'postgres',
-    });
+pool.on('error', (err) => {
+  console.error('Postgres pool error:', err);
+});
 
-module.exports = pool;
+export default pool;

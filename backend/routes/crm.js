@@ -43,3 +43,5 @@ router.put('/oportunidades/:id', async (req, res) => {
 });
 
 export default router;
+
+

@@ -1,3 +1,6 @@
+// controllers/aiCreditsController.js
+// Controlador em ESM
+
 // Simulação de dados em memória para demonstração
 const usageLogs = [
   { category: 'chat', service: 'gpt4o', company_id: 'demo', tokens_used: 1 },
@@ -12,10 +15,10 @@ const plans = {
   proplus: { chat: 1000, text: 100, image: 50 },
 };
 
-exports.getStatus = (req, res) => {
-  const user = req.user;
-  const companyId = user.company_id;
-  const plan = (user.plan || 'free').toLowerCase();
+export function getStatus(req, res) {
+  const user = req.user || {};
+  const companyId = user.company_id || 'demo';
+  const plan = String(user.plan || 'free').toLowerCase();
 
   const used = {
     chat: usageLogs.filter(l => l.company_id === companyId && l.category === 'chat').length,
@@ -25,13 +28,13 @@ exports.getStatus = (req, res) => {
     }
   };
 
-  const limits = plans[plan];
+  const limits = plans[plan] || plans.free;
 
-  res.json({
+  return res.json({
     chat: { used: used.chat, limit: limits.chat },
     content: {
       text: { used: used.content.text, limit: limits.text },
       image: { used: used.content.image, limit: limits.image }
     }
   });
-};
+}

@@ -1,7 +1,7 @@
 import express from 'express';
 const router = express.Router();
 
-import authenticate from '../middleware/authenticate.js';
+import { authenticate } from '../middleware/authenticate.js';
 import isOwner from '../middleware/isOwner.js';
 import canUseWhatsAppWeb from '../middleware/canUseWhatsAppWeb.js';
 
@@ -23,3 +23,6 @@ router.post('/send-test', sendTestMessage);
 router.post('/receive', receiveMessage);
 
 export default router;
+
+
+

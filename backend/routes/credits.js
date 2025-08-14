@@ -1,17 +1,8 @@
-
 import { Router } from 'express';
-import { getCreditStatus, consumeCredit } from '../services/credits.js';
+import { getStatus } from '../controllers/aiCreditsController.js';
 
-export const router = Router();
+const router = Router();
 
-router.get('/status', async (req,res)=>{
-  const status = await getCreditStatus(req.user.id);
-  res.json(status);
-});
+router.get('/status', getStatus);
 
-router.post('/consume', async (req,res)=>{
-  const { category, amount } = req.body || {};
-  const ok = await consumeCredit(req.user.id, category || 'attend', Number(amount) || 1);
-  if(!ok) return res.status(402).json({ error: 'credit_exhausted' });
-  res.json({ ok: true });
-});
+export default router;

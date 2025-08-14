@@ -5,9 +5,9 @@ services:
     image: postgres:16-alpine
     container_name: cresceja-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: cresceja
+      POSTGRES_USER: cresceja
+      POSTGRES_PASSWORD: cresceja123
+      POSTGRES_DB: cresceja_db
     ports:
       - "5432:5432"
     volumes:
@@ -42,9 +42,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja_db
       REDIS_URL: redis://redis:6379
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3001
     depends_on:
       - postgres
       - redis
@@ -60,7 +60,7 @@ services:
     container_name: cresceja-worker
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja_db
       REDIS_URL: redis://redis:6379
     command: ["node", "queues/repurpose.worker.js"]
     depends_on:

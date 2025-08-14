@@ -8,14 +8,18 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "node ./server.js",
-    "dev": "cross-env NODE_ENV=development node ./server.js",
-    "worker:repurpose": "node ./queues/repurpose.worker.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "worker:repurpose": "node ./queues/repurpose.worker.js",
+    "db:bootstrap:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/db_bootstrap.ps1",
+    "db:bootstrap:sh": "bash ./scripts/db_bootstrap.sh",
+    "smoke": "node ./scripts/smoke.js"
   },
   "dependencies": {
     "@azure/msal-node": "^2.6.6",
     "@sentry/node": "^8.25.0",
     "axios": "^1.7.2",
+    "bcrypt": "^5.1.1",
     "bullmq": "^5.7.8",
     "cors": "^2.8.5",
     "csv-parse": "^5.5.6",
@@ -31,12 +35,16 @@
     "multer": "1.4.5-lts.1",
     "node-fetch": "^3.3.2",
     "openai": "^4.54.0",
-    "pg": "^8.11.5",
+    "pg": "^8.12.0",
+    "pino": "^9.0.0",
+    "pino-http": "^9.0.0",
+    "socket.io": "^4.8.1",
+    "twilio": "^5.8.0",
     "uuid": "^9.0.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.0"
   }
 }

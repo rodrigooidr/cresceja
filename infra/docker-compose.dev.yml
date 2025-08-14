@@ -1,0 +1,45 @@
+name: cresceja-dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cresceja-postgres
+    environment:
+      POSTGRES_USER: cresceja
+      POSTGRES_PASSWORD: cresceja123
+      POSTGRES_DB: cresceja_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cresceja -d cresceja_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: cresceja-backend
+    env_file:
+      - ../backend/.env
+    environment:
+      - DATABASE_URL=postgres://cresceja:cresceja123@cresceja-postgres:5432/cresceja_db
+      - CORS_ORIGINS=http://localhost:3000
+      - PORT=4000
+      - LOG_LEVEL=info
+      - WS_TEST_MODE=true
+      - ALLOWED_WS_TEST_EMAIL=rodrigooidr@hotmail.com
+    volumes:
+      - uploads:/app/uploads
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
