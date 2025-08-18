@@ -35,6 +35,7 @@ import integrationsRouter from './routes/integrations.js';
 import publicRouter from './routes/public.js';
 import adminPlansRouter from './routes/admin.plans.js';
 import adminClientsRouter from './routes/admin.clients.js';
+import quickMessagesRouter from './routes/quick_messages.js';
 // PROD: import billingRouter from './routes/billing.js';
 import billingRouter from './routes/billing.dev.js';
 import webhooksRouter from './routes/webhooks.js';
@@ -148,6 +149,7 @@ app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
 app.use('/api/agenda', agendaRouter);
 app.use('/api/integrations', integrationsRouter);
+app.use('/api/quick-messages', quickMessagesRouter);
 
 // 404 APENAS para /api/*
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));

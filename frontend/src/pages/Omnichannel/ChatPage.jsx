@@ -71,13 +71,7 @@ const SAMPLE_MESSAGES = {
   ],
 };
 
-/** Quick replies simples **/
-const QUICK_REPLIES = [
-  "Olá! 👋 Como posso te ajudar hoje?",
-  "Claro! Vou te explicar rapidinho como funciona.",
-  "Pode me confirmar seu nome e e-mail?",
-  "Obrigado! Já te retorno em instantes. 🙌",
-];
+// Respostas rápidas serão carregadas do backend
 
 /** Templates WhatsApp (mock) **/
 const WA_TEMPLATES = [
@@ -102,6 +96,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [quickReplies, setQuickReplies] = useState([]);
 
   const threadBottomRef = useRef(null);
 
@@ -126,6 +121,11 @@ export default function ChatPage() {
         if (!activeId || msg?.conversationId !== activeId) return prev;
         return [...prev, { id: `ws-${Date.now()}`, from: msg.from === "system" ? "system" : msg.from === "agent" ? "agent" : "contact", text: msg.text, at: msg.at }];
       });
+    });
+
+    s.on("chat:human_request", () => {
+      playImpact();
+      alert('Usuário solicitou atendente');
     });
 
     setSocket(s);
@@ -184,6 +184,27 @@ export default function ChatPage() {
     // auto-scroll bottom quando novas mensagens chegam
     threadBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Carregar respostas rápidas
+  useEffect(() => {
+    api.get('/api/quick-messages').then(r => setQuickReplies(r.data)).catch(()=>{});
+  }, []);
+
+  const playImpact = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      osc.frequency.value = 880;
+      osc.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.3);
+    } catch (e) {}
+  };
+
+  const requestHuman = async () => {
+    if (!activeId) return;
+    try { await api.post(`/api/conversations/${activeId}/stop-ai`); } catch {}
+  };
 
   const filtered = useMemo(() => conversations, [conversations]);
 
@@ -328,7 +349,8 @@ export default function ChatPage() {
         <div className="border-t p-3 bg-white">
           <div className="flex items-center gap-2 mb-2">
             <TemplatesDropdown onPick={(t) => setInput((prev) => prev ? prev + "\n" + t.body : t.body)} />
-            <QuickReplies onPick={(q) => setInput((prev) => prev ? prev + "\n" + q : q)} />
+            <QuickReplies items={quickReplies} onPick={(q) => setInput((prev) => prev ? prev + "\n" + q : q)} />
+            <button onClick={requestHuman} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">Falar com atendente</button>
           </div>
           <div className="flex items-end gap-2">
             <textarea
@@ -397,7 +419,7 @@ function TemplatesDropdown({ onPick }) {
   );
 }
 
-function QuickReplies({ onPick }) {
+function QuickReplies({ items = [], onPick }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -406,9 +428,9 @@ function QuickReplies({ onPick }) {
       </button>
       {open && (
         <div className="absolute z-10 mt-1 w-64 bg-white border rounded-lg shadow max-h-60 overflow-auto">
-          {QUICK_REPLIES.map((q, i) => (
-            <button key={i} onClick={() => { onPick(q); setOpen(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
-              {q}
+          {items.map((q) => (
+            <button key={q.id} onClick={() => { onPick(q.text); setOpen(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+              {q.text}
             </button>
           ))}
         </div>

@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   channel_type TEXT NOT NULL,                 -- whatsapp|instagram|facebook
   status TEXT NOT NULL DEFAULT 'open',        -- open|closed
+  human_requested BOOLEAN NOT NULL DEFAULT FALSE, -- usuário pediu atendimento humano
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -90,6 +91,15 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS idx_messages_lead ON messages(lead_id);
 CREATE INDEX IF NOT EXISTS idx_conv_lead ON conversations(lead_id);
+
+-- Respostas rápidas por empresa
+CREATE TABLE IF NOT EXISTS quick_messages (
+  id SERIAL PRIMARY KEY,
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
 -- =========================
 -- 4) Agenda (compromissos)
