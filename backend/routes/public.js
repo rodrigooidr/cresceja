@@ -21,7 +21,6 @@ router.get("/plans", async (_req, res, next) => {
         COALESCE(pm.max_users, 1) AS "max_users"
       FROM public.plans p
       LEFT JOIN public.plans_meta pm ON pm.plan_id = p.id
-      WHERE p.is_published = TRUE
       ORDER BY p.sort_order NULLS LAST, p.id
     `);
     res.json({ plans: rows });
