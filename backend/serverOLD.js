@@ -19,9 +19,9 @@ import healthRouter from './routes/health.js'; // manter (mas terá health inlin
 import lgpdRouter from './routes/lgpd.js';
 import crmRouter from './routes/crm.js';
 import leadsRouter from './routes/leads.js';
-import approvalsRouter from './routes/approvalRoutes.js';
-import aiCreditsRouter from './routes/aiCreditsRoutes.js';
-import onboardingRouter from './routes/onboardingRoutes.js';
+import approvalsRouter from './routes/approval-routes.js';
+import aiCreditsRouter from './routes/ai-credits.js';
+import onboardingRouter from './routes/onboarding-routes.js';
 import conversationsRouter from './routes/conversations.js';
 import attachmentsRouter from './routes/attachments.js';
 import reportsRouter from './routes/reports.js';
@@ -29,8 +29,8 @@ import subscriptionRouter from './routes/subscription.js';
 import igRouter from './routes/webhooks/instagram.js';
 import fbRouter from './routes/webhooks/messenger.js';
 import whatsappRouter from './routes/whatsapp.js';
-import whatsappTemplatesRouter from './routes/whatsapp_templates.js';
-import agendaRouter from './routes/agenda_whatsapp.js';
+import whatsappTemplatesRouter from './routes/whatsapp-templates.js';
+import agendaRouter from './routes/agenda-whatsapp.js';
 import integrationsRouter from './routes/integrations.js';
 
 const __filename = fileURLToPath(import.meta.url);
