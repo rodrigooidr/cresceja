@@ -1,92 +1,195 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { useApi } from '../../contexts/useApi';
-
-function clamp(n, min, max) { return Math.min(Math.max(n, min), max); }
-function classPorUso(percentual) {
-  if (percentual >= 80) return 'bg-red-500';
-  if (percentual >= 60) return 'bg-amber-500';
-  return 'bg-blue-500';
-}
-
-function BarraCredito({ tipo, usado = 0, limite = 0 }) {
-  const pct = limite > 0 ? (usado / limite) * 100 : 0;
-  const pctClamped = clamp(pct, 0, 100);
-  const cor = classPorUso(pctClamped);
-  const restante = Math.max(limite - usado, 0);
-
-  return (
-    <div className="mb-4">
-      <div className="flex justify-between text-sm mb-1">
-        <span className="capitalize">{tipo}</span>
-        <span title={`${pctClamped.toFixed(0)}%`}>
-          {usado} / {limite} ({pctClamped.toFixed(0)}%)
-        </span>
-      </div>
-      <div className="w-full bg-gray-200 h-3 rounded" role="progressbar" aria-valuemin={0} aria-valuemax={limite || 0} aria-valuenow={Math.min(usado, limite || usado)} aria-label={`Uso de creditos de ${tipo}`}>
-        <div className={`${cor} h-3 rounded transition-all`} style={{ width: `${pctClamped}%` }} />
-      </div>
-      <div className="text-xs text-gray-600 mt-1">Restante: <strong>{restante}</strong></div>
-    </div>
-  );
-}
+// src/pages/Credits/CreditsPage.jsx
+import React, { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
+import api from "../../api/api";
+import TrialDaysLabel from "../../components/TrialDaysLabel";
 
 export default function CreditsPage() {
-  const api = useApi();
-  const [dados, setDados] = useState(null);
+  const [credits, setCredits] = useState(null);
+  const [sub, setSub] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState(null);
+  const [err, setErr] = useState("");
 
-  const carregarCreditos = async () => {
-    setLoading(true); setErro(null);
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setErr("");
     try {
-      const res = await api.get('/credits');
-      setDados(res.data || null);
-    } catch (err) {
-      console.error('Erro ao carregar creditos de IA', err);
-      setErro('Nao foi possivel carregar os creditos. Tente novamente.');
-      setDados(null);
-    } finally { setLoading(false); }
+      const [cRes, sRes] = await Promise.all([
+        api.get("/api/ai-credits/status"),
+        api.get("/api/subscription/status"),
+      ]);
+      setCredits(cRes?.data ?? null);
+      setSub(sRes?.data ?? null);
+    } catch (e) {
+      console.error("CreditsPage fetch error", e);
+      setErr("Não foi possível carregar os dados agora.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  const startTrial = async () => {
+    try {
+      await api.post("/api/subscription/start-trial");
+      await fetchAll();
+    } catch (e) {
+      console.error("startTrial", e);
+      alert("Não foi possível iniciar o teste agora.");
+    }
   };
 
-  useEffect(() => { carregarCreditos(); }, [api]);
-  const limites = useMemo(() => dados?.limites || {}, [dados]);
+  const planLabel =
+    sub?.planName || sub?.plan || sub?.plan_id || (sub?.plan?.id || "");
 
-  if (loading) return <p className="p-4">Carregando creditos...</p>;
+  // dias restantes — cobre vários formatos possíveis
+  const daysLeft =
+    typeof sub?.daysRemaining === "number"
+      ? sub.daysRemaining
+      : typeof sub?.trial_days_left === "number"
+      ? sub.trial_days_left
+      : null;
 
-  if (erro) {
+  const isNoSub =
+    !sub ||
+    sub.status === "no_subscription" ||
+    sub.status === "expired" ||
+    sub.active === false;
+
+  if (loading) {
     return (
-      <div className="p-4 max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-4">Creditos de IA</h1>
-        <div className="bg-red-50 text-red-700 text-sm p-3 rounded mb-4">{erro}</div>
-        <button type="button" onClick={carregarCreditos} className="text-sm px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
-          Tentar novamente
-        </button>
-      </div>
-    );
-  }
-
-  if (!dados) {
-    return (
-      <div className="p-4 max-w-md mx-auto">
-        <h1 className="text-2xl font-bold mb-6">Creditos de IA</h1>
-        <p className="text-sm text-gray-700">Nenhuma informacao de creditos disponivel.</p>
+      <div className="p-6">
+        <h1 className="text-2xl font-bold">Créditos de IA</h1>
+        <div className="mt-4 text-sm text-gray-500">Carregando…</div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 max-w-md mx-auto">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Creditos de IA</h1>
-        <button type="button" onClick={carregarCreditos} className="text-sm px-3 py-2 bg-gray-100 rounded hover:bg-gray-200">
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Créditos de IA</h1>
+        <button
+          onClick={fetchAll}
+          className="px-3 py-2 rounded-lg border hover:bg-gray-50"
+        >
           Atualizar
         </button>
       </div>
 
-      <BarraCredito tipo="atendimento" usado={dados.atendimento} limite={limites.atendimento} />
-      <BarraCredito tipo="texto" usado={dados.texto} limite={limites.texto} />
-      <BarraCredito tipo="imagem" usado={dados.imagem} limite={limites.imagem} />
-      <BarraCredito tipo="video" usado={dados.video} limite={limites.video} />
+      {err && (
+        <div className="mt-4 p-3 rounded bg-amber-50 text-amber-800 text-sm">
+          {err}
+        </div>
+      )}
+
+      {/* Bloco de créditos */}
+      <section className="mt-6 border rounded-xl p-4">
+        <h2 className="text-lg font-semibold">Seu saldo</h2>
+
+        {credits ? (
+          <div className="mt-2 grid md:grid-cols-3 gap-4 text-sm">
+            {/* Tenta exibir campos comuns; cai para JSON se estrutura for diferente */}
+            {"remaining" in credits || "limit" in credits || "used" in credits ? (
+              <>
+                {"limit" in credits && (
+                  <div className="p-3 rounded bg-gray-50 border">
+                    <div className="text-xs text-gray-500">Limite mensal</div>
+                    <div className="text-lg font-semibold">{credits.limit}</div>
+                  </div>
+                )}
+                {"used" in credits && (
+                  <div className="p-3 rounded bg-gray-50 border">
+                    <div className="text-xs text-gray-500">Consumido</div>
+                    <div className="text-lg font-semibold">{credits.used}</div>
+                  </div>
+                )}
+                {"remaining" in credits && (
+                  <div className="p-3 rounded bg-gray-50 border">
+                    <div className="text-xs text-gray-500">Restante</div>
+                    <div className="text-lg font-semibold">
+                      {credits.remaining}
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="md:col-span-3">
+                <pre className="text-xs bg-gray-50 border rounded p-3 overflow-auto">
+                  {JSON.stringify(credits, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="mt-2 text-sm text-gray-500">
+            Sem informações de créditos.
+          </div>
+        )}
+      </section>
+
+      {/* Bloco de assinatura */}
+      <section className="mt-6 border rounded-xl p-4">
+        <h2 className="text-lg font-semibold">Assinatura</h2>
+
+        {isNoSub ? (
+          <div className="mt-3">
+            <p className="text-sm text-gray-700">
+              Você ainda não possui uma assinatura ativa.
+            </p>
+
+            <div className="mt-3 flex items-center gap-2">
+              {/* CTA 1: começar teste (caso backend suporte) */}
+              <button
+                onClick={startTrial}
+                className="px-4 py-2 rounded-lg border hover:bg-gray-50"
+              >
+                Iniciar teste agora
+              </button>
+
+              {/* CTA 2: ir para cadastro */}
+              <Link
+                to="/register"
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Começar agora <TrialDaysLabel />
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 grid md:grid-cols-3 gap-4 text-sm">
+            <div className="p-3 rounded bg-gray-50 border">
+              <div className="text-xs text-gray-500">Plano</div>
+              <div className="text-lg font-semibold">{planLabel || "—"}</div>
+            </div>
+            <div className="p-3 rounded bg-gray-50 border">
+              <div className="text-xs text-gray-500">Status</div>
+              <div className="text-lg font-semibold">
+                {sub.status || (sub.active ? "active" : "inactive")}
+              </div>
+            </div>
+            <div className="p-3 rounded bg-gray-50 border">
+              <div className="text-xs text-gray-500">Vencimento</div>
+              <div className="text-lg font-semibold">
+                {typeof daysLeft === "number" ? (
+                  daysLeft >= 0 ? (
+                    <>restam {daysLeft} dia{daysLeft === 1 ? "" : "s"}</>
+                  ) : (
+                    <span className="text-red-600">expirado</span>
+                  )
+                ) : sub?.end_date ? (
+                  new Date(sub.end_date).toISOString().slice(0, 10)
+                ) : (
+                  "—"
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

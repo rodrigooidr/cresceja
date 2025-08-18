@@ -1,66 +1,67 @@
 // backend/routes/leads.js
-import express from 'express';
-import { z } from 'zod';
-import { query } from '../config/db.js';
-import { authenticate } from '../middleware/authenticate.js';
+import { Router } from "express";
+import { query } from "../config/db.js"; // mantém o mesmo helper usado no server.js
 
-const router = express.Router();
+const router = Router();
 
-// Se quiser proteger tudo com auth, descomente a linha abaixo.
-// router.use(authenticate);
+// validação mínima
+function validateLead(body) {
+  const errors = [];
+  const name = (body?.name || "").toString().trim();
+  const email = (body?.email || "").toString().trim();
+  const whatsapp = (body?.whatsapp || "").toString().trim();
+  const source = (body?.source || "landing").toString().trim();
 
-const leadSchema = z.object({
-  name: z.string().trim().min(1),
-  email: z.string().email().optional().nullable(),
-  phone: z.string().optional().nullable(),
-  source_channel: z.string().default('landing'),
-  consent: z.boolean().default(true),
-});
+  if (!name) errors.push("name is required");
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("valid email is required");
 
-router.post('/', async (req, res) => {
+  return { ok: errors.length === 0, errors, data: { name, email, whatsapp, source } };
+}
+
+// POST /api/leads
+router.post("/", async (req, res, next) => {
   try {
-    const { name, email, phone, source_channel, consent } = leadSchema.parse(req.body ?? {});
+    const v = validateLead(req.body);
+    if (!v.ok) return res.status(400).json({ error: "bad_request", details: v.errors });
+
+    // garante tabela (idempotente)
+    await query(`
+      CREATE TABLE IF NOT EXISTS public.leads (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        whatsapp TEXT,
+        source TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
 
     const { rows } = await query(
-      `INSERT INTO public.leads (name, email, phone, source_channel, consent)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id`,
-      [name, email ?? null, phone ?? null, source_channel, consent]
-    );
-    const leadId = rows[0].id;
-
-    // auto-create CRM opportunity (status 'novo')
-    await query(
-      `INSERT INTO public.crm_opportunities (lead_id, stage, amount, notes)
-       VALUES ($1,'novo',0,'Criado via landing page')`,
-      [leadId]
+      `INSERT INTO public.leads (name, email, whatsapp, source)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, name, email, whatsapp, source, created_at`,
+      [v.data.name, v.data.email, v.data.whatsapp, v.data.source]
     );
 
-    return res.status(201).json({ id: leadId });
+    return res.status(201).json(rows[0]);
   } catch (err) {
-    if (err?.issues) {
-      return res.status(400).json({ error: 'invalid_body', details: err.issues });
-    }
-    console.error('[leads] POST / error', err);
-    return res.status(500).json({ error: 'internal_error' });
+    next(err);
   }
 });
 
-// Exemplo de rota protegida (lista últimos 100 leads)
-router.get('/list', authenticate, async (_req, res) => {
+// GET /api/leads (lista últimos 50 p/ conferência)
+router.get("/", async (_req, res, next) => {
   try {
-    const { rows } = await query(
-      `SELECT id, name, email, phone, source_channel, consent, created_at
-         FROM public.leads
-        ORDER BY created_at DESC
-        LIMIT 100`
-    );
-    return res.json(rows);
+    const { rows } = await query(`
+      SELECT id, name, email, whatsapp, source, created_at
+        FROM public.leads
+    ORDER BY id DESC
+       LIMIT 50
+    `);
+    res.json(rows);
   } catch (err) {
-    console.error('[leads] GET /list error', err);
-    return res.status(500).json({ error: 'internal_error' });
+    next(err);
   }
 });
 
-export default router;
-
+export default router; // <<< IMPORTANTE: default export (resolve o erro)

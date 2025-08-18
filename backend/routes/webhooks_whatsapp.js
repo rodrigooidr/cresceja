@@ -3,7 +3,7 @@
 
 import express from 'express';
 const router = express.Router();
-import pool from '../db.js';
+import { query, pool } from "../config/db.js";
 import { PROVIDER } from '../services/whatsapp.js';
 
 // GET verification (Meta WhatsApp Cloud)

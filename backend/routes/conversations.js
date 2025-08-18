@@ -1,6 +1,6 @@
 import express from 'express';
 const router = express.Router();
-import pool from '../db.js';
+import { query, pool } from "../config/db.js";
 import jwt from 'jsonwebtoken';
 
 // Middleware para extrair user ID do token

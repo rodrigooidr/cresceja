@@ -1,6 +1,6 @@
 import express from 'express';
 const router = express.Router();
-import pool from '../db.js';
+import { query, pool } from "../config/db.js";
 // POST /api/agenda
 // body: { title, date, channel, contact: { name, whatsapp }, opportunity_id }
 router.post('/', async (req, res) => {

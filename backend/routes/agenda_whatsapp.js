@@ -1,6 +1,6 @@
 import express from 'express';
 const router = express.Router();
-import pool from '../db.js';
+import { query, pool } from "../config/db.js";
 import { sendWhatsApp } from '../services/whatsapp.js'; // importar serviço
 
 // POST /api/agenda

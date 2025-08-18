@@ -1,11 +1,14 @@
-import express from 'express';
-import { query } from '../config/db.js';
-const router = express.Router();
+import { Router } from "express";
+const router = Router();
 
-router.get('/healthz', (req,res)=> res.json({ ok:true, time: new Date().toISOString() }));
-router.get('/readyz', async (req,res)=>{
-  try { await query('SELECT 1'); return res.json({ ok:true }); }
-  catch(e){ return res.status(500).json({ ok:false }); }
+// GET /api/health
+router.get("/", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    service: "cresceja-backend",
+    uptime: process.uptime(),
+    time: new Date().toISOString(),
+  });
 });
 
 export default router;

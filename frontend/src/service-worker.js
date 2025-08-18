@@ -14,8 +14,8 @@ clientsClaim();
 precacheAndRoute(self.__WB_MANIFEST || []);
 cleanupOutdatedCaches();
 
-/** App Shell para SPA: navegações → /index.html (exceto API e uploads) */
-const handler = createHandlerBoundToURL('/index.html');
+/** App Shell para SPA: navegações → /public/index.html (exceto API e uploads) */
+const handler = createHandlerBoundToURL('/public/index.html');
 const denylist = [new RegExp('^/api/'), new RegExp('^/uploads/')];
 const navRoute = new NavigationRoute(handler, { denylist });
 registerRoute(navRoute);

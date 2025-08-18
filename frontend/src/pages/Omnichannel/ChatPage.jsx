@@ -1,156 +1,452 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { io } from 'socket.io-client';
-import { Navigate } from 'react-router-dom';
+// src/pages/Omnichannel/ChatPage.jsx
+// Omnichannel Chat — pronto para uso
+// - 3 colunas: Inbox/Filas | Thread/Composer | Painel do Cliente
+// - Integra Socket.io (auth por JWT) e REST (fallbacks se API indisponível)
+// - Links e ações básicas: assumir conversa, enviar mensagem, filtros, busca
 
-// ajuste os caminhos conforme seu projeto
-import { useApi } from '../../contexts/useApi';
-import { useAuth } from '../../contexts/AuthContext';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
+import api from "../../api/api";
+
+/** Utilidades **/
+const fmtTime = (ts) => {
+  try {
+    const d = typeof ts === "number" ? new Date(ts) : new Date(ts || Date.now());
+    return d.toLocaleString();
+  } catch {
+    return "";
+  }
+};
+
+const classNames = (...xs) => xs.filter(Boolean).join(" ");
+
+const useLocalToken = () => {
+  const [token] = useState(() => localStorage.getItem("token") || "");
+  return token;
+};
+
+/** Dados de exemplo (fallback quando API não responde) **/
+const SAMPLE_CONVERSATIONS = [
+  {
+    id: "conv-demo-1",
+    channel: "whatsapp",
+    title: "Maria Souza",
+    lastMessage: "Oi! Quero saber mais do plano Pro",
+    updatedAt: Date.now() - 1000 * 60 * 5,
+    status: "pendente",
+    priority: "normal",
+    assignee: null,
+    contact: {
+      id: "c1",
+      name: "Maria Souza",
+      email: "maria@exemplo.com",
+      phone: "+55 41 99999-9999",
+    },
+  },
+  {
+    id: "conv-demo-2",
+    channel: "instagram",
+    title: "@joaodasilva",
+    lastMessage: "Como funciona a integração com WhatsApp?",
+    updatedAt: Date.now() - 1000 * 60 * 32,
+    status: "em_andamento",
+    priority: "alto",
+    assignee: "you",
+    contact: {
+      id: "c2",
+      name: "João da Silva",
+      email: "joao@exemplo.com",
+      phone: "",
+    },
+  },
+];
+
+const SAMPLE_MESSAGES = {
+  "conv-demo-1": [
+    { id: "m1", from: "contact", text: "Oi! Quero saber mais do plano Pro", at: Date.now() - 1000 * 60 * 8 },
+  ],
+  "conv-demo-2": [
+    { id: "m2", from: "contact", text: "Como funciona a integração com WhatsApp?", at: Date.now() - 1000 * 60 * 35 },
+    { id: "m3", from: "agent", text: "Oi João! A integração é direta e você mantém seu número.", at: Date.now() - 1000 * 60 * 30 },
+  ],
+};
+
+/** Quick replies simples **/
+const QUICK_REPLIES = [
+  "Olá! 👋 Como posso te ajudar hoje?",
+  "Claro! Vou te explicar rapidinho como funciona.",
+  "Pode me confirmar seu nome e e-mail?",
+  "Obrigado! Já te retorno em instantes. 🙌",
+];
+
+/** Templates WhatsApp (mock) **/
+const WA_TEMPLATES = [
+  { id: "boas_vindas", name: "Boas-vindas", body: "Olá {{nome}}, aqui é da CresceJá! Posso ajudar?" },
+  { id: "followup", name: "Follow-up", body: "Oi {{nome}}, passando para saber se deu certo. Precisa de algo?" },
+];
 
 export default function ChatPage() {
-  const api = useApi();
-  const auth = useAuth();
-  const token = auth?.token;
-  const user  = auth?.user;
+  const token = useLocalToken();
+  const [socket, setSocket] = useState(null);
 
-  // se não estiver autenticado, redireciona
-  if (!token) return <Navigate to="/login" replace />;
+  // Inbox
+  const [conversations, setConversations] = useState([]);
+  const [statusFilter, setStatusFilter] = useState("todas");
+  const [channelFilter, setChannelFilter] = useState("todos");
+  const [search, setSearch] = useState("");
 
-  const [fila, setFila] = useState([]);
-  const [meus, setMeus] = useState([]);
-  const [mensagens, setMensagens] = useState([]);
-  const [selecionada, setSelecionada] = useState(null);
-  const [texto, setTexto] = useState('');
-  const socketRef = useRef(null);
+  // Seleção
+  const [activeId, setActiveId] = useState(null);
 
-  const carregarConversas = async () => {
-    try {
-      const f = await api.get('/conversations?status=pendente');
-      const m = await api.get('/conversations?assigned_to=me');
-      setFila(f.data || []);
-      setMeus(m.data || []);
-    } catch (err) {
-      console.error('Erro ao carregar conversas', err);
-    }
-  };
+  // Thread
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
 
-  const carregarMensagens = async (id) => {
-    try {
-      const res = await api.get(`/messages/${id}`);
-      setMensagens(res.data || []);
-    } catch (err) {
-      console.error('Erro ao carregar mensagens', err);
-    }
-  };
+  const threadBottomRef = useRef(null);
 
-  const enviarMensagem = () => {
-    if (!texto.trim() || !selecionada) return;
-    socketRef.current?.emit('enviar_mensagem', {
-      canal: selecionada.canal,
-      texto,
-      conversation_id: selecionada.id
-    });
-    setTexto('');
-  };
-
-  const assumirAtendimento = async (id) => {
-    try {
-      await api.put(`/conversations/${id}/assumir`);
-      await carregarConversas();
-      const conv = meus.find(c => c.id === id);
-      setSelecionada(conv || null);
-    } catch (err) {
-      console.error('Erro ao assumir atendimento', err);
-    }
-  };
-
-  useEffect(() => {
-    carregarConversas();
-  }, []);
-
-  useEffect(() => {
-    if (selecionada) carregarMensagens(selecionada.id);
-  }, [selecionada]);
-
+  /** Socket setup **/
   useEffect(() => {
     if (!token) return;
+    const url = (process.env.REACT_APP_WS_URL || process.env.REACT_APP_API_URL || "http://localhost:4000").replace(/^http/, "ws");
 
-    const socket = io('http://localhost:4000', {
-      auth: { token }
+    const s = io(url, {
+      transports: ["websocket"],
+      auth: { token },
     });
 
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      console.log('🔌 WebSocket conectado');
+    s.on("connect", () => {
+      // console.log("WS connected", s.id);
+      if (activeId) s.emit("join:conversation", activeId);
     });
 
-    socket.on('nova_mensagem', (msg) => {
-      if (msg.conversation_id === selecionada?.id) {
-        setMensagens((m) => [...m, msg]);
+    s.on("chat:message", (msg) => {
+      // Recebe mensagem em tempo real da conversa ativa
+      setMessages((prev) => {
+        if (!activeId || msg?.conversationId !== activeId) return prev;
+        return [...prev, { id: `ws-${Date.now()}`, from: msg.from === "system" ? "system" : msg.from === "agent" ? "agent" : "contact", text: msg.text, at: msg.at }];
+      });
+    });
+
+    setSocket(s);
+    return () => s.disconnect();
+  }, [token, activeId]);
+
+  /** Carregar conversas (REST com fallback) **/
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const qs = [];
+        if (statusFilter !== "todas") qs.push(`status=${encodeURIComponent(statusFilter)}`);
+        if (channelFilter !== "todos") qs.push(`channel=${encodeURIComponent(channelFilter)}`);
+        if (search) qs.push(`q=${encodeURIComponent(search)}`);
+        const url = `/api/conversations${qs.length ? `?${qs.join("&")}` : ""}`;
+        const { data } = await api.get(url);
+        if (!mounted) return;
+        setConversations(Array.isArray(data) ? data : []);
+      } catch {
+        if (!mounted) return;
+        // fallback demo
+        let list = SAMPLE_CONVERSATIONS;
+        if (statusFilter !== "todas") list = list.filter((c) => c.status === statusFilter);
+        if (channelFilter !== "todos") list = list.filter((c) => c.channel === channelFilter);
+        if (search) list = list.filter((c) => (c.title || "").toLowerCase().includes(search.toLowerCase()));
+        setConversations(list);
       }
-    });
+    })();
+    return () => { mounted = false; };
+  }, [statusFilter, channelFilter, search]);
 
-    socket.on('disconnect', () => {
-      console.log('❌ WebSocket desconectado');
-    });
+  /** Carregar mensagens da conversa ativa (REST com fallback) **/
+  useEffect(() => {
+    if (!activeId) return setMessages([]);
+    let mounted = true;
+    (async () => {
+      try {
+        const { data } = await api.get(`/api/conversations/${activeId}/messages`);
+        if (!mounted) return;
+        const msgs = Array.isArray(data)
+          ? data.map((m) => ({ id: m.id, from: m.from || (m.author_role === "agent" ? "agent" : "contact"), text: m.text, at: m.created_at || m.at }))
+          : [];
+        setMessages(msgs);
+        socket?.emit("join:conversation", activeId);
+      } catch {
+        if (!mounted) return;
+        setMessages(SAMPLE_MESSAGES[activeId] || []);
+        socket?.emit("join:conversation", activeId);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [activeId, socket]);
 
-    return () => socket.disconnect();
-  }, [token, selecionada]);
+  useEffect(() => {
+    // auto-scroll bottom quando novas mensagens chegam
+    threadBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const filtered = useMemo(() => conversations, [conversations]);
+
+  const sendMessage = async () => {
+    const text = input.trim();
+    if (!text || !activeId) return;
+    setSending(true);
+    try {
+      // Tenta via REST
+      const payload = { text };
+      const url = `/api/conversations/${activeId}/messages`;
+      await api.post(url, payload);
+      setMessages((prev) => [...prev, { id: `tmp-${Date.now()}`, from: "agent", text, at: Date.now() }]);
+      setInput("");
+    } catch {
+      // Fallback: emite via WS
+      socket?.emit("chat:message", { conversationId: activeId, text });
+      setMessages((prev) => [...prev, { id: `tmp-${Date.now()}`, from: "agent", text, at: Date.now() }]);
+      setInput("");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const assumeConversation = async (id) => {
+    try {
+      await api.put(`/api/conversations/${id}/assumir`);
+      setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, assignee: "you", status: "em_andamento" } : c)));
+    } catch {
+      setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, assignee: "you", status: "em_andamento" } : c)));
+    }
+  };
+
+  const endConversation = async (id) => {
+    try {
+      await api.put(`/api/conversations/${id}/status`, { status: "resolvida" });
+    } catch {}
+    setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, status: "resolvida" } : c)));
+  };
 
   return (
-    <div className="flex h-screen">
-      {/* Sidebar */}
-      <div className="w-72 bg-gray-100 border-r overflow-y-auto p-3">
-        <h2 className="font-bold mb-2">🟡 Fila de Espera</h2>
-        {fila.map(conv => (
-          <div key={conv.id} className="mb-2 p-2 bg-white rounded shadow text-sm">
-            <p>{conv.nome || 'Cliente sem nome'}</p>
-            <p className="text-xs text-gray-500">{conv.canal}</p>
+    <div className="h-[calc(100vh-0px)] w-full grid grid-cols-1 md:grid-cols-10">
+      {/* Coluna 1 — Inbox/Filas */}
+      <aside className="md:col-span-3 border-r flex flex-col min-h-0">
+        <div className="p-3 border-b">
+          <div className="flex gap-2">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border rounded-lg px-2 py-1 text-sm">
+              <option value="todas">Todas</option>
+              <option value="pendente">Pendente</option>
+              <option value="nao_atribuido">Não atribuído</option>
+              <option value="em_andamento">Em andamento</option>
+              <option value="resolvida">Resolvida</option>
+            </select>
+            <select value={channelFilter} onChange={(e) => setChannelFilter(e.target.value)} className="border rounded-lg px-2 py-1 text-sm">
+              <option value="todos">Todos os canais</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Facebook</option>
+            </select>
+          </div>
+          <input
+            className="mt-2 w-full border rounded-lg px-3 py-2 text-sm"
+            placeholder="Buscar nome, número, e-mail..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        <div className="flex-1 overflow-auto">
+          {filtered.length === 0 && (
+            <div className="p-4 text-sm text-gray-500">Nenhuma conversa encontrada.</div>
+          )}
+          <ul>
+            {filtered.map((c) => (
+              <li
+                key={c.id}
+                className={classNames(
+                  "px-3 py-2 border-b cursor-pointer hover:bg-gray-50",
+                  activeId === c.id && "bg-blue-50"
+                )}
+                onClick={() => setActiveId(c.id)}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-medium truncate max-w-[70%]">{c.title || c.contact?.name || c.id}</div>
+                  <div className="text-xs text-gray-500 ml-2">{fmtTime(c.updatedAt)}</div>
+                </div>
+                <div className="text-xs text-gray-500 truncate">{c.lastMessage}</div>
+                <div className="mt-1 flex items-center gap-2 text-[11px]">
+                  <span className={classNames(
+                    "px-2 py-0.5 rounded-full",
+                    c.status === "pendente" && "bg-amber-100 text-amber-700",
+                    c.status === "em_andamento" && "bg-blue-100 text-blue-700",
+                    c.status === "resolvida" && "bg-emerald-100 text-emerald-700"
+                  )}>{c.status || ""}</span>
+                  {c.assignee ? (
+                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">atribuído</span>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); assumeConversation(c.id); }}
+                      className="text-xs px-2 py-0.5 rounded-full bg-blue-600 text-white hover:bg-blue-700"
+                    >
+                      Assumir
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </aside>
+
+      {/* Coluna 2 — Thread/Composer */}
+      <main className="md:col-span-4 flex flex-col min-h-0">
+        {/* Header da conversa */}
+        <div className="p-3 border-b flex items-center justify-between">
+          <div className="font-semibold">{activeId ? (filtered.find((c) => c.id === activeId)?.title || activeId) : "Selecione uma conversa"}</div>
+          {activeId && (
+            <div className="flex items-center gap-2">
+              <button onClick={() => endConversation(activeId)} className="px-3 py-1 text-sm rounded-lg border hover:bg-gray-50">Encerrar</button>
+            </div>
+          )}
+        </div>
+
+        {/* Mensagens */}
+        <div className="flex-1 overflow-auto p-4 space-y-2 bg-white">
+          {!activeId && <div className="text-sm text-gray-500">Escolha uma conversa na lista à esquerda.</div>}
+          {activeId && messages.map((m) => (
+            <div key={m.id} className={classNames("max-w-[75%]", m.from === "agent" ? "ml-auto" : "")}>
+              <div className={classNames(
+                "rounded-2xl px-3 py-2 shadow-sm border",
+                m.from === "agent" ? "bg-blue-600 text-white border-blue-600" : "bg-gray-50"
+              )}>
+                <div className="whitespace-pre-wrap text-sm">{m.text}</div>
+              </div>
+              <div className="text-[11px] text-gray-500 mt-1 {m.from === 'agent' ? 'text-right' : ''}">{fmtTime(m.at)}</div>
+            </div>
+          ))}
+          <div ref={threadBottomRef} />
+        </div>
+
+        {/* Composer */}
+        <div className="border-t p-3 bg-white">
+          <div className="flex items-center gap-2 mb-2">
+            <TemplatesDropdown onPick={(t) => setInput((prev) => prev ? prev + "\n" + t.body : t.body)} />
+            <QuickReplies onPick={(q) => setInput((prev) => prev ? prev + "\n" + q : q)} />
+          </div>
+          <div className="flex items-end gap-2">
+            <textarea
+              rows={2}
+              className="flex-1 border rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              placeholder={activeId ? "Escreva sua resposta..." : "Selecione uma conversa para responder"}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              disabled={!activeId}
+            />
             <button
-              onClick={() => assumirAtendimento(conv.id)}
-              className="text-xs text-blue-600 underline mt-1"
+              onClick={sendMessage}
+              disabled={!activeId || sending || !input.trim()}
+              className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
             >
-              Assumir
+              {sending ? "Enviando..." : "Enviar"}
             </button>
           </div>
-        ))}
-        <hr className="my-3" />
-        <h2 className="font-bold mb-2">🟢 Meus Atendimentos</h2>
-        {meus.map(conv => (
-          <button
-            key={conv.id}
-            onClick={() => setSelecionada(conv)}
-            className={`block w-full text-left p-2 rounded mb-2 ${selecionada?.id === conv.id ? 'bg-blue-500 text-white' : 'bg-white'}`}
-          >
-            {conv.nome || 'Cliente'} <br />
-            <span className="text-xs text-gray-500">{conv.canal}</span>
-          </button>
+          <div className="text-[11px] text-gray-500 mt-1">Dica: Ctrl+Enter envia</div>
+        </div>
+      </main>
+
+      {/* Coluna 3 — Painel do Cliente/CRM */}
+      <aside className="md:col-span-3 border-l flex flex-col min-h-0">
+        <div className="p-3 border-b font-semibold">Cliente & CRM</div>
+        <div className="p-3 space-y-3 overflow-auto">
+          {!activeId && <div className="text-sm text-gray-500">Selecione uma conversa para ver os detalhes.</div>}
+          {activeId && (
+            <CustomerCard conv={filtered.find((c) => c.id === activeId)} />
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+/** Componentes auxiliares **/
+function TemplatesDropdown({ onPick }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((v) => !v)} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">
+        Templates
+      </button>
+      {open && (
+        <div className="absolute z-10 mt-1 w-64 bg-white border rounded-lg shadow">
+          {WA_TEMPLATES.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => { onPick(t); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              <div className="font-medium">{t.name}</div>
+              <div className="text-xs text-gray-500 truncate">{t.body}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuickReplies({ onPick }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen((v) => !v)} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">
+        Respostas rápidas
+      </button>
+      {open && (
+        <div className="absolute z-10 mt-1 w-64 bg-white border rounded-lg shadow max-h-60 overflow-auto">
+          {QUICK_REPLIES.map((q, i) => (
+            <button key={i} onClick={() => { onPick(q); setOpen(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomerCard({ conv }) {
+  if (!conv) return null;
+  const c = conv.contact || {};
+  const fields = [
+    { label: "Nome", value: c.name || conv.title || "-" },
+    { label: "E-mail", value: c.email || "-" },
+    { label: "WhatsApp", value: c.phone || "-" },
+    { label: "Canal", value: conv.channel || "-" },
+    { label: "Status", value: conv.status || "-" },
+    { label: "Atualizado", value: fmtTime(conv.updatedAt) },
+  ];
+
+  return (
+    <div className="border rounded-2xl p-4">
+      <div className="font-semibold">Perfil</div>
+      <div className="mt-2 grid grid-cols-1 gap-2 text-sm">
+        {fields.map((f) => (
+          <div key={f.label} className="flex items-center justify-between">
+            <div className="text-gray-500">{f.label}</div>
+            <div className="font-medium text-right ml-3 truncate max-w-[60%]">{f.value}</div>
+          </div>
         ))}
       </div>
 
-      {/* Chat */}
-      <div className="flex-1 flex flex-col p-4">
-        <h1 className="text-xl font-bold mb-3">Atendimento</h1>
-
-        <div className="flex-1 bg-white border rounded p-3 overflow-y-auto">
-          {mensagens.map((m, idx) => (
-            <div key={idx} className="mb-2">
-              <span className="text-gray-700 text-sm">{m.sender_type || 'cliente'}: </span>
-              <span>{m.texto || m.content}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-3 flex">
-          <input
-            value={texto}
-            onChange={e => setTexto(e.target.value)}
-            className="flex-1 border p-2 rounded-l"
-            placeholder="Digite sua mensagem..."
-          />
-          <button onClick={enviarMensagem} className="bg-blue-600 text-white px-4 rounded-r">
-            Enviar
-          </button>
+      <div className="mt-4 border-t pt-3">
+        <div className="font-semibold">Ações rápidas</div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">Criar oportunidade</button>
+          <button className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">Agendar follow-up</button>
+          <button className="px-3 py-1.5 text-sm rounded-lg border hover:bg-gray-50">Aplicar tag</button>
         </div>
       </div>
     </div>
