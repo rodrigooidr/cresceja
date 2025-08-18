@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS public.conversations (
   customer_whatsapp TEXT,
   status TEXT DEFAULT 'pending',
   assigned_agent_id UUID,
+  human_requested BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -76,3 +77,12 @@ CREATE TABLE IF NOT EXISTS public.messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON public.messages(conversation_id);
+
+-- Quick replies per company
+CREATE TABLE IF NOT EXISTS public.quick_messages (
+  id SERIAL PRIMARY KEY,
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);

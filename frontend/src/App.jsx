@@ -35,6 +35,7 @@ import AdminPlans from "./pages/Admin/AdminPlans";
 import AdminUsage from "./pages/Admin/AdminUsage";
 
 import TemplatesPage from "./pages/TemplatesPage";
+import QuickRepliesPage from "./pages/QuickRepliesPage";
 import LGPDPage from "./pages/LGPDPage";
 import LoginPage from "./pages/Auth/LoginPage";
 import RegisterPage from "./pages/Auth/RegisterPage";
@@ -96,6 +97,7 @@ export default function App() {
         />
         <Route path="/lgpd" element={<LGPDPage />} />
         <Route path="/whatsapp/templates" element={<TemplatesPage />} />
+        <Route path="/quick-replies" element={<QuickRepliesPage />} />
 
         {/* Protegidas (com layout) */}
         <Route path="/omnichannel/chat" element={<Protected><ChatPage /></Protected>} />
