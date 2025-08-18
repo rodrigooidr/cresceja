@@ -8,6 +8,7 @@
     "worker:repurpose": "node ./queues/repurpose.worker.js",
     "db:bootstrap:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/db_bootstrap.ps1",
     "db:bootstrap:sh": "bash ./scripts/db_bootstrap.sh",
+    "db:recreate": "node ./scripts/recreate-tables.js",
     "smoke": "node ./scripts/smoke.js"
   },
   "dependencies": {
