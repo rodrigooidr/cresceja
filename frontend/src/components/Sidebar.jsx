@@ -4,6 +4,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import api from "../api/api";
 import { can, role as getRole } from "../utils/auth";
+import UserSwitcher from "./UserSwitcher";
 
 // Estilo do link
 const itemClass = ({ isActive }) =>
@@ -179,6 +180,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         )}
       </div>
 
+      {/* Seleção de usuário para admins */}
+      {(role === "owner" || role === "client_admin") && !collapsed && (
+        <UserSwitcher />
+      )}
+
       {/* Navegação */}
       <nav className="mt-3 flex flex-col gap-1">
         {filteredMenu.map((item) => {
@@ -241,6 +247,16 @@ export default function Sidebar({ collapsed = false, onToggle }) {
               <I.usage className="shrink-0" />
               {!collapsed && (
                 <span className="truncate">Admin • Regras de Uso</span>
+              )}
+            </NavLink>
+            <NavLink
+              to="/admin/integrations"
+              className={itemClass}
+              title={collapsed ? "Admin • Integrações" : undefined}
+            >
+              <I.onboard className="shrink-0" />
+              {!collapsed && (
+                <span className="truncate">Admin • Integrações</span>
               )}
             </NavLink>
           </>
