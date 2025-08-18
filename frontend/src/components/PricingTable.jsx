@@ -32,8 +32,7 @@ export default function PricingTable() {
     );
   }
 
-  const listRaw = Array.isArray(plans) ? plans : [];
-  const list = listRaw.filter((p) => p.is_published !== false);
+  const list = Array.isArray(plans) ? plans : [];
 
   const fmtBRL = (n) =>
     typeof n === "number"
