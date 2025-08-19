@@ -26,7 +26,8 @@ import EditorIA from "./pages/Marketing/EditorIA";
 import ApprovalPage from "./pages/Approvals/ApprovalPage";
 import CreditsPage from "./pages/Credits/CreditsPage";
 import GovernancePage from "./pages/Governance/GovernancePage";
-import OnboardingPage from "./pages/Onboarding/OnboardingPage";
+import OnboardingStepsPage from "./pages/Onboarding/OnboardingPage";
+import CrmOnboardingPage from "./pages/OnboardingPage";
 
 import CheckoutPage from "./pages/Billing/CheckoutPage";
 import PaymentSuccess from "./pages/Billing/PaymentSuccess";
@@ -117,7 +118,8 @@ export default function App() {
         <Route path="/aprovacao" element={<Protected><ApprovalPage /></Protected>} />
         <Route path="/creditos" element={<Protected><CreditsPage /></Protected>} />
         <Route path="/governanca" element={<Protected><GovernancePage /></Protected>} />
-        <Route path="/onboarding" element={<Protected><OnboardingPage /></Protected>} />
+        <Route path="/onboarding" element={<Protected><OnboardingStepsPage /></Protected>} />
+        <Route path="/crm/onboarding" element={<Protected><CrmOnboardingPage /></Protected>} />
         <Route path="/assinatura/status" element={<Protected><SubscriptionStatus /></Protected>} />
 
         {/* Admin (se usar route nesting, seu MainLayout precisa renderizar <Outlet />) */}
