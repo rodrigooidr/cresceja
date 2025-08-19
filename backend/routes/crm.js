@@ -12,9 +12,11 @@ async function ensureTables() {
       email TEXT NOT NULL,
       whatsapp TEXT,
       source TEXT,
+      status TEXT NOT NULL DEFAULT 'novo',
       created_at TIMESTAMP NOT NULL DEFAULT now()
     );
   `);
+  await query(`ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'novo';`);
   await query(`
     CREATE TABLE IF NOT EXISTS public.crm_opportunities (
       id SERIAL PRIMARY KEY,
@@ -71,6 +73,34 @@ r.post("/oportunidades", authRequired, async (req, res, next) => {
        VALUES ($1,$2,$3,$4)
        RETURNING id`,
       [leadId, name, email, whatsapp]
+    );
+    res.status(201).json({ id: oppRes.rows[0].id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Converte um lead existente em oportunidade
+r.post("/leads/:id/move", authRequired, async (req, res, next) => {
+  try {
+    await ensureTables();
+    const { id } = req.params;
+    const leadRes = await query(
+      `SELECT id, name, email, whatsapp FROM public.leads WHERE id = $1`,
+      [id]
+    );
+    if (leadRes.rows.length === 0)
+      return res.status(404).json({ error: "not_found" });
+    const lead = leadRes.rows[0];
+    const oppRes = await query(
+      `INSERT INTO public.crm_opportunities (lead_id, name, email, whatsapp)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id`,
+      [lead.id, lead.name, lead.email, lead.whatsapp]
+    );
+    await query(
+      `UPDATE public.leads SET status = 'oportunidade' WHERE id = $1`,
+      [id]
     );
     res.status(201).json({ id: oppRes.rows[0].id });
   } catch (err) {
