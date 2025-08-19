@@ -14,3 +14,4 @@ yarn-error.log*
 
 #Configuração 
 */.env
+frontend/src/package-lock.json
