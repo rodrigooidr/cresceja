@@ -165,6 +165,19 @@ export default function AdminPlans() {
     }
   };
 
+  const removePlan = async (plan) => {
+    if (plan._isNew) return removePlanLocal(plan);
+    if (!window.confirm('Excluir plano permanentemente?')) return;
+    try {
+      await api.delete(`/api/admin/plans/${plan.id}`);
+      setItems((prev) => prev.filter((p) => p._key !== plan._key));
+      window.dispatchEvent(new CustomEvent('plans-updated'));
+    } catch (e) {
+      console.error('removePlan', e);
+      alert('Falha ao remover plano.');
+    }
+  };
+
   const addPlan = () => {
     setItems((prev) => [
       { ...DEFAULT_PLAN(), _isNew: true, _key: uniq() },
@@ -443,12 +456,19 @@ export default function AdminPlans() {
                 >
                   {savingId === (p.id || "_new_") ? "Salvando…" : "Salvar"}
                 </button>
-                {p._isNew && (
+                {p._isNew ? (
                   <button
                     onClick={() => removePlanLocal(p)}
                     className="px-3 py-2 rounded-lg border hover:bg-gray-50"
                   >
                     Remover rascunho
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => removePlan(p)}
+                    className="px-3 py-2 rounded-lg border hover:bg-gray-50"
+                  >
+                    Excluir
                   </button>
                 )}
               </div>

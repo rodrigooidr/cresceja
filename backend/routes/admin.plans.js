@@ -145,4 +145,17 @@ router.post("/plans/:id/publish", async (req, res, next) => {
   }
 });
 
+// REMOVER
+router.delete("/plans/:id", async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ error: "missing_id" });
+    await query('DELETE FROM public.plans WHERE id=$1', [id]);
+    await query('DELETE FROM public.plans_meta WHERE plan_id=$1', [id]);
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 export default router;
