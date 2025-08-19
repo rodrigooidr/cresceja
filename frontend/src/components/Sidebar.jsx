@@ -223,14 +223,16 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 Admin
               </div>
             )}
-            <NavLink
-              to="/admin/clients"
-              className={itemClass}
-              title={collapsed ? "Admin • Clientes" : undefined}
-            >
-              <I.clients className="shrink-0" />
-              {!collapsed && <span className="truncate">Admin • Clientes</span>}
-            </NavLink>
+            {role === "owner" && (
+              <NavLink
+                to="/admin/clients"
+                className={itemClass}
+                title={collapsed ? "Admin • Clientes" : undefined}
+              >
+                <I.clients className="shrink-0" />
+                {!collapsed && <span className="truncate">Admin • Clientes</span>}
+              </NavLink>
+            )}
             <NavLink
               to="/admin/plans"
               className={itemClass}
@@ -252,11 +254,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             <NavLink
               to="/admin/integrations"
               className={itemClass}
-              title={collapsed ? "Admin • Integrações" : undefined}
+              title={collapsed ? "Admin • Configurações" : undefined}
             >
               <I.onboard className="shrink-0" />
               {!collapsed && (
-                <span className="truncate">Admin • Integrações</span>
+                <span className="truncate">Admin • Configurações</span>
               )}
             </NavLink>
             <NavLink

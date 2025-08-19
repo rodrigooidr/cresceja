@@ -1,9 +1,10 @@
 import express from "express";
 import { query } from "../config/db.js";
-import { requireAuth, requireAdmin } from "../helpers/auth.js";
+import authenticate from "../middleware/authenticate.js";
+import { requireRole } from "../middleware/rbac.js";
 
 const router = express.Router();
-router.use(requireAuth, requireAdmin);
+router.use(authenticate, requireRole("owner"));
 
 // GET /api/admin/clients
 router.get("/clients", async (req, res) => {
@@ -18,6 +19,58 @@ router.get("/clients", async (req, res) => {
     console.error("GET /admin/clients", err);
     // Fallback amigável
     res.json({ clients: [] });
+  }
+});
+
+// POST /api/admin/clients
+router.post("/clients", async (req, res) => {
+  const {
+    company_name,
+    email,
+    plan_id,
+    start_date,
+    end_date,
+    auto,
+    annual,
+    annual_price,
+  } = req.body || {};
+  try {
+    let start = start_date ? new Date(start_date) : null;
+    let end = end_date ? new Date(end_date) : null;
+    if (auto && plan_id) {
+      const { rows } = await query(
+        "SELECT is_free, trial_days, billing_period_months FROM plans WHERE id=$1 LIMIT 1",
+        [plan_id]
+      );
+      const plan = rows[0] || {};
+      start = new Date();
+      if (plan.is_free) {
+        const trial = Number(plan.trial_days || 14);
+        end = new Date(Date.now() + trial * 86400 * 1000);
+      } else {
+        const months = annual ? 12 : Number(plan.billing_period_months || 1);
+        end = new Date(start);
+        end.setMonth(end.getMonth() + months);
+      }
+    }
+    const modules = annual_price ? { annual_price } : null;
+    const { rows } = await query(
+      `INSERT INTO clients (company_name, email, active, start_date, end_date, plan_id, modules, created_at, updated_at)
+       VALUES ($1, $2, true, $3::date, $4::date, $5, $6::jsonb, now(), now())
+       RETURNING id`,
+      [
+        company_name,
+        email,
+        start ? start.toISOString().slice(0, 10) : null,
+        end ? end.toISOString().slice(0, 10) : null,
+        plan_id || null,
+        modules ? JSON.stringify(modules) : null,
+      ]
+    );
+    res.json({ ok: true, id: rows[0]?.id });
+  } catch (err) {
+    console.error("POST /admin/clients", err);
+    res.status(500).json({ message: "Erro ao criar cliente" });
   }
 });
 

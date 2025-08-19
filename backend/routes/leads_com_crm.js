@@ -1,17 +1,42 @@
 import express from 'express';
 const router = express.Router();
-import { query, pool } from "../config/db.js";
+import { pool } from "../config/db.js";
+
+// Cria lead + oportunidade CRM, registrando canal de origem
 router.post('/', async (req, res) => {
-  const { name, email, whatsapp } = req.body;
+  const { name, email, whatsapp, channel } = req.body || {};
 
   if (!name || !email) {
     return res.status(400).json({ error: 'Nome e e-mail são obrigatórios' });
   }
 
   try {
+    // Garante tabelas simples
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.leads (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        whatsapp TEXT,
+        source TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS public.crm_opportunities (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER REFERENCES public.leads(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        email TEXT,
+        whatsapp TEXT,
+        status TEXT NOT NULL DEFAULT 'novo',
+        created_at TIMESTAMP NOT NULL DEFAULT now()
+      );
+    `);
+
     const leadResult = await pool.query(
-      'INSERT INTO public.leads (name, email, whatsapp) VALUES ($1, $2, $3) RETURNING id',
-      [name, email, whatsapp]
+      'INSERT INTO public.leads (name, email, whatsapp, source) VALUES ($1, $2, $3, $4) RETURNING id',
+      [name, email, whatsapp, channel]
     );
     const leadId = leadResult.rows[0].id;
 
