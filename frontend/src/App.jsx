@@ -47,6 +47,7 @@ import LGPDPage from "./pages/LGPDPage";
 import LoginPage from "./pages/Auth/LoginPage";
 import RegisterPage from "./pages/Auth/RegisterPage";
 import DebugOverlay from "./components/DebugOverlay";
+import FidelizacaoPage from "./pages/FidelizacaoPage";
 
 /** --------- Guards --------- **/
 function isAuthenticated() {
@@ -120,6 +121,7 @@ export default function App() {
         <Route path="/aprovacao" element={<Protected><ApprovalPage /></Protected>} />
         <Route path="/creditos" element={<Protected><CreditsPage /></Protected>} />
         <Route path="/governanca" element={<Protected><GovernancePage /></Protected>} />
+        <Route path="/fidelizacao" element={<Protected><FidelizacaoPage /></Protected>} />
         <Route path="/onboarding" element={<Protected><OnboardingStepsPage /></Protected>} />
         <Route path="/crm/onboarding" element={<Protected><CrmOnboardingPage /></Protected>} />
         <Route path="/assinatura/status" element={<Protected><SubscriptionStatus /></Protected>} />
