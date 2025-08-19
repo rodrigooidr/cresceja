@@ -2,11 +2,13 @@ import express from 'express';
 const router = express.Router();
 import { Pool } from 'pg';
 import { authenticate } from '../middleware/authenticate.js';
-import { isOwner } from '../middleware/isOwner.js';
+import { requireRole } from '../middleware/rbac.js';
+import fs from 'fs/promises';
+import path from 'path';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-router.use(authenticate, isOwner);
+router.use(authenticate, requireRole('owner', 'client_admin'));
 
 router.post('/:type/connect', async (req, res) => {
   const user = req.user;
@@ -23,6 +25,16 @@ router.post('/:type/connect', async (req, res) => {
       RETURNING *;
     `;
     const { rows } = await pool.query(q, [companyId, type, config || {}, false, user.id]);
+
+    try {
+      const cfgDir = path.join(process.cwd(), 'config', 'integrations');
+      await fs.mkdir(cfgDir, { recursive: true });
+      const filePath = path.join(cfgDir, `${companyId}-${type}.json`);
+      await fs.writeFile(filePath, JSON.stringify(config || {}, null, 2));
+    } catch (err) {
+      console.error('integrations file write error', err);
+    }
+
     return res.json({ ok: true, integration: rows[0] });
   } catch (e) {
     console.error('integrations connect error', e);

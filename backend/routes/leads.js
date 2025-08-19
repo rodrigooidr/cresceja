@@ -10,7 +10,7 @@ function validateLead(body) {
   const name = (body?.name || "").toString().trim();
   const email = (body?.email || "").toString().trim();
   const whatsapp = (body?.whatsapp || "").toString().trim();
-  const source = (body?.source || "landing").toString().trim();
+  const source = (body?.channel || body?.source || "landing").toString().trim();
 
   if (!name) errors.push("name is required");
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("valid email is required");

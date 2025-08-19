@@ -194,7 +194,7 @@ function CrmKanban() {
                   >
                     <p className="font-medium">{card.name}</p>
                     <p className="text-xs text-gray-500">{card.email || 'sem e-mail'} · {card.whatsapp || 'sem whatsapp'}</p>
-                    <p className="text-[11px] text-gray-400 mt-1">Origem: {card.source || '-'}</p>
+                    <p className="text-[11px] text-gray-400 mt-1">Canal: {card.channel || '-'}</p>
                     <div className="mt-2 flex gap-2">
                       <button
                         onClick={() => abrirAgendar(card)}

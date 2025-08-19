@@ -72,7 +72,7 @@ function CrmOportunidades() {
               <th className="p-2 text-left">E-mail</th>
               <th className="p-2 text-left">WhatsApp</th>
               <th className="p-2 text-left">Status</th>
-              <th className="p-2 text-left">Origem</th>
+              <th className="p-2 text-left">Canal</th>
               <th className="p-2 text-left">Criado em</th>
             </tr>
           </thead>
@@ -94,7 +94,7 @@ function CrmOportunidades() {
                     ))}
                   </select>
                 </td>
-                <td className="p-2">{opp.source}</td>
+                <td className="p-2">{opp.channel}</td>
                 <td className="p-2">{new Date(opp.created_at).toLocaleString()}</td>
               </tr>
             ))}

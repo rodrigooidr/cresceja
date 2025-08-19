@@ -35,6 +35,7 @@ import AdminPlans from "./pages/Admin/AdminPlans";
 import AdminUsage from "./pages/Admin/AdminUsage";
 import AdminIntegrations from "./pages/Admin/AdminIntegrations";
 import AdminQuickReplies from "./pages/Admin/AdminQuickReplies";
+import OwnerRoute from "./routes/OwnerRoute";
 
 import TemplatesPage from "./pages/TemplatesPage";
 import LGPDPage from "./pages/LGPDPage";
@@ -115,7 +116,9 @@ export default function App() {
 
         {/* Admin (se usar route nesting, seu MainLayout precisa renderizar <Outlet />) */}
         <Route element={<AdminRoute><MainLayout /></AdminRoute>}>
-          <Route path="/admin/clients" element={<AdminClients />} />
+          <Route element={<OwnerRoute />}>
+            <Route path="/admin/clients" element={<AdminClients />} />
+          </Route>
           <Route path="/admin/plans" element={<AdminPlans />} />
           <Route path="/admin/usage" element={<AdminUsage />} />
           <Route path="/admin/integrations" element={<AdminIntegrations />} />

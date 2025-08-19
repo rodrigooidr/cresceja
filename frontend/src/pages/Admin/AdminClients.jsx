@@ -1,5 +1,5 @@
 // src/pages/Admin/AdminClients.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../api/api";
 
 // helpers de data
@@ -29,50 +29,62 @@ export default function AdminClients() {
   const [errorMsg, setErrorMsg] = useState("");
   const [verifyingId, setVerifyingId] = useState(null);
 
+  const [newClient, setNewClient] = useState({
+    company_name: "",
+    email: "",
+    plan_id: "",
+    auto: true,
+    annual: false,
+    annual_price: "",
+    start_date: "",
+    end_date: "",
+  });
+  const [creating, setCreating] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setErrorMsg("");
+      const [clientsRes, plansRes] = await Promise.all([
+        api.get(`/api/admin/clients`, { params: { query: q } }),
+        api.get(`/api/public/plans`),
+      ]);
+      const rawClients = clientsRes?.data?.clients || clientsRes?.data || [];
+      const rawPlans = Array.isArray(plansRes?.data?.plans)
+        ? plansRes.data.plans
+        : Array.isArray(plansRes?.data)
+        ? plansRes.data
+        : [];
+      const clients = (rawClients || []).map((c) => ({
+        ...c,
+        _session_id: "",
+        _payment_id: "",
+      }));
+      setItems(clients);
+      setPlans(rawPlans);
+    } catch (e) {
+      console.error("AdminClients load error", e);
+      const status = e?.response?.status;
+      if (status === 401) setErrorMsg("Faça login para acessar esta área.");
+      else if (status === 403) setErrorMsg("Você precisa ser administrador.");
+      else setErrorMsg("Não foi possível carregar os dados.");
+      setItems([]);
+      setPlans([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [q]);
+
   // Carrega clientes + planos
   useEffect(() => {
     let mounted = true;
     (async () => {
-      try {
-        setLoading(true);
-        setErrorMsg("");
-        const [clientsRes, plansRes] = await Promise.all([
-          api.get(`/api/admin/clients`, { params: { query: q } }),
-          api.get(`/api/public/plans`), // usa público como fonte de verdade para opções
-        ]);
-        if (!mounted) return;
-
-        const rawClients = clientsRes?.data?.clients || clientsRes?.data || [];
-        const rawPlans = Array.isArray(plansRes?.data?.plans)
-          ? plansRes.data.plans
-          : Array.isArray(plansRes?.data)
-          ? plansRes.data
-          : [];
-
-        // adiciona campos efêmeros para inputs de pagamento
-        const clients = (rawClients || []).map((c) => ({
-          ...c,
-          _session_id: "",
-          _payment_id: "",
-        }));
-
-        setItems(clients);
-        setPlans(rawPlans);
-      } catch (e) {
-        console.error("AdminClients load error", e);
-        const status = e?.response?.status;
-        if (status === 401) setErrorMsg("Faça login para acessar esta área.");
-        else if (status === 403) setErrorMsg("Você precisa ser administrador.");
-        else setErrorMsg("Não foi possível carregar os dados.");
-        setItems([]);
-        setPlans([]);
-      } finally {
-        setLoading(false);
-      }
+      if (mounted) await load();
     })();
-
-    return () => (mounted = false);
-  }, [q]);
+    return () => {
+      mounted = false;
+    };
+  }, [load]);
 
   const planById = useMemo(() => {
     const m = {};
@@ -176,6 +188,41 @@ export default function AdminClients() {
     }
   };
 
+  const createClient = async () => {
+    try {
+      setCreating(true);
+      const body = {
+        company_name: newClient.company_name,
+        email: newClient.email,
+        plan_id: newClient.plan_id || null,
+        auto: newClient.auto,
+        annual: newClient.annual,
+        annual_price: newClient.annual_price
+          ? Number(newClient.annual_price)
+          : undefined,
+        start_date: newClient.auto ? null : newClient.start_date || null,
+        end_date: newClient.auto ? null : newClient.end_date || null,
+      };
+      await api.post(`/api/admin/clients`, body);
+      setNewClient({
+        company_name: "",
+        email: "",
+        plan_id: "",
+        auto: true,
+        annual: false,
+        annual_price: "",
+        start_date: "",
+        end_date: "",
+      });
+      await load();
+    } catch (e) {
+      console.error("createClient", e);
+      alert("Falha ao criar cliente.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const filtered = useMemo(() => {
     if (!q) return items;
     const s = q.toLowerCase();
@@ -201,6 +248,83 @@ export default function AdminClients() {
           <button onClick={() => setQ("")} className="px-3 py-2 border rounded-lg hover:bg-gray-50">
             Limpar
           </button>
+        </div>
+      </div>
+
+      <div className="mt-6 border rounded-lg p-4">
+        <h2 className="font-semibold mb-2">Criar novo cliente</h2>
+        <div className="grid md:grid-cols-6 gap-2">
+          <input
+            value={newClient.company_name}
+            onChange={(e) => setNewClient({ ...newClient, company_name: e.target.value })}
+            placeholder="Empresa"
+            className="md:col-span-2 border rounded-lg px-2 py-2"
+          />
+          <input
+            value={newClient.email}
+            onChange={(e) => setNewClient({ ...newClient, email: e.target.value })}
+            placeholder="E-mail"
+            className="md:col-span-2 border rounded-lg px-2 py-2"
+          />
+          <select
+            value={newClient.plan_id}
+            onChange={(e) => setNewClient({ ...newClient, plan_id: e.target.value })}
+            className="md:col-span-2 border rounded-lg px-2 py-2"
+          >
+            <option value="">— plano —</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <label className="md:col-span-1 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={newClient.auto}
+              onChange={(e) => setNewClient({ ...newClient, auto: e.target.checked })}
+            />
+            <span>Auto</span>
+          </label>
+          <label className="md:col-span-1 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={newClient.annual}
+              onChange={(e) => setNewClient({ ...newClient, annual: e.target.checked })}
+            />
+            <span>Anual</span>
+          </label>
+          <input
+            value={newClient.annual_price}
+            onChange={(e) => setNewClient({ ...newClient, annual_price: e.target.value })}
+            placeholder="Valor anual"
+            className="md:col-span-2 border rounded-lg px-2 py-2"
+          />
+          {!newClient.auto && (
+            <>
+              <input
+                type="date"
+                value={newClient.start_date}
+                onChange={(e) => setNewClient({ ...newClient, start_date: e.target.value })}
+                className="md:col-span-1 border rounded-lg px-2 py-2"
+              />
+              <input
+                type="date"
+                value={newClient.end_date}
+                onChange={(e) => setNewClient({ ...newClient, end_date: e.target.value })}
+                className="md:col-span-1 border rounded-lg px-2 py-2"
+              />
+            </>
+          )}
+          <div className="md:col-span-6 flex justify-end">
+            <button
+              onClick={createClient}
+              disabled={creating}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg"
+            >
+              {creating ? "Salvando…" : "Criar"}
+            </button>
+          </div>
         </div>
       </div>
 
