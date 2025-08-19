@@ -228,22 +228,12 @@ io.on('connection', (socket) => {
   socket.on('ping', () => socket.emit('pong', { t: Date.now() }));
 
   socket.on('join:conversation', (conversationId) => {
-    if (conversationId) socket.join(`conv:${conversationId}`);
+    if (conversationId) socket.join(`conversation:${conversationId}`);
   });
 
-  socket.on('chat:message', (msg) => {
-    if (!msg?.conversationId || !msg?.text) return;
-    io.to(`conv:${msg.conversationId}`).emit('chat:message', {
-      from: uid,
-      text: msg.text,
-      at: Date.now(),
-      meta: msg.meta || {},
-    });
-    redis.lpush(
-      `conv:${msg.conversationId}:recent`,
-      JSON.stringify({ from: uid, text: msg.text, at: Date.now() })
-    ).catch(() => {});
-    redis.ltrim(`conv:${msg.conversationId}:recent`, 0, 19).catch(() => {});
+  socket.on('message:new', (msg) => {
+    if (!msg?.conversationId) return;
+    io.to(`conversation:${msg.conversationId}`).emit('message:new', msg);
   });
 });
 

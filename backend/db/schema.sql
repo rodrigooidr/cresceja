@@ -50,29 +50,22 @@ CREATE INDEX IF NOT EXISTS idx_appointments_contact
   ON public.appointments ((regexp_replace(contact_whatsapp, '[^0-9]+', '', 'g')));
 
 -- Conversations
-CREATE TABLE IF NOT EXISTS public.conversations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_name TEXT,
-  customer_whatsapp TEXT,
-  status TEXT DEFAULT 'pending',
-  assigned_agent_id UUID,
-  created_at TIMESTAMPTZ DEFAULT now()
+CREATE TABLE IF NOT EXISTS conversations (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  canal TEXT NOT NULL DEFAULT 'whatsapp',
+  status TEXT NOT NULL DEFAULT 'pendente', -- pendente, em_andamento, resolvido
+  assigned_to TEXT, -- email do atendente
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_conversations_status ON public.conversations(status);
-CREATE INDEX IF NOT EXISTS idx_conversations_assigned ON public.conversations(assigned_agent_id);
 
 -- Messages
-CREATE TABLE IF NOT EXISTS public.messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  conversation_id UUID NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
-  content TEXT,
-  sender_type TEXT,           -- 'agent' | 'ai' | 'customer'
-  sender_id UUID,
-  ai_generated BOOLEAN DEFAULT false,
-  media_url TEXT,
-  media_type TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+CREATE TABLE IF NOT EXISTS messages (
+  id SERIAL PRIMARY KEY,
+  conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+  sender TEXT NOT NULL, -- 'cliente' | 'agente' | 'sistema'
+  content TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON public.messages(conversation_id);
