@@ -39,6 +39,7 @@ import adminClientsRouter from './routes/admin.clients.js';
 import billingRouter from './routes/billing.dev.js';
 import webhooksRouter from './routes/webhooks.js';
 import quickRepliesRouter from './routes/quick_replies.js';
+import testWhatsappRouter from './routes/testWhatsappRoutes.js';
 import { redis } from './config/redis.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -151,6 +152,7 @@ app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
 app.use('/api/agenda', agendaRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/quick-replies', quickRepliesRouter);
+app.use('/api/test-whatsapp', testWhatsappRouter);
 
 // 404 APENAS para /api/*
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
