@@ -13,6 +13,7 @@ import { Server as IOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { query } from './config/db.js';
 import { authRequired } from './middleware/auth.js';
+import { auditMiddleware } from './middleware/audit.js';
 
 // ---- Routers ----
 import authRouter from './routes/auth.js';
@@ -108,6 +109,8 @@ app.use(
     legacyHeaders: false,
   })
 );
+
+app.use(auditMiddleware);
 
 // Arquivos estáticos (uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

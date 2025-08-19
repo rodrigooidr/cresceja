@@ -1,7 +1,24 @@
 // controllers/auditController.js
-// Controlador mínimo em ESM para evitar erros de CommonJS
+import { query } from '../config/db.js';
 
-export function getLogs(req, res) {
-  // TODO: substituir por query real no banco
-  return res.json([]);
+export async function getLogs(req, res, next) {
+  try {
+    const { entity } = req.query || {};
+    const params = [];
+    let where = '';
+    if (entity) {
+      where = 'WHERE entity = $1';
+      params.push(entity);
+    }
+    const { rows } = await query(
+      `SELECT id, user_email, action, entity, entity_id, created_at, payload
+         FROM audit_logs ${where}
+        ORDER BY created_at DESC
+        LIMIT 100`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
 }
