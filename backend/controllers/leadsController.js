@@ -70,13 +70,28 @@ export async function moveToOpportunity(req, res, next) {
   try {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ error: 'invalid_id' });
+    const leadRes = await query(
+      `SELECT id, nome FROM leads WHERE id = $1`,
+      [id]
+    );
+    if (leadRes.rows.length === 0) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    const lead = leadRes.rows[0];
+
+    const oppRes = await query(
+      `INSERT INTO opportunities (lead_id, cliente)
+       VALUES ($1,$2)
+       RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
+      [lead.id, lead.nome]
+    );
 
     await query(
-      `UPDATE leads SET status = 'convertido_para_oportunidade' WHERE id = $1`,
+      `UPDATE leads SET status = 'oportunidade' WHERE id = $1`,
       [id]
     );
 
-    res.json({ message: 'stub' });
+    res.status(201).json(oppRes.rows[0]);
   } catch (err) {
     next(err);
   }
