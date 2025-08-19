@@ -69,3 +69,29 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+
+-- NPS Surveys
+CREATE TABLE IF NOT EXISTS nps_surveys (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+  sent_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- NPS Responses
+CREATE TABLE IF NOT EXISTS nps_responses (
+  id SERIAL PRIMARY KEY,
+  survey_id INTEGER REFERENCES nps_surveys(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
+  comment TEXT,
+  responded_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Rewards
+CREATE TABLE IF NOT EXISTS rewards (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  value TEXT,
+  expires_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
