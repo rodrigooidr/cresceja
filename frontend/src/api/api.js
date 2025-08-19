@@ -37,6 +37,9 @@ api.interceptors.request.use((config) => {
     const token = localStorage.getItem("token");
     if (token) config.headers.Authorization = `Bearer ${token}`;
   }
+  // Admin pode atuar em nome de outro usuário
+  const acting = localStorage.getItem("actingUser");
+  if (acting) config.headers["X-Acting-User"] = acting;
   // Conteúdo JSON por padrão quando há body
   if (config.data && !config.headers["Content-Type"]) {
     config.headers["Content-Type"] = "application/json";

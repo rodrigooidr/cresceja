@@ -33,6 +33,7 @@ import SubscriptionStatus from "./pages/Billing/SubscriptionStatus";
 import AdminClients from "./pages/Admin/AdminClients";
 import AdminPlans from "./pages/Admin/AdminPlans";
 import AdminUsage from "./pages/Admin/AdminUsage";
+import AdminIntegrations from "./pages/Admin/AdminIntegrations";
 
 import TemplatesPage from "./pages/TemplatesPage";
 import LGPDPage from "./pages/LGPDPage";
@@ -116,6 +117,7 @@ export default function App() {
           <Route path="/admin/clients" element={<AdminClients />} />
           <Route path="/admin/plans" element={<AdminPlans />} />
           <Route path="/admin/usage" element={<AdminUsage />} />
+          <Route path="/admin/integrations" element={<AdminIntegrations />} />
         </Route>
 
         {/* Checkout público */}

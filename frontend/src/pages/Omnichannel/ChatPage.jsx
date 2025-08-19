@@ -8,6 +8,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import api from "../../api/api";
 
+const CHANNEL_ICONS = {
+  whatsapp: "/icons/whatsapp.svg",
+  instagram: "/icons/instagram.svg",
+  facebook: "/icons/facebook.svg",
+};
+const DEFAULT_AVATAR = "/icons/default-avatar.svg";
+
 /** Utilidades **/
 const fmtTime = (ts) => {
   try {
@@ -88,6 +95,7 @@ const WA_TEMPLATES = [
 export default function ChatPage() {
   const token = useLocalToken();
   const [socket, setSocket] = useState(null);
+  const [actingUser, setActingUser] = useState(() => localStorage.getItem("actingUser") || "self");
 
   // Inbox
   const [conversations, setConversations] = useState([]);
@@ -104,6 +112,12 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
 
   const threadBottomRef = useRef(null);
+
+  useEffect(() => {
+    const handler = () => setActingUser(localStorage.getItem("actingUser") || "self");
+    window.addEventListener("acting-user-changed", handler);
+    return () => window.removeEventListener("acting-user-changed", handler);
+  }, []);
 
   /** Socket setup **/
   useEffect(() => {
@@ -156,7 +170,7 @@ export default function ChatPage() {
       }
     })();
     return () => { mounted = false; };
-  }, [statusFilter, channelFilter, search]);
+  }, [statusFilter, channelFilter, search, actingUser]);
 
   /** Carregar mensagens da conversa ativa (REST com fallback) **/
   useEffect(() => {
@@ -178,7 +192,7 @@ export default function ChatPage() {
       }
     })();
     return () => { mounted = false; };
-  }, [activeId, socket]);
+  }, [activeId, socket, actingUser]);
 
   useEffect(() => {
     // auto-scroll bottom quando novas mensagens chegam
@@ -186,6 +200,10 @@ export default function ChatPage() {
   }, [messages]);
 
   const filtered = useMemo(() => conversations, [conversations]);
+  const activeConv = useMemo(
+    () => filtered.find((c) => c.id === activeId),
+    [filtered, activeId]
+  );
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -266,28 +284,61 @@ export default function ChatPage() {
                 )}
                 onClick={() => setActiveId(c.id)}
               >
-                <div className="flex items-center justify-between">
-                  <div className="font-medium truncate max-w-[70%]">{c.title || c.contact?.name || c.id}</div>
-                  <div className="text-xs text-gray-500 ml-2">{fmtTime(c.updatedAt)}</div>
-                </div>
-                <div className="text-xs text-gray-500 truncate">{c.lastMessage}</div>
-                <div className="mt-1 flex items-center gap-2 text-[11px]">
-                  <span className={classNames(
-                    "px-2 py-0.5 rounded-full",
-                    c.status === "pendente" && "bg-amber-100 text-amber-700",
-                    c.status === "em_andamento" && "bg-blue-100 text-blue-700",
-                    c.status === "resolvida" && "bg-emerald-100 text-emerald-700"
-                  )}>{c.status || ""}</span>
-                  {c.assignee ? (
-                    <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">atribuído</span>
-                  ) : (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); assumeConversation(c.id); }}
-                      className="text-xs px-2 py-0.5 rounded-full bg-blue-600 text-white hover:bg-blue-700"
-                    >
-                      Assumir
-                    </button>
-                  )}
+                <div className="flex items-center gap-2">
+                  <div className="relative w-10 h-10 shrink-0">
+                    <img
+                      src={c.contact?.photo || c.contact?.avatar || DEFAULT_AVATAR}
+                      alt="avatar"
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                    {CHANNEL_ICONS[c.channel] && (
+                      <img
+                        src={CHANNEL_ICONS[c.channel]}
+                        alt="canal"
+                        className="absolute -bottom-1 -right-1 w-4 h-4"
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium truncate max-w-[70%]">
+                        {c.title || c.contact?.name || c.id}
+                      </div>
+                      <div className="text-xs text-gray-500 ml-2">
+                        {fmtTime(c.updatedAt)}
+                      </div>
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {c.lastMessage}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-[11px]">
+                      <span
+                        className={classNames(
+                          "px-2 py-0.5 rounded-full",
+                          c.status === "pendente" && "bg-amber-100 text-amber-700",
+                          c.status === "em_andamento" && "bg-blue-100 text-blue-700",
+                          c.status === "resolvida" && "bg-emerald-100 text-emerald-700"
+                        )}
+                      >
+                        {c.status || ""}
+                      </span>
+                      {c.assignee ? (
+                        <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                          atribuído
+                        </span>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            assumeConversation(c.id);
+                          }}
+                          className="text-xs px-2 py-0.5 rounded-full bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                          Assumir
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </li>
             ))}
@@ -299,10 +350,39 @@ export default function ChatPage() {
       <main className="md:col-span-4 flex flex-col min-h-0">
         {/* Header da conversa */}
         <div className="p-3 border-b flex items-center justify-between">
-          <div className="font-semibold">{activeId ? (filtered.find((c) => c.id === activeId)?.title || activeId) : "Selecione uma conversa"}</div>
+          <div className="flex items-center gap-2 font-semibold">
+            {activeConv ? (
+              <>
+                <div className="relative w-8 h-8">
+                  <img
+                    src={activeConv.contact?.photo || activeConv.contact?.avatar || DEFAULT_AVATAR}
+                    alt="avatar"
+                    className="w-8 h-8 rounded-full object-cover"
+                  />
+                  {CHANNEL_ICONS[activeConv.channel] && (
+                    <img
+                      src={CHANNEL_ICONS[activeConv.channel]}
+                      alt="canal"
+                      className="absolute -bottom-1 -right-1 w-3 h-3"
+                    />
+                  )}
+                </div>
+                <span className="truncate">
+                  {activeConv.title || activeConv.contact?.name || activeConv.id}
+                </span>
+              </>
+            ) : (
+              <span>Selecione uma conversa</span>
+            )}
+          </div>
           {activeId && (
             <div className="flex items-center gap-2">
-              <button onClick={() => endConversation(activeId)} className="px-3 py-1 text-sm rounded-lg border hover:bg-gray-50">Encerrar</button>
+              <button
+                onClick={() => endConversation(activeId)}
+                className="px-3 py-1 text-sm rounded-lg border hover:bg-gray-50"
+              >
+                Encerrar
+              </button>
             </div>
           )}
         </div>
@@ -311,14 +391,45 @@ export default function ChatPage() {
         <div className="flex-1 overflow-auto p-4 space-y-2 bg-white">
           {!activeId && <div className="text-sm text-gray-500">Escolha uma conversa na lista à esquerda.</div>}
           {activeId && messages.map((m) => (
-            <div key={m.id} className={classNames("max-w-[75%]", m.from === "agent" ? "ml-auto" : "")}>
-              <div className={classNames(
-                "rounded-2xl px-3 py-2 shadow-sm border",
-                m.from === "agent" ? "bg-blue-600 text-white border-blue-600" : "bg-gray-50"
-              )}>
-                <div className="whitespace-pre-wrap text-sm">{m.text}</div>
+            <div
+              key={m.id}
+              className={classNames(
+                "flex items-end gap-2",
+                m.from === "agent" ? "justify-end" : ""
+              )}
+            >
+              {m.from !== "agent" && (
+                <img
+                  src={activeConv?.contact?.photo || activeConv?.contact?.avatar || DEFAULT_AVATAR}
+                  alt="avatar"
+                  className="w-6 h-6 rounded-full object-cover"
+                />
+              )}
+              <div
+                className={classNames(
+                  "max-w-[75%]",
+                  m.from === "agent" ? "" : ""
+                )}
+              >
+                <div
+                  className={classNames(
+                    "rounded-2xl px-3 py-2 shadow-sm border",
+                    m.from === "agent"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-gray-50"
+                  )}
+                >
+                  <div className="whitespace-pre-wrap text-sm">{m.text}</div>
+                </div>
+                <div
+                  className={classNames(
+                    "text-[11px] text-gray-500 mt-1",
+                    m.from === "agent" ? "text-right" : ""
+                  )}
+                >
+                  {fmtTime(m.at)}
+                </div>
               </div>
-              <div className="text-[11px] text-gray-500 mt-1 {m.from === 'agent' ? 'text-right' : ''}">{fmtTime(m.at)}</div>
             </div>
           ))}
           <div ref={threadBottomRef} />
