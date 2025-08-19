@@ -20,6 +20,7 @@ import healthRouter from './routes/health.js';       // mantém, pode ter endpoi
 import lgpdRouter from './routes/lgpd.js';
 import crmRouter from './routes/crm.js';
 import leadsRouter from './routes/leads.js';
+import opportunitiesRouter from './routes/opportunities.js';
 import approvalsRouter from './routes/approvalRoutes.js';
 import aiCreditsRouter from './routes/aiCreditsRoutes.js';
 import onboardingRouter from './routes/onboardingRoutes.js';
@@ -140,6 +141,7 @@ app.use('/api/health', healthRouter);
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/crm', crmRouter);
 app.use('/api/leads', authRequired, leadsRouter);
+app.use('/api/opportunities', authRequired, opportunitiesRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/ai-credits', aiCreditsRouter);
 app.use('/api/onboarding', onboardingRouter);

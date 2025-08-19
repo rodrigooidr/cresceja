@@ -17,6 +17,7 @@ import ChatPage from "./pages/Omnichannel/ChatPage";
 import CRMPage from "./pages/CRM/CRMPage";
 import CrmKanban from "./pages/CrmKanban";
 import CrmOportunidades from "./pages/CrmOportunidades";
+import PipelinePage from "./pages/PipelinePage";
 import QualificacaoPage from "./pages/QualificacaoPage";
 import LeadsPage from "./pages/LeadsPage";
 import AgendaPage from "./pages/Agenda/AgendaPage";
@@ -107,6 +108,7 @@ export default function App() {
         <Route path="/crm" element={<Protected><CRMPage /></Protected>} />
         <Route path="/crm/kanban" element={<Protected><CrmKanban /></Protected>} />
         <Route path="/crm/oportunidades" element={<Protected><CrmOportunidades /></Protected>} />
+        <Route path="/crm/pipeline" element={<Protected><PipelinePage /></Protected>} />
         <Route path="/crm/qualificacao" element={<Protected><QualificacaoPage /></Protected>} />
         <Route path="/crm/leads" element={<Protected><LeadsPage /></Protected>} />
         <Route path="/agenda" element={<Protected><AgendaPage /></Protected>} />
