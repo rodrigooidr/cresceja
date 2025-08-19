@@ -27,6 +27,7 @@ import EditorIA from "./pages/Marketing/EditorIA";
 import ApprovalPage from "./pages/Approvals/ApprovalPage";
 import CreditsPage from "./pages/Credits/CreditsPage";
 import GovernancePage from "./pages/Governance/GovernancePage";
+import DashboardPage from "./pages/DashboardPage";
 import OnboardingStepsPage from "./pages/Onboarding/OnboardingPage";
 import CrmOnboardingPage from "./pages/OnboardingPage";
 
@@ -120,6 +121,7 @@ export default function App() {
         <Route path="/marketing/editor" element={<Protected><EditorIA /></Protected>} />
         <Route path="/aprovacao" element={<Protected><ApprovalPage /></Protected>} />
         <Route path="/creditos" element={<Protected><CreditsPage /></Protected>} />
+        <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
         <Route path="/governanca" element={<Protected><GovernancePage /></Protected>} />
         <Route path="/fidelizacao" element={<Protected><FidelizacaoPage /></Protected>} />
         <Route path="/onboarding" element={<Protected><OnboardingStepsPage /></Protected>} />
