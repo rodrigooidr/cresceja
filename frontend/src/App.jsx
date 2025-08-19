@@ -34,6 +34,7 @@ import AdminClients from "./pages/Admin/AdminClients";
 import AdminPlans from "./pages/Admin/AdminPlans";
 import AdminUsage from "./pages/Admin/AdminUsage";
 import AdminIntegrations from "./pages/Admin/AdminIntegrations";
+import AdminQuickReplies from "./pages/Admin/AdminQuickReplies";
 
 import TemplatesPage from "./pages/TemplatesPage";
 import LGPDPage from "./pages/LGPDPage";
@@ -118,6 +119,7 @@ export default function App() {
           <Route path="/admin/plans" element={<AdminPlans />} />
           <Route path="/admin/usage" element={<AdminUsage />} />
           <Route path="/admin/integrations" element={<AdminIntegrations />} />
+          <Route path="/admin/quick-replies" element={<AdminQuickReplies />} />
         </Route>
 
         {/* Checkout público */}

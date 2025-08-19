@@ -38,6 +38,8 @@ import adminClientsRouter from './routes/admin.clients.js';
 // PROD: import billingRouter from './routes/billing.js';
 import billingRouter from './routes/billing.dev.js';
 import webhooksRouter from './routes/webhooks.js';
+import quickRepliesRouter from './routes/quick_replies.js';
+import { redis } from './config/redis.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -148,6 +150,7 @@ app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
 app.use('/api/agenda', agendaRouter);
 app.use('/api/integrations', integrationsRouter);
+app.use('/api/quick-replies', quickRepliesRouter);
 
 // 404 APENAS para /api/*
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
@@ -207,7 +210,13 @@ io.use(async (socket, next) => {
 
 io.on('connection', (socket) => {
   const uid = socket.user?.id;
-  if (uid) socket.join(`user:${uid}`);
+  if (uid) {
+    socket.join(`user:${uid}`);
+    redis.sadd('online_users', uid).catch(() => {});
+    socket.on('disconnect', () => {
+      redis.srem('online_users', uid).catch(() => {});
+    });
+  }
 
   socket.on('ping', () => socket.emit('pong', { t: Date.now() }));
 
@@ -223,6 +232,11 @@ io.on('connection', (socket) => {
       at: Date.now(),
       meta: msg.meta || {},
     });
+    redis.lpush(
+      `conv:${msg.conversationId}:recent`,
+      JSON.stringify({ from: uid, text: msg.text, at: Date.now() })
+    ).catch(() => {});
+    redis.ltrim(`conv:${msg.conversationId}:recent`, 0, 19).catch(() => {});
   });
 });
 

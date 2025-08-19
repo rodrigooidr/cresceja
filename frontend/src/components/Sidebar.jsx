@@ -259,6 +259,16 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                 <span className="truncate">Admin • Integrações</span>
               )}
             </NavLink>
+            <NavLink
+              to="/admin/quick-replies"
+              className={itemClass}
+              title={collapsed ? "Admin • Respostas Rápidas" : undefined}
+            >
+              <I.chat className="shrink-0" />
+              {!collapsed && (
+                <span className="truncate">Admin • Respostas Rápidas</span>
+              )}
+            </NavLink>
           </>
         )}
 

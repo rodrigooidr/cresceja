@@ -78,13 +78,22 @@ const SAMPLE_MESSAGES = {
   ],
 };
 
-/** Quick replies simples **/
-const QUICK_REPLIES = [
-  "Olá! 👋 Como posso te ajudar hoje?",
-  "Claro! Vou te explicar rapidinho como funciona.",
-  "Pode me confirmar seu nome e e-mail?",
-  "Obrigado! Já te retorno em instantes. 🙌",
-];
+function playBeep(freq = 440, duration = 0.2) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    setTimeout(() => {
+      osc.stop();
+      ctx.close();
+    }, duration * 1000);
+  } catch {}
+}
 
 /** Templates WhatsApp (mock) **/
 const WA_TEMPLATES = [
@@ -110,6 +119,9 @@ export default function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [quickReplies, setQuickReplies] = useState([]);
+  const [aiActive, setAiActive] = useState(true);
+  const [needsHuman, setNeedsHuman] = useState(false);
 
   const threadBottomRef = useRef(null);
 
@@ -117,6 +129,15 @@ export default function ChatPage() {
     const handler = () => setActingUser(localStorage.getItem("actingUser") || "self");
     window.addEventListener("acting-user-changed", handler);
     return () => window.removeEventListener("acting-user-changed", handler);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await api.get('/api/quick-replies');
+        setQuickReplies(Array.isArray(data?.templates) ? data.templates : []);
+      } catch {}
+    })();
   }, []);
 
   /** Socket setup **/
@@ -140,6 +161,7 @@ export default function ChatPage() {
         if (!activeId || msg?.conversationId !== activeId) return prev;
         return [...prev, { id: `ws-${Date.now()}`, from: msg.from === "system" ? "system" : msg.from === "agent" ? "agent" : "contact", text: msg.text, at: msg.at }];
       });
+      playBeep();
     });
 
     setSocket(s);
@@ -388,6 +410,11 @@ export default function ChatPage() {
         </div>
 
         {/* Mensagens */}
+        {needsHuman && (
+          <div className="bg-red-600 text-white text-center text-sm py-2">
+            Cliente solicitou atendente!
+          </div>
+        )}
         <div className="flex-1 overflow-auto p-4 space-y-2 bg-white">
           {!activeId && <div className="text-sm text-gray-500">Escolha uma conversa na lista à esquerda.</div>}
           {activeId && messages.map((m) => (
@@ -439,7 +466,20 @@ export default function ChatPage() {
         <div className="border-t p-3 bg-white">
           <div className="flex items-center gap-2 mb-2">
             <TemplatesDropdown onPick={(t) => setInput((prev) => prev ? prev + "\n" + t.body : t.body)} />
-            <QuickReplies onPick={(q) => setInput((prev) => prev ? prev + "\n" + q : q)} />
+            <QuickReplies list={quickReplies} onPick={(q) => setInput((prev) => prev ? prev + "\n" + q : q)} />
+            {aiActive ? (
+              <button onClick={() => setAiActive(false)} className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50">
+                Parar IA
+              </button>
+            ) : (
+              <span className="text-xs text-gray-500">IA pausada</span>
+            )}
+            <button
+              onClick={() => { setNeedsHuman(true); playBeep(1000,0.5); }}
+              className="px-3 py-1.5 text-sm border rounded-lg hover:bg-gray-50"
+            >
+              Falar com atendente
+            </button>
           </div>
           <div className="flex items-end gap-2">
             <textarea
@@ -508,7 +548,7 @@ function TemplatesDropdown({ onPick }) {
   );
 }
 
-function QuickReplies({ onPick }) {
+function QuickReplies({ list = [], onPick }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -517,9 +557,20 @@ function QuickReplies({ onPick }) {
       </button>
       {open && (
         <div className="absolute z-10 mt-1 w-64 bg-white border rounded-lg shadow max-h-60 overflow-auto">
-          {QUICK_REPLIES.map((q, i) => (
-            <button key={i} onClick={() => { onPick(q); setOpen(false); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
-              {q}
+          {!list.length && (
+            <div className="px-3 py-2 text-sm text-gray-500">Nenhuma</div>
+          )}
+          {list.map((q) => (
+            <button
+              key={q.id}
+              onClick={() => {
+                onPick(q.body);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+            >
+              <div className="font-medium">{q.title}</div>
+              <div className="text-xs text-gray-500 truncate">{q.body}</div>
             </button>
           ))}
         </div>
