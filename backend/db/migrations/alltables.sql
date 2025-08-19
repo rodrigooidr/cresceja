@@ -1,7 +1,3 @@
-
--- 001_base.sql — CresceJá (Sprint 1 + 2) base schema
--- Seguro para rodar múltiplas vezes (usa IF NOT EXISTS e checagens).
-
 -- Extensões necessárias
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -45,12 +41,9 @@ CREATE TABLE IF NOT EXISTS leads (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   erased_at TIMESTAMP NULL
 );
-
--- Unicidade por email/phone quando informados
 CREATE UNIQUE INDEX IF NOT EXISTS ux_leads_email ON leads(email) WHERE email IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_leads_phone ON leads(phone) WHERE phone IS NOT NULL;
 
--- Mapeia IDs externos de canais -> lead
 CREATE TABLE IF NOT EXISTS channel_id_map (
   lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   channel_type TEXT NOT NULL,
@@ -59,7 +52,6 @@ CREATE TABLE IF NOT EXISTS channel_id_map (
   PRIMARY KEY (channel_type, external_id)
 );
 
--- Funil simples de oportunidades
 CREATE TABLE IF NOT EXISTS crm_opportunities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id UUID NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
@@ -111,7 +103,6 @@ CREATE TABLE IF NOT EXISTS appointments (
 );
 CREATE INDEX IF NOT EXISTS idx_appointments_start ON appointments(start_at);
 
--- Integrações de calendário
 CREATE TABLE IF NOT EXISTS calendar_integrations (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   provider TEXT NOT NULL,                    -- google|outlook
@@ -246,3 +237,116 @@ INSERT INTO users (id, company_id, email, name, role, is_owner)
 SELECT '11111111-1111-1111-1111-111111111111', '00000000-0000-0000-0000-000000000001',
        'owner@cresceja.local', 'Owner', 'admin', TRUE
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE id='11111111-1111-1111-1111-111111111111');
+
+-- =========================
+-- 12) Billing (planos e clientes)
+-- =========================
+CREATE TABLE IF NOT EXISTS plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  monthly_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+  currency TEXT NOT NULL DEFAULT 'BRL',
+  modules JSONB NOT NULL DEFAULT '{}'::jsonb,
+  is_published BOOLEAN NOT NULL DEFAULT false,
+  sort_order INT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NULL, -- vincule ao seu users.id
+  company_name TEXT NULL,
+  email TEXT NULL,
+  active BOOLEAN NOT NULL DEFAULT false,
+  start_date DATE NULL,
+  end_date DATE NULL,
+  plan_id TEXT NULL REFERENCES plans(id) ON UPDATE CASCADE ON DELETE SET NULL,
+  modules JSONB NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+INSERT INTO plans (id, name, monthly_price, currency, modules, is_published)
+VALUES
+ ('starter','Starter',79,'BRL','{
+    "omnichannel":{"enabled":true,"chat_sessions":200},
+    "crm":{"enabled":true,"opportunities":500},
+    "marketing":{"enabled":true,"posts_per_month":20},
+    "approvals":{"enabled":true},
+    "ai_credits":{"enabled":true,"credits":10000},
+    "governance":{"enabled":true}
+ }'::jsonb,false),
+ ('pro','Pro',199,'BRL','{
+    "omnichannel":{"enabled":true,"chat_sessions":1000},
+    "crm":{"enabled":true,"opportunities":5000},
+    "marketing":{"enabled":true,"posts_per_month":80},
+    "approvals":{"enabled":true},
+    "ai_credits":{"enabled":true,"credits":50000},
+    "governance":{"enabled":true}
+ }'::jsonb,false),
+ ('business','Business',399,'BRL','{
+    "omnichannel":{"enabled":true,"chat_sessions":5000},
+    "crm":{"enabled":true,"opportunities":30000},
+    "marketing":{"enabled":true,"posts_per_month":300},
+    "approvals":{"enabled":true},
+    "ai_credits":{"enabled":true,"credits":200000},
+    "governance":{"enabled":true}
+ }'::jsonb,false)
+ON CONFLICT (id) DO UPDATE
+SET name=EXCLUDED.name,
+    monthly_price=EXCLUDED.monthly_price,
+    currency=EXCLUDED.currency,
+    modules=EXCLUDED.modules;
+
+-- =========================
+-- 13) Ajustes de planos e contadores de uso
+-- =========================
+ALTER TABLE plans
+  ADD COLUMN IF NOT EXISTS is_free boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS trial_days integer DEFAULT 14,              -- dias do free
+  ADD COLUMN IF NOT EXISTS billing_period_months integer DEFAULT 1;    -- meses do ciclo pago
+
+CREATE INDEX IF NOT EXISTS idx_clients_active_dates
+  ON clients(active, start_date, end_date);
+
+CREATE TABLE IF NOT EXISTS usage_counters (
+  id bigserial PRIMARY KEY,
+  client_id uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  module_key text NOT NULL,
+  period_start date NOT NULL,
+  period_end date NOT NULL,
+  used bigint NOT NULL DEFAULT 0,
+  quota bigint,
+  UNIQUE (client_id, module_key, period_start, period_end)
+);
+
+INSERT INTO plans (id, name, monthly_price, currency, modules, is_published, sort_order, is_free, trial_days, billing_period_months)
+VALUES (
+  'free',
+  'Free',
+  0,
+  'BRL',
+  '{
+     "omnichannel": {"enabled": true,  "chat_sessions": 50},
+     "crm":         {"enabled": true,  "opportunities": 50},
+     "marketing":   {"enabled": false, "posts_per_month": 0},
+     "approvals":   {"enabled": false},
+     "ai_credits":  {"enabled": true,  "credits": 2000},
+     "governance":  {"enabled": true}
+   }'::jsonb,
+  true,
+  0,
+  true,
+  14,
+  0
+)
+ON CONFLICT (id) DO UPDATE SET
+  name='Free',
+  monthly_price=0,
+  currency='BRL',
+  modules=EXCLUDED.modules,
+  is_published=true,
+  sort_order=0,
+  is_free=true,
+  trial_days=EXCLUDED.trial_days,
+  billing_period_months=0;
