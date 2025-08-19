@@ -1,8 +1,8 @@
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidv4 } from 'uuid';
 
-let channels = [];
+const channels = [];
 
-function getOrCreateChannelForOwner(companyId) {
+export function getOrCreateChannelForOwner(companyId) {
   let channel = channels.find(
     (c) => c.type === 'whatsapp_web' && c.company_id === companyId
   );
@@ -13,7 +13,7 @@ function getOrCreateChannelForOwner(companyId) {
       name: 'WhatsApp Pessoal Web',
       type: 'whatsapp_web',
       company_id: companyId,
-      is_active: true
+      is_active: true,
     };
     channels.push(channel);
   }
@@ -22,3 +22,4 @@ function getOrCreateChannelForOwner(companyId) {
 }
 
 export default { getOrCreateChannelForOwner };
+

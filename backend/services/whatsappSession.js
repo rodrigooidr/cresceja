@@ -1,5 +1,8 @@
-import makeWASocket from '@whiskeysockets/baileys';.default;
-import { useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import makeWASocket, {
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+} from '@whiskeysockets/baileys';
 import qrcode from 'qrcode';
 
 let sock = null;
@@ -7,7 +10,7 @@ let qrDataURL = null;
 let isConnected = false;
 let currentSessionId = 'default';
 
-async function createSession(sessionId = 'default') {
+export async function createSession(sessionId = 'default') {
   currentSessionId = sessionId;
   const { state, saveCreds } = await useMultiFileAuthState(`./.wpp_auth/${sessionId}`);
   const { version } = await fetchLatestBaileysVersion();
@@ -47,14 +50,14 @@ async function createSession(sessionId = 'default') {
   return sock;
 }
 
-function getStatus() {
+export function getStatus() {
   return { isConnected, hasQR: !!qrDataURL, sessionId: currentSessionId };
 }
-function getQR() {
+export function getQR() {
   return qrDataURL;
 }
 
-async function logout() {
+export async function logout() {
   try {
     if (sock?.logout) await sock.logout();
     isConnected = false;
@@ -66,7 +69,7 @@ async function logout() {
   }
 }
 
-async function sendText(to, message) {
+export async function sendText(to, message) {
   if (!sock) throw new Error('Sessão não iniciada');
   const jid = to.includes('@s.whatsapp.net') ? to : `${to.replace(/\D/g, '')}@s.whatsapp.net`;  
   await sock.sendMessage(jid, { text: message });
