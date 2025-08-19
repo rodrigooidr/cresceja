@@ -1,4 +1,4 @@
-// backend/routes/approvalRoutes.js
+// backend/routes/approval-routes.js
 import express from 'express';
 import { authenticate } from '../middleware/authenticate.js';
 import { query } from '../config/db.js';

@@ -1,4 +1,4 @@
-// backend/routes/admin.plans.js
+// backend/routes/admin-plans.js
 import express from "express";
 import { query } from "../config/db.js";
 

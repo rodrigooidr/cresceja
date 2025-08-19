@@ -31,5 +31,5 @@ app.use('/api/webhooks/instagram', igRouter);
 app.use('/api/webhooks/messenger', fbRouter);
 
 // WhatsApp templates
-import wtplRouter from './backend/routes/whatsapp_templates.js';
+import wtplRouter from './backend/routes/whatsapp-templates.js';
 app.use('/api/whatsapp/templates', wtplRouter);
