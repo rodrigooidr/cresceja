@@ -1,4 +1,4 @@
-import { query } from '../config/db.js';
+// Uses per-request client from withOrg middleware
 
 export async function list(req, res, next) {
   try {
@@ -9,26 +9,23 @@ export async function list(req, res, next) {
     const allowed = ['novo', 'qualificando'];
     const statusFilter = allowed.includes(req.query.status) ? req.query.status : null;
 
-    let where = '';
-    const countParams = [];
+    const baseParams = [req.orgId];
+    let where = 'WHERE org_id = $1';
     if (statusFilter) {
-      where = 'WHERE status = $1';
-      countParams.push(statusFilter);
+      baseParams.push(statusFilter);
+      where += ` AND status = $${baseParams.length}`;
     }
 
-    const totalRes = await query(`SELECT COUNT(*) FROM leads ${where}`, countParams);
+    const totalRes = await req.db.query(`SELECT COUNT(*) FROM leads ${where}`, baseParams);
     const total = Number(totalRes.rows[0]?.count || 0);
 
-    const listParams = [limit, offset];
-    if (statusFilter) listParams.push(statusFilter);
-    const statusClause = statusFilter ? 'WHERE status = $3' : '';
-
-    const { rows } = await query(
+    const listParams = [...baseParams, limit, offset];
+    const { rows } = await req.db.query(
       `SELECT id, nome, email, telefone, origem, score, tags, responsavel, status, created_at
          FROM leads
-         ${statusClause}
+         ${where}
         ORDER BY created_at DESC
-        LIMIT $1 OFFSET $2`,
+        LIMIT $${baseParams.length + 1} OFFSET $${baseParams.length + 2}`,
       listParams
     );
 
@@ -47,11 +44,11 @@ export async function create(req, res, next) {
     const allowedOrigem = ['site', 'whatsapp', 'instagram', 'outros'];
     const origemVal = allowedOrigem.includes(origem) ? origem : null;
 
-    const { rows } = await query(
-      `INSERT INTO leads (nome, email, telefone, origem, status)
-       VALUES ($1,$2,$3,$4,'novo')
+    const { rows } = await req.db.query(
+      `INSERT INTO leads (org_id, nome, email, telefone, origem, status)
+       VALUES ($1,$2,$3,$4,$5,'novo')
        RETURNING id, nome, email, telefone, origem, status, score, tags, responsavel, created_at`,
-      [nome, email || null, telefone, origemVal]
+      [req.orgId, nome, email || null, telefone, origemVal]
     );
 
     res.status(201).json({ data: rows[0] });
@@ -74,15 +71,15 @@ export async function qualificar(req, res, next) {
       ? tags.map((t) => String(t).trim()).filter(Boolean)
       : [];
     const { id } = req.params;
-    const { rows } = await query(
+    const { rows } = await req.db.query(
       `UPDATE leads
          SET score = $1,
              tags = $2,
              responsavel = $3,
              status = 'qualificando'
-       WHERE id = $4
+       WHERE id = $4 AND org_id = $5
        RETURNING id, nome, email, telefone, origem, score, tags, responsavel, status, created_at`,
-      [scoreNum, tagsArr, responsavel, id]
+      [scoreNum, tagsArr, responsavel, id, req.orgId]
     );
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json({ data: rows[0] });
@@ -94,23 +91,23 @@ export async function qualificar(req, res, next) {
 export async function moverParaOportunidade(req, res, next) {
   try {
     const { id } = req.params;
-    const leadRes = await query(
-      `SELECT id, nome FROM leads WHERE id = $1`,
-      [id]
+    const leadRes = await req.db.query(
+      `SELECT id, nome FROM leads WHERE id = $1 AND org_id = $2`,
+      [id, req.orgId]
     );
     const lead = leadRes.rows[0];
     if (!lead) return res.status(404).json({ error: 'not_found' });
 
-    const oppRes = await query(
-      `INSERT INTO opportunities (lead_id, cliente, valor_estimado, status)
-       VALUES ($1, $2, 0, 'prospeccao')
+    const oppRes = await req.db.query(
+      `INSERT INTO opportunities (org_id, lead_id, cliente, valor_estimado, status)
+       VALUES ($1, $2, $3, 0, 'prospeccao')
        RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
-      [lead.id, lead.nome]
+      [req.orgId, lead.id, lead.nome]
     );
 
-    await query(`UPDATE leads SET status = 'oportunidade' WHERE id = $1`, [lead.id]);
+    await req.db.query(`UPDATE leads SET status = 'oportunidade' WHERE id = $1 AND org_id = $2`, [lead.id, req.orgId]);
 
-    res.json({ ok: true, opportunity: oppRes.rows[0] });
+    res.json({ data: { opportunity: oppRes.rows[0] } });
   } catch (err) {
     next(err);
   }
