@@ -1,13 +1,15 @@
-import { query } from '../config/db.js';
+// Uses per-request client from withOrg middleware
 
 const STATUSES = ['prospeccao', 'contato', 'proposta', 'negociacao', 'fechamento'];
 
-export async function board(_req, res, next) {
+export async function board(req, res, next) {
   try {
-    const { rows } = await query(
+    const { rows } = await req.db.query(
       `SELECT id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at
          FROM opportunities
-        ORDER BY updated_at DESC, id DESC`
+        WHERE org_id = $1
+        ORDER BY updated_at DESC, id DESC`,
+      [req.orgId]
     );
     const grouped = {};
     STATUSES.forEach((s) => {
@@ -37,11 +39,11 @@ export async function create(req, res, next) {
     const valor = Number.isFinite(valorNum) ? valorNum : 0;
     const uuidRegex = /^[0-9a-fA-F-]{36}$/;
     const leadIdVal = typeof lead_id === 'string' && uuidRegex.test(lead_id) ? lead_id : null;
-    const { rows } = await query(
-      `INSERT INTO opportunities (lead_id, cliente, valor_estimado, responsavel, status)
-       VALUES ($1,$2,$3,$4,'prospeccao')
+    const { rows } = await req.db.query(
+      `INSERT INTO opportunities (org_id, lead_id, cliente, valor_estimado, responsavel, status)
+       VALUES ($1,$2,$3,$4,$5,'prospeccao')
        RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
-      [leadIdVal, cliente, valor, responsavel || null]
+      [req.orgId, leadIdVal, cliente, valor, responsavel || null]
     );
     res.status(201).json({ data: rows[0] });
   } catch (err) {
@@ -77,11 +79,12 @@ export async function update(req, res, next) {
     if (fields.length === 0) {
       return res.status(400).json({ error: 'no_fields' });
     }
+    values.push(req.orgId);
     values.push(id);
-    const { rows } = await query(
+    const { rows } = await req.db.query(
       `UPDATE opportunities
           SET ${fields.join(', ')}, updated_at = NOW()
-        WHERE id = $${idx}
+        WHERE org_id = $${idx} AND id = $${idx + 1}
         RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
       values
     );
