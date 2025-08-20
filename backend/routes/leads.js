@@ -3,7 +3,7 @@ import {
   list,
   create,
   qualificar,
-  moverParaOportunidadeStub,
+  moverParaOportunidade,
 } from '../controllers/leadsController.js';
 
 const router = Router();
@@ -11,6 +11,6 @@ const router = Router();
 router.get('/', list);
 router.post('/', create);
 router.put('/:id/qualificar', qualificar);
-router.post('/:id/mover-para-oportunidade', moverParaOportunidadeStub);
+router.post('/:id/mover-para-oportunidade', moverParaOportunidade);
 
 export default router;

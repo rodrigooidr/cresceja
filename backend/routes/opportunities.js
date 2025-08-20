@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { listOpportunities, createOpportunity, updateOpportunity } from '../controllers/opportunitiesController.js';
+import { board, create, update } from '../controllers/opportunitiesController.js';
 
 const router = Router();
 
-router.get('/', listOpportunities);
-router.post('/', createOpportunity);
-router.put('/:id', updateOpportunity);
+router.get('/board', board);
+router.post('/', create);
+router.put('/:id', update);
 
 export default router;

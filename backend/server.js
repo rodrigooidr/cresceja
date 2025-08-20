@@ -146,7 +146,7 @@ app.use('/api/health', healthRouter);
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/crm', crmRouter);
 app.use('/api/leads', auth, leadsRouter);
-app.use('/api/opportunities', authRequired, opportunitiesRouter);
+app.use('/api/opportunities', auth, opportunitiesRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/ai-credits', aiCreditsRouter);
 app.use('/api', onboardingRouter);
