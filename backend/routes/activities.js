@@ -1,0 +1,24 @@
+import { Router } from 'express';
+import { authRequired } from '../middleware/auth.js';
+import { withOrg } from '../middleware/withOrg.js';
+import { requireRole } from '../middleware/requireRole.js';
+import * as ctrl from '../controllers/activitiesController.js';
+
+const router = Router();
+
+router.use(authRequired, withOrg, requireRole('Agent'));
+
+router.get('/calendars', ctrl.listCalendars);
+router.post('/calendars', ctrl.createCalendar);
+router.delete('/calendars/:calendarId', ctrl.removeCalendar);
+
+router.get('/calendars/:calendarId/members', ctrl.listMembers);
+router.post('/calendars/:calendarId/members', ctrl.addMember);
+router.delete('/calendars/:calendarId/members/:userId', ctrl.removeMember);
+
+router.get('/calendars/:calendarId/events', ctrl.listEvents);
+router.post('/calendars/:calendarId/events', ctrl.createEvent);
+router.patch('/calendars/:calendarId/events/:id', ctrl.updateEvent);
+router.delete('/calendars/:calendarId/events/:id', ctrl.removeEvent);
+
+export default router;

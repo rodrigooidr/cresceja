@@ -13,6 +13,7 @@ import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
 import { useAuth } from './contexts/AuthContext';
 import ContentCalendar from './pages/calendar/ContentCalendar.jsx';
+import ActivitiesPage from './pages/calendar/ActivitiesPage.jsx';
 
 const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
 const hasRole = (userRole, minRole) => {
@@ -169,14 +170,14 @@ export default function App() {
               </RequireRole>
             }
           />
-          <Route
-            path="calendars"
-            element={
-              <RequireRole minRole="Agent">
-                <Placeholder label="Calendars" />
-              </RequireRole>
-            }
-          />
+            <Route
+              path="calendars"
+              element={
+                <RequireRole minRole="Agent">
+                  <ActivitiesPage />
+                </RequireRole>
+              }
+            />
           <Route
             path="reports"
             element={
