@@ -17,7 +17,8 @@ export default function LeadModal({ onClose, onSaved }) {
     }
     try {
       await api.post('/api/leads', form);
-      onSaved();
+      onClose();
+      if (onSaved) onSaved();
     } catch (err) {
       setError('Erro ao salvar');
     }

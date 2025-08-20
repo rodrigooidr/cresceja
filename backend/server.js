@@ -13,6 +13,7 @@ import { Server as IOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { query } from './config/db.js';
 import { authRequired } from './middleware/auth.js';
+const auth = authRequired;
 import { auditMiddleware } from './middleware/audit.js';
 
 // ---- Routers ----
@@ -144,7 +145,7 @@ app.use('/api/health', healthRouter);
 
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/crm', crmRouter);
-app.use('/api/leads', authRequired, leadsRouter);
+app.use('/api/leads', auth, leadsRouter);
 app.use('/api/opportunities', authRequired, opportunitiesRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/ai-credits', aiCreditsRouter);
