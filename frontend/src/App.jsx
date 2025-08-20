@@ -7,6 +7,8 @@ import {
   useLocation,
 } from 'react-router-dom';
 import MainLayout from './components/MainLayout';
+import InboxPage from './pages/inbox/InboxPage.jsx';
+import ChannelsPage from './pages/settings/ChannelsPage.jsx';
 import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
 import { useAuth } from './contexts/AuthContext';
@@ -74,8 +76,8 @@ export default function App() {
             path="inbox"
             element={
               <RequireRole minRole="Agent">
-                <Placeholder label="Inbox" />
-              </RequireRole>
+                  <InboxPage />
+                </RequireRole>
             }
           />
           <Route
@@ -194,8 +196,8 @@ export default function App() {
             path="settings/channels"
             element={
               <RequireRole minRole="Manager">
-                <Placeholder label="Settings Channels" />
-              </RequireRole>
+                  <ChannelsPage />
+                </RequireRole>
             }
           />
           <Route
