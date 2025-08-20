@@ -4,21 +4,26 @@ import LeadModal from '../components/LeadModal';
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState([]);
+  const [page, setPage] = useState(1);
+  const limit = 20;
+  const [total, setTotal] = useState(0);
   const [showModal, setShowModal] = useState(false);
 
   const loadLeads = async () => {
-    const { data } = await api.get('/api/leads');
-    setLeads(data);
+    const res = await api.get('/api/leads', { params: { page, limit } });
+    setLeads(res.data.data);
+    setTotal(res.data.meta.total);
   };
 
   useEffect(() => {
     loadLeads();
-  }, []);
+  }, [page]);
 
   const handleSaved = () => {
-    setShowModal(false);
     loadLeads();
   };
+
+  const totalPages = Math.ceil(total / limit) || 1;
 
   return (
     <div className="p-4">
@@ -56,6 +61,25 @@ export default function LeadsPage() {
           ))}
         </tbody>
       </table>
+      <div className="flex justify-between items-center mt-4">
+        <button
+          className="px-3 py-1 border rounded disabled:opacity-50"
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page === 1}
+        >
+          Anterior
+        </button>
+        <span>
+          Página {page} de {totalPages}
+        </span>
+        <button
+          className="px-3 py-1 border rounded disabled:opacity-50"
+          onClick={() => setPage((p) => p + 1)}
+          disabled={page >= totalPages}
+        >
+          Próximo
+        </button>
+      </div>
       {showModal && (
         <LeadModal onClose={() => setShowModal(false)} onSaved={handleSaved} />
       )}
