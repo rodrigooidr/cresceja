@@ -1,0 +1,7 @@
+ALTER TABLE IF EXISTS leads
+  ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS responsavel TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
+CREATE INDEX IF NOT EXISTS idx_leads_score ON leads(score);
