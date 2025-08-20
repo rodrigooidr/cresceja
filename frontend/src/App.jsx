@@ -1,93 +1,49 @@
-// src/App.jsx
-import React from "react";
+import React from 'react';
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
   useLocation,
-} from "react-router-dom";
+} from 'react-router-dom';
+import MainLayout from './components/MainLayout';
+import LoginPage from './pages/Auth/LoginPage';
+import RegisterPage from './pages/Auth/RegisterPage';
+import { useAuth } from './contexts/AuthContext';
 
-import LandingPage from "./pages/LandingPage";
-import AdminRoute from "./routes/AdminRoute";
-import MainLayout from "./components/MainLayout";
+const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
+const hasRole = (userRole, minRole) => {
+  const u = roleOrder.indexOf(userRole);
+  const m = roleOrder.indexOf(minRole);
+  return u >= 0 && m >= 0 && u >= m;
+};
 
-// Páginas
-import ChatPage from "./pages/Omnichannel/ChatPage";
-import CRMPage from "./pages/CRM/CRMPage";
-import CrmKanban from "./pages/CrmKanban";
-import CrmOportunidades from "./pages/CrmOportunidades";
-import AtendimentoPage from "./pages/AtendimentoPage";
-import PipelinePage from "./pages/PipelinePage";
-import QualificacaoPage from "./pages/QualificacaoPage";
-import LeadsPage from "./pages/LeadsPage";
-import AgendaPage from "./pages/Agenda/AgendaPage";
-import MarketingPage from "./pages/Marketing/MarketingPage";
-import EditorIA from "./pages/Marketing/EditorIA";
-import ApprovalPage from "./pages/Approvals/ApprovalPage";
-import CreditsPage from "./pages/Credits/CreditsPage";
-import GovernancePage from "./pages/Governance/GovernancePage";
-import DashboardPage from "./pages/DashboardPage";
-import OnboardingStepsPage from "./pages/Onboarding/OnboardingPage";
-import CrmOnboardingPage from "./pages/OnboardingPage";
-
-import CheckoutPage from "./pages/Billing/CheckoutPage";
-import PaymentSuccess from "./pages/Billing/PaymentSuccess";
-import PaymentError from "./pages/Billing/PaymentError";
-import SubscriptionStatus from "./pages/Billing/SubscriptionStatus";
-
-import AdminClients from "./pages/Admin/AdminClients";
-import AdminPlans from "./pages/Admin/AdminPlans";
-import AdminUsage from "./pages/Admin/AdminUsage";
-import AdminIntegrations from "./pages/Admin/AdminIntegrations";
-import AdminQuickReplies from "./pages/Admin/AdminQuickReplies";
-import OwnerRoute from "./routes/OwnerRoute";
-
-import TemplatesPage from "./pages/TemplatesPage";
-import LGPDPage from "./pages/LGPDPage";
-import LoginPage from "./pages/Auth/LoginPage";
-import RegisterPage from "./pages/Auth/RegisterPage";
-import DebugOverlay from "./components/DebugOverlay";
-import FidelizacaoPage from "./pages/FidelizacaoPage";
-
-/** --------- Guards --------- **/
-function isAuthenticated() {
-  return Boolean(localStorage.getItem("token"));
-}
-
-// Redireciona para /login se não autenticado, preservando a rota original
 function RequireAuth({ children }) {
+  const { user } = useAuth();
   const location = useLocation();
-  if (!isAuthenticated()) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
   return children;
 }
 
-// Evita acessar /login e /register se já estiver autenticado
+function RequireRole({ children, minRole }) {
+  const { user } = useAuth();
+  if (!hasRole(user?.role, minRole)) return <Navigate to="/app" replace />;
+  return children;
+}
+
 function PublicOnly({ children }) {
-  if (isAuthenticated()) {
-    return <Navigate to="/crm/oportunidades" replace />;
-  }
-  return children;
+  const { user } = useAuth();
+  return user ? <Navigate to="/app" replace /> : children;
 }
 
-// Aplica layout somente nas páginas protegidas
-function Protected({ children }) {
-  return (
-    <RequireAuth>
-      <MainLayout>{children}</MainLayout>
-    </RequireAuth>
-  );
+function Placeholder({ label }) {
+  return <div className="p-4">{label}</div>;
 }
 
-/** --------- App --------- **/
 export default function App() {
   return (
     <Router>
       <Routes>
-        {/* Públicas */}
-        <Route path="/" element={<LandingPage />} />
         <Route
           path="/login"
           element={
@@ -104,52 +60,200 @@ export default function App() {
             </PublicOnly>
           }
         />
-        <Route path="/lgpd" element={<LGPDPage />} />
-        <Route path="/whatsapp/templates" element={<TemplatesPage />} />
 
-        {/* Protegidas (com layout) */}
-        <Route path="/omnichannel/chat" element={<Protected><ChatPage /></Protected>} />
-        <Route path="/crm" element={<Protected><CRMPage /></Protected>} />
-        <Route path="/crm/kanban" element={<Protected><CrmKanban /></Protected>} />
-        <Route path="/crm/oportunidades" element={<Protected><CrmOportunidades /></Protected>} />
-        <Route path="/crm/pipeline" element={<Protected><PipelinePage /></Protected>} />
-        <Route path="/crm/qualificacao" element={<Protected><QualificacaoPage /></Protected>} />
-        <Route path="/crm/leads" element={<Protected><LeadsPage /></Protected>} />
-        <Route path="/crm/atendimento" element={<Protected><AtendimentoPage /></Protected>} />
-        <Route path="/agenda" element={<Protected><AgendaPage /></Protected>} />
-        <Route path="/marketing" element={<Protected><MarketingPage /></Protected>} />
-        <Route path="/marketing/editor" element={<Protected><EditorIA /></Protected>} />
-        <Route path="/aprovacao" element={<Protected><ApprovalPage /></Protected>} />
-        <Route path="/creditos" element={<Protected><CreditsPage /></Protected>} />
-        <Route path="/dashboard" element={<Protected><DashboardPage /></Protected>} />
-        <Route path="/governanca" element={<Protected><GovernancePage /></Protected>} />
-        <Route path="/fidelizacao" element={<Protected><FidelizacaoPage /></Protected>} />
-        <Route path="/onboarding" element={<Protected><OnboardingStepsPage /></Protected>} />
-        <Route path="/crm/onboarding" element={<Protected><CrmOnboardingPage /></Protected>} />
-        <Route path="/assinatura/status" element={<Protected><SubscriptionStatus /></Protected>} />
-
-        {/* Admin (se usar route nesting, seu MainLayout precisa renderizar <Outlet />) */}
-        <Route element={<AdminRoute><MainLayout /></AdminRoute>}>
-          <Route element={<OwnerRoute />}>
-            <Route path="/admin/clients" element={<AdminClients />} />
-          </Route>
-          <Route path="/admin/plans" element={<AdminPlans />} />
-          <Route path="/admin/usage" element={<AdminUsage />} />
-          <Route path="/admin/integrations" element={<AdminIntegrations />} />
-          <Route path="/admin/quick-replies" element={<AdminQuickReplies />} />
+        <Route
+          path="/app"
+          element={
+            <RequireAuth>
+              <MainLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Navigate to="inbox" replace />} />
+          <Route
+            path="inbox"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="Inbox" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="crm/leads"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="CRM Leads" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="crm/pipeline"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="CRM Pipeline" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="crm/clients"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="CRM Clients" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="crm/onboarding"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="CRM Onboarding" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="crm/nps"
+            element={
+              <RequireRole minRole="Manager">
+                <Placeholder label="CRM NPS" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="content/studio"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="Content Studio" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="content/calendar"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="Content Calendar" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="marketing/lists"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="Marketing Lists" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="marketing/templates"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="Marketing Templates" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="marketing/campaigns"
+            element={
+              <RequireRole minRole="Manager">
+                <Placeholder label="Marketing Campaigns" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="marketing/automations"
+            element={
+              <RequireRole minRole="Manager">
+                <Placeholder label="Marketing Automations" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="calendars"
+            element={
+              <RequireRole minRole="Agent">
+                <Placeholder label="Calendars" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="reports"
+            element={
+              <RequireRole minRole="Manager">
+                <Placeholder label="Reports" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="settings/users"
+            element={
+              <RequireRole minRole="Manager">
+                <Placeholder label="Settings Users" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="settings/channels"
+            element={
+              <RequireRole minRole="Manager">
+                <Placeholder label="Settings Channels" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="settings/permissions"
+            element={
+              <RequireRole minRole="Manager">
+                <Placeholder label="Settings Permissions" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="settings/plan"
+            element={
+              <RequireRole minRole="OrgOwner">
+                <Placeholder label="Settings Plan" />
+              </RequireRole>
+            }
+          />
         </Route>
 
-        {/* Checkout público */}
-        <Route path="/checkout" element={<CheckoutPage />} />
-        <Route path="/checkout/success" element={<PaymentSuccess />} />
-        <Route path="/checkout/error" element={<PaymentError />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth>
+              <MainLayout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<Navigate to="orgs" replace />} />
+          <Route
+            path="orgs"
+            element={
+              <RequireRole minRole="SuperAdmin">
+                <Placeholder label="Admin Orgs" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="billing"
+            element={
+              <RequireRole minRole="SuperAdmin">
+                <Placeholder label="Admin Billing" />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="support"
+            element={
+              <RequireRole minRole="SuperAdmin">
+                <Placeholder label="Admin Support" />
+              </RequireRole>
+            }
+          />
+        </Route>
 
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<Navigate to="/app" replace />} />
+        <Route path="*" element={<Navigate to="/app" replace />} />
       </Routes>
-
-      {/* Debug na tela (somente se você criou esse componente) */}
-      <DebugOverlay />
     </Router>
   );
 }
