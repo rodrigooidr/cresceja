@@ -39,6 +39,7 @@ import integrationsRouter from './routes/integrations.js';
 import publicRouter from './routes/public.js';
 import adminPlansRouter from './routes/admin.plans.js';
 import adminClientsRouter from './routes/admin.clients.js';
+import adminBillingRouter from './routes/admin.billing.js';
 // PROD: import billingRouter from './routes/billing.js';
 import billingRouter from './routes/billing.dev.js';
 import webhooksRouter from './routes/webhooks.js';
@@ -139,6 +140,7 @@ app.use('/api/public', publicRouter);
 
 app.use('/api/admin', adminPlansRouter);   // deve expor /plans, /plans/:id, /plans/:id/publish
 app.use('/api/admin', adminClientsRouter);
+app.use('/api/admin/billing', adminBillingRouter);
 
 app.use('/api/billing', billingRouter);
 app.use('/api/webhooks', webhooksRouter);  // inclui /webhooks/stripe (recebe rawBody do hook acima)
