@@ -12,6 +12,7 @@ import ChannelsPage from './pages/settings/ChannelsPage.jsx';
 import LoginPage from './pages/Auth/LoginPage';
 import RegisterPage from './pages/Auth/RegisterPage';
 import { useAuth } from './contexts/AuthContext';
+import ContentCalendar from './pages/calendar/ContentCalendar.jsx';
 
 const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
 const hasRole = (userRole, minRole) => {
@@ -132,7 +133,7 @@ export default function App() {
             path="content/calendar"
             element={
               <RequireRole minRole="Agent">
-                <Placeholder label="Content Calendar" />
+                <ContentCalendar />
               </RequireRole>
             }
           />

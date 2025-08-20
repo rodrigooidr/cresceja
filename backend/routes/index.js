@@ -10,6 +10,7 @@ import approvals from './approvals.js';
 import audit from './audit.js';
 import credits from './credits.js';
 import whatsapp from './whatsapp.js';
+import calendar from './calendar.js';
 
 const router = Router();
 
@@ -23,6 +24,7 @@ router.use('/approvals', authRequired, approvals);
 router.use('/audit', authRequired, audit);
 router.use('/ai-credits', authRequired, credits);
 router.use('/omnichannel/whatsapp', authRequired, whatsapp);
+router.use('/calendar', calendar);
 
 // Endpoints simples de onboarding (podem ser movidos para um controller próprio)
 router.get('/onboarding/progress', authRequired, (req, res) => {
