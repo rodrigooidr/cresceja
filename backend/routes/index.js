@@ -12,6 +12,7 @@ import credits from './credits.js';
 import whatsapp from './whatsapp.js';
 import calendar from './calendar.js';
 import activities from './activities.js';
+import marketing from './marketing.js';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.use('/ai-credits', authRequired, credits);
 router.use('/omnichannel/whatsapp', authRequired, whatsapp);
 router.use('/calendar', calendar);
 router.use('/activities', activities);
+router.use('/marketing', marketing);
 
 // Endpoints simples de onboarding (podem ser movidos para um controller próprio)
 router.get('/onboarding/progress', authRequired, (req, res) => {
