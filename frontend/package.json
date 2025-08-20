@@ -4,6 +4,7 @@
   "private": true,
   "proxy": "http://localhost:4000",
   "dependencies": {
+    "@hello-pangea/dnd": "^16.6.0",
     "axios": "^1.7.2",
     "@hello-pangea/dnd": "^16.4.0",
     "react": "^18.2.0",

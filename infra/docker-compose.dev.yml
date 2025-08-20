@@ -1,45 +1,68 @@
-name: cresceja-dev
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16
     container_name: cresceja-postgres
     environment:
-      POSTGRES_USER: cresceja
-      POSTGRES_PASSWORD: cresceja123
       POSTGRES_DB: cresceja_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cresceja -d cresceja_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cresceja_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: cresceja-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 30
+    restart: unless-stopped
 
   backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
     container_name: cresceja-backend
-    env_file:
-      - ../backend/.env
+    build:
+      context: ../backend              # ajusta se sua estrutura for diferente
+      dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgres://cresceja:cresceja123@cresceja-postgres:5432/cresceja_db
-      - CORS_ORIGINS=http://localhost:3000
-      - PORT=4000
-      - LOG_LEVEL=info
-      - WS_TEST_MODE=true
-      - ALLOWED_WS_TEST_EMAIL=rodrigooidr@hotmail.com
-    volumes:
-      - uploads:/app/uploads
-    ports:
-      - "4000:4000"
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja_db
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+
+  worker:
+    container_name: cresceja-worker
+    build:
+      context: ../backend              # reutiliza a mesma imagem do backend
+      dockerfile: Dockerfile
+    command: ["node","queues/repurpose.worker.js"]   # ou ["npm","run","start:worker"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/cresceja_db
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
 volumes:
   pgdata:
-  uploads:

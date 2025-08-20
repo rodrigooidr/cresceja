@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: cresceja123
       POSTGRES_DB: cresceja_db
     ports:
-      - "5432:5432" # opcional, útil p/ conectar pgAdmin/psql do host
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +22,6 @@ services:
   redis:
     image: redis:7-alpine
     container_name: cresceja-redis
-    # sem mapear porta pro host; o backend acessa via rede do Docker
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -32,14 +31,13 @@ services:
     restart: unless-stopped
 
   backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
     container_name: cresceja-backend
+    build:
+      context: ../backend           # usa o Dockerfile que você acabou de atualizar
+      dockerfile: Dockerfile
     env_file:
-      - ../backend/.env.docker
+      - ../backend/.env.docker      # certifique-se que tem DATABASE_URL e REDIS_URL aqui
     environment:
-      # garante CORS com o frontend local
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       NODE_ENV: production
       PORT: "4000"
@@ -55,15 +53,15 @@ services:
     restart: unless-stopped
 
   worker:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
     container_name: cresceja-worker
+    build:
+      context: ../backend           # reutiliza a mesma imagem do backend (mesmo Dockerfile)
+      dockerfile: Dockerfile
+    command: ["node", "queues/repurpose.worker.js"]
     env_file:
-      - ../backend/.env.docker
+      - ../backend/.env.docker      # usa as mesmas variáveis (DATABASE_URL, REDIS_URL, etc.)
     environment:
       NODE_ENV: production
-    command: ["node", "queues/repurpose.worker.js"]
     depends_on:
       postgres:
         condition: service_healthy

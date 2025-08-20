@@ -351,231 +351,132 @@ ON CONFLICT (id) DO UPDATE SET
   trial_days=EXCLUDED.trial_days,
   billing_period_months=0;
 
--- 1) Colunas novas em plans
-ALTER TABLE plans
-  ADD COLUMN IF NOT EXISTS is_free boolean DEFAULT false,
-  ADD COLUMN IF NOT EXISTS trial_days integer DEFAULT 14,              -- dias do free
-  ADD COLUMN IF NOT EXISTS billing_period_months integer DEFAULT 1;    -- meses do ciclo pago
-
--- 2) Índice útil para expiração
-CREATE INDEX IF NOT EXISTS idx_clients_active_dates
-  ON clients(active, start_date, end_date);
-
--- 3) Tabela de consumo mensal por módulo (quota)
-CREATE TABLE IF NOT EXISTS usage_counters (
-  id bigserial PRIMARY KEY,
-  client_id uuid NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-  module_key text NOT NULL,
-  period_start date NOT NULL,
-  period_end date NOT NULL,
-  used bigint NOT NULL DEFAULT 0,
-  quota bigint,
-  UNIQUE (client_id, module_key, period_start, period_end)
+CREATE TABLE IF NOT EXISTS leads (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  email TEXT,
+  telefone TEXT NOT NULL,
+  origem TEXT,
+  status TEXT NOT NULL DEFAULT 'novo',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-BEGIN;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS responsavel TEXT;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Garante colunas e defaults
-ALTER TABLE public.plans
-  ADD COLUMN IF NOT EXISTS currency               text     NOT NULL DEFAULT 'BRL',
-  ADD COLUMN IF NOT EXISTS monthly_price_cents    integer  NOT NULL DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS is_published           boolean  NOT NULL DEFAULT TRUE,
-  ADD COLUMN IF NOT EXISTS is_archived            boolean  NOT NULL DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS sort_order             integer  NOT NULL DEFAULT 9999,
-  ADD COLUMN IF NOT EXISTS trial_days             integer  NOT NULL DEFAULT 7,
-  ADD COLUMN IF NOT EXISTS billing_period_months  integer  NOT NULL DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS modules                jsonb    NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS created_at             timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS updated_at             timestamptz NOT NULL DEFAULT now();
-
--- Trigger de updated_at
-CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
-BEGIN NEW.updated_at = now(); RETURN NEW; END; $$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_plans_updated_at ON public.plans;
-CREATE TRIGGER trg_plans_updated_at
-BEFORE UPDATE ON public.plans
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-COMMIT;
-
--- Seed (Free/Starter/Pro)
-INSERT INTO public.plans (id,name,currency,monthly_price_cents,is_published,sort_order,trial_days,billing_period_months,modules)
-VALUES
-('free','Free','BRL',0,TRUE,10,7,1,$${
-  "omnichannel":{"enabled":true,"chat_sessions":50},
-  "crm":{"enabled":true,"opportunities":50},
-  "ai_credits":{"enabled":true,"credits":2000}
-}$$::jsonb),
-('starter','Starter','BRL',9900,TRUE,20,7,1,$${
-  "omnichannel":{"enabled":true,"chat_sessions":500},
-  "crm":{"enabled":true,"opportunities":1000},
-  "marketing":{"enabled":true,"posts_per_month":20},
-  "ai_credits":{"enabled":true,"credits":20000}
-}$$::jsonb),
-('pro','Pro','BRL',19900,TRUE,30,7,1,$${
-  "omnichannel":{"enabled":true,"chat_sessions":2000},
-  "crm":{"enabled":true,"opportunities":5000},
-  "marketing":{"enabled":true,"posts_per_month":100},
-  "approvals":{"enabled":true},
-  "governance":{"enabled":true},
-  "ai_credits":{"enabled":true,"credits":60000}
-}$$::jsonb)
-ON CONFLICT (id) DO UPDATE SET
-  name=EXCLUDED.name,
-  currency=EXCLUDED.currency,
-  monthly_price_cents=EXCLUDED.monthly_price_cents,
-  is_published=EXCLUDED.is_published,
-  is_archived=EXCLUDED.is_archived,
-  sort_order=EXCLUDED.sort_order,
-  trial_days=EXCLUDED.trial_days,
-  billing_period_months=EXCLUDED.billing_period_months,
-  modules=EXCLUDED.modules,
-  updated_at=now();
-
-BEGIN;
-
--- Tabela base
-CREATE TABLE IF NOT EXISTS public.plans_meta (
-  plan_id    text PRIMARY KEY REFERENCES public.plans(id) ON DELETE CASCADE,
-  modules    jsonb NOT NULL DEFAULT '{}'::jsonb,
-  meta       jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS opportunities (
+  id SERIAL PRIMARY KEY,                             -- pode manter INTEGER aqui, sem problema
+  lead_id UUID REFERENCES leads(id) ON DELETE SET NULL,
+  cliente TEXT NOT NULL,
+  valor_estimado NUMERIC(12,2) DEFAULT 0,
+  responsavel TEXT,
+  status TEXT NOT NULL DEFAULT 'prospeccao',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Trigger de updated_at
-CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
-BEGIN NEW.updated_at = now(); RETURN NEW; END; $$ LANGUAGE plpgsql;
+CREATE INDEX IF NOT EXISTS idx_opportunities_status ON opportunities(status);
+CREATE INDEX IF NOT EXISTS idx_opportunities_lead_id ON opportunities(lead_id);
 
-DROP TRIGGER IF EXISTS trg_plans_meta_updated_at ON public.plans_meta;
-CREATE TRIGGER trg_plans_meta_updated_at
-BEFORE UPDATE ON public.plans_meta
-FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-COMMIT;
+DROP TRIGGER IF EXISTS trg_opportunities_set_updated_at ON opportunities;
 
--- Popular a partir de plans.modules (primeira carga)
-INSERT INTO public.plans_meta (plan_id, modules)
-SELECT p.id, COALESCE(p.modules,'{}'::jsonb)
-FROM public.plans p
-ON CONFLICT (plan_id) DO UPDATE
-  SET modules = EXCLUDED.modules,
-      updated_at = now();
+CREATE TRIGGER trg_opportunities_set_updated_at
+BEFORE UPDATE ON opportunities
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
 
--- Colunas adicionais que sua rota está usando
-ALTER TABLE public.plans_meta
-  ADD COLUMN IF NOT EXISTS max_users        integer,
-  ADD COLUMN IF NOT EXISTS chat_sessions    integer,
-  ADD COLUMN IF NOT EXISTS opportunities    integer,
-  ADD COLUMN IF NOT EXISTS posts_per_month  integer,
-  ADD COLUMN IF NOT EXISTS ai_credits       integer,
-  ADD COLUMN IF NOT EXISTS flags            jsonb NOT NULL DEFAULT '{}'::jsonb,
-  ADD COLUMN IF NOT EXISTS meta             jsonb NOT NULL DEFAULT '{}'::jsonb;
-
--- (Opcional) Preencher essas colunas a partir do JSON
-UPDATE public.plans_meta pm
-   SET chat_sessions   = COALESCE(pm.chat_sessions,   NULLIF((pm.modules->'omnichannel'->>'chat_sessions')::int, 0)),
-       opportunities   = COALESCE(pm.opportunities,   NULLIF((pm.modules->'crm'->>'opportunities')::int, 0)),
-       posts_per_month = COALESCE(pm.posts_per_month, NULLIF((pm.modules->'marketing'->>'posts_per_month')::int, 0)),
-       ai_credits      = COALESCE(pm.ai_credits,      NULLIF((pm.modules->'ai_credits'->>'credits')::int, 0))
- WHERE pm.modules IS NOT NULL;
-
-BEGIN;
-
--- Extensão p/ bcrypt/UUID
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- Garante a tabela (caso ainda não exista)
-CREATE TABLE IF NOT EXISTS public.users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email text UNIQUE NOT NULL,
-  password_hash text NOT NULL,
-  name text,
-  role text NOT NULL DEFAULT 'user',        -- 'owner' | 'admin' | 'user'
-  is_owner boolean NOT NULL DEFAULT FALSE,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS clients (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  email TEXT,
+  telefone TEXT,
+  contrato_url TEXT,
+  status TEXT NOT NULL DEFAULT 'ativo',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Completa colunas que possam faltar
-ALTER TABLE public.users
-  ADD COLUMN IF NOT EXISTS name        text,
-  ADD COLUMN IF NOT EXISTS role        text NOT NULL DEFAULT 'user',
-  ADD COLUMN IF NOT EXISTS is_owner    boolean NOT NULL DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS created_at  timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS updated_at  timestamptz NOT NULL DEFAULT now();
+CREATE EXTENSION IF NOT EXISTS pgcrypto; -- caso use UUID em outras tabelas
 
--- Email único (se ainda não houver)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'users_email_unique'
-      AND conrelid = 'public.users'::regclass
-  ) THEN
-    ALTER TABLE public.users ADD CONSTRAINT users_email_unique UNIQUE (email);
-  END IF;
-END $$;
+CREATE TABLE IF NOT EXISTS onboarding_tasks (
+  id SERIAL PRIMARY KEY,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  contrato BOOLEAN DEFAULT FALSE,
+  assinatura BOOLEAN DEFAULT FALSE,
+  nota_fiscal BOOLEAN DEFAULT FALSE,
+  treinamento BOOLEAN DEFAULT FALSE,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
--- Normaliza roles inválidos
-UPDATE public.users SET role = 'user' WHERE role IS NULL OR role NOT IN ('owner','admin','user');
+CREATE INDEX IF NOT EXISTS idx_onboarding_tasks_client_id ON onboarding_tasks(client_id);
+);
 
--- Sobe você para OWNER (upsert)
-INSERT INTO public.users (email, password_hash, name, role, is_owner)
-VALUES (
-  'rodrigooidr@hotmail.com',
-  crypt('admin123456789', gen_salt('bf', 12)),
-  'Rodrigo',
-  'owner',
-  TRUE
-)
-ON CONFLICT (email) DO UPDATE
-SET password_hash = EXCLUDED.password_hash,
-    name          = COALESCE(EXCLUDED.name, public.users.name),
-    role          = 'owner',
-    is_owner      = TRUE,
-    updated_at    = now();
+CREATE TABLE IF NOT EXISTS conversations (
+  id SERIAL PRIMARY KEY,
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  canal TEXT NOT NULL DEFAULT 'whatsapp',
+  status TEXT NOT NULL DEFAULT 'pendente', -- pendente, em_andamento, resolvido
+  assigned_to TEXT, -- email do atendente
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
--- Rebaixa qualquer outro "owner" para admin
-UPDATE public.users
-SET role='admin', is_owner=FALSE, updated_at=now()
-WHERE lower(email) <> 'rodrigooidr@hotmail.com'
-  AND (is_owner = TRUE OR role='owner');
+CREATE TABLE IF NOT EXISTS messages (
+  id SERIAL PRIMARY KEY,
+  conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
+  sender TEXT NOT NULL, -- 'cliente' | 'agente' | 'sistema'
+  content TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
--- Sincroniza flags
-UPDATE public.users SET is_owner = TRUE  WHERE role='owner'  AND is_owner IS DISTINCT FROM TRUE;
-UPDATE public.users SET is_owner = FALSE WHERE role<>'owner' AND is_owner IS DISTINCT FROM FALSE;
 
--- Apenas 1 owner
-CREATE UNIQUE INDEX IF NOT EXISTS ux_users_single_owner
-  ON public.users (is_owner) WHERE is_owner;
+-- NPS Surveys (liga em clients.id -> UUID)
+CREATE TABLE IF NOT EXISTS nps_surveys (
+  id SERIAL PRIMARY KEY,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  sent_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_nps_surveys_client_id ON nps_surveys(client_id);
 
--- Constraints (validadas após a correção de dados)
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname='users_role_chk' AND conrelid='public.users'::regclass
-  ) THEN
-    ALTER TABLE public.users
-      ADD CONSTRAINT users_role_chk CHECK (role IN ('owner','admin','user')) NOT VALID;
-    ALTER TABLE public.users VALIDATE CONSTRAINT users_role_chk;
-  END IF;
+-- NPS Responses (liga em nps_surveys.id -> INTEGER/SERIAL)
+CREATE TABLE IF NOT EXISTS nps_responses (
+  id SERIAL PRIMARY KEY,
+  survey_id INTEGER REFERENCES nps_surveys(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 10),
+  comment TEXT,
+  responded_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_nps_responses_survey_id ON nps_responses(survey_id);
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname='users_role_owner_sync' AND conrelid='public.users'::regclass
-  ) THEN
-    ALTER TABLE public.users
-      ADD CONSTRAINT users_role_owner_sync CHECK (
-        (role='owner' AND is_owner = TRUE) OR
-        (role<>'owner' AND is_owner = FALSE)
-      ) NOT VALID;
-    ALTER TABLE public.users VALIDATE CONSTRAINT users_role_owner_sync;
-  END IF;
-END $$;
+-- Rewards (liga em clients.id -> UUID)
+CREATE TABLE IF NOT EXISTS rewards (
+  id SERIAL PRIMARY KEY,
+  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  type TEXT NOT NULL, -- cupom/bonus/upgrade
+  value TEXT,
+  expires_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_rewards_client_id ON rewards(client_id);
 
-COMMIT;
+
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id SERIAL PRIMARY KEY,
+  user_email TEXT,
+  action TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  entity_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  payload JSONB
+);

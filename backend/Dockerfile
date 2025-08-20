@@ -3,17 +3,24 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# deps primeiro (cache)
-COPY package*.json ./
-RUN npm install --omit=dev
+# Dependências para builds que precisem de git/ssh
+RUN apk add --no-cache git openssh-client
 
-# código
+# Copia apenas os manifests primeiro (melhor cache de build)
+COPY package*.json ./
+
+# Define ambiente e instala dependências de produção, de forma determinística
+ENV NODE_ENV=production
+RUN npm ci --omit=dev --no-audit --no-fund
+
+# Copia o resto do código
 COPY . .
 
-# cria pasta persistente de uploads
+# Cria pasta persistente de uploads
 RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
+
+# Usa usuário não-root
 USER node
 
-ENV NODE_ENV=production
 EXPOSE 4000
-CMD ["node","server.js"]
+CMD ["node", "server.js"]
