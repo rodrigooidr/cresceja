@@ -16,7 +16,22 @@ function ContentCalendar() {
         if (cal) {
           setCalendarId(cal.id);
           const res = await api.get(`/calendar/${cal.id}/events`);
-          setEvents(res.data.data || []);
+          let evts = res.data.data || [];
+          try {
+            const campRes = await api.get('/marketing/campaigns');
+            const camps = (campRes.data.data || []).map((c) => ({
+              id: c.id,
+              title: c.name,
+              channels: ['email'],
+              scheduled_at: c.scheduled_at,
+              status: c.status,
+              preview_url: null,
+            }));
+            evts = evts.concat(camps);
+          } catch (err) {
+            console.error('Erro ao carregar campanhas', err);
+          }
+          setEvents(evts);
         }
       } catch (err) {
         console.error('Erro ao carregar calendário', err);

@@ -14,6 +14,10 @@ import RegisterPage from './pages/Auth/RegisterPage';
 import { useAuth } from './contexts/AuthContext';
 import ContentCalendar from './pages/calendar/ContentCalendar.jsx';
 import ActivitiesPage from './pages/calendar/ActivitiesPage.jsx';
+import MarketingHome from './pages/marketing/MarketingHome.jsx';
+import ListsPage from './pages/marketing/ListsPage.jsx';
+import TemplatesPage from './pages/marketing/TemplatesPage.jsx';
+import CampaignsPage from './pages/marketing/CampaignsPage.jsx';
 
 const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
 const hasRole = (userRole, minRole) => {
@@ -139,10 +143,18 @@ export default function App() {
             }
           />
           <Route
+            path="marketing"
+            element={
+              <RequireRole minRole="Agent">
+                <MarketingHome />
+              </RequireRole>
+            }
+          />
+          <Route
             path="marketing/lists"
             element={
               <RequireRole minRole="Agent">
-                <Placeholder label="Marketing Lists" />
+                <ListsPage />
               </RequireRole>
             }
           />
@@ -150,7 +162,7 @@ export default function App() {
             path="marketing/templates"
             element={
               <RequireRole minRole="Agent">
-                <Placeholder label="Marketing Templates" />
+                <TemplatesPage />
               </RequireRole>
             }
           />
@@ -158,7 +170,7 @@ export default function App() {
             path="marketing/campaigns"
             element={
               <RequireRole minRole="Manager">
-                <Placeholder label="Marketing Campaigns" />
+                <CampaignsPage />
               </RequireRole>
             }
           />
