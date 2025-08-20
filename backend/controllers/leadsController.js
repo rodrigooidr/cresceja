@@ -91,6 +91,27 @@ export async function qualificar(req, res, next) {
   }
 }
 
-export async function moverParaOportunidadeStub(_req, res) {
-  res.json({ ok: true, message: 'stub: criação de oportunidade na Sprint 3' });
+export async function moverParaOportunidade(req, res, next) {
+  try {
+    const { id } = req.params;
+    const leadRes = await query(
+      `SELECT id, nome FROM leads WHERE id = $1`,
+      [id]
+    );
+    const lead = leadRes.rows[0];
+    if (!lead) return res.status(404).json({ error: 'not_found' });
+
+    const oppRes = await query(
+      `INSERT INTO opportunities (lead_id, cliente, valor_estimado, status)
+       VALUES ($1, $2, 0, 'prospeccao')
+       RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
+      [lead.id, lead.nome]
+    );
+
+    await query(`UPDATE leads SET status = 'oportunidade' WHERE id = $1`, [lead.id]);
+
+    res.json({ ok: true, opportunity: oppRes.rows[0] });
+  } catch (err) {
+    next(err);
+  }
 }

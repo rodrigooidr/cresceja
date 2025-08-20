@@ -1,61 +1,92 @@
 import { query } from '../config/db.js';
 
-export async function listOpportunities(req, res, next) {
+const STATUSES = ['prospeccao', 'contato', 'proposta', 'negociacao', 'fechamento'];
+
+export async function board(_req, res, next) {
   try {
-    const { status } = req.query || {};
-    const params = [];
-    let where = '';
-    if (status) {
-      params.push(status);
-      where = 'WHERE status = $1';
-    }
     const { rows } = await query(
       `SELECT id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at
          FROM opportunities
-         ${where}
-        ORDER BY id DESC`,
-      params
+        ORDER BY updated_at DESC, id DESC`
     );
-    res.json(rows);
+    const grouped = {};
+    STATUSES.forEach((s) => {
+      grouped[s] = [];
+    });
+    rows.forEach((row) => {
+      if (!grouped[row.status]) grouped[row.status] = [];
+      grouped[row.status].push(row);
+    });
+    const counts = {};
+    Object.keys(grouped).forEach((s) => {
+      counts[s] = grouped[s].length;
+    });
+    res.json({ data: grouped, meta: { counts } });
   } catch (err) {
     next(err);
   }
 }
 
-export async function createOpportunity(req, res, next) {
+export async function create(req, res, next) {
   try {
-    const { lead_id, cliente, valor_estimado, responsavel } = req.body || {};
+    const { cliente, valor_estimado, responsavel, lead_id } = req.body || {};
     if (!cliente) {
-      return res.status(400).json({ error: 'invalid_input' });
+      return res.status(400).json({ error: 'invalid_cliente' });
     }
+    const valorNum = Number(valor_estimado);
+    const valor = Number.isFinite(valorNum) ? valorNum : 0;
+    const uuidRegex = /^[0-9a-fA-F-]{36}$/;
+    const leadIdVal = typeof lead_id === 'string' && uuidRegex.test(lead_id) ? lead_id : null;
     const { rows } = await query(
-      `INSERT INTO opportunities (lead_id, cliente, valor_estimado, responsavel)
-       VALUES ($1,$2,$3,$4)
+      `INSERT INTO opportunities (lead_id, cliente, valor_estimado, responsavel, status)
+       VALUES ($1,$2,$3,$4,'prospeccao')
        RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
-      [lead_id || null, cliente, typeof valor_estimado === 'number' ? valor_estimado : 0, responsavel || null]
+      [leadIdVal, cliente, valor, responsavel || null]
     );
-    res.status(201).json(rows[0]);
+    res.status(201).json({ data: rows[0] });
   } catch (err) {
     next(err);
   }
 }
 
-export async function updateOpportunity(req, res, next) {
+export async function update(req, res, next) {
   try {
     const id = parseInt(req.params.id, 10);
     if (!id) return res.status(400).json({ error: 'invalid_id' });
-    const { status } = req.body || {};
-    if (!status) return res.status(400).json({ error: 'invalid_input' });
+    const { cliente, valor_estimado, responsavel, status } = req.body || {};
+    const fields = [];
+    const values = [];
+    let idx = 1;
+    if (cliente !== undefined) {
+      fields.push(`cliente = $${idx++}`);
+      values.push(cliente);
+    }
+    if (valor_estimado !== undefined) {
+      const v = Number(valor_estimado);
+      fields.push(`valor_estimado = $${idx++}`);
+      values.push(Number.isFinite(v) ? v : 0);
+    }
+    if (responsavel !== undefined) {
+      fields.push(`responsavel = $${idx++}`);
+      values.push(responsavel || null);
+    }
+    if (status !== undefined) {
+      fields.push(`status = $${idx++}`);
+      values.push(status);
+    }
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'no_fields' });
+    }
+    values.push(id);
     const { rows } = await query(
       `UPDATE opportunities
-          SET status = $1,
-              updated_at = NOW()
-        WHERE id = $2
-      RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
-      [status, id]
+          SET ${fields.join(', ')}, updated_at = NOW()
+        WHERE id = $${idx}
+        RETURNING id, lead_id, cliente, valor_estimado, responsavel, status, created_at, updated_at`,
+      values
     );
-    if (rows.length === 0) return res.status(404).json({ error: 'not_found' });
-    res.json(rows[0]);
+    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    res.json({ data: rows[0] });
   } catch (err) {
     next(err);
   }
