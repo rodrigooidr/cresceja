@@ -18,6 +18,7 @@ import MarketingHome from './pages/marketing/MarketingHome.jsx';
 import ListsPage from './pages/marketing/ListsPage.jsx';
 import TemplatesPage from './pages/marketing/TemplatesPage.jsx';
 import CampaignsPage from './pages/marketing/CampaignsPage.jsx';
+import AutomationsPage from './pages/marketing/AutomationsPage.jsx';
 
 const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
 const hasRole = (userRole, minRole) => {
@@ -178,7 +179,7 @@ export default function App() {
             path="marketing/automations"
             element={
               <RequireRole minRole="Manager">
-                <Placeholder label="Marketing Automations" />
+                <AutomationsPage />
               </RequireRole>
             }
           />

@@ -256,3 +256,97 @@ export async function handleWebhook(req, res, next) {
     next(err);
   }
 }
+
+export async function listAutomations(req, res, next) {
+  try {
+    const { type } = req.query || {};
+    const params = [req.orgId];
+    let q = `SELECT id, name, type, status, template_id, segment_id, created_at, updated_at
+               FROM email_automations WHERE org_id=$1`;
+    if (type) {
+      params.push(type);
+      q += ' AND type=$2';
+    }
+    const { rows } = await req.db.query(q, params);
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createAutomation(req, res, next) {
+  try {
+    const { name, type, template_id, segment_id } = req.body || {};
+    if (!name || !type) return res.status(400).json({ error: 'invalid_input' });
+    const { rows } = await req.db.query(
+      `INSERT INTO email_automations (org_id, name, type, template_id, segment_id)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING id, name, type, status, template_id, segment_id, created_at, updated_at`,
+      [req.orgId, name, type, template_id || null, segment_id || null]
+    );
+    res.status(201).json({ data: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateAutomation(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { name, template_id, segment_id } = req.body || {};
+    const { rows } = await req.db.query(
+      `UPDATE email_automations
+          SET name=$1, template_id=$2, segment_id=$3, updated_at=NOW()
+        WHERE id=$4 AND org_id=$5
+        RETURNING id, name, type, status, template_id, segment_id, created_at, updated_at`,
+      [name, template_id || null, segment_id || null, id, req.orgId]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    res.json({ data: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteAutomation(req, res, next) {
+  try {
+    const { id } = req.params;
+    await req.db.query('DELETE FROM email_automations WHERE id=$1 AND org_id=$2', [id, req.orgId]);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getAutomationStatus(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { rows } = await req.db.query(
+      'SELECT status FROM email_automations WHERE id=$1 AND org_id=$2',
+      [id, req.orgId]
+    );
+    const item = rows[0];
+    if (!item) return res.status(404).json({ error: 'not_found' });
+    res.json({ data: { status: item.status } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateAutomationStatus(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { status } = req.body || {};
+    if (!['on', 'off'].includes(status)) return res.status(400).json({ error: 'invalid_input' });
+    const { rows } = await req.db.query(
+      `UPDATE email_automations SET status=$1, updated_at=NOW()
+        WHERE id=$2 AND org_id=$3
+        RETURNING id, status`,
+      [status, id, req.orgId]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
+    res.json({ data: rows[0] });
+  } catch (err) {
+    next(err);
+  }
+}
