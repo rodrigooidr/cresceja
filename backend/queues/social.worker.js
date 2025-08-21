@@ -24,13 +24,12 @@ async function processor(job) {
   const msg = await pool.query(`SELECT text FROM messages WHERE id=$1 AND org_id=$2`, [messageId, orgId]);
   const text = msg.rows[0]?.text || '';
 
-  try {
-    if (provider === 'whatsapp') await wa.sendMessage({ orgId, conversationId, text, attachments: [] });
-    else if (provider === 'instagram' || provider === 'facebook') await igfb.sendMessage?.({ orgId, conversationId, text });
-    await pool.query(`UPDATE messages SET status='sent', provider=$1 WHERE id=$2 AND org_id=$3`, [provider, messageId, orgId]);
-  } catch (e) {
-    await pool.query(`UPDATE messages SET status='failed' WHERE id=$1 AND org_id=$2`, [messageId, orgId]);
-    throw e;
+  if (provider === 'whatsapp') {
+    await wa.sendMessage({ orgId, conversationId, messageId, text, attachments: [] });
+  } else if (provider === 'instagram' || provider === 'facebook') {
+    await igfb.sendMessage({ orgId, conversationId, messageId, text });
+  } else {
+    throw new Error('provider_not_supported');
   }
 }
 
