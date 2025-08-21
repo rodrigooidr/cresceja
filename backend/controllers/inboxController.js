@@ -1,99 +1,167 @@
-import { Queue } from 'bullmq';
-import Redis from 'ioredis';
+import { pool } from '../config/db.js';
+import { enqueueSocialSend } from '../queues/social.queue.js';
+import { enqueueTranscribe } from '../queues/content.queue.js';
+import { uploadToAssets } from '../services/assets.js';
+import { compileTemplate } from '../services/templates.js';
+import { io } from '../services/realtime.js';
 
-const connection = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false,
-});
-const publishQueue = new Queue('social:publish', { connection });
-
-export async function list(req, res) {
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
+export async function listConversations(req, res) {
+  const { page = 1, limit = 20, status, channel, q, tag } = req.query;
   const offset = (page - 1) * limit;
-  const status = req.query.status;
-  const params = [req.orgId];
-  let where = 'WHERE c.org_id = $1';
-  if (status) {
-    params.push(status);
-    where += ` AND c.status = $${params.length}`;
-  }
-  const countRes = await req.db.query(
-    `SELECT COUNT(*) FROM conversations c ${where}`,
-    params
+
+  const rows = await pool.query(
+    `SELECT c.id, c.status, c.last_message_at, c.assigned_to, c.is_ai_active, c.ai_status,
+            ct.id as contact_id, ct.display_name, ct.phone, ct.photo_asset_id,
+            ch.kind as channel_kind,
+            array_remove(array_agg(DISTINCT t.name), NULL) as tags
+     FROM conversations c
+     JOIN contacts ct ON ct.id = c.contact_id AND ct.org_id = c.org_id
+     JOIN channels ch ON ch.id = c.channel_id AND ch.org_id = c.org_id
+     LEFT JOIN contact_tags x ON x.contact_id = ct.id AND x.org_id = c.org_id
+     LEFT JOIN tags t ON t.id = x.tag_id
+     WHERE c.org_id = current_setting('app.org_id')::uuid
+       AND ($1::text IS NULL OR c.status = $1)
+       AND ($2::text IS NULL OR ch.kind = $2)
+       AND ($3::text IS NULL OR lower(ct.display_name) LIKE '%'||lower($3)||'%' OR ct.phone LIKE '%'||$3||'%')
+       AND ($4::text IS NULL OR (t.name IS NOT NULL AND lower(t.name)=lower($4)))
+     GROUP BY c.id, ct.id, ch.kind
+     ORDER BY c.last_message_at DESC NULLS LAST
+     LIMIT $5 OFFSET $6`,
+    [status || null, channel || null, q || null, tag || null, limit, offset]
   );
-  const total = Number(countRes.rows[0]?.count || 0);
-  const listParams = [...params, limit, offset];
-  const { rows } = await req.db.query(
-    `SELECT c.*, ct.name AS contact_name FROM conversations c
-     JOIN contacts ct ON ct.id = c.contact_id
-     ${where} ORDER BY c.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    listParams
+
+  const { rows: totalRows } = await pool.query(
+    `SELECT count(*) FROM conversations c
+     JOIN contacts ct ON ct.id = c.contact_id AND ct.org_id = c.org_id
+     JOIN channels ch ON ch.id = c.channel_id AND ch.org_id = c.org_id
+     LEFT JOIN contact_tags x ON x.contact_id = ct.id AND x.org_id = c.org_id
+     LEFT JOIN tags t ON t.id = x.tag_id
+     WHERE c.org_id = current_setting('app.org_id')::uuid
+       AND ($1::text IS NULL OR c.status = $1)
+       AND ($2::text IS NULL OR ch.kind = $2)
+       AND ($3::text IS NULL OR lower(ct.display_name) LIKE '%'||lower($3)||'%' OR ct.phone LIKE '%'||$3||'%')
+       AND ($4::text IS NULL OR (t.name IS NOT NULL AND lower(t.name)=lower($4)))`,
+    [status || null, channel || null, q || null, tag || null]
   );
-  res.json({ data: rows, meta: { page, limit, total } });
+
+  res.json({
+    data: rows.rows,
+    meta: { page: Number(page), limit: Number(limit), total: Number(totalRows[0].count) },
+  });
 }
 
-export async function getMessages(req, res) {
+export async function listMessages(req, res) {
   const { id } = req.params;
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
-  const offset = (page - 1) * limit;
-  const countRes = await req.db.query(
-    `SELECT COUNT(*) FROM messages WHERE conversation_id=$1 AND org_id=$2`,
-    [id, req.orgId]
+  const { before, after, limit = 50 } = req.query;
+  const rows = await pool.query(
+    `SELECT m.*, mt.text as transcript
+     FROM messages m
+     LEFT JOIN LATERAL (
+       SELECT text FROM message_transcripts mt WHERE mt.message_id = m.id ORDER BY mt.id DESC LIMIT 1
+     ) mt ON true
+     WHERE m.org_id = current_setting('app.org_id')::uuid
+       AND m.conversation_id = $1
+       AND ($2::int IS NULL OR m.id < $2)
+       AND ($3::int IS NULL OR m.id > $3)
+     ORDER BY m.id DESC
+     LIMIT $4`,
+    [id, before || null, after || null, limit]
   );
-  const total = Number(countRes.rows[0]?.count || 0);
-  const { rows } = await req.db.query(
-    `SELECT * FROM messages WHERE conversation_id=$1 AND org_id=$2 ORDER BY created_at ASC LIMIT $3 OFFSET $4`,
-    [id, req.orgId, limit, offset]
-  );
-  res.json({ data: rows, meta: { page, limit, total } });
+  res.json({ data: rows.rows.reverse(), meta: { page: 1, limit: Number(limit), total: rows.rows.length } });
 }
 
 export async function sendMessage(req, res) {
   const { id } = req.params;
-  const { content } = req.body || {};
-  if (!content) return res.status(400).json({ error: 'content_required' });
-  const convRes = await req.db.query(
-    `SELECT c.*, ch.type AS channel_type, ch.secrets, ct.phone FROM conversations c
-     JOIN channels ch ON ch.id = c.channel_id
-     JOIN contacts ct ON ct.id = c.contact_id
-     WHERE c.id=$1 AND c.org_id=$2`,
-    [id, req.orgId]
-  );
-  const conv = convRes.rows[0];
-  if (!conv) return res.status(404).json({ error: 'not_found' });
-  const { rows } = await req.db.query(
-    `INSERT INTO messages (org_id, conversation_id, sender, content) VALUES ($1,$2,'agent',$3) RETURNING *`,
-    [req.orgId, id, content]
-  );
-  await publishQueue.add('send', {
-    channel: { id: conv.channel_id, type: conv.channel_type, secrets: conv.secrets },
-    to: conv.phone,
-    message: content,
-  });
-  res.status(201).json({ data: rows[0] });
-}
+  const { text, template_id, vars = {}, attachments = [] } = req.body;
 
-export async function updateStatus(req, res) {
-  const { id } = req.params;
-  const { status } = req.body || {};
-  if (!['open', 'pending', 'closed'].includes(status)) {
-    return res.status(400).json({ error: 'invalid_status' });
+  let finalText = text;
+  if (template_id) {
+    const t = await compileTemplate(req.orgId, template_id, vars);
+    finalText = t.body;
   }
-  await req.db.query(
-    `UPDATE conversations SET status=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`,
-    [status, id, req.orgId]
+
+  const { rows } = await pool.query(
+    `INSERT INTO messages (org_id, conversation_id, direction, sender_user_id, text, created_at)
+     VALUES (current_setting('app.org_id')::uuid, $1, 'out', $2, $3, NOW())
+     RETURNING id`,
+    [id, req.user.sub, finalText]
   );
-  res.json({ data: { success: true } });
+  const messageId = rows[0].id;
+
+  for (const a of attachments) {
+    await pool.query(
+      `INSERT INTO message_attachments (org_id, message_id, asset_id, kind, name, size_bytes)
+       VALUES (current_setting('app.org_id')::uuid, $1, $2, $3, $4, $5)`,
+      [messageId, a.asset_id, a.kind, a.name || null, a.size_bytes || null]
+    );
+  }
+
+  await enqueueSocialSend({ orgId: req.orgId, conversationId: id, messageId });
+  io.to(`conv:${req.orgId}:${id}`).emit('message:new', { conversationId: id, messageId });
+
+  res.json({ ok: true, messageId });
 }
 
-export async function assign(req, res) {
+export async function enableAI(req, res) {
   const { id } = req.params;
-  const { userId } = req.body || {};
-  await req.db.query(
-    `UPDATE conversations SET assigned_to=$1, updated_at=NOW() WHERE id=$2 AND org_id=$3`,
-    [userId, id, req.orgId]
+  await pool.query(
+    `UPDATE conversations SET is_ai_active = TRUE, ai_status='bot' WHERE id=$1 AND org_id=current_setting('app.org_id')::uuid`,
+    [id]
   );
-  res.json({ data: { success: true } });
+  res.json({ ok: true });
+}
+
+export async function disableAI(req, res) {
+  const { id } = req.params;
+  await pool.query(
+    `UPDATE conversations SET is_ai_active = FALSE WHERE id=$1 AND org_id=current_setting('app.org_id')::uuid`,
+    [id]
+  );
+  res.json({ ok: true });
+}
+
+export async function handoffToHuman(req, res) {
+  const { id } = req.params;
+  await pool.query(
+    `UPDATE conversations
+     SET ai_status='handed_off', is_ai_active=FALSE, human_requested_at=NOW(), alert_sent=FALSE
+     WHERE id=$1 AND org_id=current_setting('app.org_id')::uuid`,
+    [id]
+  );
+  io.to(`org:${req.orgId}`).emit('alert:escalation', { conversationId: id });
+  res.json({ ok: true });
+}
+
+export async function assignConversation(req, res) {
+  const { id } = req.params;
+  const { user_id } = req.body || {};
+  const assignee = user_id || req.user.sub;
+  await pool.query(
+    `UPDATE conversations SET assigned_to=$2 WHERE id=$1 AND org_id=current_setting('app.org_id')::uuid`,
+    [id, assignee]
+  );
+  res.json({ ok: true });
+}
+
+export async function listTemplates(req, res) {
+  const { channel } = req.query;
+  const q = await pool.query(
+    `SELECT * FROM message_templates
+     WHERE org_id=current_setting('app.org_id')::uuid
+       AND ($1::text IS NULL OR cardinality(channel_scope)=0 OR $1 = ANY (channel_scope))
+     ORDER BY name`,
+    [channel || null]
+  );
+  res.json({ data: q.rows, meta: { page: 1, limit: q.rows.length, total: q.rows.length } });
+}
+
+export async function uploadAsset(req, res) {
+  const asset = await uploadToAssets(req);
+  res.json({ ok: true, asset_id: asset.id });
+}
+
+export async function transcribeMessage(req, res) {
+  const { messageId } = req.params;
+  await enqueueTranscribe({ orgId: req.orgId, messageId });
+  res.json({ ok: true });
 }
