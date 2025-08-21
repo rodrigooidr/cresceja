@@ -4,14 +4,19 @@ import { withOrg } from '../middleware/withOrg.js';
 import { requireRole } from '../middleware/requireRole.js';
 import * as ctrl from '../controllers/inboxController.js';
 
-const router = Router();
+const r = Router();
 
-router.use(authRequired, withOrg, requireRole('Agent'));
+r.use(authRequired, withOrg);
 
-router.get('/', ctrl.list);
-router.get('/:id/messages', ctrl.getMessages);
-router.post('/:id/messages', ctrl.sendMessage);
-router.patch('/:id/status', ctrl.updateStatus);
-router.patch('/:id/assign', ctrl.assign);
+r.get('/conversations', requireRole('Agent'), ctrl.listConversations);
+r.get('/conversations/:id/messages', requireRole('Agent'), ctrl.listMessages);
+r.post('/conversations/:id/messages', requireRole('Agent'), ctrl.sendMessage);
+r.post('/conversations/:id/ai/enable', requireRole('Agent'), ctrl.enableAI);
+r.post('/conversations/:id/ai/disable', requireRole('Agent'), ctrl.disableAI);
+r.post('/conversations/:id/handoff', requireRole('Agent'), ctrl.handoffToHuman);
+r.post('/conversations/:id/assign', requireRole('Agent'), ctrl.assignConversation);
+r.get('/templates', requireRole('Agent'), ctrl.listTemplates);
+r.post('/uploads', requireRole('Agent'), ctrl.uploadAsset);
+r.post('/messages/:messageId/transcribe', requireRole('Agent'), ctrl.transcribeMessage);
 
-export default router;
+export default r;
