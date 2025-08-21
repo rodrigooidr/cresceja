@@ -4,14 +4,72 @@ import fetch from 'node-fetch';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function upsertContactAndConversation(provider, providerMessage, orgHint) {
-  // Extrair external_id (ex.: número WA), nome e possível org a partir do channel config
-  // Aqui você pode mapear pelo phone_id/token -> org_id; por simplicidade, assuma uma org (stub) ou busque channel por metadata no DB.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  // ... obter orgId + channelId (SELECT em channels por credencial/phone_id)
-  // ... criar/achar contact por (org_id, platform, external_id)
-  // ... criar/achar conversation aberta por (org_id, channel_id, contact_id)
+    // descobrir channel/org a partir do orgHint/credencial
+    let channelRow;
+    if (provider === 'wa_cloud' || provider === 'whatsapp') {
+      const phoneId = orgHint || providerMessage?.phone_number_id || providerMessage?.metadata?.phone_number_id;
+      const { rows } = await client.query(
+        `SELECT org_id, id FROM channels WHERE kind='whatsapp' AND settings->>'phone_number_id'=$1`,
+        [phoneId]
+      );
+      channelRow = rows[0];
+    } else if (provider === 'instagram' || provider === 'facebook') {
+      const pageId = orgHint || providerMessage?.page_id;
+      const { rows } = await client.query(
+        `SELECT org_id, id FROM channels WHERE kind=$1 AND settings->>'page_id'=$2`,
+        [provider, pageId]
+      );
+      channelRow = rows[0];
+    }
 
-  return { orgId: '<org-uuid>', conversationId: 123, contactId: '<contact-uuid>' }; // preencher de verdade
+    if (!channelRow) throw new Error('channel_not_found');
+    const orgId = channelRow.org_id;
+    const channelId = channelRow.id;
+
+    // dados do contato
+    const externalId = providerMessage.from || providerMessage.sender?.id || providerMessage.user_id;
+    const name = providerMessage.profile?.name || providerMessage.name || externalId;
+    const photoAssetId = providerMessage.profile?.photo_asset_id || null;
+
+    const contactRes = await client.query(
+      `INSERT INTO contacts (org_id, platform, external_id, display_name, photo_asset_id)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (org_id, platform, external_id)
+         DO UPDATE SET display_name=EXCLUDED.display_name,
+                       photo_asset_id=COALESCE(EXCLUDED.photo_asset_id, contacts.photo_asset_id)
+         RETURNING id`,
+      [orgId, provider, externalId, name, photoAssetId]
+    );
+    const contactId = contactRes.rows[0].id;
+
+    // conversa aberta
+    const convSel = await client.query(
+      `SELECT id FROM conversations WHERE org_id=$1 AND channel_id=$2 AND contact_id=$3 AND status='open' LIMIT 1`,
+      [orgId, channelId, contactId]
+    );
+    let conversationId = convSel.rows[0]?.id;
+    if (!conversationId) {
+      const ins = await client.query(
+        `INSERT INTO conversations (org_id, channel_id, contact_id, status, last_message_at, unread_count)
+           VALUES ($1,$2,$3,'open',NOW(),0)
+           RETURNING id`,
+        [orgId, channelId, contactId]
+      );
+      conversationId = ins.rows[0].id;
+    }
+
+    await client.query('COMMIT');
+    return { orgId, conversationId, contactId };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 export async function downloadMediaToAsset({ orgId, url, kind, filename }) {

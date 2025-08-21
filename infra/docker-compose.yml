@@ -69,6 +69,40 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  social-worker:
+    container_name: cresceja-social-worker
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["node", "queues/social.worker.js"]
+    env_file:
+      - ../backend/.env.docker
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  transcribe-worker:
+    container_name: cresceja-transcribe-worker
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["node", "queues/transcribe.worker.js"]
+    env_file:
+      - ../backend/.env.docker
+    environment:
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   pgdata:
   uploads:
