@@ -10,7 +10,7 @@ const connection = new IORedis(process.env.REDIS_URL, {
 });
 
 // Exemplo básico de worker (ajuste conforme seu código real)
-new Worker('repurpose:jobs', async job => {
+new Worker('repurpose-jobs', async job => {
   // faça o processamento necessário aqui
   return { ok: true };
 }, { connection });

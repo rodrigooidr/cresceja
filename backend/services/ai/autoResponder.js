@@ -47,6 +47,6 @@ export async function autoReplyIfEnabled({ orgId, conversationId, contactId, tex
 
   const messageId = ins.rows[0].id;
 
-  const queue = new Queue('social:publish', { connection: getRedis() });
+  const queue = new Queue('social-publish', { connection: getRedis() });
   await queue.add('send', { orgId, conversationId, messageId }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });
 }

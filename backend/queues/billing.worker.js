@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { Worker, Queue, QueueScheduler } from 'bullmq';
+import pkg from 'bullmq';
+const { Worker, Queue, QueueScheduler } = pkg;
 import { redis as connection } from '../config/redis.js';
 import pg from 'pg';
 import { enqueue as sendEmail } from '../services/email/index.js';

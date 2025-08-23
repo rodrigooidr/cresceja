@@ -53,5 +53,5 @@ async function processor(job) {
   }
 }
 
-new Worker('social:publish', processor, { connection });
+new Worker('social-publish', processor, { connection });
 console.log('[social.worker] online');

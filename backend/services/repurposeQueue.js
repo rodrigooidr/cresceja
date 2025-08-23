@@ -1,6 +1,7 @@
 
 // ESM
-import { Queue } from 'bullmq';
+import pkg from 'bullmq';
+const { Queue } = pkg;
 import IORedis from 'ioredis';
 
 const connection = new IORedis(process.env.REDIS_URL || 'redis://redis:6379', {

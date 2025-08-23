@@ -1,21 +1,47 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import escalationSound from '../assets/sounds/escalation.mp3';
 
 export function useRealtimeInbox({ conversationId, onMessage, onConversation, onEscalation }) {
+  const socketRef = useRef(null);
+  const handlersRef = useRef({ onMessage, onConversation, onEscalation });
+
   useEffect(() => {
-    const socket = io();
-    const orgId = localStorage.getItem('org_id');
-    if (orgId) socket.emit('join', `org:${orgId}`);
-    if (conversationId && orgId) socket.emit('join', `conv:${orgId}:${conversationId}`);
-    socket.on('conversation:new', (p) => onConversation && onConversation(p));
-    socket.on('message:new', (p) => onMessage && onMessage(p));
-    socket.on('alert:escalation', (p) => {
-      const audio = new Audio(escalationSound);
-      audio.play().catch(() => {});
-      if (onEscalation) onEscalation(p);
-      else alert('Handoff solicitado');
+    handlersRef.current = { onMessage, onConversation, onEscalation };
+  }, [onMessage, onConversation, onEscalation]);
+
+  // cria a conexão apenas 1x
+  useEffect(() => {
+    const socket = io({
+      path: '/socket.io',
+      transports: ['websocket'],
+      autoConnect: true,
     });
-    return () => socket.disconnect();
-  }, [conversationId, onMessage, onConversation, onEscalation]);
+    socketRef.current = socket;
+
+    socket.on('connect_error', (err) => {
+      console.error('[socket] connect_error', err?.message || err);
+    });
+
+    socket.on('conversation:new', (p) => handlersRef.current.onConversation?.(p));
+    socket.on('message:new', (p) => handlersRef.current.onMessage?.(p));
+    socket.on('alert:escalation', (p) => {
+      try { new Audio(escalationSound).play(); } catch {}
+      const h = handlersRef.current.onEscalation;
+      if (h) h(p); else alert('Handoff solicitado');
+    });
+
+    return () => { try { socket.disconnect(); } catch {} socketRef.current = null; };
+  }, []);
+
+  // entrar nas salas quando a conversa mudar
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    const orgId = localStorage.getItem('org_id');
+    if (!orgId) return;
+
+    socket.emit('join', { orgId });
+    if (conversationId) socket.emit('join', { orgId, conversationId });
+  }, [conversationId]);
 }

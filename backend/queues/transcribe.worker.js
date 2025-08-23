@@ -1,6 +1,7 @@
 // backend/queues/transcribe.worker.js
 import 'dotenv/config';
-import { Worker } from 'bullmq';
+import pkg from 'bullmq';
+const { Worker } = pkg;
 import IORedis from 'ioredis';
 import { pool } from '../config/db.js';
 
@@ -28,7 +29,7 @@ async function transcribe({ orgId, messageId }) {
   );
 }
 
-new Worker('content:transcribe', async job => {
+new Worker('content-transcribe', async job => {
   await transcribe(job.data);
 }, { connection });
 

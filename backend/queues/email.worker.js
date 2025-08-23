@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { Worker, QueueScheduler } from 'bullmq';
+import pkg from 'bullmq';
+const { Worker, QueueScheduler } = pkg;
 import { redis as connection } from '../config/redis.js';
 import pg from 'pg';
 import { getProvider } from '../services/email/index.js';
@@ -13,7 +14,7 @@ const pool = new Pool({
   idleTimeoutMillis: 30_000,
 });
 
-const QUEUE_NAME = 'email:send';
+const QUEUE_NAME = 'email-send';
 
 const scheduler = new QueueScheduler(QUEUE_NAME, { connection });
 

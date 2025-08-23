@@ -1,6 +1,5 @@
 // backend/services/socialHelpers.js
 import { pool } from '../config/db.js';
-import fetch from 'node-fetch';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function upsertContactAndConversation(provider, providerMessage, orgHint) {

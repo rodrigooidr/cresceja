@@ -1,4 +1,5 @@
-import { Queue } from 'bullmq';
+import pkg from 'bullmq';
+const { Queue } = pkg;
 import { redis as connection } from '../../config/redis.js';
 import ses from './providers/ses.js';
 
@@ -8,7 +9,7 @@ export function getProvider(name = 'ses') {
   return providers[name] || ses;
 }
 
-export const emailQueue = new Queue('email:send', { connection });
+export const emailQueue = new Queue('email-send', { connection });
 
 export async function enqueue(data) {
   return emailQueue.add('send', data, {

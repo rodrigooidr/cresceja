@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import ConversationList from '../../components/inbox/ConversationList.jsx';
-import ChatWindow from '../../components/inbox/ChatWindow.jsx';
-import MessageComposer from '../../components/inbox/MessageComposer.jsx';
-import RightPanel from '../../components/inbox/RightPanel.jsx';
+import ConversationList from '../../components/Inbox/ConversationList.jsx';
+import ChatWindow from '../../components/Inbox/ChatWindow.jsx';
+import MessageComposer from '../../components/Inbox/MessageComposer.jsx';
+import RightPanel from '../../components/Inbox/RightPanel.jsx';
 import { useRealtimeInbox } from '../../hooks/useRealtimeInbox.js';
 
 export default function InboxPage() {

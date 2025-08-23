@@ -1,5 +1,7 @@
+const connection = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null, enableReadyCheck: false });
 import 'dotenv/config';
-import { Worker, Queue, QueueScheduler } from 'bullmq';
+import pkg from 'bullmq';
+const { Worker, Queue, QueueScheduler } = pkg;
 import { getRedis } from '../config/redis.js';
 import pg from 'pg';
 
@@ -10,7 +12,7 @@ const {
   CONTENT_RENDER_BACKOFF_MS = '2000',
 } = process.env;
 
-const connection = getRedis();
+const connection = connection;
 
 const { Pool } = pg;
 const pool = new Pool({
