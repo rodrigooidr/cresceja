@@ -14,12 +14,12 @@ import RegisterPage from './pages/Auth/RegisterPage';
 import { useAuth } from './contexts/AuthContext';
 import ContentCalendar from './pages/calendar/ContentCalendar.jsx';
 import ActivitiesPage from './pages/calendar/ActivitiesPage.jsx';
-import MarketingHome from './pages/Marketing/MarketingHome.jsx';
-import ListsPage from './pages/Marketing/ListsPage.jsx';
-import TemplatesPage from './pages/Marketing/TemplatesPage.jsx';
-import CampaignsPage from './pages/Marketing/CampaignsPage.jsx';
-import AutomationsPage from './pages/Marketing/AutomationsPage.jsx';
-import BillingPage from './pages/Admin/BillingPage.jsx';
+import MarketingHome from './pages/marketing/MarketingHome.jsx';
+import ListsPage from './pages/marketing/ListsPage.jsx';
+import TemplatesPage from './pages/marketing/TemplatesPage.jsx';
+import CampaignsPage from './pages/marketing/CampaignsPage.jsx';
+import AutomationsPage from './pages/marketing/AutomationsPage.jsx';
+import BillingPage from './pages/admin/BillingPage.jsx';
 
 const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
 const hasRole = (userRole, minRole) => {
