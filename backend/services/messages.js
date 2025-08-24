@@ -1,5 +1,5 @@
 
-import { query } from '../config/db-client.js';
+import { query } from '../config/db.js';
 
 export async function findOrCreateLeadByChannel({ channel_type, external_from, name=null, phone=null, email=null }){
   // Try by phone/email; else create with consent=false (to be collected)
