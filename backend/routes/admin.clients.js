@@ -1,10 +1,9 @@
 import express from "express";
 import { query } from "../config/db.js";
-import authenticate from "../middleware/authenticate.js";
-import { requireRole } from "../middleware/rbac.js";
+import { authRequired, requireRole } from "../middleware/auth.js";
 
 const router = express.Router();
-router.use(authenticate, requireRole("owner"));
+router.use(authRequired, requireRole("owner"));
 
 // GET /api/admin/clients
 router.get("/clients", async (req, res) => {

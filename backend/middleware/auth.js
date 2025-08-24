@@ -7,7 +7,12 @@ export function authOptional(req, _res, next){
   const h = req.headers.authorization || "";
   const tok = h.startsWith("Bearer ") ? h.slice(7) : null;
   if (tok){
-    try { req.user = jwt.verify(tok, SECRET); } catch { req.user = null; }
+    try {
+      const payload = jwt.verify(tok, SECRET);
+      req.user = { id: payload.id || payload.sub, ...payload };
+    } catch {
+      req.user = null;
+    }
   }
   next();
 }
@@ -17,7 +22,8 @@ export function authRequired(req, res, next){
   const tok = h.startsWith("Bearer ") ? h.slice(7) : null;
   if (!tok) return res.status(401).json({ error: "unauthorized" });
   try {
-    req.user = jwt.verify(tok, SECRET);
+    const payload = jwt.verify(tok, SECRET);
+    req.user = { id: payload.id || payload.sub, ...payload };
     next();
   } catch {
     return res.status(401).json({ error: "unauthorized" });
@@ -27,7 +33,9 @@ export function authRequired(req, res, next){
 export function requireRole(...roles){
   return (req, res, next)=>{
     const role = req.user?.role;
-    if (!role || !roles.includes(role)) return res.status(403).json({ error: "forbidden" });
-    next();
+    const isOwner = req.user?.is_owner;
+    if (!role && !isOwner) return res.status(403).json({ error: "forbidden" });
+    if (isOwner || roles.includes(role)) return next();
+    return res.status(403).json({ error: "forbidden" });
   };
 }
