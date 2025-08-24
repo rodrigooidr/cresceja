@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import url from 'url';
-import { query } from '../../config/db.js';
+import { query } from '../config/db.js';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const migrationsDir = __dirname;

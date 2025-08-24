@@ -6,13 +6,13 @@ Param(
 $ErrorActionPreference = "Stop"
 $files = @(
   ".\infra\bootstrap_core.sql",
-  ".\backend\sql\migrations\001_sprint1.sql",
-  ".\backend\sql\migrations\002_sprint2.sql",
-  ".\backend\sql\migrations\003_golive.sql",
-  ".\backend\sql\social_posts_and_approvals.sql",
-  ".\backend\sql\onboarding_schema.sql",
-  ".\backend\sql\ai_usage_logs_init.sql",
-  ".\backend\sql\indices.sql"
+  ".\backend\db\migrations\001_sprint1.sql",
+  ".\backend\db\migrations\002_sprint2.sql",
+  ".\backend\db\migrations\003_golive.sql",
+  ".\backend\db\social_posts_and_approvals.sql",
+  ".\backend\db\onboarding_schema.sql",
+  ".\backend\db\ai_usage_logs_init.sql",
+  ".\backend\db\indices.sql"
 )
 foreach ($f in $files) {
   if (!(Test-Path $f)) { Write-Host "SKIP (not found): $f"; continue }
