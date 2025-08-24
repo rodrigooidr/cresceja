@@ -1,5 +1,6 @@
-
 import axios from 'axios';
+
+import api from "../api/api";
 import { useAuth } from './AuthContext';
 
 export function useApi() {

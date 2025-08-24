@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from "react";
 import api from "../../api/api";
 
@@ -11,12 +12,12 @@ export default function SubscriptionStatus() {
     setError(null);
     try {
       // Prefer /api/subscription/status if seu backend usa esse caminho
-      const res = await api.get("/subscription/status");
+      const res = await axios.get("/subscription/status");
       setData(res.data);
     } catch (e1) {
       try {
         // Alternativa comum
-        const res = await api.get("/billing/status");
+        const res = await axios.get("/billing/status");
         setData(res.data);
       } catch (e2) {
         setError("Não foi possível obter o status da assinatura. Verifique se o backend expõe /subscription/status ou /billing/status.");
@@ -62,3 +63,5 @@ export default function SubscriptionStatus() {
     </div>
   );
 }
+
+

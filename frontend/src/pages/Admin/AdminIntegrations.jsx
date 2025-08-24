@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from "react";
 import api from "../../api/api";
 
@@ -69,7 +70,7 @@ export default function AdminIntegrations() {
     let alive = true;
     (async () => {
       try {
-        const { data } = await api.get(`/api/integrations/${tab}/status`);
+        const { data } = await axios.get(`/api/integrations/${tab}/status`);
         if (alive) setForm(data?.integration?.config || {});
       } catch {
         if (alive) setForm({});
@@ -82,7 +83,7 @@ export default function AdminIntegrations() {
 
   const save = async () => {
     try {
-      await api.post(`/api/integrations/${current.key}/connect`, { config: form });
+      await axios.post(`/api/integrations/${current.key}/connect`, { config: form });
       setStatus((s) => ({ ...s, [current.key]: "ok" }));
     } catch {
       setStatus((s) => ({ ...s, [current.key]: "erro" }));
@@ -146,3 +147,5 @@ export default function AdminIntegrations() {
     </div>
   );
 }
+
+

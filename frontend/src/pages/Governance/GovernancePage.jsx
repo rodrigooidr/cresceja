@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -7,7 +8,7 @@ function GovernancePage() {
 
   const carregarLogs = async () => {
     try {
-      const res = await api.get('/logs/ia');
+      const res = await axios.get('/logs/ia');
       const ordenado = res.data.sort((a, b) => new Date(b.data) - new Date(a.data));
       setLogs(ordenado);
     } catch (err) {
@@ -46,3 +47,4 @@ function GovernancePage() {
 }
 
 export default GovernancePage;
+

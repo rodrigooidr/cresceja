@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -19,7 +20,7 @@ export default function PaymentSuccess() {
   useEffect(() => {
     async function verify() {
       try {
-        const res = await api.get("/billing/verify", { params: { session_id: sessionId, payment_id: paymentId, plan } });
+        const res = await axios.get("/billing/verify", { params: { session_id: sessionId, payment_id: paymentId, plan } });
         if (res?.data?.status === "paid" || res?.data?.ok) {
           setOk(true);
           setMsg("Pagamento confirmado! Sua assinatura foi ativada/renovada.");
@@ -27,7 +28,7 @@ export default function PaymentSuccess() {
         }
       } catch (e1) {
         try {
-          const res2 = await api.get("/payments/verify", { params: { session_id: sessionId, payment_id: paymentId, plan } });
+          const res2 = await axios.get("/payments/verify", { params: { session_id: sessionId, payment_id: paymentId, plan } });
           if (res2?.data?.status === "paid" || res2?.data?.ok) {
             setOk(true);
             setMsg("Pagamento confirmado! Sua assinatura foi ativada/renovada.");
@@ -52,3 +53,5 @@ export default function PaymentSuccess() {
     </div>
   );
 }
+
+

@@ -1,4 +1,4 @@
-// backend/server.js — unified server
+// backend/server.js — unified server (correto)
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -12,7 +12,7 @@ import http from 'http';
 
 // Routers
 import authRouter from './routes/auth.js';
-import healthRouter from './routes/health.js';
+// import healthRouter from './routes/health.js'; // opcional se quiser manter inline
 import lgpdRouter from './routes/lgpd.js';
 import crmRouter from './routes/crm.js';
 import leadsRouter from './routes/leads.js';
@@ -30,16 +30,19 @@ import whatsappTemplatesRouter from './routes/whatsapp_templates.js';
 import agendaRouter from './routes/agenda_whatsapp.js';
 import integrationsRouter from './routes/integrations.js';
 
-// Additional routes from new server
 import publicRouter from './routes/public.js';
 import orgsRouter from './routes/orgs.js';
 import metaWebhookRouter from './routes/webhooks/meta.js';
 import inboxExtraRouter from './routes/inboxExtra.js';
+import channelsRouter from './routes/channels.js';
+import postsRouter from './routes/posts.js';
 
 // Services & middleware
 import { attachIO } from './services/realtime.js';
-import { authRequired as auth } from './middleware/auth.js';
-import { withOrg } from './middleware/withOrg.js';
+import { authRequired, impersonationGuard } from './middleware/auth.js';
+// ❌ NÃO usar o antigo middleware/arquivo de impersonation aqui
+// import { impersonation } from './middleware/impersonation.js';
+import { pgRlsContext } from './middleware/pgRlsContext.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -80,33 +83,40 @@ app.get('/api/health', (_req, res) => {
 // Ping simples
 app.get('/api/ping', (_req, res) => res.json({ pong: true, t: Date.now() }));
 
-// ---------- Rotas ----------
-app.use('/api/auth', authRouter);
-// mantém o router dedicado também
-app.use('/api/health', healthRouter);
+// ---------- ROTAS PÚBLICAS (antes do auth) ----------
+app.use('/api/webhooks/instagram', igRouter);
+app.use('/api/webhooks/messenger', fbRouter);
+// Se o metaWebhook precisar assinar payloads, troque por express.raw({type:'application/json'})
+app.use('/api/webhooks', /* express.json({ limit: '10mb' }), */ metaWebhookRouter);
+
+app.use('/api/public', publicRouter);
+app.use('/api/auth', authRouter); // login não exige token
+
+// ---------- MIDDLEWARES GLOBAIS PROTEGIDOS ----------
+app.use(authRequired);        // popula req.user
+app.use(impersonationGuard);  // define req.orgId/impersonation
+app.use(pgRlsContext);        // abre transação e faz set_config(app.org_id/app.role)
+
+// ---------- ROTAS PROTEGIDAS (RLS ativo via req.db) ----------
+app.use('/api/channels', channelsRouter);
+app.use('/api/posts', postsRouter);
 
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/crm', crmRouter);
 app.use('/api/leads', leadsRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/ai-credits', aiCreditsRouter);
-app.use('/api', onboardingRouter);
+app.use('/api/onboarding', onboardingRouter);      // em /api/onboarding
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/attachments', attachmentsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/subscription', subscriptionRouter);
-app.use('/api/webhooks/instagram', igRouter);
-app.use('/api/webhooks/messenger', fbRouter);
 app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
 app.use('/api/agenda', agendaRouter);
 app.use('/api/integrations', integrationsRouter);
-
-// Novas rotas
-app.use('/api/public', publicRouter);
-app.use('/api', orgsRouter);
-app.use('/api/webhooks', express.json({ limit: '10mb' }), metaWebhookRouter);
-app.use('/api/inbox', auth, withOrg, inboxExtraRouter);
+app.use('/api/orgs', orgsRouter);                  // dedicado
+app.use('/api/inbox', inboxExtraRouter);           // já protegido globalmente
 
 // 404 apenas para /api/*
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
@@ -139,4 +149,3 @@ const PORT = process.env.PORT || 4000;
 httpServer.listen(PORT, () => {
   logger.info(`CresceJá backend + WS listening on :${PORT}`);
 });
-

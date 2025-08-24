@@ -1,3 +1,4 @@
+import axios from 'axios';
 
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/axios';
@@ -7,13 +8,13 @@ export default function SegmentsPage(){
   const [minScore, setMinScore] = useState(60);
   const [channel, setChannel] = useState('');
   const load = async () => {
-    const r = await api.get('/crm/segments');
+    const r = await axios.get('/crm/segments');
     setSegments(r.data);
   };
   useEffect(()=>{ load(); },[]);
   const create = async () => {
     const filter = { min_score: Number(minScore), channel: channel || undefined };
-    await api.post('/crm/segments', { name, filter });
+    await axios.post('/crm/segments', { name, filter });
     await load();
   };
   return (
@@ -31,3 +32,5 @@ export default function SegmentsPage(){
     </div>
   );
 }
+
+

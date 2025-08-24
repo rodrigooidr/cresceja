@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -13,7 +14,7 @@ function MarketingPage() {
 
   const carregarPosts = async () => {
     try {
-      const res = await api.get('/posts');
+      const res = await axios.get('/posts');
       setPosts(res.data);
     } catch (err) {
       console.error('Erro ao carregar posts', err);
@@ -23,7 +24,7 @@ function MarketingPage() {
   const criarPost = async () => {
     if (!texto || !canal) return;
     try {
-      await api.post('/posts', {
+      await axios.post('/posts', {
         text: texto,
         channel: canal,
         scheduledFor: data,
@@ -95,3 +96,4 @@ function MarketingPage() {
 }
 
 export default MarketingPage;
+

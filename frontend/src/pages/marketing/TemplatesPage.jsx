@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -9,7 +10,7 @@ export default function TemplatesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/marketing/templates');
+        const res = await axios.get('/marketing/templates');
         setTemplates(res.data.data || []);
       } catch (err) {
         console.error('load templates', err);
@@ -19,7 +20,7 @@ export default function TemplatesPage() {
 
   const create = async () => {
     try {
-      const res = await api.post('/marketing/templates', form);
+      const res = await axios.post('/marketing/templates', form);
       setTemplates([...templates, res.data.data]);
       setForm({ name: '', subject: '', body: '' });
     } catch (err) {
@@ -44,3 +45,5 @@ export default function TemplatesPage() {
     </div>
   );
 }
+
+

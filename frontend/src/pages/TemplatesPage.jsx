@@ -1,3 +1,4 @@
+import axios from 'axios';
 
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/axios';
@@ -7,17 +8,17 @@ export default function TemplatesPage(){
   const [form, setForm] = useState({ name:'boas_vindas', category:'MARKETING', language:'pt_BR', body:'Olá {{nome}}, podemos te ajudar?' });
 
   const load = async () => {
-    const r = await api.get('/whatsapp/templates');
+    const r = await axios.get('/whatsapp/templates');
     setItems(r.data);
   };
   useEffect(()=>{ load(); },[]);
 
   const create = async () => {
-    await api.post('/whatsapp/templates', form);
+    await axios.post('/whatsapp/templates', form);
     await load();
   };
   const setStatus = async (id, status) => {
-    await api.patch(`/whatsapp/templates/${id}/status`, { status });
+    await axios.patch(`/whatsapp/templates/${id}/status`, { status });
     await load();
   };
 
@@ -46,3 +47,5 @@ export default function TemplatesPage(){
     </div>
   );
 }
+
+

@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from "react";
 import api from "../../api/api";
 
@@ -7,7 +8,7 @@ export default function AdminQuickReplies() {
 
   const load = async () => {
     try {
-      const { data } = await api.get("/api/quick-replies");
+      const { data } = await axios.get("/quick-replies");
       const list = Array.isArray(data?.templates) ? data.templates : [];
       setItems(list);
     } catch {
@@ -21,14 +22,14 @@ export default function AdminQuickReplies() {
 
   const save = async () => {
     if (!form.title || !form.body) return;
-    await api.post("/api/quick-replies", form);
+    await axios.post("/quick-replies", form);
     setForm({ title: "", body: "" });
     load();
   };
 
   const remove = async (id) => {
     if (!window.confirm("Excluir esta resposta?")) return;
-    await api.delete(`/api/quick-replies/${id}`);
+    await axios.delete(`/api/quick-replies/${id}`);
     load();
   };
 
@@ -38,7 +39,7 @@ export default function AdminQuickReplies() {
     if (title === null) return;
     const body = prompt("Texto:", cur?.body || "");
     if (body === null) return;
-    await api.put(`/api/quick-replies/${id}`, { title, body });
+    await axios.put(`/api/quick-replies/${id}`, { title, body });
     load();
   };
 
@@ -104,3 +105,6 @@ export default function AdminQuickReplies() {
     </div>
   );
 }
+
+
+

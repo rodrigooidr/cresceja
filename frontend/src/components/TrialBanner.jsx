@@ -1,3 +1,4 @@
+import axios from 'axios';
 
 import React from 'react';
 import { useEffect, useState } from 'react';
@@ -8,7 +9,7 @@ export default function TrialBanner(){
   useEffect(()=>{
     (async()=>{
       try{
-        const r = await api.get('/subscription/status');
+        const r = await axios.get('/subscription/status');
         setSub(r.data);
       }catch{}
     })();
@@ -21,3 +22,5 @@ export default function TrialBanner(){
     </div>
   );
 }
+
+

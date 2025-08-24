@@ -1,3 +1,4 @@
+import axios from 'axios';
 // src/components/TrialTopBanner.jsx
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -14,7 +15,7 @@ export default function TrialTopBanner() {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await api.get("/api/subscription/status");
+        const { data } = await axios.get("/subscription/status");
         if (mounted) setStatus(data || null);
       } catch {
         // ok: se falhar, caímos no TrialDaysLabel
@@ -78,3 +79,6 @@ export default function TrialTopBanner() {
     </div>
   );
 }
+
+
+

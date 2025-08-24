@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../api/api";
@@ -30,7 +31,7 @@ export default function CheckoutPage() {
     };
     try {
       // Tente endpoints mais comuns
-      const res = await api.post("/billing/checkout", payload);
+      const res = await axios.post("/billing/checkout", payload);
       const url = res?.data?.checkout_url || res?.data?.init_point || res?.data?.url;
       if (url) {
         window.location.href = url;
@@ -45,7 +46,7 @@ export default function CheckoutPage() {
       setError("Resposta do checkout não trouxe URL. Verifique o backend.");
     } catch (e1) {
       try {
-        const res2 = await api.post("/payments/checkout", payload);
+        const res2 = await axios.post("/payments/checkout", payload);
         const url2 = res2?.data?.checkout_url || res2?.data?.init_point || res2?.data?.url;
         if (url2) {
           window.location.href = url2;
@@ -82,3 +83,5 @@ export default function CheckoutPage() {
     </div>
   );
 }
+
+

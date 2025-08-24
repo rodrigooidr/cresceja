@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useState } from 'react';
 import api from '../api/api';
 
@@ -16,7 +17,7 @@ export default function LeadModal({ onClose, onSaved }) {
       return;
     }
     try {
-      await api.post('/api/leads', form);
+      await axios.post('/api/leads', form);
       onClose();
       if (onSaved) onSaved();
     } catch (err) {
@@ -82,3 +83,5 @@ export default function LeadModal({ onClose, onSaved }) {
     </div>
   );
 }
+
+

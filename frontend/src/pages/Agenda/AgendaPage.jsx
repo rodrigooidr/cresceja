@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -12,7 +13,7 @@ function AgendaPage() {
 
   const carregarEventos = async () => {
     try {
-      const res = await api.get('/agenda');
+      const res = await axios.get('/agenda');
       setEventos(res.data);
     } catch (err) {
       console.error('Erro ao carregar agenda', err);
@@ -22,7 +23,7 @@ function AgendaPage() {
   const adicionarEvento = async () => {
     if (!titulo || !data || !canal) return;
     try {
-      await api.post('/agenda', { title: titulo, date: data, channel: canal });
+      await axios.post('/agenda', { title: titulo, date: data, channel: canal });
       setTitulo('');
       setData('');
       carregarEventos();
@@ -76,3 +77,4 @@ function AgendaPage() {
 }
 
 export default AgendaPage;
+

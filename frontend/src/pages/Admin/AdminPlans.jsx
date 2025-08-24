@@ -1,3 +1,4 @@
+import axios from 'axios';
 // src/pages/Admin/AdminPlans.jsx
 import React, { useEffect, useState } from "react";
 import api from "../../api/api";
@@ -40,9 +41,9 @@ export default function AdminPlans() {
       setLoading(true);
       let res;
       try {
-        res = await api.get(`/api/admin/plans`);
+        res = await axios.get(`/api/admin/plans`);
       } catch {
-        res = await api.get(`/api/public/plans`);
+        res = await axios.get(`/api/public/plans`);
       }
       const data = res?.data;
       const list = Array.isArray(data?.plans)
@@ -109,9 +110,9 @@ export default function AdminPlans() {
       };
 
       if (!plan._isNew) {
-        await api.patch(`/api/admin/plans/${plan.id}`, body);
+        await axios.patch(`/api/admin/plans/${plan.id}`, body);
       } else {
-        const { data } = await api.post(`/api/admin/plans`, body);
+        const { data } = await axios.post(`/api/admin/plans`, body);
         const newId = data?.id || body.id;
         setItems((prev) =>
           prev.map((it) =>
@@ -145,11 +146,11 @@ export default function AdminPlans() {
     setSavingId(plan.id || "_new_");
     try {
       try {
-        await api.post(`/api/admin/plans/${plan.id}/publish`, {
+        await axios.post(`/api/admin/plans/${plan.id}/publish`, {
           is_published: value,
         });
       } catch {
-        await api.patch(`/api/admin/plans/${plan.id}`, { is_published: value });
+        await axios.patch(`/api/admin/plans/${plan.id}`, { is_published: value });
       }
       setItems((prev) =>
         prev.map((it) =>
@@ -169,7 +170,7 @@ export default function AdminPlans() {
     if (plan._isNew) return removePlanLocal(plan);
     if (!window.confirm('Excluir plano permanentemente?')) return;
     try {
-      await api.delete(`/api/admin/plans/${plan.id}`);
+      await axios.delete(`/api/admin/plans/${plan.id}`);
       setItems((prev) => prev.filter((p) => p._key !== plan._key));
       window.dispatchEvent(new CustomEvent('plans-updated'));
     } catch (e) {
@@ -485,3 +486,5 @@ export default function AdminPlans() {
     </div>
   );
 }
+
+

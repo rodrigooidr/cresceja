@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/axios';
 
@@ -13,10 +14,10 @@ export default function DashboardPage() {
     async function fetchData() {
       try {
         const [p, c, a, n] = await Promise.all([
-          api.get('/reports/pipeline', { params: { channel } }),
-          api.get('/reports/conversion', { params: { channel } }),
-          api.get('/reports/atendimento', { params: { channel } }),
-          api.get(`/reports/nps?days=${period}${channel ? `&channel=${channel}` : ''}`)
+          axios.get('/reports/pipeline', { params: { channel } }),
+          axios.get('/reports/conversion', { params: { channel } }),
+          axios.get('/reports/atendimento', { params: { channel } }),
+          axios.get(`/reports/nps?days=${period}${channel ? `&channel=${channel}` : ''}`)
         ]);
         setPipeline(p.data);
         setConversion(c.data);
@@ -82,3 +83,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+

@@ -1,44 +1,24 @@
 // src/pages/Auth/LoginPage.jsx
 import React, { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
-import api from "../../api/api";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 
 export default function LoginPage() {
+  const { login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || "/crm/oportunidades";
+  const from = location.state?.from?.pathname || "/app"; // <- default certo
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
 
   async function handleSubmit(e) {
     e.preventDefault();
     setErro("");
-    setLoading(true);
     try {
-      const { data } = await api.post("/api/auth/login", { email, password });
-      const { token, user } = data || {};
-      if (!token) throw new Error("Falha no login: token ausente.");
-
-      // guarda o token e prepara axios
-      localStorage.setItem("token", token);
-      api.defaults.headers.common.Authorization = `Bearer ${token}`;
-
-      // se o backend não mandar 'user', tenta buscar em /api/auth/me (opcional)
-      let me = user || null;
-      if (!me) {
-        try {
-          const r = await api.get("/api/auth/me");
-          me = r.data;
-        } catch {
-          /* ok se não existir */
-        }
-      }
-      if (me) localStorage.setItem("user", JSON.stringify(me));
-
-      navigate(from, { replace: true });
+      const ok = await login(email.trim(), password);
+      if (ok) navigate(from, { replace: true });
     } catch (err) {
       const msg =
         err?.response?.data?.message ||
@@ -46,8 +26,6 @@ export default function LoginPage() {
         err?.message ||
         "Não foi possível entrar.";
       setErro(msg);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -70,7 +48,7 @@ export default function LoginPage() {
               className="border p-2 rounded w-full"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
+              autoComplete="username"
               required
             />
           </div>
@@ -87,13 +65,17 @@ export default function LoginPage() {
             />
           </div>
 
-          <button
+        <button
             type="submit"
             className="w-full bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
             disabled={loading}
           >
             {loading ? "Entrando…" : "Entrar"}
           </button>
+
+          <div className="text-sm text-gray-600 mt-3">
+            Não tem conta? <Link to="/register" className="text-blue-600">Criar conta</Link>
+          </div>
         </form>
       </div>
     </div>

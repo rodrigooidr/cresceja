@@ -1,3 +1,4 @@
+import axios from 'axios';
 // src/pages/Credits/CreditsPage.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
@@ -15,8 +16,8 @@ export default function CreditsPage() {
     setErr("");
     try {
       const [cRes, sRes] = await Promise.all([
-        api.get("/api/ai-credits/status"),
-        api.get("/api/subscription/status"),
+        axios.get("/ai-credits/status"),
+        axios.get("/subscription/status"),
       ]);
       setCredits(cRes?.data ?? null);
       setSub(sRes?.data ?? null);
@@ -34,7 +35,7 @@ export default function CreditsPage() {
 
   const startTrial = async () => {
     try {
-      await api.post("/api/subscription/start-trial");
+      await axios.post("/subscription/start-trial");
       await fetchAll();
     } catch (e) {
       console.error("startTrial", e);
@@ -193,3 +194,6 @@ export default function CreditsPage() {
     </div>
   );
 }
+
+
+

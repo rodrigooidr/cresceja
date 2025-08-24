@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import OpportunityModal from '../components/OpportunityModal';
@@ -18,7 +19,7 @@ export default function PipelinePage() {
 
   const loadBoard = async () => {
     try {
-      const res = await api.get('/opportunities/board');
+      const res = await axios.get('/opportunities/board');
       setColumns(res.data.data);
     } catch (err) {
       console.error('Erro ao carregar oportunidades', err);
@@ -40,7 +41,7 @@ export default function PipelinePage() {
       [destination.droppableId]: destItems,
     }));
     try {
-      await api.put(`/opportunities/${moved.id}`, { status: destination.droppableId });
+      await axios.put(`/opportunities/${moved.id}`, { status: destination.droppableId });
     } catch (err) {
       console.error('Erro ao mover oportunidade', err);
       loadBoard();
@@ -106,3 +107,5 @@ export default function PipelinePage() {
     </div>
   );
 }
+
+

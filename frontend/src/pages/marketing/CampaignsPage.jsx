@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -12,9 +13,9 @@ export default function CampaignsPage() {
     (async () => {
       try {
         const [cRes, tRes, lRes] = await Promise.all([
-          api.get('/marketing/campaigns'),
-          api.get('/marketing/templates'),
-          api.get('/marketing/lists'),
+          axios.get('/marketing/campaigns'),
+          axios.get('/marketing/templates'),
+          axios.get('/marketing/lists'),
         ]);
         setCampaigns(cRes.data.data || []);
         setTemplates(tRes.data.data || []);
@@ -27,7 +28,7 @@ export default function CampaignsPage() {
 
   const create = async () => {
     try {
-      const res = await api.post('/marketing/campaigns', form);
+      const res = await axios.post('/marketing/campaigns', form);
       setCampaigns([...campaigns, res.data.data]);
       setForm({ name: '', template_id: '', list_id: '' });
     } catch (err) {
@@ -38,13 +39,13 @@ export default function CampaignsPage() {
   const sendTest = async (id) => {
     const to = prompt('Enviar teste para:');
     if (!to) return;
-    await api.post(`/marketing/campaigns/${id}/test`, { to });
+    await axios.post(`/marketing/campaigns/${id}/test`, { to });
     alert('Teste enviado');
   };
 
   const schedule = async (id) => {
     const sendAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
-    await api.post(`/marketing/campaigns/${id}/schedule`, { sendAt });
+    await axios.post(`/marketing/campaigns/${id}/schedule`, { sendAt });
     alert('Agendado');
   };
 
@@ -82,3 +83,5 @@ export default function CampaignsPage() {
     </div>
   );
 }
+
+

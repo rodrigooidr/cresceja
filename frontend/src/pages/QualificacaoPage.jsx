@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import api from '../api/api';
 import LeadQualifyModal from '../components/LeadQualifyModal';
@@ -13,7 +14,7 @@ export default function QualificacaoPage() {
   const loadLeads = async () => {
     const params = { page, limit };
     if (status !== 'todos') params.status = status;
-    const res = await api.get('/api/leads', { params });
+    const res = await axios.get('/api/leads', { params });
     setLeads(res.data.data);
     setTotal(res.data.meta.total);
   };
@@ -30,7 +31,7 @@ export default function QualificacaoPage() {
   };
 
   const moverParaOportunidade = async (lead) => {
-    await api.post(`/api/leads/${lead.id}/mover-para-oportunidade`);
+    await axios.post(`/api/leads/${lead.id}/mover-para-oportunidade`);
     alert('Solicitado');
   };
 
@@ -135,3 +136,5 @@ export default function QualificacaoPage() {
     </div>
   );
 }
+
+

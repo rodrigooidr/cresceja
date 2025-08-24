@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useState, useEffect } from 'react';
 import api from '../api/api';
 import LeadModal from '../components/LeadModal';
@@ -10,7 +11,7 @@ export default function LeadsPage() {
   const [showModal, setShowModal] = useState(false);
 
   const loadLeads = async () => {
-    const res = await api.get('/api/leads', { params: { page, limit } });
+    const res = await axios.get('/api/leads', { params: { page, limit } });
     setLeads(res.data.data);
     setTotal(res.data.meta.total);
   };
@@ -86,3 +87,5 @@ export default function LeadsPage() {
     </div>
   );
 }
+
+

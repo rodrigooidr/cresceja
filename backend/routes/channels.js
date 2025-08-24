@@ -1,17 +1,20 @@
 import { Router } from 'express';
-import { authRequired } from '../middleware/auth.js';
-import { withOrg } from '../middleware/withOrg.js';
 import { requireRole } from '../middleware/requireRole.js';
-import * as ctrl from '../controllers/channelsController.js';
+import { ROLES } from '../lib/permissions.js';
 
 const router = Router();
 
-router.use(authRequired, withOrg, requireRole('Manager'));
-
-router.get('/', ctrl.list);
-router.post('/', ctrl.create);
-router.put('/:id', ctrl.update);
-router.delete('/:id', ctrl.remove);
-router.post('/whatsapp/baileys/session', ctrl.baileysSession);
+// Apenas OrgOwner (ou SuperAdmin) conecta/desconecta provedores
+router.post('/connect', requireRole(ROLES.OrgOwner), async (req, res, next) => {
+  try {
+    const { provider, config } = req.body;
+    await req.db.query(
+      `INSERT INTO channels (org_id, provider, config, created_at)
+       VALUES (current_setting('app.org_id')::uuid, $1, $2, now())`,
+      [provider, config]
+    );
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
 
 export default router;

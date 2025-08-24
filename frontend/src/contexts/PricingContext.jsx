@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import api from "../api/api";
 
@@ -52,8 +53,8 @@ export function PricingProvider({ children }){
     setError("");
     try {
       let res;
-      try { res = await api.get("/api/public/plans"); }
-      catch { res = await api.get("/api/admin/plans"); }
+      try { res = await axios.get("/public/plans"); }
+      catch { res = await axios.get("/admin/plans"); }
       const data = res?.data ?? {};
       const list =
         Array.isArray(data?.plans) ? data.plans :
@@ -99,3 +100,6 @@ export function PricingProvider({ children }){
 }
 
 export const usePricing = ()=> useContext(PricingCtx);
+
+
+

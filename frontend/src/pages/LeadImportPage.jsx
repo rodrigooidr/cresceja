@@ -1,3 +1,4 @@
+import axios from 'axios';
 
 import React, { useState } from 'react';
 import { api } from '../api/axios';
@@ -8,7 +9,7 @@ export default function LeadImportPage(){
     e.preventDefault();
     const fd = new FormData();
     fd.append('file', file);
-    const r = await api.post('/leads/import-csv', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    const r = await axios.post('/leads/import-csv', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
     setResult(r.data);
   };
   return (
@@ -23,3 +24,5 @@ export default function LeadImportPage(){
     </main>
   );
 }
+
+

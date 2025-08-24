@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/axios';
 
@@ -12,7 +13,7 @@ export default function FidelizacaoPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/admin/clients');
+        const res = await axios.get('/admin/clients');
         const list = res.data.clients || [];
         setClients(list);
         list.forEach((c) => {
@@ -27,7 +28,7 @@ export default function FidelizacaoPage() {
 
   const fetchNps = async (clientId) => {
     try {
-      const r = await api.get('/nps/results', { params: { clientId } });
+      const r = await axios.get('/nps/results', { params: { clientId } });
       setNps((prev) => ({ ...prev, [clientId]: r.data }));
     } catch (e) {
       console.error(e);
@@ -36,7 +37,7 @@ export default function FidelizacaoPage() {
 
   const fetchRewards = async (clientId) => {
     try {
-      const r = await api.get('/rewards', { params: { clientId } });
+      const r = await axios.get('/rewards', { params: { clientId } });
       setRewards((prev) => ({ ...prev, [clientId]: r.data }));
     } catch (e) {
       console.error(e);
@@ -51,10 +52,10 @@ export default function FidelizacaoPage() {
 
   const sendSurvey = async () => {
     if (!modalClient) return;
-    const { data: survey } = await api.post('/nps/send', {
+    const { data: survey } = await axios.post('/nps/send', {
       clientId: modalClient.id,
     });
-    await api.post(`/nps/respond/${survey.id}`, {
+    await axios.post(`/nps/respond/${survey.id}`, {
       score: Number(score),
       comment,
     });
@@ -66,7 +67,7 @@ export default function FidelizacaoPage() {
     const type = prompt('Tipo de recompensa (cupom/bonus/upgrade):');
     if (!type) return;
     const value = prompt('Valor/descrição:') || '';
-    await api.post('/rewards', { clientId, type, value });
+    await axios.post('/rewards', { clientId, type, value });
     await fetchRewards(clientId);
   };
 
@@ -135,3 +136,5 @@ export default function FidelizacaoPage() {
     </div>
   );
 }
+
+

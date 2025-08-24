@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -10,7 +11,7 @@ function CRMPage() {
 
   const carregarLeads = async () => {
     try {
-      const res = await api.get('/leads');
+      const res = await axios.get('/leads');
       setLeads(res.data);
     } catch (err) {
       console.error('Erro ao carregar leads', err);
@@ -20,7 +21,7 @@ function CRMPage() {
   const criarLead = async () => {
     if (!nome.trim()) return;
     try {
-      await api.post('/leads', { name: nome, stage: 'Novo' });
+      await axios.post('/leads', { name: nome, stage: 'Novo' });
       setNome('');
       carregarLeads();
     } catch (err) {
@@ -30,7 +31,7 @@ function CRMPage() {
 
   const moverLead = async (id, novoStage) => {
     try {
-      await api.put(`/leads/${id}`, { stage: novoStage });
+      await axios.put(`/leads/${id}`, { stage: novoStage });
       carregarLeads();
     } catch (err) {
       console.error('Erro ao mover lead', err);
@@ -87,3 +88,4 @@ function CRMPage() {
 }
 
 export default CRMPage;
+

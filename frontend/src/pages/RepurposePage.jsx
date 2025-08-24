@@ -1,3 +1,4 @@
+import axios from 'axios';
 
 import React, { useState } from 'react';
 import { api } from '../api/axios';
@@ -7,8 +8,8 @@ export default function RepurposePage(){
   const [status, setStatus] = useState(null);
   const [channel, setChannel] = useState('instagram');
   const enqueue = async () => {
-    await api.post(`/repurpose/${postId}`, { modes: ['story','email','video'] });
-    const r = await api.get(`/repurpose/${postId}/status`);
+    await axios.post(`/repurpose/${postId}`, { modes: ['story','email','video'] });
+    const r = await axios.get(`/repurpose/${postId}/status`);
     setStatus(r.data);
   };
   return (
@@ -33,3 +34,5 @@ export default function RepurposePage(){
     </div>
   );
 }
+
+

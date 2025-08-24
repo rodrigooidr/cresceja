@@ -1,3 +1,4 @@
+import axios from 'axios';
 
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/axios';
@@ -6,7 +7,7 @@ export default function ReportsPage(){
   const [credits, setCredits] = useState(null);
   useEffect(()=>{
     (async()=>{
-      const [c, k] = await Promise.all([ api.get('/reports/costs'), api.get('/reports/credits') ]);
+      const [c, k] = await Promise.all([ axios.get('/reports/costs'), axios.get('/reports/credits') ]);
       setCosts(c.data);
       setCredits(k.data);
     })();
@@ -21,3 +22,5 @@ export default function ReportsPage(){
     </div>
   );
 }
+
+

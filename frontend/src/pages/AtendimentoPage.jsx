@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import api from "../api/api";
@@ -38,7 +39,7 @@ export default function AtendimentoPage() {
     const load = async () => {
       try {
         const qs = filter === "pendente" ? "?status=pendente" : "?assigned_to=me";
-        const { data } = await api.get(`/api/conversations${qs}`);
+        const { data } = await axios.get(`/api/conversations${qs}`);
         setConversations(Array.isArray(data) ? data : []);
       } catch {
         setConversations([]);
@@ -52,7 +53,7 @@ export default function AtendimentoPage() {
     if (!active) return setMessages([]);
     const load = async () => {
       try {
-        const { data } = await api.get(`/api/conversations/${active.id}/messages`);
+        const { data } = await axios.get(`/api/conversations/${active.id}/messages`);
         setMessages(Array.isArray(data) ? data : []);
       } catch {
         setMessages([]);
@@ -64,7 +65,7 @@ export default function AtendimentoPage() {
   const enviarMensagem = async () => {
     if (!active || !text.trim()) return;
     try {
-      const { data } = await api.post(`/api/conversations/${active.id}/messages`, { content: text });
+      const { data } = await axios.post(`/api/conversations/${active.id}/messages`, { content: text });
       setText("");
       setMessages((prev) => [...prev, data]);
     } catch {}
@@ -73,7 +74,7 @@ export default function AtendimentoPage() {
   const assumir = async () => {
     if (!active) return;
     try {
-      await api.put(`/api/conversations/${active.id}/assumir`);
+      await axios.put(`/api/conversations/${active.id}/assumir`);
       setFilter("minhas");
     } catch {}
   };
@@ -81,7 +82,7 @@ export default function AtendimentoPage() {
   const encerrar = async () => {
     if (!active) return;
     try {
-      await api.put(`/api/conversations/${active.id}/encerrar`);
+      await axios.put(`/api/conversations/${active.id}/encerrar`);
       setActive(null);
       setFilter("pendente");
     } catch {}
@@ -163,4 +164,6 @@ export default function AtendimentoPage() {
     </div>
   );
 }
+
+
 

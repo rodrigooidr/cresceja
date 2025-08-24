@@ -1,3 +1,4 @@
+import axios from 'axios';
 // src/pages/LandingPage.jsx
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
@@ -5,6 +6,10 @@ import api from "../api/api";
 import TrialDaysLabel from "../components/TrialDaysLabel";
 import { useTrial } from "../contexts/TrialContext";
 import PricingTable from "../components/PricingTable";
+
+function hasToken() {
+  try { return !!localStorage.getItem("token"); } catch { return false; }
+}
 
 export default function LandingPage() {
   const { trialDays } = useTrial();
@@ -15,7 +20,7 @@ export default function LandingPage() {
     e.preventDefault();
     setStatus({ loading: true, ok: null, msg: "" });
     try {
-      await api.post("/api/leads", lead);
+      await axios.post("/leads", lead);
       setStatus({
         loading: false,
         ok: true,
@@ -279,3 +284,6 @@ export default function LandingPage() {
     </div>
   );
 }
+
+
+

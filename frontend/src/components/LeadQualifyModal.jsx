@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useState } from 'react';
 import api from '../api/api';
 
@@ -25,7 +26,7 @@ export default function LeadQualifyModal({ lead, onClose, onSaved }) {
       return;
     }
     try {
-      await api.put(`/api/leads/${lead.id}/qualificar`, {
+      await axios.put(`/api/leads/${lead.id}/qualificar`, {
         score,
         tags: form.tags
           .split(',')
@@ -91,3 +92,5 @@ export default function LeadQualifyModal({ lead, onClose, onSaved }) {
     </div>
   );
 }
+
+

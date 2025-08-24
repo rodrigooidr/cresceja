@@ -1,3 +1,4 @@
+import axios from 'axios';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -74,7 +75,7 @@ export default function OnboardingPage() {
     setLoading(true);
     setErro('');
     try {
-      const res = await api.get('/onboarding');
+      const res = await axios.get('/onboarding');
       const lista = Array.isArray(res.data) ? res.data : [];
       const ordenada = [...lista].sort((a, b) => {
         if (!!a.concluido !== !!b.concluido) return a.concluido ? 1 : -1;
@@ -102,7 +103,7 @@ export default function OnboardingPage() {
     const atualizada = etapas.map(e => e.id === etapa.id ? { ...e, concluido: marcarConcluida } : e);
     setEtapas(atualizada);
     try {
-      await api.put(`/onboarding/${etapa.id}`, { concluido: marcarConcluida });
+      await axios.put(`/onboarding/${etapa.id}`, { concluido: marcarConcluida });
       await carregarEtapas();
     } catch (err) {
       console.error('Erro ao atualizar etapa', err);
@@ -156,3 +157,4 @@ export default function OnboardingPage() {
     </div>
   );
 }
+

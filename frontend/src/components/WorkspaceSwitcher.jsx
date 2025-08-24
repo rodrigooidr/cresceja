@@ -1,6 +1,7 @@
+import axios from 'axios';
 // frontend/src/components/WorkspaceSwitcher.jsx
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+import api from "../api/api";
 
 export default function WorkspaceSwitcher({ collapsed = false }) {
   const [orgs, setOrgs] = useState([]);
@@ -71,3 +72,4 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
     </select>
   );
 }
+
