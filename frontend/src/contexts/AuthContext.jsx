@@ -4,59 +4,64 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
-function safeParse(s, fallback = null) {
-  try { return JSON.parse(s); } catch { return fallback; }
+function safeParse(json, fallback = null) {
+  try { return JSON.parse(json); } catch { return fallback; }
+}
+function normalizeToken(t) {
+  if (!t) return null;
+  const s = String(t).trim();
+  if (!s || s === 'undefined' || s === 'null') return null;
+  return s;
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
-  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
+  // bootstrap do storage (defensivo)
+  const [token, setToken] = useState(() => normalizeToken(localStorage.getItem('token')));
+  const [user,  setUser]  = useState(() => safeParse(localStorage.getItem('user')) || null);
   const [loading, setLoading] = useState(false);
 
-  // Propaga/limpa Authorization no axios
+  // sempre que token mudar, propaga/limpa no axios
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common.Authorization = `Bearer ${token}`;
     } else {
       delete axios.defaults.headers.common.Authorization;
+      // sem token => não considerar usuário válido
+      if (user) {
+        localStorage.removeItem('user');
+        setUser(null);
+      }
     }
-  }, [token]);
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ✅ Se não há token mas existe "user" antigo no storage, limpa para evitar "login fantasma"
-  useEffect(() => {
-    if (!token && user) {
-      console.warn('Empty token! Limpando usuário em memória.');
-      localStorage.removeItem('user');
-      setUser(null);
-    }
-  }, [token, user]);
+  const setSession = (tk, usr) => {
+    const ntk = normalizeToken(tk);
+    if (ntk) localStorage.setItem('token', ntk); else localStorage.removeItem('token');
+    if (usr) localStorage.setItem('user', JSON.stringify(usr)); else localStorage.removeItem('user');
+    setToken(ntk);
+    setUser(usr || null);
+  };
 
   const login = async (email, password) => {
     setLoading(true);
     try {
       const { data } = await axios.post('/api/auth/login', { email, password });
-      const tk = data?.token || null;
-      const usr = data?.user ?? null;
-
-      if (tk) localStorage.setItem('token', tk); else localStorage.removeItem('token');
-      if (usr !== null) localStorage.setItem('user', JSON.stringify(usr)); else localStorage.removeItem('user');
-
-      setToken(tk);
-      setUser(usr);
-      return true;
+      setSession(data?.token || null, data?.user || null);
+      return Boolean(data?.token && data?.user);
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setToken(null);
-    setUser(null);
-  };
+  const logout = () => setSession(null, null);
 
-  const value = useMemo(() => ({ user, token, loading, login, logout }), [user, token, loading]);
+  // auth “verdadeiro” só com token + user
+  const isAuthenticated = Boolean(token && user);
+
+  const value = useMemo(
+    () => ({ user, token, loading, isAuthenticated, login, logout }),
+    [user, token, loading, isAuthenticated]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

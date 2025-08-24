@@ -29,9 +29,9 @@ const hasRole = (userRole, minRole) => {
 };
 
 function RequireAuth({ children }) {
-  const { user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const location = useLocation();
-  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
   return children;
 }
 
@@ -269,8 +269,8 @@ export default function App() {
           />
         </Route>
 
-        <Route path="/" element={<Navigate to="/app" replace />} />
-        <Route path="*" element={<Navigate to="/app" replace />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Router>
   );

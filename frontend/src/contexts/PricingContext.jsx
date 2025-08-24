@@ -54,8 +54,11 @@ export function PricingProvider({ children }){
       let res;
       try { res = await api.get("/api/public/plans"); }
       catch { res = await api.get("/api/admin/plans"); }
-      const data = res?.data;
-      const list = Array.isArray(data?.plans) ? data.plans : Array.isArray(data) ? data : [];
+      const data = res?.data ?? {};
+      const list =
+        Array.isArray(data?.plans) ? data.plans :
+        Array.isArray(data?.data)  ? data.data  :
+        Array.isArray(data)        ? data       : [];
       const normalized = list.map(normalize).sort((a,b)=> (a.sort_order ?? 9999)-(b.sort_order ?? 9999));
       setPlans(normalized);
       localStorage.setItem("plans_cache", JSON.stringify({ ts: Date.now(), list: normalized }));
