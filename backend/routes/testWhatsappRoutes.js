@@ -1,7 +1,7 @@
 import express from 'express';
 const router = express.Router();
 
-import { authenticate } from '../middleware/authenticate.js';
+import { authRequired } from '../middleware/auth.js';
 import isOwner from '../middleware/isOwner.js';
 import canUseWhatsAppWeb from '../middleware/canUseWhatsAppWeb.js';
 
@@ -12,7 +12,7 @@ import { initSession,
   sendTestMessage,
   receiveMessage } from '../controllers/testWhatsappController.js';
 
-router.use(authenticate, isOwner);
+router.use(authRequired, isOwner);
 
 router.post('/init', canUseWhatsAppWeb, initSession);
 router.get('/status', canUseWhatsAppWeb, getSessionStatus);

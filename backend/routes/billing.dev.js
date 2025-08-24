@@ -1,9 +1,9 @@
 import express from "express";
 import { query } from "../config/db.js";
-import { requireAuth } from "../helpers/auth.js";
+import { authRequired } from "../middleware/auth.js";
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(authRequired);
 
 const DEV_MODE = String(process.env.BILLING_DEV_MODE || "false").toLowerCase() === "true";
 

@@ -1,9 +1,9 @@
 import express from "express";
 import { query } from "../config/db.js";
-import { requireAuth } from "../helpers/auth.js";
+import { authRequired } from "../middleware/auth.js";
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(authRequired);
 
 // Helper to get plan from DB
 async function getPlan(planId) {
