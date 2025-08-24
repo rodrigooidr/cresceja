@@ -1,87 +1,77 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title Push via SSH (respeitando .gitignore)
+title Push via SSH (gitignore OK + core.sshCommand POSIX)
 
-REM ======= CONFIGURE AQUI =========================================
+REM ======= CONFIG =======
 set "REPO_DIR=C:\Projetos App\cresceja"
 set "REMOTE_URL=git@github.com:rodrigooidr/cresceja.git"
 set "BRANCH=main"
-REM 0 = push seguro (--force-with-lease) | 1 = push destrutivo (--force)
+REM 0 = seguro (--force-with-lease) | 1 = destrutivo (--force)
 set "HARD_FORCE=0"
-REM 1 = refaz o índice para respeitar 100% o .gitignore
+REM 1 = refaz o indice p/ respeitar o .gitignore
 set "STRICT_RESYNC=1"
-REM ================================================================
+REM ======================
 
-REM Caminhos fixos do Git/SSH (conforme seu ambiente)
+REM Git/SSH instalados em C:\Program Files\Git
 set "GIT_HOME=C:\Program Files\Git"
 set "GIT_EXE=%GIT_HOME%\cmd\git.exe"
 set "SSH_EXE=%GIT_HOME%\usr\bin\ssh.exe"
 if not exist "%SSH_EXE%" set "SSH_EXE=%GIT_HOME%\bin\ssh.exe"
 
-if not exist "%GIT_EXE%" (
-  echo [ERRO] Git nao encontrado em: %GIT_EXE%
-  echo Reinstale o Git for Windows ou ajuste o caminho acima.
-  goto :PAUSE_FAIL
-)
-if not exist "%SSH_EXE%" (
-  echo [ERRO] ssh.exe nao encontrado em: %SSH_EXE%
-  echo Reinstale o Git com suporte a OpenSSH ou ajuste o caminho acima.
-  goto :PAUSE_FAIL
-)
-if not exist "%REPO_DIR%" (
-  echo [ERRO] Pasta do projeto nao existe: %REPO_DIR%
-  goto :PAUSE_FAIL
-)
+if not exist "%GIT_EXE%" (echo [ERRO] Git nao encontrado: %GIT_EXE% & goto :PAUSE_FAIL)
+if not exist "%SSH_EXE%" (echo [ERRO] ssh.exe nao encontrado: %SSH_EXE% & goto :PAUSE_FAIL)
+if not exist "%REPO_DIR%" (echo [ERRO] Pasta do projeto nao existe: %REPO_DIR% & goto :PAUSE_FAIL)
 
-echo [INFO] Preparando SSH/known_hosts...
+REM known_hosts + registro da host key (primeira conexao)
 set "SSH_DIR=%USERPROFILE%\.ssh"
 set "KNOWN=%SSH_DIR%\known_hosts"
 if not exist "%SSH_DIR%" mkdir "%SSH_DIR%" >nul 2>&1
 if not exist "%KNOWN%" type nul > "%KNOWN%"
-
-REM Registra a host key do GitHub sem prompt (ok se retornar codigo nao-zero)
 "%SSH_EXE%" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="%KNOWN%" -T git@github.com >nul 2>&1
 
-REM Todos os comandos git usam este ssh + known_hosts
-set "GIT_SSH_COMMAND=%SSH_EXE% -o UserKnownHostsFile=%KNOWN% -o StrictHostKeyChecking=yes"
+REM ---------- FIX: usar caminhos POSIX e aspas no core.sshCommand ----------
+set "SSH_POSIX=%SSH_EXE:\=/%"
+set "KNOWN_POSIX=%KNOWN:\=/%"
 
-echo [INFO] Entrando no projeto...
 pushd "%REPO_DIR%" >nul || goto :PAUSE_FAIL
 
-REM Ajustes uteis no Windows
+REM Ajustes uteis
 "%GIT_EXE%" config --global --add safe.directory "%REPO_DIR%" >nul 2>&1
 "%GIT_EXE%" config --global core.longpaths true >nul 2>&1
 
+REM Limpa configuracao antiga e grava a correta (com aspas e POSIX)
+"%GIT_EXE%" config --local --unset core.sshCommand >nul 2>&1
+"%GIT_EXE%" config --local core.sshCommand "\"%SSH_POSIX%\" -o UserKnownHostsFile=\"%KNOWN_POSIX%\" -o StrictHostKeyChecking=yes"
+
+echo [DEBUG] core.sshCommand = 
+"%GIT_EXE%" config --local core.sshCommand
+
 if not exist ".git" (
-  echo [INFO] Inicializando repositório Git...
+  echo [INFO] Inicializando repo...
   "%GIT_EXE%" init || goto :FAIL
 )
 
-REM Garante branch desejado
 echo [INFO] Usando branch: %BRANCH%
 "%GIT_EXE%" checkout -B "%BRANCH%" || goto :FAIL
 
-REM Configura o remoto (SSH)
+REM Remoto (SSH)
 "%GIT_EXE%" remote remove origin >nul 2>&1
 "%GIT_EXE%" remote add origin "%REMOTE_URL%" || goto :FAIL
 
-REM (Opcional) Resync do indice p/ respeitar .gitignore
+REM Respeitar .gitignore (remove do indice itens ignorados ja rastreados)
 if "%STRICT_RESYNC%"=="1" (
   echo [INFO] Recriando indice respeitando .gitignore...
   "%GIT_EXE%" rm -r --cached . >nul 2>&1
 )
 
-echo [INFO] Adicionando mudanças (respeitando .gitignore)...
+echo [INFO] Adicionando mudancas (respeitando .gitignore)...
 "%GIT_EXE%" add -A || goto :FAIL
 
-REM Commit inicial se necessário
+REM Commit inicial se preciso
 "%GIT_EXE%" rev-parse --verify HEAD >nul 2>&1
-if errorlevel 1 (
-  echo [INFO] Criando commit inicial...
-  "%GIT_EXE%" commit -m "chore: initial commit" || goto :FAIL
-)
+if errorlevel 1 "%GIT_EXE%" commit -m "chore: initial commit" || goto :FAIL
 
-REM Commita apenas se houver mudanças pendentes
+REM Commit somente se houver mudancas
 set "HASCHANGES="
 for /f "delims=" %%s in ('"%GIT_EXE%" status --porcelain') do set HASCHANGES=1
 if defined HASCHANGES (
@@ -106,10 +96,9 @@ goto :PAUSE_OK
 :FAIL
 echo.
 echo [ERRO] O push falhou.
-echo Dicas:
-echo  - Se aparecer "Permission denied (publickey)", adicione sua chave publica no GitHub:
-echo      %USERPROFILE%\.ssh\id_ed25519.pub
-echo  - Se o branch remoto for protegido, use HARD_FORCE=0 ou outro branch.
+echo  - Se aparecer "Permission denied (publickey)", confirme se adicionou:
+echo      %USERPROFILE%\.ssh\id_ed25519.pub  (GitHub > Settings > SSH and GPG keys)
+echo  - Branch protegido bloqueia --force; use HARD_FORCE=0 ou outro branch.
 popd >nul
 goto :PAUSE_FAIL
 
