@@ -1,5 +1,5 @@
 import Sidebar from '../components/common/Sidebar';
-import Inbox from '../components/Inbox/Inbox';
+import Inbox from '../components/inbox/Inbox.jsx';
 
 export default function InboxPage() {
   return (
