@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "nodemon server.js",
+    "test": "echo 'no tests yet' && exit 0",
     "worker:repurpose": "node ./queues/repurpose.worker.js",
     "db:bootstrap:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/db_bootstrap.ps1",
     "db:bootstrap:sh": "bash ./scripts/db_bootstrap.sh",

@@ -38,8 +38,9 @@ import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
 
 // Services & middleware
-import { attachIO } from './services/realtime.js';
 import { authRequired, impersonationGuard } from './middleware/auth.js';
+import uploadsRouter from './routes/uploads.js';
+import { initIO } from './socket/io.js';
 // ❌ NÃO usar o antigo middleware/arquivo de impersonation aqui
 // import { impersonation } from './middleware/impersonation.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
@@ -109,6 +110,7 @@ app.use('/api/ai-credits', aiCreditsRouter);
 app.use('/api/onboarding', onboardingRouter);      // em /api/onboarding
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/attachments', attachmentsRouter);
+app.use('/api/uploads', uploadsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/subscription', subscriptionRouter);
 app.use('/api/whatsapp', whatsappRouter);
@@ -134,7 +136,7 @@ app.use((err, req, res, _next) => {
 
 // ---------- HTTP + Socket.io ----------
 const httpServer = http.createServer(app);
-attachIO(httpServer);
+initIO(httpServer);
 
 // Raiz simples
 app.get('/', (_req, res) => {
