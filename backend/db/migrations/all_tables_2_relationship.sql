@@ -996,3 +996,411 @@ DO $$ BEGIN
   END IF;
 
 END $$;
+
+
+-- ===========================
+-- CresceJá — Inbox Omnichannel (WA/IG/FB)
+-- Schema + RLS + índices + triggers
+-- Usa org_ai_settings como store de configs da IA
+-- ===========================
+
+-- 1) Garante função de trigger (seguro repetir)
+CREATE OR REPLACE FUNCTION set_timestamp()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $func$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END
+$func$;
+
+-- 2) Completa as colunas exigidas pelo novo schema do Inbox
+ALTER TABLE public.messages
+  ADD COLUMN IF NOT EXISTS org_id uuid,
+  ADD COLUMN IF NOT EXISTS conversation_id uuid,
+  ADD COLUMN IF NOT EXISTS "from" text,
+  ADD COLUMN IF NOT EXISTS provider text,
+  ADD COLUMN IF NOT EXISTS provider_message_id text,
+  ADD COLUMN IF NOT EXISTS type text,
+  ADD COLUMN IF NOT EXISTS text text,
+  ADD COLUMN IF NOT EXISTS emojis_json jsonb,
+  ADD COLUMN IF NOT EXISTS attachments jsonb,
+  ADD COLUMN IF NOT EXISTS status text,
+  ADD COLUMN IF NOT EXISTS transcript text,
+  ADD COLUMN IF NOT EXISTS meta jsonb,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+-- 3) Normaliza valores nulos (opcional, mas útil)
+UPDATE public.messages SET meta = '{}'::jsonb WHERE meta IS NULL;
+
+-- 4) Recria trigger de updated_at
+DROP TRIGGER IF EXISTS set_messages_updated_at ON public.messages;
+CREATE TRIGGER set_messages_updated_at
+BEFORE UPDATE ON public.messages
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+-- 5) (Re)cria índices de forma segura, só se a coluna existir
+DO $$
+BEGIN
+  -- por conversa + data (usado no histórico)
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='messages'
+               AND column_name='conversation_id') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON public.messages(conversation_id, created_at DESC)';
+  END IF;
+
+  -- por org (RLS + consultas gerais)
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='messages'
+               AND column_name='org_id') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_messages_org ON public.messages(org_id)';
+  END IF;
+
+  -- GIN em meta (usado para filtros/flags flexíveis)
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_schema='public' AND table_name='messages'
+               AND column_name='meta') THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_messages_meta_gin ON public.messages USING GIN (meta)';
+  END IF;
+END
+$$;
+
+-- 6) (opcional) Habilita/política RLS se ainda não estiverem ativas
+ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
+
+DO $rls$
+BEGIN
+  DROP POLICY IF EXISTS messages_isolation ON public.messages;
+  CREATE POLICY messages_isolation ON public.messages
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+END
+$rls$;
+
+-- Garante que a tabela contacts tem as colunas necessárias
+ALTER TABLE public.contacts
+  ADD COLUMN IF NOT EXISTS org_id uuid,
+  ADD COLUMN IF NOT EXISTS provider_user_id text,
+  ADD COLUMN IF NOT EXISTS name text,
+  ADD COLUMN IF NOT EXISTS first_name text,
+  ADD COLUMN IF NOT EXISTS cpf text,
+  ADD COLUMN IF NOT EXISTS phone_e164 text,
+  ADD COLUMN IF NOT EXISTS email text,
+  ADD COLUMN IF NOT EXISTS birthdate date,
+  ADD COLUMN IF NOT EXISTS photo_url text,
+  ADD COLUMN IF NOT EXISTS tags text[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS notes text,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+-- Recria a trigger de updated_at
+CREATE OR REPLACE FUNCTION set_timestamp()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $func$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END
+$func$;
+
+DROP TRIGGER IF EXISTS set_contacts_updated_at ON public.contacts;
+CREATE TRIGGER set_contacts_updated_at
+BEFORE UPDATE ON public.contacts
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+-- Cria o índice somente se a coluna existir
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema='public'
+      AND table_name='contacts'
+      AND column_name='phone_e164'
+  ) THEN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_contacts_phone ON public.contacts(phone_e164)';
+  END IF;
+END
+$$;
+
+-- (Opcional) RLS se ainda não tiver
+ALTER TABLE public.contacts ENABLE ROW LEVEL SECURITY;
+
+DO $rls$
+BEGIN
+  DROP POLICY IF EXISTS contacts_isolation ON public.contacts;
+  CREATE POLICY contacts_isolation ON public.contacts
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+END
+$rls$;
+
+
+
+-- 0) Extensões
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- 1) Função de trigger updated_at (idempotente)
+CREATE OR REPLACE FUNCTION set_timestamp()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $func$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END
+$func$;
+
+-- 2) org_ai_settings — alinhar colunas (NÃO cria nova tabela)
+--    (se já existirem, são ignoradas)
+DO $ddl$
+BEGIN
+  IF to_regclass('public.org_ai_settings') IS NOT NULL THEN
+    EXECUTE '
+      ALTER TABLE public.org_ai_settings
+        ADD COLUMN IF NOT EXISTS org_id uuid,
+        ADD COLUMN IF NOT EXISTS ai_enabled boolean NOT NULL DEFAULT true,
+        ADD COLUMN IF NOT EXISTS ai_handoff_keywords text[] DEFAULT ARRAY[''humano'',''atendente'',''pessoa''],
+        ADD COLUMN IF NOT EXISTS ai_max_turns_before_handoff int DEFAULT 10,
+        ADD COLUMN IF NOT EXISTS templates_enabled_channels text[] DEFAULT ARRAY[''whatsapp'',''instagram'',''facebook''],
+        ADD COLUMN IF NOT EXISTS business_hours jsonb,
+        ADD COLUMN IF NOT EXISTS alert_volume numeric DEFAULT 0.8,
+        ADD COLUMN IF NOT EXISTS alert_sound text DEFAULT ''/assets/sounds/alert.mp3'',
+        ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now(),
+        ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now()
+    ';
+
+    -- Índice/único por org para permitir UPSERT por org_id
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS uq_org_ai_settings_org ON public.org_ai_settings(org_id)';
+
+    -- Trigger updated_at
+    EXECUTE 'DROP TRIGGER IF EXISTS set_org_ai_settings_updated_at ON public.org_ai_settings';
+    EXECUTE 'CREATE TRIGGER set_org_ai_settings_updated_at
+             BEFORE UPDATE ON public.org_ai_settings
+             FOR EACH ROW EXECUTE FUNCTION set_timestamp()';
+
+    -- RLS
+    EXECUTE 'ALTER TABLE public.org_ai_settings ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'DROP POLICY IF EXISTS org_ai_settings_isolation ON public.org_ai_settings';
+    EXECUTE 'CREATE POLICY org_ai_settings_isolation ON public.org_ai_settings
+              USING (org_id = current_setting(''app.org_id'', true)::uuid)
+              WITH CHECK (org_id = current_setting(''app.org_id'', true)::uuid)';
+  END IF;
+END
+$ddl$;
+
+-- 3) Tabelas do Inbox
+-- 3.1 contacts
+CREATE TABLE IF NOT EXISTS public.contacts (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id uuid NOT NULL,
+  provider_user_id text,            -- id do usuário no provider (IG/FB)
+  name text,
+  first_name text,
+  cpf text,
+  phone_e164 text,
+  email text,
+  birthdate date,
+  photo_url text,
+  tags text[] DEFAULT '{}',
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- 3.2 conversations
+CREATE TABLE IF NOT EXISTS public.conversations (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id uuid NOT NULL,
+  contact_id uuid NOT NULL REFERENCES public.contacts(id) ON DELETE CASCADE,
+  channel text NOT NULL CHECK (channel IN ('whatsapp','instagram','facebook')),
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','assigned','waiting_customer','resolved')),
+  assigned_to uuid,                 -- id do usuário (sem FK pra não acoplar)
+  ai_enabled boolean NOT NULL DEFAULT true,
+  unread_count int NOT NULL DEFAULT 0,
+  last_message_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- 3.3 messages
+CREATE TABLE IF NOT EXISTS public.messages (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id uuid NOT NULL,
+  conversation_id uuid NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  "from" text NOT NULL CHECK ("from" IN ('customer','agent','ai')),
+  provider text NOT NULL CHECK (provider IN ('wa','ig','fb')),
+  provider_message_id text,
+  type text NOT NULL CHECK (type IN ('text','image','video','audio','file','sticker','template')),
+  text text,
+  emojis_json jsonb,
+  attachments jsonb,                -- resumo/manifesto (opcional)
+  status text CHECK (status IN ('sent','delivered','read','failed')),
+  transcript text,                  -- transcrição de áudios
+  meta jsonb,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- 3.4 attachments (armazenamento detalhado por anexo)
+CREATE TABLE IF NOT EXISTS public.attachments (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id uuid NOT NULL,
+  message_id uuid REFERENCES public.messages(id) ON DELETE CASCADE,
+  kind text CHECK (kind IN ('image','video','audio','file')),
+  storage_key text,
+  mime text,
+  size_bytes bigint,
+  width int,
+  height int,
+  duration_ms int,
+  checksum text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- 3.5 templates
+CREATE TABLE IF NOT EXISTS public.templates (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id uuid NOT NULL,
+  channel text NOT NULL CHECK (channel IN ('whatsapp','instagram','facebook')),
+  name text NOT NULL,
+  body text NOT NULL,
+  variables text[] DEFAULT '{}',
+  category text,
+  status text NOT NULL DEFAULT 'approved' CHECK (status IN ('draft','approved','rejected')),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- 3.6 org_tags (catálogo de tags por organização)
+CREATE TABLE IF NOT EXISTS public.org_tags (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id uuid NOT NULL,
+  label text NOT NULL,
+  color text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- 4) Índices
+CREATE INDEX IF NOT EXISTS idx_contacts_org ON public.contacts(org_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_phone ON public.contacts(phone_e164);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_contacts_org_cpf ON public.contacts(org_id, cpf) WHERE cpf IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_tags_gin ON public.contacts USING GIN (tags);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_org_last ON public.conversations(org_id, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_contact ON public.conversations(contact_id);
+
+CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON public.messages(conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_org ON public.messages(org_id);
+CREATE INDEX IF NOT EXISTS idx_messages_meta_gin ON public.messages USING GIN (meta);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_org ON public.attachments(org_id);
+CREATE INDEX IF NOT EXISTS idx_templates_org ON public.templates(org_id);
+CREATE INDEX IF NOT EXISTS idx_org_tags_org ON public.org_tags(org_id);
+
+-- 5) Triggers updated_at
+DROP TRIGGER IF EXISTS set_contacts_updated_at ON public.contacts;
+CREATE TRIGGER set_contacts_updated_at
+BEFORE UPDATE ON public.contacts
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+DROP TRIGGER IF EXISTS set_conversations_updated_at ON public.conversations;
+CREATE TRIGGER set_conversations_updated_at
+BEFORE UPDATE ON public.conversations
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+DROP TRIGGER IF EXISTS set_messages_updated_at ON public.messages;
+CREATE TRIGGER set_messages_updated_at
+BEFORE UPDATE ON public.messages
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+DROP TRIGGER IF EXISTS set_attachments_updated_at ON public.attachments;
+CREATE TRIGGER set_attachments_updated_at
+BEFORE UPDATE ON public.attachments
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+DROP TRIGGER IF EXISTS set_templates_updated_at ON public.templates;
+CREATE TRIGGER set_templates_updated_at
+BEFORE UPDATE ON public.templates
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+DROP TRIGGER IF EXISTS set_org_tags_updated_at ON public.org_tags;
+CREATE TRIGGER set_org_tags_updated_at
+BEFORE UPDATE ON public.org_tags
+FOR EACH ROW EXECUTE FUNCTION set_timestamp();
+
+-- 6) RLS por organização (todas as tabelas com org_id)
+ALTER TABLE public.contacts      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.messages      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attachments   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.templates     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.org_tags      ENABLE ROW LEVEL SECURITY;
+
+DO $rls$
+BEGIN
+  -- contacts
+  DROP POLICY IF EXISTS contacts_isolation ON public.contacts;
+  CREATE POLICY contacts_isolation ON public.contacts
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+
+  -- conversations
+  DROP POLICY IF EXISTS conversations_isolation ON public.conversations;
+  CREATE POLICY conversations_isolation ON public.conversations
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+
+  -- messages
+  DROP POLICY IF EXISTS messages_isolation ON public.messages;
+  CREATE POLICY messages_isolation ON public.messages
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+
+  -- attachments
+  DROP POLICY IF EXISTS attachments_isolation ON public.attachments;
+  CREATE POLICY attachments_isolation ON public.attachments
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+
+  -- templates
+  DROP POLICY IF EXISTS templates_isolation ON public.templates;
+  CREATE POLICY templates_isolation ON public.templates
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+
+  -- org_tags
+  DROP POLICY IF EXISTS org_tags_isolation ON public.org_tags;
+  CREATE POLICY org_tags_isolation ON public.org_tags
+    USING (org_id = current_setting('app.org_id', true)::uuid)
+    WITH CHECK (org_id = current_setting('app.org_id', true)::uuid);
+END
+$rls$;
+
+-- 7) Seeds/ajustes opcionais
+-- Cria linhas padrão em org_ai_settings para cada org sem registro (se houver tabela orgs)
+DO $seed$
+BEGIN
+  IF to_regclass('public.orgs') IS NOT NULL
+     AND to_regclass('public.org_ai_settings') IS NOT NULL
+  THEN
+    INSERT INTO public.org_ai_settings (org_id)
+    SELECT o.id
+    FROM public.orgs o
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.org_ai_settings s WHERE s.org_id = o.id
+    )
+    ON CONFLICT (org_id) DO NOTHING;
+  END IF;
+END
+$seed$;
+
+-- ===========================
+-- FIM
+-- ===========================
