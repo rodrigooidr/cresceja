@@ -1,4 +1,4 @@
-// backend/server.js — unified server (correto)
+// backend/server.js — unified server (revisado)
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -10,9 +10,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
 
-// Routers
+// Routers (importes)
 import authRouter from './routes/auth.js';
-// import healthRouter from './routes/health.js'; // opcional se quiser manter inline
 import lgpdRouter from './routes/lgpd.js';
 import crmRouter from './routes/crm.js';
 import leadsRouter from './routes/leads.js';
@@ -29,7 +28,6 @@ import whatsappRouter from './routes/whatsapp.js';
 import whatsappTemplatesRouter from './routes/whatsapp_templates.js';
 import agendaRouter from './routes/agenda_whatsapp.js';
 import integrationsRouter from './routes/integrations.js';
-
 import publicRouter from './routes/public.js';
 import orgsRouter from './routes/orgs.js';
 import metaWebhookRouter from './routes/webhooks/meta.js';
@@ -41,8 +39,6 @@ import postsRouter from './routes/posts.js';
 import { authRequired, impersonationGuard } from './middleware/auth.js';
 import uploadsRouter from './routes/uploads.js';
 import { initIO } from './socket/io.js';
-// ❌ NÃO usar o antigo middleware/arquivo de impersonation aqui
-// import { impersonation } from './middleware/impersonation.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -56,6 +52,17 @@ const logger = pino({
 
 // ---------- Express ----------
 const app = express();
+
+// desabilita ETag (evita 304 sem corpo em chamadas JSON)
+app.set('etag', false);
+
+// força a não usar cache no /api
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
+// CORS com headers necessários
 const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
   .split(',')
   .map((s) => s.trim())
@@ -63,15 +70,32 @@ const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
 
 app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors({ origin: corsOrigins, credentials: true }));
-app.use(express.json({ limit: '10mb' }));
+app.use(cors({
+  origin: corsOrigins,
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id', 'X-Requested-With'],
+}));
 app.use(pinoHttp({ logger }));
 app.use(rateLimit({ windowMs: 60_000, max: 300 }));
 
-// Static
+// ---------- Webhooks ANTES do express.json (Meta precisa raw body p/ assinatura) ----------
+app.use('/api/webhooks/instagram', igRouter);
+app.use('/api/webhooks/messenger', fbRouter);
+
+// Para o webhook do Meta que valida X-Hub-Signature-256:
+app.use(
+  '/api/webhooks',
+  express.raw({ type: 'application/json' }), // deixa req.body como Buffer
+  metaWebhookRouter
+);
+
+// Agora sim: parser JSON global para o restante da API
+app.use(express.json({ limit: '10mb' }));
+
+// Static (público; se quiser proteger, mova p/ depois do auth)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ---------- Health inline ----------
+// ---------- Health & Ping (públicos) ----------
 app.get('/api/health', (_req, res) => {
   res.status(200).json({
     status: 'ok',
@@ -80,34 +104,24 @@ app.get('/api/health', (_req, res) => {
     time: new Date().toISOString(),
   });
 });
-
-// Ping simples
 app.get('/api/ping', (_req, res) => res.json({ pong: true, t: Date.now() }));
 
 // ---------- ROTAS PÚBLICAS (antes do auth) ----------
-app.use('/api/webhooks/instagram', igRouter);
-app.use('/api/webhooks/messenger', fbRouter);
-// Se o metaWebhook precisar assinar payloads, troque por express.raw({type:'application/json'})
-app.use('/api/webhooks', /* express.json({ limit: '10mb' }), */ metaWebhookRouter);
-
 app.use('/api/public', publicRouter);
 app.use('/api/auth', authRouter); // login não exige token
 
-// ---------- MIDDLEWARES GLOBAIS PROTEGIDOS ----------
-app.use(authRequired);        // popula req.user
-app.use(impersonationGuard);  // define req.orgId/impersonation
-app.use(pgRlsContext);        // abre transação e faz set_config(app.org_id/app.role)
+// ---------- MIDDLEWARES GLOBAIS PARA /api/* ----------
+app.use('/api', authRequired, impersonationGuard, pgRlsContext);
 
-// ---------- ROTAS PROTEGIDAS (RLS ativo via req.db) ----------
+// ---------- ROTAS PROTEGIDAS (já passam por auth/impersonation/RLS) ----------
 app.use('/api/channels', channelsRouter);
 app.use('/api/posts', postsRouter);
-
 app.use('/api/lgpd', lgpdRouter);
 app.use('/api/crm', crmRouter);
 app.use('/api/leads', leadsRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/ai-credits', aiCreditsRouter);
-app.use('/api/onboarding', onboardingRouter);      // em /api/onboarding
+app.use('/api/onboarding', onboardingRouter);
 app.use('/api/conversations', conversationsRouter);
 app.use('/api/attachments', attachmentsRouter);
 app.use('/api/uploads', uploadsRouter);
@@ -117,8 +131,8 @@ app.use('/api/whatsapp', whatsappRouter);
 app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
 app.use('/api/agenda', agendaRouter);
 app.use('/api/integrations', integrationsRouter);
-app.use('/api/orgs', orgsRouter);                  // dedicado
-app.use('/api/inbox', inboxExtraRouter);           // já protegido globalmente
+app.use('/api/orgs', orgsRouter);
+app.use('/api/inbox', inboxExtraRouter);
 
 // 404 apenas para /api/*
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
@@ -138,7 +152,7 @@ app.use((err, req, res, _next) => {
 const httpServer = http.createServer(app);
 initIO(httpServer);
 
-// Raiz simples
+// Raiz simples (pública)
 app.get('/', (_req, res) => {
   res.json({ name: 'CresceJá API', status: 'ok' });
 });

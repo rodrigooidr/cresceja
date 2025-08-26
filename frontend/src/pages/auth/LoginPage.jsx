@@ -2,12 +2,13 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
+import { setAuthToken } from "../../api/inboxApi"; // <- garante Authorization no axios da Inbox
 
 export default function LoginPage() {
   const { login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from?.pathname || "/app"; // <- default certo
+  const from = location.state?.from?.pathname || "/app";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,9 +17,21 @@ export default function LoginPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     setErro("");
+
     try {
-      const ok = await login(email.trim(), password);
-      if (ok) navigate(from, { replace: true });
+      // seu contexto pode retornar boolean OU { token, user }
+      const result = await login(email.trim(), password);
+
+      // 1) se veio token no retorno do login, aplica no axios
+      if (result && typeof result === "object" && result.token) {
+        setAuthToken(result.token);
+      } else {
+        // 2) fallback: muitos logins salvam no localStorage
+        const saved = localStorage.getItem("token");
+        if (saved) setAuthToken(saved);
+      }
+
+      navigate(from, { replace: true });
     } catch (err) {
       const msg =
         err?.response?.data?.message ||
@@ -65,7 +78,7 @@ export default function LoginPage() {
             />
           </div>
 
-        <button
+          <button
             type="submit"
             className="w-full bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-60"
             disabled={loading}
@@ -74,7 +87,10 @@ export default function LoginPage() {
           </button>
 
           <div className="text-sm text-gray-600 mt-3">
-            Não tem conta? <Link to="/register" className="text-blue-600">Criar conta</Link>
+            Não tem conta?{" "}
+            <Link to="/register" className="text-blue-600">
+              Criar conta
+            </Link>
           </div>
         </form>
       </div>

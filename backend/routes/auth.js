@@ -2,7 +2,7 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import { query } from "../config/db.js"; // use seu helper (pool.query)
+import { query } from "../config/db.js";
 
 const router = Router();
 
@@ -30,44 +30,47 @@ router.post("/login", async (req, res, next) => {
     );
     const user = userRows[0];
     if (!user) return res.status(401).json({ error: "invalid_credentials" });
+    if (!user.password_hash) return res.status(401).json({ error: "password_not_set" });
 
-    // 2) senha (bcrypt)
-    if (!user.password_hash) {
-      return res.status(401).json({ error: "password_not_set" });
-    }
     const ok = await bcrypt.compare(password, user.password_hash);
     if (!ok) return res.status(401).json({ error: "invalid_credentials" });
 
-    // 3) org ativa + role/perms por org (user_orgs)
+    // 2) organizações do usuário  
     const { rows: orgRows } = await query(
-      `SELECT uo.org_id, uo.role, COALESCE(uo.perms, '{}'::jsonb) AS perms
-         FROM public.user_orgs uo
-        WHERE uo.user_id = $1`,
+      `SELECT ou.org_id, ou.role
+        FROM public.org_users ou
+       WHERE ou.user_id = $1`,
       [user.id]
     );
 
     if (orgRows.length === 0 && !user.is_support && user.role !== "SuperAdmin") {
+      // sem vínculo com org
       return res.status(403).json({ error: "no_org_assigned" });
     }
 
-    // Escolhe org_id: prioridade para a requisitada; senão, a 1ª da lista; para Support/SuperAdmin é opcional
+    // 3) escolhe a org ativa
     const activeOrg =
       (requestedOrgId && orgRows.find(r => r.org_id === requestedOrgId)) ||
       orgRows[0] ||
       null;
 
     const org_id = activeOrg?.org_id || null;
-    const role = activeOrg?.role || user.role || "OrgViewer";
+    const orgRole = activeOrg?.role || null;
     const perms = activeOrg?.perms || {};
 
-    // 4) monta payload exatamente como você definiu
+    // 4) payload compatível com o resto do app
+    //    - inclui `id` (além de `sub`) e SEMPRE que possível `org_id`
+    const role = orgRole || user.role || "Viewer";
     const payload = {
       sub: user.id,
-      org_id,                 // pode ser null para Support/SuperAdmin (impersonação depois)
-      role,                   // OrgViewer|OrgAgent|OrgAdmin|OrgOwner|Support|SuperAdmin
-      perms,                  // { marketing: { canDraft, canPublish, canApprove } }
+      id: user.id,              // 👈 compat com código que usa req.user.id
+      org_id,                   // 👈 fundamental pro orgScope e RLS
+      role,
+      perms,
       is_support: !!user.is_support,
       support_scopes: user.support_scopes || [],
+      email: user.email,
+      name: user.name,
     };
 
     const token = signToken(payload);

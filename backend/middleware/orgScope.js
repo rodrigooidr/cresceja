@@ -1,12 +1,11 @@
-// backend/middleware/orgScope.js
-export async function orgScope(req, res, next) {
-  try {
-    const orgId = req.user?.org_id;
-    if (!orgId) return res.status(401).json({ message: 'org_id ausente no token' });
-    // Guarda orgId na request para ser usada nos serviços/queries
-    req.orgId = orgId;
-    next();
-  } catch (e) {
-    next(e);
+// middleware/orgScope.js
+export function orgScope(req, res, next) {
+  let orgId = req.user?.org_id;
+  if (!orgId && (req.user?.role === 'SuperAdmin' || req.user?.is_support)) {
+    orgId = req.headers['x-org-id'] || null;
   }
+  if (!orgId) return res.status(401).json({ message: 'org_id missing in token' });
+  req.orgId = orgId;
+  next();
 }
+

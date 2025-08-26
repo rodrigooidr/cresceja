@@ -1,7 +1,6 @@
-import axios from 'axios';
 // src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import api from "../api/api";
+import inboxApi, { setAuthToken } from '../api/inboxApi';
 
 const AuthContext = createContext(null);
 
@@ -10,17 +9,16 @@ function safeParse(s, fallback = null) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
+  const [user, setUser]   = useState(() => safeParse(localStorage.getItem('user')));
   const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [loading, setLoading] = useState(false);
 
-  // Propaga/limpa Authorization no axios
+  // Reaplica token no axios da Inbox ao montar / ao mudar token
   useEffect(() => {
-    if (token) axios.defaults.headers.common.Authorization = `Bearer ${token}`;
-    else delete axios.defaults.headers.common.Authorization;
+    setAuthToken(token || undefined);
   }, [token]);
 
-  // Evita “login fantasma”: se não há token, zera o user
+  // Se não há token, zera o user “fantasma”
   useEffect(() => {
     if (!token && user) {
       localStorage.removeItem('user');
@@ -31,25 +29,21 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      const { data } = await axios.post('/api/auth/login', { email, password });
-      const tk = data?.token || null;
-      const usr = data?.user ?? null;
+      // ATENÇÃO: baseURL já tem /api → então aqui é só '/auth/login'
+      const { data } = await inboxApi.post('/auth/login', { email, password });
 
+      const tk  = data?.token;
+      const usr = data?.user ?? null;
       if (!tk) throw new Error('Falha no login: token ausente.');
 
+      // injeta Authorization no cliente axios e persiste
+      setAuthToken(tk);
       localStorage.setItem('token', tk);
       setToken(tk);
 
-      if (usr != null) {
+      if (usr) {
         localStorage.setItem('user', JSON.stringify(usr));
         setUser(usr);
-      } else {
-        // opcional: tentar /api/auth/me
-        try {
-          const r = await axios.get('/api/auth/me');
-          localStorage.setItem('user', JSON.stringify(r.data));
-          setUser(r.data);
-        } catch {}
       }
       return true;
     } finally {
@@ -58,6 +52,7 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    setAuthToken(null); // remove Authorization do cliente
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);
@@ -75,4 +70,3 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext);
-

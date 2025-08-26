@@ -2,7 +2,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import MainLayout from './components/MainLayout';
-import InboxPage from './pages/Inbox/InboxPage.jsx';
+import InboxPage from './pages/inbox/InboxPage.jsx';
 import ChannelsPage from './pages/settings/ChannelsPage.jsx';
 import LoginPage from './pages/auth/LoginPage.jsx';
 import RegisterPage from './pages/auth/RegisterPage.jsx';

@@ -1,55 +1,182 @@
 // backend/services/conversationsService.js
-import { query } from '../config/db.js';
+import { query as rootQuery } from '../config/db.js';
 
-export async function listConversations(orgId, { q, status, tags, limit = 30, cursor }) {
+// escolhe a função de query: client transacional (req.db) ou pool global
+function q(db) {
+  return db && typeof db.query === 'function'
+    ? (text, params) => db.query(text, params)
+    : rootQuery;
+}
+
+const PROVIDER_CASE_SQL = `
+  CASE
+    WHEN lower(ch.type) IN ('wa','whatsapp','whatsapp_cloud','whatsapp_baileys') THEN 'wa'
+    WHEN lower(ch.type) IN ('ig','instagram') THEN 'ig'
+    WHEN lower(ch.type) IN ('fb','facebook') THEN 'fb'
+    ELSE 'wa'
+  END
+`;
+
+export async function listConversations(db, orgId, { q: search, status, tags, limit = 30 } = {}) {
+  const run = q(db);
   const params = [orgId];
   let where = 'c.org_id = $1';
+
   if (status) { params.push(status); where += ` AND c.status = $${params.length}`; }
-  if (q) { params.push(`%${q}%`); where += ` AND (coalesce(ct.name,'') ILIKE $${params.length} OR coalesce(ct.phone_e164,'') ILIKE $${params.length})`; }
-  // tags (simples: intersect)
-  if (tags && tags.length) { params.push(tags); where += ` AND ct.tags && $${params.length}`; }
+  if (search) {
+    params.push(`%${search}%`);
+    where += ` AND (COALESCE(ct.name,'') ILIKE $${params.length} OR COALESCE(ct.phone_e164,'') ILIKE $${params.length})`;
+  }
+  if (tags && tags.length) { params.push(tags); where += ` AND COALESCE(ct.tags, '{}') && $${params.length}`; }
 
   const sql = `
-    SELECT c.id, c.channel, c.status, c.ai_enabled, c.unread_count, c.last_message_at,
-           jsonb_build_object('id', ct.id, 'name', ct.name, 'photo_url', ct.photo_url, 'phone_e164', ct.phone_e164, 'tags', ct.tags) AS contact
+    SELECT
+      c.id,
+      c.status,
+      TRUE AS ai_enabled,
+      COALESCE(mu.unread_count, 0) AS unread_count,
+      c.last_message_at,
+      ${PROVIDER_CASE_SQL} AS provider,
+      COALESCE(ch.name, 'other') AS channel,
+      jsonb_build_object(
+        'id',         ct.id,
+        'name',       COALESCE(ct.name, 'Sem nome'),
+        'photo_url',  ct.photo_url,
+        'phone_e164', ct.phone_e164,
+        'tags',       COALESCE(ct.tags, '{}'::text[])
+      ) AS contact
     FROM conversations c
-    JOIN contacts ct ON ct.id = c.contact_id
+    LEFT JOIN contacts   ct ON ct.id = c.contact_id             -- <<< LEFT JOIN
+    LEFT JOIN channels   ch ON ch.id = c.channel_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS unread_count
+      FROM messages m
+      WHERE m.org_id = c.org_id
+        AND m.conversation_id = c.id
+        AND COALESCE(m.status, 'sent') <> 'read'
+    ) mu ON TRUE
     WHERE ${where}
-    ORDER BY coalesce(c.last_message_at, c.created_at) DESC
+    ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
     LIMIT ${limit}
   `;
-  const { rows } = await query(sql, params);
+  const { rows } = await run(sql, params);
   return rows;
 }
 
-export async function getConversation(orgId, id) {
-  const { rows } = await query(
-    `SELECT c.*, jsonb_build_object('id', ct.id, 'name', ct.name, 'photo_url', ct.photo_url, 'phone_e164', ct.phone_e164, 'tags', ct.tags) AS contact
-     FROM conversations c JOIN contacts ct ON ct.id = c.contact_id
-     WHERE c.org_id = $1 AND c.id = $2`, [orgId, id]
+export async function getConversation(db, orgId, id) {
+  const run = q(db);
+  const { rows } = await run(
+    `
+    SELECT
+      c.*,
+      ${PROVIDER_CASE_SQL} AS provider,
+      COALESCE(ch.name, 'other') AS channel,
+      jsonb_build_object(
+        'id',         ct.id,
+        'name',       ct.name,
+        'photo_url',  ct.photo_url,
+        'phone_e164', ct.phone_e164,
+        'tags',       ct.tags
+      ) AS contact
+    FROM conversations c
+    JOIN contacts   ct ON ct.id = c.contact_id
+    LEFT JOIN channels ch ON ch.id = c.channel_id
+    WHERE c.org_id = $1 AND c.id = $2
+    `,
+    [orgId, id]
   );
   return rows[0];
 }
 
-export async function listMessages(orgId, conversationId, { limit = 50, before }) {
+export async function listMessages(db, orgId, conversationId, { limit = 50, before } = {}) {
+  const run = q(db);
   const params = [orgId, conversationId];
   let where = 'm.org_id = $1 AND m.conversation_id = $2';
   if (before) { params.push(before); where += ` AND m.created_at < $${params.length}`; }
-  const { rows } = await query(
-    `SELECT id, "from", provider, type, text, attachments, status, transcript, meta, created_at
-     FROM messages m WHERE ${where}
-     ORDER BY created_at DESC LIMIT ${limit}`, params);
+
+  const { rows } = await run(
+    `
+    SELECT id, "from", provider, type, text, attachments, status, transcript, meta, created_at
+    FROM messages m
+    WHERE ${where}
+    ORDER BY created_at DESC
+    LIMIT ${limit}
+    `,
+    params
+  );
   return rows;
 }
 
-export async function appendMessage(orgId, conversationId, from, payload) {
+export async function appendMessage(db, orgId, conversationId, from, payload) {
+  const run = q(db);
   const { type, text, attachments = null, status = 'sent', meta = null } = payload;
-  const { rows } = await query(
-    `INSERT INTO messages (org_id, conversation_id, "from", provider, type, text, attachments, status, meta)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     RETURNING id, status, created_at`,
-    [orgId, conversationId, from, 'wa', type, text || null, attachments, status, meta]
+
+  // provider curto
+  const { rows: prov } = await run(
+    `
+    SELECT ${PROVIDER_CASE_SQL} AS provider
+      FROM conversations c
+      LEFT JOIN channels ch ON ch.id = c.channel_id
+     WHERE c.org_id = $1 AND c.id = $2
+    `,
+    [orgId, conversationId]
   );
-  await query('UPDATE conversations SET last_message_at = now() WHERE id = $1 AND org_id = $2', [conversationId, orgId]);
+  const provider = prov[0]?.provider || 'wa';
+
+  // colunas opcionais
+  const hasSender = (await run(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='messages' AND column_name='sender'
+     ) AS ok`
+  )).rows[0]?.ok;
+
+  const hasDirection = (await run(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='messages' AND column_name='direction'
+     ) AS ok`
+  )).rows[0]?.ok;
+
+  // valores exigidos pelo CHECK
+  let sender = null;
+  let direction = null;
+  if (hasSender || hasDirection) {
+    if (from === 'customer') { sender = 'contact'; direction = 'inbound'; }
+    else if (from === 'agent') { sender = 'agent'; direction = 'outbound'; }
+    else { sender = hasSender ? 'agent' : null; direction = 'outbound'; } // ajuste p/ 'ai' se seu CHECK aceitar
+  }
+
+  // INSERT com timestamps fixados no SQL (sem placeholders extras)
+  let rows;
+  if (hasSender || hasDirection) {
+    const cols = ['org_id','conversation_id','"from"','provider','type','text','attachments','status','meta'];
+    const vals = [orgId, conversationId, from, provider, type, text || null, attachments, status, meta];
+
+    if (hasSender)    { cols.splice(3, 0, 'sender');    vals.splice(3, 0, sender); }
+    if (hasDirection) { cols.splice(4, 0, 'direction'); vals.splice(4, 0, direction); }
+
+    const placeholders = cols.map((_, i) => `$${i+1}`).join(',');
+    const sql = `
+      INSERT INTO messages (${cols.join(',')}, created_at, updated_at)
+      VALUES (${placeholders}, now(), now())
+      RETURNING id, status, created_at
+    `;
+    ({ rows } = await run(sql, vals));
+  } else {
+    ({ rows } = await run(
+      `
+      INSERT INTO messages (org_id, conversation_id, "from", provider, type, text, attachments, status, meta, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, now(), now())
+      RETURNING id, status, created_at
+      `,
+      [orgId, conversationId, from, provider, type, text || null, attachments, status, meta]
+    ));
+  }
+
+  await run(
+    'UPDATE conversations SET last_message_at = now() WHERE id = $1 AND org_id = $2',
+    [conversationId, orgId]
+  );
   return rows[0];
 }
