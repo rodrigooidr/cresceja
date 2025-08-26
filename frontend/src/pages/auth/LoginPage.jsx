@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
-import { setAuthToken } from "../../api/inboxApi"; // <- garante Authorization no axios da Inbox
+import { setAuthToken } from "../../api/inboxApi"; // <- garante Authorization no inboxApi da Inbox
 
 export default function LoginPage() {
   const { login, loading } = useAuth();
@@ -22,7 +22,7 @@ export default function LoginPage() {
       // seu contexto pode retornar boolean OU { token, user }
       const result = await login(email.trim(), password);
 
-      // 1) se veio token no retorno do login, aplica no axios
+      // 1) se veio token no retorno do login, aplica no inboxApi
       if (result && typeof result === "object" && result.token) {
         setAuthToken(result.token);
       } else {

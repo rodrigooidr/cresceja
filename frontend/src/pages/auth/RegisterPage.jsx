@@ -1,6 +1,5 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useState } from 'react';
-import api from "../../api/api";
 import { useNavigate } from 'react-router-dom';
 
 function RegisterPage() {
@@ -12,7 +11,7 @@ function RegisterPage() {
 
   const handleRegister = async () => {
     try {
-      await axios.post('http://localhost:4000/api/auth/register', {
+      await inboxApi.post('http://localhost:4000/api/auth/register', {
         email,
         password: senha
       });

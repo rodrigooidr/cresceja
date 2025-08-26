@@ -1,6 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useState, useEffect } from 'react';
-import api from '../api/api';
+import inboxApi from '../api/inboxApi.js'; 
 import LeadModal from '../components/LeadModal';
 
 export default function LeadsPage() {
@@ -11,7 +11,7 @@ export default function LeadsPage() {
   const [showModal, setShowModal] = useState(false);
 
   const loadLeads = async () => {
-    const res = await axios.get('/api/leads', { params: { page, limit } });
+    const res = await inboxApei.get('/leads', { params: { page, limit } });
     setLeads(res.data.data);
     setTotal(res.data.meta.total);
   };

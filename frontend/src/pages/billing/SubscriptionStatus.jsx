@@ -1,6 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from "react";
-import api from "../../api/api";
+import inboxApi from "../../api/inboxApi";
 
 export default function SubscriptionStatus() {
   const [data, setData] = useState(null);
@@ -12,12 +12,12 @@ export default function SubscriptionStatus() {
     setError(null);
     try {
       // Prefer /api/subscription/status if seu backend usa esse caminho
-      const res = await axios.get("/subscription/status");
+      const res = await inboxApi.get("/subscription/status");
       setData(res.data);
     } catch (e1) {
       try {
         // Alternativa comum
-        const res = await axios.get("/billing/status");
+        const res = await inboxApi.get("/billing/status");
         setData(res.data);
       } catch (e2) {
         setError("Não foi possível obter o status da assinatura. Verifique se o backend expõe /subscription/status ou /billing/status.");

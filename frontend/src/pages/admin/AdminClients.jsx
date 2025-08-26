@@ -1,7 +1,7 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 // src/pages/Admin/AdminClients.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import api from "../../api/api";
+import inboxApi from "../../api/inboxApi";
 
 // helpers de data
 const ymd = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "");
@@ -47,8 +47,8 @@ export default function AdminClients() {
       setLoading(true);
       setErrorMsg("");
       const [clientsRes, plansRes] = await Promise.all([
-        axios.get(`/api/admin/clients`, { params: { query: q } }),
-        axios.get(`/api/public/plans`),
+        inboxApi.get(`/api/admin/clients`, { params: { query: q } }),
+        inboxApi.get(`/api/public/plans`),
       ]);
       const rawClients = clientsRes?.data?.clients || clientsRes?.data || [];
       const rawPlans = Array.isArray(plansRes?.data?.plans)
@@ -106,7 +106,7 @@ export default function AdminClients() {
         end_date: c.end_date ? ymd(c.end_date) : null,
         plan_id: c.plan_id || null,
       };
-      await axios.patch(`/api/admin/clients/${c.id}`, body);
+      await  inboxApi.patch(`/api/admin/clients/${c.id}`, body);
     } catch (e) {
       console.error("saveClient", e);
       alert("Falha ao salvar cliente.");
@@ -136,7 +136,7 @@ export default function AdminClients() {
       }
 
       const body = { active: true, start_date: start, end_date: end, plan_id: c.plan_id || null };
-      await axios.patch(`/api/admin/clients/${c.id}`, body);
+      await  inboxApi.patch(`/api/admin/clients/${c.id}`, body);
 
       setItems((prev) =>
         prev.map((x) => (x.id === c.id ? { ...x, ...body, _session_id: "", _payment_id: "" } : x))
@@ -175,7 +175,7 @@ export default function AdminClients() {
       if (c._payment_id) params.payment_id = c._payment_id;
       if (c.plan_id) params.plan = c.plan_id;
 
-      const { data } = await axios.get(`/api/billing/verify`, { params });
+      const { data } = await inboxApi.get(`/api/billing/verify`, { params });
       if (data?.status === "paid" || data?.dev) {
         await applyPeriodFromPlan(c);
       } else {
@@ -204,7 +204,7 @@ export default function AdminClients() {
         start_date: newClient.auto ? null : newClient.start_date || null,
         end_date: newClient.auto ? null : newClient.end_date || null,
       };
-      await axios.post(`/api/admin/clients`, body);
+      await inboxApi.post(`/api/admin/clients`, body);
       setNewClient({
         company_name: "",
         email: "",

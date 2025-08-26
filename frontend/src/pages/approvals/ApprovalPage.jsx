@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -8,7 +8,7 @@ function ApprovalPage() {
 
   const carregarPendentes = async () => {
     try {
-      const res = await axios.get('/posts?status=pendente');
+      const res = await inboxApi.get('/posts?status=pendente');
       setPosts(res.data);
     } catch (err) {
       console.error('Erro ao buscar posts pendentes', err);
@@ -17,7 +17,7 @@ function ApprovalPage() {
 
   const atualizarStatus = async (id, status) => {
     try {
-      await axios.put(`/posts/${id}/status`, { status });
+      await inboxApi.put(`/posts/${id}/status`, { status });
       carregarPendentes();
     } catch (err) {
       console.error('Erro ao atualizar status', err);

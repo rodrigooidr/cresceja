@@ -1,15 +1,15 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 
 import React, { useState } from 'react';
-import { api } from '../api/axios';
+ 
 import PostPreview from '../components/PostPreview';
 export default function RepurposePage(){
   const [postId, setPostId] = useState('');
   const [status, setStatus] = useState(null);
   const [channel, setChannel] = useState('instagram');
   const enqueue = async () => {
-    await axios.post(`/repurpose/${postId}`, { modes: ['story','email','video'] });
-    const r = await axios.get(`/repurpose/${postId}/status`);
+    await inboxApi.post(`/repurpose/${postId}`, { modes: ['story','email','video'] });
+    const r = await inboxApi.get(`/repurpose/${postId}/status`);
     setStatus(r.data);
   };
   return (

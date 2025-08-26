@@ -1,6 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useState, useEffect } from 'react';
-import { api } from '../../api/axios';
+
 
 export default function StudioPage() {
   const [title, setTitle] = useState('');
@@ -14,7 +14,7 @@ export default function StudioPage() {
   }, []);
 
   const loadAssets = async () => {
-    const res = await axios.get('/content/assets');
+    const res = await inboxApi.get('/content/assets');
     setAssets(res.data.data || []);
   };
 
@@ -22,7 +22,7 @@ export default function StudioPage() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
-      await axios.post('/content/assets', {
+      await inboxApi.post('/content/assets', {
         filename: file.name,
         data: reader.result,
       });
@@ -33,7 +33,7 @@ export default function StudioPage() {
   };
 
   const savePost = async () => {
-    await axios.post('/content/posts', {
+    await inboxApi.post('/content/posts', {
       title,
       content,
       channels: [],

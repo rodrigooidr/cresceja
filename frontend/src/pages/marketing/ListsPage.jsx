@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -10,7 +10,7 @@ export default function ListsPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get('/marketing/lists');
+        const res = await inboxApi.get('/marketing/lists');
         setLists(res.data.data || []);
       } catch (err) {
         console.error('load lists', err);
@@ -20,7 +20,7 @@ export default function ListsPage() {
 
   const create = async () => {
     try {
-      const res = await axios.post('/marketing/lists', { name });
+      const res = await inboxApi.post('/marketing/lists', { name });
       setLists([...lists, res.data.data]);
       setName('');
     } catch (err) {

@@ -1,7 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../api/inboxApi";
 // frontend/src/components/WorkspaceSwitcher.jsx
 import React, { useEffect, useState } from 'react';
-import api from "../api/api";
 
 export default function WorkspaceSwitcher({ collapsed = false }) {
   const [orgs, setOrgs] = useState([]);
@@ -17,7 +16,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
 
     (async () => {
       try {
-        const { data } = await axios.get('/api/orgs/me');
+        const { data } = await inboxApi.get('/api/orgs/me');
         if (!alive) return;
 
         const list = Array.isArray(data?.orgs) ? data.orgs : [];
@@ -44,7 +43,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
     setCurrent(orgId);
     localStorage.setItem('org_id', orgId); // mantém WS e outras áreas em sincronia
     try {
-      await axios.post('/api/orgs/switch', { orgId });
+      await inboxApi.post('/api/orgs/switch', { orgId });
     } catch {
       // ignora erros: a página vai recarregar de qualquer jeito
     }

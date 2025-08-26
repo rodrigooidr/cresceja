@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useState } from 'react';
 import { useApi } from '../contexts/useApi';
 
@@ -25,7 +25,7 @@ export default function OpportunityModal({ onClose, onSaved }) {
         responsavel: form.responsavel || null,
         lead_id: form.lead_id || null,
       };
-      await axios.post('/opportunities', payload);
+      await inboxApi.post('/opportunities', payload);
       if (onSaved) onSaved();
       onClose();
     } catch (err) {

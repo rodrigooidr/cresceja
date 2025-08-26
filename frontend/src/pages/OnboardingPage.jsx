@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../contexts/useApi';
 
@@ -10,7 +10,7 @@ export default function OnboardingPage() {
   const carregar = async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get('/api/onboarding');
+      const { data } = await inboxApi.get('/api/onboarding');
       setClientes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Erro ao carregar clientes', err);
@@ -23,7 +23,7 @@ export default function OnboardingPage() {
 
   const atualizar = async (id, campo, valor) => {
     try {
-      await axios.put(`/api/onboarding/${id}`, { [campo]: valor });
+      await inboxApi.put(`/onboarding/${id}`, { [campo]: valor });
       setClientes(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c));
     } catch (err) {
       console.error('Falha ao atualizar', err);
