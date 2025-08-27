@@ -22,6 +22,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "echo no-tests && exit 0",
+    "guardrail:inbox": "grep -R --line-number -E \"fetch\\(|axios\\.(get|post|put|delete)\\(|/api/\" src/inbox src/pages/inbox src/components/inbox | grep -v \"api/inboxApi\" || true",
     "eject": "react-scripts eject"
   },
   "browserslist": {

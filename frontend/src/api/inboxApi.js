@@ -15,6 +15,14 @@ const inboxApi = axios.create({
   withCredentials: false,
 });
 
+// monta URL absoluta baseada na base da API, útil para href/src de assets
+export function apiUrl(path = '') {
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  const root = baseURL.replace(/\/api$/, '');
+  return root + (path.startsWith('/') ? path : `/${path}`);
+}
+
 // helper para token
 export function setAuthToken(token) {
   if (token) {
@@ -60,5 +68,5 @@ inboxApi.interceptors.response.use(
 );
 
 // ✅ exportações finais
-export default inboxApi;   // <— isto faltava
-export { inboxApi };       // opcional (named), se quiser usar em outros lugares
+export default inboxApi;
+export { inboxApi };
