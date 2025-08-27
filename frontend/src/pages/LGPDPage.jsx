@@ -1,7 +1,7 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 
 import React, { useState } from 'react';
-import { api } from '../api/axios';
+ 
 
 export default function LGPDPage(){
   const [leadId, setLeadId] = useState('');
@@ -9,7 +9,7 @@ export default function LGPDPage(){
   const [exportUrl, setExportUrl] = useState(null);
 
   const save = async () => {
-    await axios.post('/lgpd/consent', { lead_id: leadId, consent, purpose: 'atendimento' });
+    await inboxApi.post('/lgpd/consent', { lead_id: leadId, consent, purpose: 'atendimento' });
     alert('Consentimento atualizado');
   };
   const exportar = () => {
@@ -18,7 +18,7 @@ export default function LGPDPage(){
     window.open(url, '_blank');
   };
   const erase = async () => {
-    await axios.post('/lgpd/erase', { lead_id: leadId });
+    await inboxApi.post('/lgpd/erase', { lead_id: leadId });
     alert('Solicitação de eliminação registrada');
   };
 

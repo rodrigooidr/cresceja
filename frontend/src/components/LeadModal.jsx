@@ -1,6 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useState } from 'react';
-import api from '../api/api';
+import inboxApi from '../api/inboxApi.js';
 
 export default function LeadModal({ onClose, onSaved }) {
   const [form, setForm] = useState({ nome: '', email: '', telefone: '', origem: 'site' });
@@ -17,7 +17,7 @@ export default function LeadModal({ onClose, onSaved }) {
       return;
     }
     try {
-      await axios.post('/api/leads', form);
+      await inboxApi.post('/leads', form);
       onClose();
       if (onSaved) onSaved();
     } catch (err) {

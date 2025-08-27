@@ -1,6 +1,5 @@
-import axios from 'axios';
+import inboxApi from "../api/inboxApi";
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
-import api from "../api/api";
 
 const PricingCtx = createContext({
   plans: [], loading: true, error: "", refresh: ()=>{}
@@ -53,8 +52,8 @@ export function PricingProvider({ children }){
     setError("");
     try {
       let res;
-      try { res = await axios.get("/public/plans"); }
-      catch { res = await axios.get("/admin/plans"); }
+      try { res = await inboxApi.get("/public/plans"); }
+      catch { res = await inboxApi.get("/admin/plans"); }
       const data = res?.data ?? {};
       const list =
         Array.isArray(data?.plans) ? data.plans :

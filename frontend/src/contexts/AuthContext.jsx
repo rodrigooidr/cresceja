@@ -13,7 +13,7 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [loading, setLoading] = useState(false);
 
-  // Reaplica token no axios da Inbox ao montar / ao mudar token
+  // Reaplica token no inboxApi da Inbox ao montar / ao mudar token
   useEffect(() => {
     setAuthToken(token || undefined);
   }, [token]);
@@ -36,7 +36,7 @@ export function AuthProvider({ children }) {
       const usr = data?.user ?? null;
       if (!tk) throw new Error('Falha no login: token ausente.');
 
-      // injeta Authorization no cliente axios e persiste
+      // injeta Authorization no cliente inboxApi e persiste
       setAuthToken(tk);
       localStorage.setItem('token', tk);
       setToken(tk);

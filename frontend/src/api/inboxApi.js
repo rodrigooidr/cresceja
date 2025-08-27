@@ -34,6 +34,13 @@ export function setAuthToken(token) {
   }
 }
 
+// Gera URL absoluta com base no baseURL (que já inclui /api)
+export function apiUrl(path = "") {
+  const base = (inboxApi.defaults.baseURL || "").replace(/\/+$/, ""); // sem barra final
+  const rel = String(path || "").replace(/^\/+/, "");                 // sem barra inicial
+  return `${base}/${rel}`;
+}
+
 // reaplica token ao carregar
 setAuthToken(localStorage.getItem('token') || undefined);
 

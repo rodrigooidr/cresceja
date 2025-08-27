@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -10,7 +10,7 @@ export default function TemplatesPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get('/marketing/templates');
+        const res = await inboxApi.get('/marketing/templates');
         setTemplates(res.data.data || []);
       } catch (err) {
         console.error('load templates', err);
@@ -20,7 +20,7 @@ export default function TemplatesPage() {
 
   const create = async () => {
     try {
-      const res = await axios.post('/marketing/templates', form);
+      const res = await inboxApi.post('/marketing/templates', form);
       setTemplates([...templates, res.data.data]);
       setForm({ name: '', subject: '', body: '' });
     } catch (err) {

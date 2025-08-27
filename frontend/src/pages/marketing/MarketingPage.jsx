@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -14,7 +14,7 @@ function MarketingPage() {
 
   const carregarPosts = async () => {
     try {
-      const res = await axios.get('/posts');
+      const res = await inboxApi.get('/posts');
       setPosts(res.data);
     } catch (err) {
       console.error('Erro ao carregar posts', err);
@@ -24,7 +24,7 @@ function MarketingPage() {
   const criarPost = async () => {
     if (!texto || !canal) return;
     try {
-      await axios.post('/posts', {
+      await inboxApi.post('/posts', {
         text: texto,
         channel: canal,
         scheduledFor: data,

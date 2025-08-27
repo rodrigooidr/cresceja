@@ -1,8 +1,7 @@
-import axios from 'axios';
+import inboxApi from "../api/inboxApi";
 // src/components/TrialTopBanner.jsx
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../api/api";
 import TrialDaysLabel from "./TrialDaysLabel";
 
 export default function TrialTopBanner() {
@@ -15,7 +14,7 @@ export default function TrialTopBanner() {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await axios.get("/subscription/status");
+        const { data } = await inboxApi.get("/subscription/status");
         if (mounted) setStatus(data || null);
       } catch {
         // ok: se falhar, caímos no TrialDaysLabel

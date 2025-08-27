@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -17,8 +17,8 @@ export default function AutomationsPage() {
     (async () => {
       try {
         const [autoRes, tplRes] = await Promise.all([
-          axios.get('/marketing/automations'),
-          axios.get('/marketing/templates'),
+          inboxApi.get('/marketing/automations'),
+          inboxApi.get('/marketing/templates'),
         ]);
         setTemplates(tplRes.data.data || []);
         const autos = autoRes.data.data || [];
@@ -33,17 +33,17 @@ export default function AutomationsPage() {
   const toggleBirthday = async () => {
     if (!birthday) return;
     const newStatus = birthday.status === 'on' ? 'off' : 'on';
-    await axios.put(`/marketing/automations/${birthday.id}/status`, { status: newStatus });
+    await inboxApi.put(`/marketing/automations/${birthday.id}/status`, { status: newStatus });
     setBirthday({ ...birthday, status: newStatus });
   };
 
   const saveWelcome = async () => {
     try {
       if (!welcome) {
-        const res = await axios.post('/marketing/automations', { name: 'Bem-vindo', type: 'journey' });
+        const res = await inboxApi.post('/marketing/automations', { name: 'Bem-vindo', type: 'journey' });
         setWelcome(res.data.data);
       } else {
-        await axios.put(`/marketing/automations/${welcome.id}`, { name: 'Bem-vindo' });
+        await inboxApi.put(`/marketing/automations/${welcome.id}`, { name: 'Bem-vindo' });
       }
       alert('Salvo');
     } catch (err) {

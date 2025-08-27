@@ -1,4 +1,4 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 // src/pages/Omnichannel/ChatPage.jsx
 // Omnichannel Chat — pronto para uso
 // - 3 colunas: Inbox/Filas | Thread/Composer | Painel do Cliente
@@ -7,7 +7,7 @@ import axios from 'axios';
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
-import api from "../../api/api";
+import inboxApi from "../../api/inboxApi";
 
 const CHANNEL_ICONS = {
   whatsapp: "/icons/whatsapp.svg",
@@ -135,7 +135,7 @@ export default function ChatPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await axios.get('/api/quick-replies');
+        const { data } = await inboxApi.get('/api/quick-replies');
         setQuickReplies(Array.isArray(data?.templates) ? data.templates : []);
       } catch {}
     })();
@@ -179,7 +179,7 @@ export default function ChatPage() {
         if (channelFilter !== "todos") qs.push(`channel=${encodeURIComponent(channelFilter)}`);
         if (search) qs.push(`q=${encodeURIComponent(search)}`);
         const url = `/api/conversations${qs.length ? `?${qs.join("&")}` : ""}`;
-        const { data } = await axios.get(url);
+        const { data } = await inboxApi.get(url);
         if (!mounted) return;
         setConversations(Array.isArray(data) ? data : []);
       } catch {
@@ -201,7 +201,7 @@ export default function ChatPage() {
     let mounted = true;
     (async () => {
       try {
-        const { data } = await axios.get(`/api/conversations/${activeId}/messages`);
+        const { data } = await inboxApi.get(`/api/conversations/${activeId}/messages`);
         if (!mounted) return;
         const msgs = Array.isArray(data)
           ? data.map((m) => ({ id: m.id, from: m.from || (m.author_role === "agent" ? "agent" : "contact"), text: m.text, at: m.created_at || m.at }))
@@ -236,7 +236,7 @@ export default function ChatPage() {
       // Tenta via REST
       const payload = { text };
       const url = `/api/conversations/${activeId}/messages`;
-      await axios.post(url, payload);
+      await inboxApi.post(url, payload);
       setMessages((prev) => [...prev, { id: `tmp-${Date.now()}`, from: "agent", text, at: Date.now() }]);
       setInput("");
     } catch {
@@ -251,7 +251,7 @@ export default function ChatPage() {
 
   const assumeConversation = async (id) => {
     try {
-      await axios.put(`/api/conversations/${id}/assumir`);
+      await inboxApi.put(`/conversations/${id}/assumir`);
       setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, assignee: "you", status: "em_andamento" } : c)));
     } catch {
       setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, assignee: "you", status: "em_andamento" } : c)));
@@ -260,7 +260,7 @@ export default function ChatPage() {
 
   const endConversation = async (id) => {
     try {
-      await axios.put(`/api/conversations/${id}/status`, { status: "resolvida" });
+      await inboxApi.put(`/conversations/${id}/status`, { status: "resolvida" });
     } catch {}
     setConversations((prev) => prev.map((c) => (c.id === id ? { ...c, status: "resolvida" } : c)));
   };

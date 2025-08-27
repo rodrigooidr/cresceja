@@ -1,8 +1,7 @@
-import axios from 'axios';
+import inboxApi from "../api/inboxApi";
 // src/pages/LandingPage.jsx
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../api/api";
 import TrialDaysLabel from "../components/TrialDaysLabel";
 import { useTrial } from "../contexts/TrialContext";
 import PricingTable from "../components/PricingTable";
@@ -20,7 +19,7 @@ export default function LandingPage() {
     e.preventDefault();
     setStatus({ loading: true, ok: null, msg: "" });
     try {
-      await axios.post("/leads", lead);
+      await inboxApi.post("/leads", lead);
       setStatus({
         loading: false,
         ok: true,

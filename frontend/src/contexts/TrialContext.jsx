@@ -1,7 +1,6 @@
-import axios from 'axios';
-
+import inboxApi from "../api/inboxApi";
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import api from "../api/api";
+
 
 const TrialContext = createContext({ trialDays: 14, loading: true, refresh: () => {} });
 
@@ -12,7 +11,7 @@ export function TrialProvider({ children }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await axios.get("/public/plans");
+      const { data } = await inboxApi.get("/public/plans");
       const list = Array.isArray(data?.plans) ? data.plans : Array.isArray(data) ? data : [];
       const free =
         list.find((p) => p.id === "free") ||

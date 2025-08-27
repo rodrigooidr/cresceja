@@ -1,6 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from "react";
-import api from "../api/api";
+import inboxApi from "../api/inboxApi";
 import { role as getRole } from "../utils/auth";
 
 export default function UserSwitcher() {
@@ -13,7 +13,7 @@ export default function UserSwitcher() {
     let alive = true;
     (async () => {
       try {
-        const { data } = await axios.get("/admin/users");
+        const { data } = await inboxApi.get("/admin/users");
         if (!alive) return;
         const list = Array.isArray(data?.users) ? data.users : Array.isArray(data) ? data : [];
         setUsers(list);

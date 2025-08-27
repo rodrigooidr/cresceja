@@ -1,6 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from "react";
-import api from "../../api/api";
+import inboxApi from "../../api/inboxApi";
 
 export default function AdminQuickReplies() {
   const [items, setItems] = useState([]);
@@ -8,7 +8,7 @@ export default function AdminQuickReplies() {
 
   const load = async () => {
     try {
-      const { data } = await axios.get("/quick-replies");
+      const { data } = await inboxApi.get("/quick-replies");
       const list = Array.isArray(data?.templates) ? data.templates : [];
       setItems(list);
     } catch {
@@ -22,14 +22,14 @@ export default function AdminQuickReplies() {
 
   const save = async () => {
     if (!form.title || !form.body) return;
-    await axios.post("/quick-replies", form);
+    await inboxApi.post("/quick-replies", form);
     setForm({ title: "", body: "" });
     load();
   };
 
   const remove = async (id) => {
     if (!window.confirm("Excluir esta resposta?")) return;
-    await axios.delete(`/api/quick-replies/${id}`);
+    await inboxApi.delete(`/api/quick-replies/${id}`);
     load();
   };
 
@@ -39,7 +39,7 @@ export default function AdminQuickReplies() {
     if (title === null) return;
     const body = prompt("Texto:", cur?.body || "");
     if (body === null) return;
-    await axios.put(`/api/quick-replies/${id}`, { title, body });
+    await inboxApi.put(`/quick-replies/${id}`, { title, body });
     load();
   };
 

@@ -1,7 +1,7 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 // src/pages/Admin/AdminPlans.jsx
 import React, { useEffect, useState } from "react";
-import api from "../../api/api";
+import inboxApi from "../../api/inboxApi";
 
 const DEFAULT_PLAN = () => ({
   id: "",
@@ -41,9 +41,9 @@ export default function AdminPlans() {
       setLoading(true);
       let res;
       try {
-        res = await axios.get(`/api/admin/plans`);
+        res = await inboxApi.get(`/api/admin/plans`);
       } catch {
-        res = await axios.get(`/api/public/plans`);
+        res = await inboxApi.get(`/api/public/plans`);
       }
       const data = res?.data;
       const list = Array.isArray(data?.plans)
@@ -110,9 +110,9 @@ export default function AdminPlans() {
       };
 
       if (!plan._isNew) {
-        await axios.patch(`/api/admin/plans/${plan.id}`, body);
+        await  inboxApi.patch(`/api/admin/plans/${plan.id}`, body);
       } else {
-        const { data } = await axios.post(`/api/admin/plans`, body);
+        const { data } = await inboxApi.post(`/api/admin/plans`, body);
         const newId = data?.id || body.id;
         setItems((prev) =>
           prev.map((it) =>
@@ -146,11 +146,11 @@ export default function AdminPlans() {
     setSavingId(plan.id || "_new_");
     try {
       try {
-        await axios.post(`/api/admin/plans/${plan.id}/publish`, {
+        await inboxApi.post(`/api/admin/plans/${plan.id}/publish`, {
           is_published: value,
         });
       } catch {
-        await axios.patch(`/api/admin/plans/${plan.id}`, { is_published: value });
+        await  inboxApi.patch(`/api/admin/plans/${plan.id}`, { is_published: value });
       }
       setItems((prev) =>
         prev.map((it) =>
@@ -170,7 +170,7 @@ export default function AdminPlans() {
     if (plan._isNew) return removePlanLocal(plan);
     if (!window.confirm('Excluir plano permanentemente?')) return;
     try {
-      await axios.delete(`/api/admin/plans/${plan.id}`);
+      await inboxApi.delete(`/api/admin/plans/${plan.id}`);
       setItems((prev) => prev.filter((p) => p._key !== plan._key));
       window.dispatchEvent(new CustomEvent('plans-updated'));
     } catch (e) {

@@ -1,13 +1,13 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/axios';
+ 
 export default function ReportsPage(){
   const [costs, setCosts] = useState(null);
   const [credits, setCredits] = useState(null);
   useEffect(()=>{
     (async()=>{
-      const [c, k] = await Promise.all([ axios.get('/reports/costs'), axios.get('/reports/credits') ]);
+      const [c, k] = await Promise.all([ inboxApi.get('/reports/costs'), inboxApi.get('/reports/credits') ]);
       setCosts(c.data);
       setCredits(k.data);
     })();

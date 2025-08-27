@@ -1,6 +1,5 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
-import api from "../../api/api";
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function ChannelsPage() {
@@ -14,17 +13,17 @@ export default function ChannelsPage() {
   }, []);
 
   async function load() {
-    const { data } = await axios.get('/api/channels');
+    const { data } = await inboxApi.get('/api/channels');
     setChannels(data.data || []);
   }
 
   async function connect(type) {
-    await axios.post('/api/channels', { type, name: type });
+    await inboxApi.post('/api/channels', { type, name: type });
     load();
   }
 
   async function startBaileys(id) {
-    const { data } = await axios.post('/api/channels/whatsapp/baileys/session', { channelId: id });
+    const { data } = await inboxApi.post('/api/channels/whatsapp/baileys/session', { channelId: id });
     setQr(data.data?.qr || null);
   }
 

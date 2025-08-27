@@ -1,23 +1,22 @@
-import axios from 'axios';
-
+import inboxApi from "../../api/inboxApi";
 import React, { useState } from 'react';
-import { api } from '../api/axios';
+
 export default function CalendarConnectPage(){
   const [urls, setUrls] = useState({});
   const getGoogleUrl = async () => {
-    const r = await axios.get('/calendar/google/auth');
+    const r = await inboxApi.get('/calendar/google/auth');
     setUrls(u => ({...u, google: r.data.url}));
   };
   const getOutlookUrl = async () => {
-    const r = await axios.get('/calendar/outlook/auth');
+    const r = await inboxApi.get('/calendar/outlook/auth');
     setUrls(u => ({...u, outlook: r.data.url}));
   };
   const createGoogle = async () => {
-    await axios.post('/calendar/google/event', { summary: 'Teste CresceJá', start: new Date(), end: new Date(Date.now()+3600000) });
+    await inboxApi.post('/calendar/google/event', { summary: 'Teste CresceJá', start: new Date(), end: new Date(Date.now()+3600000) });
     alert('Solicitado!');
   };
   const createOutlook = async () => {
-    await axios.post('/calendar/outlook/event', { subject: 'Teste CresceJá', start: new Date(), end: new Date(Date.now()+3600000) });
+    await inboxApi.post('/calendar/outlook/event', { subject: 'Teste CresceJá', start: new Date(), end: new Date(Date.now()+3600000) });
     alert('Solicitado!');
   };
   return (

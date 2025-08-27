@@ -1,8 +1,8 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 // src/pages/Credits/CreditsPage.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import api from "../../api/api";
+import inboxApi from "../../api/inboxApi";
 import TrialDaysLabel from "../../components/TrialDaysLabel";
 
 export default function CreditsPage() {
@@ -16,8 +16,8 @@ export default function CreditsPage() {
     setErr("");
     try {
       const [cRes, sRes] = await Promise.all([
-        axios.get("/ai-credits/status"),
-        axios.get("/subscription/status"),
+        inboxApi.get("/ai-credits/status"),
+        inboxApi.get("/subscription/status"),
       ]);
       setCredits(cRes?.data ?? null);
       setSub(sRes?.data ?? null);
@@ -35,7 +35,7 @@ export default function CreditsPage() {
 
   const startTrial = async () => {
     try {
-      await axios.post("/subscription/start-trial");
+      await inboxApi.post("/subscription/start-trial");
       await fetchAll();
     } catch (e) {
       console.error("startTrial", e);

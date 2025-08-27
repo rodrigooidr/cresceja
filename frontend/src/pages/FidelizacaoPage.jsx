@@ -1,6 +1,6 @@
-import axios from 'axios';
+import inboxApi from "../../api/inboxApi";
 import React, { useState, useEffect } from 'react';
-import { api } from '../api/axios';
+ 
 
 export default function FidelizacaoPage() {
   const [clients, setClients] = useState([]);
@@ -13,7 +13,7 @@ export default function FidelizacaoPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get('/admin/clients');
+        const res = await inboxApi.get('/admin/clients');
         const list = res.data.clients || [];
         setClients(list);
         list.forEach((c) => {
@@ -28,7 +28,7 @@ export default function FidelizacaoPage() {
 
   const fetchNps = async (clientId) => {
     try {
-      const r = await axios.get('/nps/results', { params: { clientId } });
+      const r = await inboxApi.get('/nps/results', { params: { clientId } });
       setNps((prev) => ({ ...prev, [clientId]: r.data }));
     } catch (e) {
       console.error(e);
@@ -37,7 +37,7 @@ export default function FidelizacaoPage() {
 
   const fetchRewards = async (clientId) => {
     try {
-      const r = await axios.get('/rewards', { params: { clientId } });
+      const r = await inboxApi.get('/rewards', { params: { clientId } });
       setRewards((prev) => ({ ...prev, [clientId]: r.data }));
     } catch (e) {
       console.error(e);
@@ -52,10 +52,10 @@ export default function FidelizacaoPage() {
 
   const sendSurvey = async () => {
     if (!modalClient) return;
-    const { data: survey } = await axios.post('/nps/send', {
+    const { data: survey } = await inboxApi.post('/nps/send', {
       clientId: modalClient.id,
     });
-    await axios.post(`/nps/respond/${survey.id}`, {
+    await inboxApi.post(`/nps/respond/${survey.id}`, {
       score: Number(score),
       comment,
     });
@@ -67,7 +67,7 @@ export default function FidelizacaoPage() {
     const type = prompt('Tipo de recompensa (cupom/bonus/upgrade):');
     if (!type) return;
     const value = prompt('Valor/descrição:') || '';
-    await axios.post('/rewards', { clientId, type, value });
+    await inboxApi.post('/rewards', { clientId, type, value });
     await fetchRewards(clientId);
   };
 
