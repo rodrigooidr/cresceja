@@ -1,10 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import inboxApi, { apiUrl } from '../../api/inboxApi';
 import { makeSocket } from '../../sockets/socket';
 import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
+import inboxApi from '../../api/inboxApi';
+import { apiUrl } from '../../utils/apiUrl';
+
+// ---------- Consts ----------
+const CHANNEL_OPTIONS = [
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'instagram', label: 'Instagram' },
+  // backend costuma usar 'messenger' (exibe "Facebook")
+  { value: 'messenger', label: 'Facebook' },
+];
 
 // ---------- UI ----------
 function ConversationItem({ c, onOpen }) {
@@ -14,12 +23,12 @@ function ConversationItem({ c, onOpen }) {
   return (
     <button onClick={() => onOpen(c)} className="w-full px-3 py-2 hover:bg-gray-100 flex gap-3 border-b">
       <img src={photo} alt="avatar" className="w-10 h-10 rounded-full"/>
-      <div className="text-left">
-        <div className="font-medium flex items-center gap-1">
-          <span>{contact.name || contact.phone_e164 || 'Contato'}</span>
-          <span className="text-xs">{icon}</span>
+      <div className="text-left min-w-0">
+        <div className="font-medium flex items-center gap-1 truncate">
+          <span className="truncate">{contact.name || contact.phone_e164 || 'Contato'}</span>
+          <span className="text-xs shrink-0">{icon}</span>
         </div>
-        <div className="text-xs text-gray-500">{c?.status || 'status'}</div>
+        <div className="text-xs text-gray-500 truncate">{c?.status || 'status'}</div>
       </div>
     </button>
   );
@@ -66,30 +75,44 @@ export default function InboxPage() {
 
   // Carrega templates quando conversa muda
   useEffect(() => {
-    if (!sel || sel.is_group) {
+    if (!sel) {
       setTemplates([]);
       setTemplateId('');
-      setClientForm({ name: sel?.contact?.name || '', phone_e164: sel?.contact?.phone_e164 || '' });
+      setClientForm({ name: '', phone_e164: '' });
       return;
     }
-    setClientForm({ name: sel?.contact?.name || '', phone_e164: sel?.contact?.phone_e164 || '' });
+    // formulário do cliente
+    setClientForm({
+      name: sel?.contact?.name || '',
+      phone_e164: sel?.contact?.phone_e164 || '',
+    });
+
+    if (sel.is_group) {
+      setTemplates([]);
+      setTemplateId('');
+      return;
+    }
     inboxApi
       .get('/templates', { params: { channel: sel.channel } })
       .then((r) => setTemplates(Array.isArray(r?.data?.items) ? r.data.items : []))
       .catch(() => setTemplates([]));
   }, [sel]);
 
+  // Monta objeto de params a partir do estado
+  const queryParams = useMemo(() => {
+    const p = {};
+    if (search) p.search = search;
+    if (channelFilters.length) p.channels = channelFilters.join(',');
+    if (tagFilters.length) p.tags = tagFilters.join(',');
+    if (statusFilters.length) p.status = statusFilters.join(',');
+    return p;
+  }, [search, channelFilters, tagFilters, statusFilters]);
+
   // Carrega lista de conversas com filtros e debounce
   useEffect(() => {
-    const params = {};
-    if (search) params.search = search;
-    if (channelFilters.length) params.channels = channelFilters.join(',');
-    if (tagFilters.length) params.tags = tagFilters.join(',');
-    if (statusFilters.length) params.status = statusFilters.join(',');
-
     const timeout = setTimeout(() => {
       inboxApi
-        .get('/conversations', { params })
+        .get('/conversations', { params: queryParams })
         .then(({ data }) => {
           const arr = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
           setItems(arr);
@@ -97,10 +120,16 @@ export default function InboxPage() {
         .catch((e) => console.error('Falha ao carregar conversas', e));
     }, 300);
 
-    setSearchParams(params, { replace: true });
+    // só atualiza a URL se houve mudança real
+    const current = Object.fromEntries([...searchParams.entries()]);
+    const next = queryParams;
+    const changed =
+      Object.keys(next).length !== Object.keys(current).length ||
+      Object.keys(next).some((k) => next[k] !== current[k]);
+    if (changed) setSearchParams(next, { replace: true });
 
     return () => clearTimeout(timeout);
-  }, [search, channelFilters, tagFilters, statusFilters, setSearchParams]);
+  }, [queryParams, searchParams, setSearchParams]);
 
   // Socket: mensagens e conversa atualizadas
   useEffect(() => {
@@ -142,12 +171,8 @@ export default function InboxPage() {
     });
 
     return () => {
-      try {
-        s.close?.();
-      } catch {}
-      try {
-        s.disconnect?.();
-      } catch {}
+      try { s.close?.(); } catch {}
+      try { s.disconnect?.(); } catch {}
     };
   }, [sel]);
 
@@ -182,8 +207,8 @@ export default function InboxPage() {
         const assets = Array.isArray(data?.assets)
           ? data.assets.map((a) => ({
               ...a,
-              url: apiUrl(a.url),
-              thumb_url: apiUrl(a.thumb_url),
+              url: a.url ? apiUrl(a.url) : undefined,
+              thumb_url: a.thumb_url ? apiUrl(a.thumb_url) : undefined,
             }))
           : [];
         uploaded.push(...assets);
@@ -268,9 +293,7 @@ export default function InboxPage() {
     const enabled = !sel.ai_enabled;
     setSel((prev) => ({ ...prev, ai_enabled: enabled }));
     try {
-      const { data } = await inboxApi.put(`/conversations/${sel.id}/ai`, {
-        enabled,
-      });
+      const { data } = await inboxApi.put(`/conversations/${sel.id}/ai`, { enabled });
       const conv = data?.conversation || data;
       setSel(conv);
       setItems((prev) => prev.map((c) => (c.id === conv.id ? conv : c)));
@@ -309,19 +332,19 @@ export default function InboxPage() {
             placeholder="Buscar..."
             className="w-full border rounded px-3 py-2"
           />
-          <div className="flex gap-2 text-sm">
-            {['whatsapp', 'instagram', 'facebook'].map((ch) => (
-              <label key={ch} className="flex items-center gap-1">
+          <div className="flex gap-3 flex-wrap text-sm">
+            {CHANNEL_OPTIONS.map(({ value, label }) => (
+              <label key={value} className="flex items-center gap-1">
                 <input
                   type="checkbox"
-                  checked={channelFilters.includes(ch)}
+                  checked={channelFilters.includes(value)}
                   onChange={(e) =>
                     setChannelFilters((prev) =>
-                      e.target.checked ? [...prev, ch] : prev.filter((c) => c !== ch)
+                      e.target.checked ? [...prev, value] : prev.filter((c) => c !== value)
                     )
                   }
                 />
-                {ch}
+                {label}
               </label>
             ))}
           </div>
@@ -366,48 +389,58 @@ export default function InboxPage() {
       {/* Coluna central */}
       <div className="col-span-6 flex flex-col">
         <div className="flex-1 overflow-y-auto flex flex-col-reverse p-4 gap-2">
-          {safeMsgs.map((m) => (
-            <div
-              key={m.id}
-              className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-gray-100 self-start' : 'bg-blue-100 self-end'}`}
-            >
-              {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
-              {m.attachments?.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {m.attachments.map((a) => (
-                    <a
-                      key={a.id || a.url}
-                      href={a.url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {a.thumb_url || a.url ? (
+          {safeMsgs.map((m) => {
+            const when = new Date(m.created_at);
+            const title = when.toLocaleString();
+            const short = when.toLocaleTimeString();
+            return (
+              <div
+                key={m.id}
+                className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-gray-100 self-start' : 'bg-blue-100 self-end'}`}
+                title={title}
+              >
+                {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
+
+                {m.attachments?.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {m.attachments.map((a) => {
+                      const hasUrl = !!a?.url;
+                      const thumb = a?.thumb_url || a?.url;
+                      const imgEl = thumb ? (
                         <img
-                          src={a.thumb_url || a.url}
+                          src={thumb}
                           alt="file"
                           className="w-24 h-24 object-cover rounded"
                         />
                       ) : (
                         <span className="underline text-sm">arquivo</span>
-                      )}
-                    </a>
-                  ))}
-                </div>
-              )}
-              {m.type === 'audio' && m.audio_url && (
-                <div className="mt-1">
-                  <audio controls src={m.audio_url} className="w-48" />
-                  <div className="text-xs text-gray-500 mt-1">
-                    {m.transcript_text ? m.transcript_text : 'Transcrevendo...'}
+                      );
+                      return hasUrl ? (
+                        <a key={a.id || a.url} href={a.url} target="_blank" rel="noreferrer">
+                          {imgEl}
+                        </a>
+                      ) : (
+                        <div key={a.id || Math.random()}>{imgEl}</div>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-              <div className="text-[10px] text-gray-500 mt-1 text-right">
-                {new Date(m.created_at).toLocaleTimeString()}
+                )}
+
+                {m.type === 'audio' && m.audio_url && (
+                  <div className="mt-1">
+                    <audio controls src={m.audio_url} className="w-48" />
+                    <div className="text-xs text-gray-500 mt-1">
+                      {m.transcript_text ? m.transcript_text : 'Transcrevendo...'}
+                    </div>
+                  </div>
+                )}
+
+                <div className="text-[10px] text-gray-500 mt-1 text-right">{short}</div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+
         {sel && (
           <div className={`p-3 border-t flex flex-col gap-2 ${expanded ? 'h-[40vh]' : ''}`}>
             {attachments.length > 0 && (
@@ -540,16 +573,11 @@ export default function InboxPage() {
                 />
                 <input
                   value={clientForm.phone_e164}
-                  onChange={(e) =>
-                    setClientForm((f) => ({ ...f, phone_e164: e.target.value }))
-                  }
+                  onChange={(e) => setClientForm((f) => ({ ...f, phone_e164: e.target.value }))}
                   placeholder="Telefone"
                   className="w-full border rounded px-2 py-1"
                 />
-                <button
-                  onClick={saveClient}
-                  className="px-2 py-1 bg-blue-600 text-white rounded"
-                >
+                <button onClick={saveClient} className="px-2 py-1 bg-blue-600 text-white rounded">
                   {sel.contact?.id ? 'Salvar' : 'Criar'}
                 </button>
               </div>

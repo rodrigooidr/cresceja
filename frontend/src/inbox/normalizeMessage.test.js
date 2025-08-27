@@ -1,5 +1,5 @@
 import normalizeMessage from './normalizeMessage';
-import { apiUrl } from '../api/inboxApi';
+import { apiUrl } from '../utils/apiUrl';
 
 describe('normalizeMessage', () => {
   it('handles basic text message', () => {
@@ -28,7 +28,6 @@ describe('normalizeMessage', () => {
       thumb_url: apiUrl('/t'),
     });
   });
-
   it('normalizes attachment URLs', () => {
     const raw = { id: '5', attachments: [{ id: 'x', url: '/x' }] };
     const msg = normalizeMessage(raw);
@@ -39,5 +38,13 @@ describe('normalizeMessage', () => {
     const raw = { id: '4', group_meta: { group_id: 'g1' } };
     const msg = normalizeMessage(raw);
     expect(msg.group_meta).toEqual({ group_id: 'g1' });
+  });
+    
+  it('does not return bare API base when urls are missing', () => {
+    const raw = { id: '6', attachments: [{ id: 'z' }] }; // sem url/thumb_url
+    const msg = normalizeMessage(raw);
+    expect(msg.attachments[0].url).toBeUndefined();
+    expect(msg.attachments[0].thumb_url).toBeUndefined();
+    expect(msg.audio_url).toBeUndefined();
   });
 });

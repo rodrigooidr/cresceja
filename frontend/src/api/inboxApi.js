@@ -1,29 +1,24 @@
 // src/api/inboxApi.js
 import axios from 'axios';
 
+// ---------------- Base URL ----------------
 let baseURL =
   process.env.REACT_APP_API_BASE_URL ||
   process.env.REACT_APP_API_URL ||
   'http://localhost:4000/api';
 
-// saneia: remove barra final e garante 1 único /api
-baseURL = baseURL.replace(/\/+$/, '');
-if (!/\/api$/.test(baseURL)) baseURL = `${baseURL}/api`;
+// remove barras finais; garante sufixo /api
+baseURL = (baseURL || '').replace(/\/+$/, '');
+if (!/\/api$/i.test(baseURL)) baseURL += '/api';
 
+// ---------------- Axios instance ----------
 const inboxApi = axios.create({
   baseURL,
   withCredentials: false,
+  headers: { Accept: 'application/json' },
 });
 
-// monta URL absoluta baseada na base da API, útil para href/src de assets
-export function apiUrl(path = '') {
-  if (!path) return '';
-  if (/^https?:\/\//i.test(path)) return path;
-  const root = baseURL.replace(/\/api$/, '');
-  return root + (path.startsWith('/') ? path : `/${path}`);
-}
-
-// helper para token
+// ---------------- Helpers -----------------
 export function setAuthToken(token) {
   if (token) {
     inboxApi.defaults.headers.common.Authorization = `Bearer ${token}`;
@@ -34,24 +29,33 @@ export function setAuthToken(token) {
   }
 }
 
-// Gera URL absoluta com base no baseURL (que já inclui /api)
-export function apiUrl(path = "") {
-  const base = (inboxApi.defaults.baseURL || "").replace(/\/+$/, ""); // sem barra final
-  const rel = String(path || "").replace(/^\/+/, "");                 // sem barra inicial
-  return `${base}/${rel}`;
+/**
+ * Monta URL absoluta para recursos/endpoints RELATIVOS à API.
+ * Ex.: apiUrl('assets/123') -> http://host:port/api/assets/123
+ *      apiUrl('/assets/123') -> http://host:port/api/assets/123
+ *      apiUrl('') -> base da API (http://host:port/api)
+ * Mantém http(s) absolutos como vierem.
+ */
+export function apiUrl(path = '') {
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = (inboxApi.defaults.baseURL || '').replace(/\/+$/, '');
+  const rel = String(path || '').replace(/^\/+/, '');
+  return rel ? `${base}/${rel}` : base;
 }
 
-// reaplica token ao carregar
+// reaplica token salvo (F5 etc.)
 setAuthToken(localStorage.getItem('token') || undefined);
 
-// interceptor: injeta token e remove '/api/' duplicado
+// --------------- Interceptors ------------
 inboxApi.interceptors.request.use((config) => {
+  // injeta token se ainda não estiver
   const token = localStorage.getItem('token');
   if (token && !config.headers?.Authorization) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
 
+  // evita prefixo /api duplicado
   if (typeof config.url === 'string') {
     if (config.url.startsWith('/api/')) {
       if (process.env.NODE_ENV !== 'production') {
@@ -61,12 +65,17 @@ inboxApi.interceptors.request.use((config) => {
     }
     config.url = config.url.replace(/^\/+/, '/');
   }
+
   return config;
 });
 
 inboxApi.interceptors.response.use(
   (r) => r,
   (err) => {
+    if (err?.response?.status === 401) {
+      setAuthToken(undefined);
+      localStorage.removeItem('user');
+    }
     if (err?.response?.status === 404 && process.env.NODE_ENV !== 'production') {
       console.warn('[inboxApi] 404 em', err?.config?.url, 'baseURL=', baseURL);
     }
@@ -74,6 +83,6 @@ inboxApi.interceptors.response.use(
   }
 );
 
-// ✅ exportações finais
+// exports
 export default inboxApi;
 export { inboxApi };
