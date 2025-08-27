@@ -5,6 +5,7 @@ import { makeSocket } from '../../sockets/socket';
 import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
+import Lightbox from '../../components/inbox/Lightbox.jsx';
 
 // Utilidades -------------------------------------------------------------
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
@@ -20,28 +21,6 @@ async function firstOk(fns = []) {
     try { const r = await fn(); if (r?.data) return r; } catch (_) {}
   }
   throw new Error('Nenhum endpoint respondeu');
-}
-
-// Lightbox simples -------------------------------------------------------
-function Lightbox({ open, src, onClose }) {
-  useEffect(() => {
-    if (!open) return;
-    const onEsc = (e) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', onEsc);
-    return () => window.removeEventListener('keydown', onEsc);
-  }, [open, onClose]);
-
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center" onClick={onClose}>
-      <img
-        src={src}
-        alt="preview"
-        className="max-w-[92vw] max-h-[88vh] rounded-lg shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>
-  );
 }
 
 // Item de conversa (sidebar) --------------------------------------------
@@ -99,7 +78,7 @@ export default function InboxPage() {
 
   // Painéis -------------------------------------------------------------
   const [showInfo, setShowInfo] = useState(true);
-  const [lightbox, setLightbox] = useState({ open: false, src: '' });
+  const [lightbox, setLightbox] = useState({ open: false, items: [], index: 0 });
 
   // Form cliente --------------------------------------------------------
   const [clientForm, setClientForm] = useState({ name: '', phone_e164: '' });
@@ -108,6 +87,20 @@ export default function InboxPage() {
   // Refs ----------------------------------------------------------------
   const msgBoxRef = useRef(null);
   const emojiRef = useRef(null);
+
+  // Sincroniza estados quando searchParams mudam ------------------------
+  useEffect(() => {
+    const s = searchParams.get('search') || searchParams.get('q') || '';
+    if (s !== search) setSearch(s);
+    const ch = (searchParams.get('channels') || searchParams.get('channel') || '')
+      .split(',')
+      .filter(Boolean);
+    if (ch.join(',') !== channelFilters.join(',')) setChannelFilters(ch);
+    const tg = (searchParams.get('tags') || '').split(',').filter(Boolean);
+    if (tg.join(',') !== tagFilters.join(',')) setTagFilters(tg);
+    const st = (searchParams.get('status') || '').split(',').filter(Boolean);
+    if (st.join(',') !== statusFilters.join(',')) setStatusFilters(st);
+  }, [searchParams]);
 
   // Carrega tags/statuses -----------------------------------------------
   useEffect(() => {
@@ -199,7 +192,19 @@ export default function InboxPage() {
       const raw = payload?.message ?? payload?.data ?? payload;
       const normalized = normalizeMessage(raw);
       if (!normalized) return;
-      setMsgs((prev) => uniqBy([...(prev || []), normalized], (m) => m.id));
+      if (normalized.temp_id) {
+        setMsgs((prev) => {
+          const idx = (prev || []).findIndex((m) => m.id === normalized.temp_id);
+          if (idx >= 0) {
+            const arr = prev.slice();
+            arr[idx] = { ...normalized, sending: false };
+            return arr;
+          }
+          return uniqBy([...(prev || []), normalized], (m) => m.id);
+        });
+      } else {
+        setMsgs((prev) => uniqBy([...(prev || []), normalized], (m) => m.id));
+      }
       setTimeout(() => { msgBoxRef.current && (msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight); }, 0);
     });
 
@@ -224,6 +229,7 @@ export default function InboxPage() {
 
   // Abrir conversa -------------------------------------------------------
   const open = useCallback(async (c) => {
+    setShowEmoji(false);
     setSel(c); setLoadingMsgs(true);
     try {
       const r = await firstOk([
@@ -258,11 +264,18 @@ export default function InboxPage() {
   };
 
   // Envio otimista -------------------------------------------------------
-  const replaceTemp = (id, real) => setMsgs((p) => (p || []).map((m) => (m.id === id ? real : m)));
-  const markFailed = (id) => setMsgs((p) => (p || []).map((m) => (m.id === id ? { ...m, failed: true } : m)));
+  const replaceTemp = (id, real) =>
+    setMsgs((p) => {
+      const idx = (p || []).findIndex((m) => m.id === id);
+      if (idx >= 0) return p.map((m) => (m.id === id ? { ...real, sending: false } : m));
+      return uniqBy([...(p || []), { ...real, sending: false }], (m) => m.id);
+    });
+  const markFailed = (id) =>
+    setMsgs((p) => (p || []).map((m) => (m.id === id ? { ...m, failed: true, sending: false } : m)));
 
   const send = async () => {
     if (!sel) return;
+    setShowEmoji(false);
     let payload = null;
     if (attachments.length) payload = { type: 'file', attachments: attachments.map((a) => a.id) };
     else if (templateId) payload = { type: 'template', template_id: templateId, template: templateId, variables: {} };
@@ -270,17 +283,41 @@ export default function InboxPage() {
     else return;
 
     const tempId = `temp:${Date.now()}:${Math.random()}`;
-    const optimistic = normalizeMessage({ id: tempId, type: payload.type || 'text', text: payload.text || '', is_outbound: true, attachments: (payload.attachments || []).map((id) => attachments.find((a) => a.id === id)), created_at: new Date().toISOString() });
+    const optimistic = {
+      ...normalizeMessage({
+        id: tempId,
+        temp_id: tempId,
+        type: payload.type || 'text',
+        text: payload.text || '',
+        is_outbound: true,
+        attachments: (payload.attachments || []).map((id) => attachments.find((a) => a.id === id)),
+        created_at: new Date().toISOString(),
+      }),
+      sending: true,
+    };
     setMsgs((prev) => [...(prev || []), optimistic]);
     setTimeout(() => { msgBoxRef.current && (msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight); }, 0);
 
     try {
-      const res = await inboxApi.post(`/conversations/${sel.id}/messages`, payload);
+      const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: tempId });
       const createdRaw = res?.data?.message ?? res?.data?.data ?? res?.data;
       const created = normalizeMessage(createdRaw);
       if (created) replaceTemp(tempId, created); else markFailed(tempId);
       setText(''); setTemplateId(''); setAttachments([]);
     } catch (e) { console.error('Falha ao enviar', e); markFailed(tempId); }
+  };
+
+  const resend = async (m) => {
+    if (!sel) return;
+    const payload = m.type === 'file'
+      ? { type: 'file', attachments: (m.attachments || []).map((a) => a.id) }
+      : { type: 'text', text: m.text };
+    setMsgs((p) => p.map((x) => (x.id === m.id ? { ...x, failed: false, sending: true } : x)));
+    try {
+      const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: m.id });
+      const created = normalizeMessage(res?.data?.message ?? res?.data?.data ?? res?.data);
+      if (created) replaceTemp(m.id, created); else markFailed(m.id);
+    } catch (e) { console.error('Falha ao reenviar', e); markFailed(m.id); }
   };
 
   // Tags / Status / IA ---------------------------------------------------
@@ -432,17 +469,25 @@ export default function InboxPage() {
           {(msgs || []).map((m) => (
             <div
               key={m.id}
+              data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
               className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
             >
               {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
 
               {!!m.attachments?.length && (
                 <div className="mt-1 flex flex-wrap gap-2">
-                  {m.attachments.map((a) => {
+                  {m.attachments.map((a, i) => {
                     const href = a.url || '#';
                     const thumb = a.thumb_url || a.url;
                     const open = (e) => {
-                      if (isImage(thumb)) { e.preventDefault(); setLightbox({ open: true, src: thumb }); }
+                      if (isImage(thumb)) {
+                        e.preventDefault();
+                        const imgs = m.attachments
+                          .filter((x) => isImage(x.thumb_url || x.url))
+                          .map((x) => ({ src: x.url || x.thumb_url }));
+                        const idx = imgs.findIndex((x) => x.src === (a.url || a.thumb_url));
+                        setLightbox({ open: true, items: imgs, index: idx >= 0 ? idx : 0 });
+                      }
                     };
                     return (
                       <a key={a.id || href} href={href} target="_blank" rel="noreferrer" onClick={open}>
@@ -465,7 +510,16 @@ export default function InboxPage() {
               )}
 
               <div className="mt-1 flex items-center justify-end gap-2">
-                {m.failed && <span className="text-[10px] text-red-600">Falhou</span>}
+                {m.failed && (
+                  <button
+                    className="text-[10px] text-red-600 underline"
+                    onClick={() => resend(m)}
+                    data-testid="retry-btn"
+                  >
+                    Falha — Tentar novamente
+                  </button>
+                )}
+                {m.sending && !m.failed && <span className="text-[10px] text-gray-400">Enviando…</span>}
                 <span className="text-[10px] text-gray-500">{new Date(m.created_at).toLocaleString()}</span>
               </div>
             </div>
@@ -486,6 +540,7 @@ export default function InboxPage() {
             <div className="flex items-end gap-2">
               <div className="flex items-center gap-2">
                 <button
+                  data-testid="emoji-btn"
                   onClick={(e) => { e.stopPropagation(); setShowEmoji((v) => !v); }}
                   className="px-2 py-1 rounded hover:bg-gray-100"
                   title="Emojis"
@@ -515,7 +570,11 @@ export default function InboxPage() {
 
               <div className="relative flex-1">
                 {showEmoji && (
-                  <div ref={emojiRef} className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10">
+                  <div
+                    ref={emojiRef}
+                    data-testid="emoji-popover"
+                    className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10"
+                  >
                     {EmojiPicker ? (
                       <EmojiPicker onSelect={(e) => setText((t) => t + e)} />
                     ) : (
@@ -529,6 +588,7 @@ export default function InboxPage() {
                 )}
 
                 <textarea
+                  data-testid="composer-text"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => (e.key === 'Enter' && !e.shiftKey ? (e.preventDefault(), send()) : null)}
@@ -538,7 +598,7 @@ export default function InboxPage() {
                 />
               </div>
 
-              <button onClick={send} className="px-4 py-2 bg-blue-600 text-white rounded">Enviar</button>
+              <button data-testid="send-btn" onClick={send} className="px-4 py-2 bg-blue-600 text-white rounded">Enviar</button>
             </div>
           </div>
         )}
@@ -634,7 +694,13 @@ export default function InboxPage() {
       </div>
 
       {/* Lightbox */}
-      <Lightbox open={lightbox.open} src={lightbox.src} onClose={() => setLightbox({ open: false, src: '' })} />
+      {lightbox.open && (
+        <Lightbox
+          items={lightbox.items}
+          startIndex={lightbox.index}
+          onClose={() => setLightbox({ open: false, items: [], index: 0 })}
+        />
+      )}
     </div>
   );
 }

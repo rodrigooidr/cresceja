@@ -12,6 +12,8 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^14.3.1",
     "autoprefixer": "^10.4.21",
     "cross-env": "^10.0.0",
     "msw": "^2.10.5",

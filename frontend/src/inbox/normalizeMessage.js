@@ -43,6 +43,7 @@ export function normalizeMessage(raw) {
 
   return {
     id: raw.id || raw.message_id || `${Date.now()}-${Math.random()}`,
+    temp_id: raw.temp_id,
     type,
     text: raw.text ?? raw.body ?? '',
     from, // 'customer' | 'agent'

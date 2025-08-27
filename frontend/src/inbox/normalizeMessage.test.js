@@ -39,6 +39,12 @@ describe('normalizeMessage', () => {
     const msg = normalizeMessage(raw);
     expect(msg.group_meta).toEqual({ group_id: 'g1' });
   });
+
+  it('preserves temp_id', () => {
+    const raw = { id: '7', temp_id: 'tmp123', text: 'hi' };
+    const msg = normalizeMessage(raw);
+    expect(msg.temp_id).toBe('tmp123');
+  });
     
   it('does not return bare API base when urls are missing', () => {
     const raw = { id: '6', attachments: [{ id: 'z' }] }; // sem url/thumb_url
