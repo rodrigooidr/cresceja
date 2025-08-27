@@ -1,17 +1,14 @@
-import channelIconBySlug from "./channelIcons";
+import channelIconBySlug from './channelIcons';
 
-describe("channelIconBySlug", () => {
-  it("retorna ícone para canal conhecido (whatsapp)", () => {
-    expect(channelIconBySlug.whatsapp).toBe("🟢");
+describe('channelIconBySlug', () => {
+  it('returns icon for known channel', () => {
+    expect(channelIconBySlug.whatsapp).toBe('lucide:whatsapp');
   });
-
-  it("retorna fallback default para canal desconhecido", () => {
-    const slug = "canal-que-nao-existe";
-    const icon = channelIconBySlug[slug] || channelIconBySlug.default;
-    expect(icon).toBe("💭");
+  it('returns icon for instagram', () => {
+    expect(channelIconBySlug.instagram).toBe('lucide:instagram');
   });
-
-  it("possui chave default definida", () => {
-    expect(channelIconBySlug.default).toBeDefined();
+  it('falls back to default', () => {
+    const slug = 'unknown-channel';
+    expect(channelIconBySlug[slug] || channelIconBySlug.default).toBe('lucide:message-circle');
   });
 });
