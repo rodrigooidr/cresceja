@@ -25,6 +25,17 @@ import {
   parseVariables,
   fillDefaultVariables,
 } from '../../inbox/quickreplies';
+import { isRequired, isEmail, isE164 } from '../../inbox/validators';
+import {
+  loadSnippets,
+  saveSnippets,
+  upsertSnippet,
+  deleteSnippet as removeSnippet,
+  searchSnippets,
+  applyVariables as applySnippetVars,
+  importSnippets,
+  exportSnippets,
+} from '../../inbox/snippets';
 
 // Utilidades -------------------------------------------------------------
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
@@ -456,8 +467,20 @@ export default function InboxPage() {
   const [lightbox, setLightbox] = useState({ open: false, items: [], index: 0, trigger: null });
 
   // Form cliente --------------------------------------------------------
-  const [clientForm, setClientForm] = useState({ name: '', phone_e164: '' });
+  const [clientForm, setClientForm] = useState({ name: '', phone_e164: '', email: '' });
+  const [clientSaved, setClientSaved] = useState({ name: '', phone_e164: '', email: '' });
   const [clientErrors, setClientErrors] = useState({});
+  const [clientStatus, setClientStatus] = useState('idle');
+  const [clientDirty, setClientDirty] = useState(false);
+  const clientTimerRef = useRef(null);
+
+  // Snippets ------------------------------------------------------------
+  const [snipState, setSnipState] = useState(() => loadSnippets());
+  const [showSnip, setShowSnip] = useState(false);
+  const [snipQuery, setSnipQuery] = useState('');
+  const [snipEdit, setSnipEdit] = useState(null);
+  const [snipMsg, setSnipMsg] = useState('');
+  const snipBtnRef = useRef(null);
 
   // Refs ----------------------------------------------------------------
   const msgBoxRef = useRef(null);
@@ -807,10 +830,23 @@ export default function InboxPage() {
     setTemplateVars({});
     setTemplateErrors({});
     if (!sel) {
-      setTemplates([]); setTemplateId(''); setClientForm({ name: '', phone_e164: '' });
+      setTemplates([]); setTemplateId('');
+      const empty = { name: '', phone_e164: '', email: '' };
+      setClientForm(empty);
+      setClientSaved(empty);
+      setClientStatus('idle');
+      setClientDirty(false);
       return;
     }
-    setClientForm({ name: sel?.contact?.name || '', phone_e164: sel?.contact?.phone_e164 || '' });
+    const initial = {
+      name: sel?.contact?.name || '',
+      phone_e164: sel?.contact?.phone_e164 || '',
+      email: sel?.contact?.email || '',
+    };
+    setClientForm(initial);
+    setClientSaved(initial);
+    setClientStatus('idle');
+    setClientDirty(false);
 
     if (sel.is_group) { setTemplates([]); setTemplateId(''); return; }
 
@@ -1344,6 +1380,11 @@ export default function InboxPage() {
 
   const handleComposerKeyDown = useCallback(
     (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        setShowSnip((v) => !v);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         if (showQR) closeQR();
@@ -1365,12 +1406,17 @@ export default function InboxPage() {
         e.preventDefault();
         closeQR();
       }
+      if (e.key === 'Escape' && showSnip) {
+        e.preventDefault();
+        setShowSnip(false);
+        snipBtnRef.current?.focus();
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         send();
       }
     },
-    [showQR, text, openQR, closeQR, send]
+    [showQR, showSnip, text, openQR, closeQR, send]
   );
 
   const closeLightbox = useCallback(() => {
@@ -1416,21 +1462,137 @@ export default function InboxPage() {
   // Validação de cliente -------------------------------------------------
   const validateClient = useCallback((f) => {
     const errs = {};
-    if (!f.name || !f.name.trim()) errs.name = 'Nome obrigatório';
-    if (f.phone_e164 && !/^\+?[1-9]\d{7,14}$/.test(f.phone_e164)) errs.phone_e164 = 'Telefone E.164 inválido';
+    if (!isRequired(f.name)) errs.name = 'Nome obrigatório';
+    if (f.phone_e164 && !isE164(f.phone_e164)) errs.phone_e164 = 'Telefone E.164 inválido';
+    if (f.email && !isEmail(f.email)) errs.email = 'E-mail inválido';
     return errs;
   }, []);
 
-  useEffect(() => { setClientErrors(validateClient(clientForm)); }, [clientForm, validateClient]);
+  useEffect(() => {
+    const errs = validateClient(clientForm);
+    setClientErrors(errs);
+    const dirty =
+      clientForm.name !== clientSaved.name ||
+      clientForm.phone_e164 !== clientSaved.phone_e164 ||
+      clientForm.email !== clientSaved.email;
+    setClientDirty(dirty);
+  }, [clientForm, clientSaved, validateClient]);
 
-  const saveClient = async () => {
-    if (!sel || sel.is_group) return;
-    const errs = validateClient(clientForm); setClientErrors(errs);
-    if (Object.keys(errs).length) return;
-    try {
-      let res; if (sel.contact?.id) res = await inboxApi.put(`/clients/${sel.contact.id}`, clientForm); else res = await inboxApi.post('/clients', clientForm);
-      const client = res?.data?.client || res?.data; setSel((prev) => ({ ...prev, contact: client }));
-    } catch (e) { console.error('Falha ao salvar cliente', e); }
+  useEffect(() => {
+    if (sel?.is_group) return;
+    if (!clientDirty) return;
+    if (Object.keys(clientErrors).length) return;
+    setClientStatus('saving');
+    if (clientTimerRef.current) clearTimeout(clientTimerRef.current);
+    const payload = { ...clientForm };
+    const prev = { ...clientSaved };
+    clientTimerRef.current = setTimeout(async () => {
+      try {
+        let res;
+        if (sel.contact?.id) res = await inboxApi.put(`/clients/${sel.contact.id}`, payload);
+        else res = await inboxApi.post('/clients', payload);
+        const client = res?.data?.client || res?.data || payload;
+        const normalized = {
+          name: client.name || '',
+          phone_e164: client.phone_e164 || '',
+          email: client.email || '',
+        };
+        setClientSaved(normalized);
+        setClientForm(normalized);
+        setSel((prevSel) => (prevSel ? { ...prevSel, contact: normalized } : prevSel));
+        setItems((prevItems) =>
+          (prevItems || []).map((c) => (c.id === sel.id ? { ...c, contact: normalized } : c))
+        );
+        setClientStatus('saved');
+        setTimeout(() => setClientStatus('idle'), 1000);
+      } catch (e) {
+        console.error('Falha ao salvar cliente', e);
+        setClientForm(prev);
+        setSel((prevSel) => (prevSel ? { ...prevSel, contact: prev } : prevSel));
+        setItems((prevItems) =>
+          (prevItems || []).map((c) => (c.id === sel.id ? { ...c, contact: prev } : c))
+        );
+        setClientStatus('error');
+      }
+    }, 600);
+    return () => clearTimeout(clientTimerRef.current);
+  }, [clientForm, clientDirty, clientErrors, sel]);
+
+  const revertClient = () => {
+    setClientForm(clientSaved);
+    setSel((prevSel) => (prevSel ? { ...prevSel, contact: clientSaved } : prevSel));
+    setItems((prevItems) =>
+      (prevItems || []).map((c) => (c.id === sel.id ? { ...c, contact: clientSaved } : c))
+    );
+    setClientStatus('idle');
+    setClientDirty(false);
+  };
+
+  const handleClientChange = (field, value) => {
+    setClientForm((f) => ({ ...f, [field]: value }));
+    setSel((prevSel) =>
+      prevSel ? { ...prevSel, contact: { ...prevSel.contact, [field]: value } } : prevSel
+    );
+    setItems((prevItems) =>
+      (prevItems || []).map((c) =>
+        c.id === sel?.id ? { ...c, contact: { ...(c.contact || {}), [field]: value } } : c
+      )
+    );
+  };
+
+  const insertSnippet = (it) => {
+    const ta = composerRef.current;
+    if (!ta) return;
+    const content = applySnippetVars(it.content, sel?.contact);
+    const start = ta.selectionStart ?? text.length;
+    const end = ta.selectionEnd ?? text.length;
+    const before = text.slice(0, start);
+    const after = text.slice(end);
+    const newText = before + content + after;
+    setText(newText);
+    const pos = start + content.length;
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
+    setShowSnip(false);
+  };
+
+  const handleSnippetDelete = (id) => {
+    setSnipState((s) => {
+      const st = removeSnippet(s, id);
+      saveSnippets(st);
+      return st;
+    });
+  };
+
+  const handleSnippetImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const { imported, updated, ignored, state } = importSnippets(snipState, reader.result);
+        setSnipState(state);
+        saveSnippets(state);
+        setSnipMsg(`Importados ${imported}, atualizados ${updated}, ignorados ${ignored}`);
+      } catch (_) {
+        setSnipMsg('Erro na importação');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleSnippetExport = () => {
+    const data = exportSnippets(snipState);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'snippets.json';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const sendDisabled = templateId && Object.keys(templateErrors).length > 0;
@@ -1908,6 +2070,17 @@ export default function InboxPage() {
                   ⚡
                 </button>
 
+                <button
+                  data-testid="snippets-toggle"
+                  aria-label="Snippets"
+                  ref={snipBtnRef}
+                  onClick={() => setShowSnip((v) => !v)}
+                  className="px-2 py-1 rounded hover:bg-gray-100"
+                  title="Snippets"
+                >
+                  📝
+                </button>
+
                 <label
                   className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
                   title="Anexar"
@@ -2007,6 +2180,106 @@ export default function InboxPage() {
                   </div>
                 )}
 
+                {showSnip && (
+                  <div
+                    data-testid="snippets-palette"
+                    className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
+                    role="dialog"
+                  >
+                    <input
+                      data-testid="snippets-search"
+                      value={snipQuery}
+                      onChange={(e) => setSnipQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setShowSnip(false);
+                          snipBtnRef.current?.focus();
+                        }
+                      }}
+                      className="border rounded px-1 py-0.5 w-full mb-2"
+                    />
+                    <div className="max-h-64 overflow-y-auto">
+                      {searchSnippets(snipState.items, snipQuery).map((it) => (
+                        <div
+                          key={it.id}
+                          data-testid={`snippet-item-${it.id}`}
+                          className="px-2 py-1 cursor-pointer hover:bg-gray-100"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            insertSnippet(it);
+                          }}
+                        >
+                          <div className="font-medium">{it.title}</div>
+                          {it.shortcut && (
+                            <div className="text-xs text-gray-600">{it.shortcut}</div>
+                          )}
+                          <div className="flex gap-1 mt-1">
+                            <button
+                              data-testid={`snippet-edit-${it.id}`}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setSnipEdit(it);
+                              }}
+                              className="text-xs underline"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              data-testid={`snippet-delete-${it.id}`}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                handleSnippetDelete(it.id);
+                              }}
+                              className="text-xs underline text-red-600"
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-2 text-xs">
+                      <button
+                        data-testid="snippet-new"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSnipEdit({ title: '', content: '', shortcut: '' });
+                        }}
+                        className="underline"
+                      >
+                        Novo
+                      </button>
+                      <label className="underline cursor-pointer">
+                        Importar
+                        <input
+                          type="file"
+                          data-testid="snippets-import-input"
+                          className="hidden"
+                          onChange={handleSnippetImport}
+                        />
+                      </label>
+                      <button
+                        data-testid="snippets-export-btn"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSnippetExport();
+                        }}
+                        className="underline"
+                      >
+                        Exportar
+                      </button>
+                    </div>
+                    {snipMsg && (
+                      <div className="text-xs mt-1" aria-live="polite">
+                        {snipMsg}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <textarea
                   ref={composerRef}
                   data-testid="composer-text"
@@ -2095,38 +2368,68 @@ export default function InboxPage() {
               </div>
             </div>
 
-            {sel.is_group ? (
-              <div className="text-xs text-red-500">Conversa em grupo – cadastro desabilitado</div>
-            ) : (
-              <div className="space-y-2">
-                <label className="block text-xs text-gray-500">Nome</label>
-                <input
-                  value={clientForm.name}
-                  onChange={(e) => setClientForm((f) => ({ ...f, name: e.target.value }))}
-                  className={`w-full border rounded px-2 py-1 ${clientErrors.name ? 'border-red-500' : ''}`}
-                />
-                {clientErrors.name && (
-                  <div className="text-[11px] text-red-600" data-testid="client-name-error">{clientErrors.name}</div>
-                )}
+            <div className="space-y-2">
+              <label className="block text-xs text-gray-500">Nome</label>
+              <input
+                value={clientForm.name}
+                onChange={(e) => handleClientChange('name', e.target.value)}
+                disabled={sel.is_group}
+                title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                aria-invalid={!!clientErrors.name}
+                className={`w-full border rounded px-2 py-1 ${clientErrors.name ? 'border-red-500' : ''}`}
+                data-testid="contact-name"
+              />
+              {clientErrors.name && (
+                <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.name}</div>
+              )}
 
-                <label className="block text-xs text-gray-500">Telefone (+5511999999999)</label>
-                <input
-                  value={clientForm.phone_e164}
-                  onChange={(e) => setClientForm((f) => ({ ...f, phone_e164: e.target.value }))}
-                  className={`w-full border rounded px-2 py-1 ${clientErrors.phone_e164 ? 'border-red-500' : ''}`}
-                />
-                {clientErrors.phone_e164 && <div className="text-[11px] text-red-600">{clientErrors.phone_e164}</div>}
+              <label className="block text-xs text-gray-500">Telefone (+5511999999999)</label>
+              <input
+                value={clientForm.phone_e164}
+                onChange={(e) => handleClientChange('phone_e164', e.target.value)}
+                disabled={sel.is_group}
+                title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                aria-invalid={!!clientErrors.phone_e164}
+                className={`w-full border rounded px-2 py-1 ${clientErrors.phone_e164 ? 'border-red-500' : ''}`}
+                data-testid="contact-phone"
+              />
+              {clientErrors.phone_e164 && (
+                <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.phone_e164}</div>
+              )}
 
+              <label className="block text-xs text-gray-500">E-mail</label>
+              <input
+                value={clientForm.email}
+                onChange={(e) => handleClientChange('email', e.target.value)}
+                disabled={sel.is_group}
+                title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                aria-invalid={!!clientErrors.email}
+                className={`w-full border rounded px-2 py-1 ${clientErrors.email ? 'border-red-500' : ''}`}
+                data-testid="contact-email"
+              />
+              {clientErrors.email && (
+                <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.email}</div>
+              )}
+
+              {clientDirty && clientStatus !== 'saving' && (
                 <button
-                  onClick={saveClient}
-                  disabled={Object.keys(clientErrors).length > 0}
-                  className="px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50"
-                  data-testid="client-save"
+                  onClick={revertClient}
+                  className="text-xs underline"
+                  data-testid="contact-revert"
                 >
-                  {sel?.contact?.id ? 'Salvar' : 'Criar'}
+                  Reverter
                 </button>
+              )}
+              <div data-testid="contact-save-status" aria-live="polite" className="text-xs">
+                {clientStatus === 'saving'
+                  ? 'saving…'
+                  : clientStatus === 'saved'
+                  ? 'salvo ✓'
+                  : clientStatus === 'error'
+                  ? 'erro ✕'
+                  : ''}
               </div>
-            )}
+            </div>
 
             <div className="text-xs text-gray-500 mt-4">Última atividade: {sel?.updated_at ? new Date(sel.updated_at).toLocaleString() : '-'}</div>
           </div>
@@ -2164,6 +2467,50 @@ export default function InboxPage() {
             >
               Inserir
             </button>
+          </div>
+        </div>
+      )}
+      {snipEdit && (
+        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20">
+          <div className="bg-white p-4 rounded shadow space-y-2 w-72" role="dialog">
+            <input
+              value={snipEdit.title}
+              onChange={(e) => setSnipEdit({ ...snipEdit, title: e.target.value })}
+              className="border rounded px-2 py-1 w-full"
+              placeholder="Título"
+            />
+            <input
+              value={snipEdit.shortcut || ''}
+              onChange={(e) => setSnipEdit({ ...snipEdit, shortcut: e.target.value.replace(/\s+/g, '') })}
+              className="border rounded px-2 py-1 w-full"
+              placeholder="Atalho"
+            />
+            <textarea
+              value={snipEdit.content}
+              onChange={(e) => setSnipEdit({ ...snipEdit, content: e.target.value })}
+              className="border rounded px-2 py-1 w-full"
+              rows={3}
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setSnipEdit(null)} className="px-3 py-1 text-sm">
+                Cancelar
+              </button>
+              <button
+                data-testid="snippet-save"
+                onClick={() => {
+                  setSnipState((s) => {
+                    const st = upsertSnippet(s, snipEdit);
+                    saveSnippets(st);
+                    return st;
+                  });
+                  setSnipEdit(null);
+                }}
+                disabled={!snipEdit.title}
+                className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+              >
+                Salvar
+              </button>
+            </div>
           </div>
         </div>
       )}
