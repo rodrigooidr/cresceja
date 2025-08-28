@@ -72,7 +72,7 @@ async function firstOk(fns = []) {
 }
 
 // Item de conversa (sidebar) --------------------------------------------
-function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected, onToggle }) {
+function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected, onToggle, density }) {
   const contact = c?.contact || {};
   const icon = channelIconBySlug[c?.channel] || channelIconBySlug.default;
   const photo = contact.photo_url ? apiUrl(contact.photo_url) : 'https://placehold.co/40';
@@ -87,7 +87,7 @@ function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected,
     <div
       ref={ref}
       onMouseEnter={() => onHover && onHover(c)}
-      className={`w-full flex items-center border-b hover:bg-gray-100 ${active ? 'bg-gray-100' : ''}`}
+      className={`w-full flex items-center border-b hover:bg-gray-100 ${active ? 'bg-gray-100' : ''} ${density === 'compact' ? 'text-sm' : ''}`}
     >
       <input
         type="checkbox"
@@ -101,7 +101,7 @@ function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected,
       />
       <button
         onClick={() => onOpen(c)}
-        className="flex-1 px-3 py-2 flex gap-3 text-left"
+        className={`flex-1 px-3 ${density === 'compact' ? 'py-1' : 'py-2'} flex gap-3 text-left`}
         data-testid="conv-item"
       >
         <img src={photo} alt="avatar" className="w-10 h-10 rounded-full" onLoad={reportHeight} />
@@ -181,6 +181,15 @@ export default function InboxPage() {
   const preloadingRef = useRef({});
   const hoverTimerRef = useRef(null);
   const selPreloadTimerRef = useRef(null);
+  const [density, setDensity] = useState(() => localStorage.getItem('cj:inbox:density') || 'cozy');
+
+  const toggleDensity = () => {
+    const next = density === 'compact' ? 'cozy' : 'compact';
+    setDensity(next);
+    try {
+      localStorage.setItem('cj:inbox:density', next);
+    } catch {}
+  };
 
   const user = useMemo(() => {
     try {
@@ -400,6 +409,7 @@ export default function InboxPage() {
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const [pendingUploads, setPendingUploads] = useState([]);
   const [showEmoji, setShowEmoji] = useState(false);
   const [typing, setTyping] = useState(false);
   const typingTimeoutRef = useRef(null);
@@ -1268,34 +1278,111 @@ export default function InboxPage() {
   const handleFiles = async (fileList) => {
     if (!sel) return;
     const files = Array.from(fileList || []);
-    const newItems = [];
-    for (const f of files) {
+    files.forEach(async (f) => {
       const v = await validateUploadFile(f);
       if (!v.ok) {
         addToast({ kind: 'error', text: `${f.name} rejeitado (${v.reason})` });
         auditlog.append(sel.id, { kind: 'media', action: 'rejected', meta: { name: f.name, reason: v.reason } });
-        newItems.push({ id: `err-${Date.now()}-${Math.random()}`, name: f.name, thumb_url: v.previewUrl, url: v.previewUrl, error: v.reason });
-        continue;
+        return;
       }
+      const id = `up-${Date.now()}-${Math.random()}`;
+      const controller = new AbortController();
+      setPendingUploads((p) => [...p, { id, name: f.name, progress: 0, previewUrl: v.previewUrl, controller }]);
       const form = new FormData();
       const fileToSend = v.transformedFile || f;
       form.append('files[]', fileToSend);
       try {
-        const { data } = await inboxApi.post(`/conversations/${sel.id}/attachments`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        const { data } = await inboxApi.post(`/conversations/${sel.id}/attachments`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          signal: controller.signal,
+          onUploadProgress: (e) => {
+            if (e.total) {
+              const pct = Math.round((e.loaded / e.total) * 100);
+              setPendingUploads((p) => p.map((it) => (it.id === id ? { ...it, progress: pct } : it)));
+            }
+          },
+        });
         const assets = Array.isArray(data?.assets)
           ? data.assets.map((a) => ({ ...a, url: apiUrl(a.url), thumb_url: apiUrl(a.thumb_url) }))
           : [];
-        newItems.push(...assets);
+        setPendingUploads((p) => p.filter((it) => it.id !== id));
+        try { v.previewUrl && URL.revokeObjectURL(v.previewUrl); } catch {}
+        if (assets.length) setAttachments((prev) => [...prev, ...assets]);
         addToast({ kind: 'success', text: `${f.name} pronto para enviar` });
         auditlog.append(sel.id, { kind: 'media', action: 'accepted', meta: { name: f.name } });
       } catch (e) {
-        console.error('Falha no upload', e);
-        addToast({ kind: 'error', text: `${f.name} erro ao enviar` });
-        auditlog.append(sel.id, { kind: 'media', action: 'rejected', meta: { name: f.name, reason: 'upload-failed' } });
+        setPendingUploads((p) => p.filter((it) => it.id !== id));
+        try { v.previewUrl && URL.revokeObjectURL(v.previewUrl); } catch {}
+        const canceled = controller.signal.aborted;
+        addToast({ kind: 'error', text: canceled ? 'Upload cancelado' : `${f.name} erro ao enviar` });
+        auditlog.append(sel.id, {
+          kind: 'media',
+          action: 'rejected',
+          meta: { name: f.name, reason: canceled ? 'canceled' : 'upload-failed' },
+        });
       }
-    }
-    if (newItems.length) setAttachments((prev) => [...prev, ...newItems]);
+    });
   };
+
+  const cancelUpload = (id) => {
+    const it = pendingUploads.find((p) => p.id === id);
+    if (it) {
+      try { it.controller.abort(); } catch {}
+    }
+  };
+
+  // Inline client edit --------------------------------------------------
+  const [editingClient, setEditingClient] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editErrors, setEditErrors] = useState({});
+  const editPrevRef = useRef(null);
+
+  const startClientEdit = () => {
+    if (!sel) return;
+    editPrevRef.current = { name: sel.contact?.name || '', phone_e164: sel.contact?.phone_e164 || '' };
+    setEditName(sel.contact?.name || '');
+    setEditPhone(sel.contact?.phone_e164 || '');
+    setEditErrors({});
+    setEditingClient(true);
+  };
+
+  const cancelClientEdit = () => {
+    setEditingClient(false);
+    setSel((prev) => (prev ? { ...prev, contact: editPrevRef.current } : prev));
+    setItems((prev) => prev.map((c) => (c.id === sel?.id ? { ...c, contact: editPrevRef.current } : c)));
+  };
+
+  const saveClientEdit = async () => {
+    const errs = {};
+    if (!editName.trim()) errs.name = 'nome obrigatório';
+    setEditErrors(errs);
+    if (Object.keys(errs).length) return;
+    const payload = { name: editName.trim(), phone_e164: editPhone.trim() };
+    try {
+      let res;
+      if (sel.contact?.id) res = await inboxApi.put(`/clients/${sel.contact.id}`, payload);
+      else res = await inboxApi.post('/clients', payload);
+      const client = res?.data?.client || res?.data || payload;
+      const normalized = {
+        id: client.id || sel.contact?.id,
+        name: client.name || '',
+        phone_e164: client.phone_e164 || '',
+        email: client.email || '',
+      };
+      editPrevRef.current = normalized;
+      setSel((prev) => (prev ? { ...prev, contact: normalized } : prev));
+      setItems((prev) => prev.map((c) => (c.id === sel.id ? { ...c, contact: normalized } : c)));
+      addToast({ kind: 'success', text: 'Contato atualizado' });
+    } catch (e) {
+      setSel((prev) => (prev ? { ...prev, contact: editPrevRef.current } : prev));
+      setItems((prev) => prev.map((c) => (c.id === sel.id ? { ...c, contact: editPrevRef.current } : c)));
+      addToast({ kind: 'error', text: 'Erro ao atualizar contato' });
+    }
+    setEditingClient(false);
+  };
+
+  useEffect(() => { setEditingClient(false); }, [sel]);
 
   const removeAttachment = (id) => {
     setAttachments((prev) => prev.filter((a) => a.id !== id));
@@ -1797,6 +1884,7 @@ export default function InboxPage() {
                 <ConversationItem
                   key={c.id}
                   c={c}
+                  density={density}
                   selected={selectedIds.has(c.id)}
                   onToggle={(id, e) => {
                     setSelectedIds((prev) => {
@@ -1842,11 +1930,65 @@ export default function InboxPage() {
               className="w-8 h-8 rounded-full"
             />
             <div className="min-w-0">
-              <div className="font-medium truncate">{sel?.contact?.name || '—'}</div>
-              <div className="text-xs text-gray-500 truncate">{sel?.contact?.phone_e164 || ''}</div>
+              {editingClient ? (
+                <>
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="border rounded px-1 text-sm w-full"
+                    aria-invalid={!!editErrors.name}
+                    data-testid="client-edit-name"
+                  />
+                  {editErrors.name && (
+                    <div className="text-[11px] text-red-600">{editErrors.name}</div>
+                  )}
+                  <input
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    className="border rounded px-1 text-xs w-full mt-1"
+                    data-testid="client-edit-phone"
+                  />
+                  <div className="flex gap-1 mt-1">
+                    <button
+                      onClick={saveClientEdit}
+                      className="text-xs bg-blue-600 text-white px-2 rounded"
+                      data-testid="client-edit-save"
+                    >
+                      Salvar
+                    </button>
+                    <button
+                      onClick={cancelClientEdit}
+                      className="text-xs bg-gray-200 px-2 rounded"
+                      data-testid="client-edit-cancel"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
+                    className="font-medium truncate cursor-pointer"
+                    onClick={startClientEdit}
+                    data-testid="client-edit-toggle"
+                  >
+                    {sel?.contact?.name || '—'}
+                  </div>
+                  <div
+                    className="text-xs text-gray-500 truncate cursor-pointer"
+                    onClick={startClientEdit}
+                    data-testid="client-edit-toggle"
+                  >
+                    {sel?.contact?.phone_e164 || ''}
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button onClick={toggleDensity} className="text-xs" data-testid="density-toggle">
+              Densidade: {density === 'compact' ? 'Compacta' : 'Cozy'}
+            </button>
             <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -1946,7 +2088,7 @@ export default function InboxPage() {
                 data-message="true"
                 data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
                 data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
-                className={`mb-2 max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
+                className={`mb-2 max-w-[70%] ${density === 'compact' ? 'p-1 text-sm' : 'p-2'} rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
               >
                 {m.text && <div className="whitespace-pre-wrap">{highlight(m.text)}</div>}
 
@@ -2044,6 +2186,33 @@ export default function InboxPage() {
             onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
             data-testid="composer-dropzone"
           >
+            {!!pendingUploads.length && (
+              <div className="mb-2 flex flex-wrap gap-2" data-testid="attachments-pending">
+                {pendingUploads.map((p) => (
+                  <div key={p.id} className="relative" data-testid="attachments-pending-item">
+                    {p.previewUrl ? (
+                      <img src={p.previewUrl} alt="upload" className="w-14 h-14 object-cover rounded" />
+                    ) : (
+                      <div className="w-14 h-14 flex items-center justify-center bg-gray-200 rounded text-[10px]">
+                        {p.name}
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs">
+                      {p.progress}%
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => cancelUpload(p.id)}
+                      className="absolute top-0 right-0 text-xs bg-white rounded-full px-1"
+                      data-testid="attachments-cancel"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {!!attachments.length && (
               <div className="mb-2 flex flex-wrap gap-2">
                 {attachments.map((a) => (

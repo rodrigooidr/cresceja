@@ -43,6 +43,28 @@ export default function AuditPanel({ conversationId, onClose }) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const handleExportCsv = () => {
+    const entries = auditlog.load(conversationId) || [];
+    const esc = (v) => {
+      const s = String(v ?? '').replace(/"/g, '""');
+      return /[",\n]/.test(s) ? `"${s}"` : s;
+    };
+    const lines = [["timestamp", "type", "actor", "summary"]];
+    entries.forEach((e) => {
+      const actor = e.meta?.actor || e.meta?.user || '';
+      const summary = `${e.action || ''} ${Object.keys(e.meta || {}).length ? JSON.stringify(e.meta) : ''}`.trim();
+      lines.push([e.ts, e.kind, actor, summary]);
+    });
+    const csv = lines.map((r) => r.map(esc).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `audit-${conversationId}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const handleClear = () => {
     if (!conversationId) return;
     if (window.confirm('Limpar histórico?')) {
@@ -103,6 +125,14 @@ export default function AuditPanel({ conversationId, onClose }) {
           className="px-2 py-1 border rounded"
         >
           Exportar JSON
+        </button>
+        <button
+          onClick={handleExportCsv}
+          data-testid="audit-export-csv"
+          aria-label="Exportar CSV"
+          className="px-2 py-1 border rounded"
+        >
+          Exportar CSV
         </button>
         <button
           onClick={handleClear}
