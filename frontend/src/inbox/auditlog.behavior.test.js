@@ -36,6 +36,7 @@ test('filter by kind and query', () => {
 });
 
 test('exportJson produces a JSON string', () => {
+  append(CID, { kind: 'message', action: 'sent' });
   const items = load(CID);
   const json = exportJson(items);
   expect(typeof json).toBe('string');

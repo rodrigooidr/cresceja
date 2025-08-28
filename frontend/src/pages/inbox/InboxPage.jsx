@@ -36,6 +36,10 @@ import {
   importSnippets,
   exportSnippets,
 } from '../../inbox/snippets';
+import AuditPanel from '../../components/inbox/AuditPanel.jsx';
+import ToastHost, { useToasts } from '../../components/ToastHost.jsx';
+import { validateFile } from '../../inbox/mediaPolicy.js';
+import auditlog from '../../inbox/auditlog.js';
 
 // Utilidades -------------------------------------------------------------
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
@@ -123,6 +127,20 @@ function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected,
 
 export default function InboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const [panel, setPanelState] = useState(searchParams.get('panel') === 'audit' ? 'audit' : 'details');
+  const setPanel = (p) => {
+    setPanelState(p);
+    setSearchParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      if (p === 'details') sp.delete('panel');
+      else sp.set('panel', p);
+      return sp;
+    });
+  };
+  useEffect(() => {
+    const p = searchParams.get('panel');
+    if (p === 'audit' || p === 'details') setPanelState(p);
+  }, [searchParams]);
 
   // Estado base ----------------------------------------------------------
   const [items, setItems] = useState([]);
@@ -382,7 +400,6 @@ export default function InboxPage() {
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
-  const [uploadError, setUploadError] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const [typing, setTyping] = useState(false);
   const typingTimeoutRef = useRef(null);
@@ -392,6 +409,7 @@ export default function InboxPage() {
   const [chatMatches, setChatMatches] = useState([]);
   const [chatMatchIdx, setChatMatchIdx] = useState(0);
   const chatSearchRef = useRef(null);
+  const { addToast } = useToasts();
 
   useEffect(() => { setShowQR(false); qrVarItemRef.current = null; }, [sel]);
 
@@ -1250,23 +1268,33 @@ export default function InboxPage() {
   const handleFiles = async (fileList) => {
     if (!sel) return;
     const files = Array.from(fileList || []);
-    const uploaded = [];
-    setUploadError('');
+    const newItems = [];
     for (const f of files) {
+      const v = await validateFile(f);
+      if (!v.ok) {
+        addToast({ kind: 'error', text: `${f.name} rejeitado (${v.reason})` });
+        auditlog.append(sel.id, { kind: 'media', action: 'rejected', meta: { name: f.name, reason: v.reason } });
+        newItems.push({ id: `err-${Date.now()}-${Math.random()}`, name: f.name, thumb_url: v.previewUrl, url: v.previewUrl, error: v.reason });
+        continue;
+      }
       const form = new FormData();
-      form.append('files[]', f);
+      const fileToSend = v.transformedFile || f;
+      form.append('files[]', fileToSend);
       try {
         const { data } = await inboxApi.post(`/conversations/${sel.id}/attachments`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
         const assets = Array.isArray(data?.assets)
           ? data.assets.map((a) => ({ ...a, url: apiUrl(a.url), thumb_url: apiUrl(a.thumb_url) }))
           : [];
-        uploaded.push(...assets);
+        newItems.push(...assets);
+        addToast({ kind: 'success', text: `${f.name} pronto para enviar` });
+        auditlog.append(sel.id, { kind: 'media', action: 'accepted', meta: { name: f.name } });
       } catch (e) {
         console.error('Falha no upload', e);
-        setUploadError('Erro ao enviar arquivo');
+        addToast({ kind: 'error', text: `${f.name} erro ao enviar` });
+        auditlog.append(sel.id, { kind: 'media', action: 'rejected', meta: { name: f.name, reason: 'upload-failed' } });
       }
     }
-    if (uploaded.length) setAttachments((prev) => [...prev, ...uploaded]);
+    if (newItems.length) setAttachments((prev) => [...prev, ...newItems]);
   };
 
   const removeAttachment = (id) => {
@@ -1310,8 +1338,8 @@ export default function InboxPage() {
     setShowEmoji(false);
     closeQR();
     let payload = null;
-    if (attachments.length) {
-      payload = { type: 'file', attachments: attachments.map((a) => a.id) };
+    if (attachments.filter((a) => !a.error).length) {
+      payload = { type: 'file', attachments: attachments.filter((a) => !a.error).map((a) => a.id) };
     } else if (templateId) {
       const vars = { ...templateVars };
       const errs = {};
@@ -1356,7 +1384,7 @@ export default function InboxPage() {
         setSel((p) => (p ? { ...p, unread_count: 0, last_read_message_id: created.id, last_read_at: created.created_at } : p));
         setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
       } else markFailed(tempId);
-      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]); setUploadError('');
+      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]);
     } catch (e) { console.error('Falha ao enviar', e); markFailed(tempId); }
   };
 
@@ -1998,7 +2026,22 @@ export default function InboxPage() {
               <div className="mb-2 flex flex-wrap gap-2">
                 {attachments.map((a) => (
                   <div key={a.id} className="relative" data-testid="pending-attachment">
-                    <img src={a.thumb_url || a.url} alt="att" className="w-14 h-14 object-cover rounded" />
+                    {a.thumb_url || a.url ? (
+                      <img
+                        src={a.thumb_url || a.url}
+                        alt="att"
+                        className={`w-14 h-14 object-cover rounded ${a.error ? 'border border-red-600' : ''}`}
+                      />
+                    ) : (
+                      <div
+                        className={`w-14 h-14 flex items-center justify-center bg-gray-200 rounded text-[10px] ${
+                          a.error ? 'border border-red-600' : ''
+                        }`}
+                      >
+                        {a.name || 'arquivo'}
+                      </div>
+                    )}
+                    {a.error && <span className="absolute bottom-0 right-0 text-red-600">!</span>}
                     <button
                       type="button"
                       onClick={() => removeAttachment(a.id)}
@@ -2011,7 +2054,6 @@ export default function InboxPage() {
                 ))}
               </div>
             )}
-            {uploadError && <div className="text-xs text-red-600 mb-2">{uploadError}</div>}
 
             {selectedTemplate && (
               <div className="mb-2 space-y-1">
@@ -2314,128 +2356,148 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Painel direito (detalhes) */}
-      <div className={`col-span-3 border-l bg-white p-4 ${showInfo ? '' : 'hidden xl:block'}`}>
-        {sel ? (
-          <div>
-            <div className="text-xs text-gray-500 mb-2">Detalhes do contato</div>
-            <div className="flex items-center gap-3 mb-3">
-              <img
-                src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/56'}
-                alt="avatar"
-                className="w-14 h-14 rounded-full"
-              />
-              <div>
-                <div className="font-semibold">{sel?.contact?.name || 'Contato'}</div>
-                <div className="text-sm text-gray-500">{sel?.contact?.phone_e164 || ''}</div>
-                <div className="text-xs text-gray-500">Canal: {sel?.channel || '-'}</div>
+      {/* Painel direito */}
+      <div className={`col-span-3 border-l bg-white flex flex-col ${showInfo ? '' : 'hidden xl:block'}`}>
+        <div className="flex border-b text-sm">
+          <button
+            onClick={() => setPanel('details')}
+            className={`px-4 py-2 ${panel === 'details' ? 'border-b-2 border-blue-600' : ''}`}
+            aria-label="Detalhes"
+          >
+            Detalhes
+          </button>
+          <button
+            onClick={() => setPanel('audit')}
+            className={`px-4 py-2 ${panel === 'audit' ? 'border-b-2 border-blue-600' : ''}`}
+            aria-label="Histórico"
+          >
+            Histórico
+          </button>
+        </div>
+        <div className="p-4 overflow-y-auto flex-1">
+          {panel === 'audit' ? (
+            sel ? <AuditPanel conversationId={sel.id} /> : <div className="text-gray-500">Selecione uma conversa</div>
+          ) : sel ? (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">Detalhes do contato</div>
+              <div className="flex items-center gap-3 mb-3">
+                <img
+                  src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/56'}
+                  alt="avatar"
+                  className="w-14 h-14 rounded-full"
+                />
+                <div>
+                  <div className="font-semibold">{sel?.contact?.name || 'Contato'}</div>
+                  <div className="text-sm text-gray-500">{sel?.contact?.phone_e164 || ''}</div>
+                  <div className="text-xs text-gray-500">Canal: {sel?.channel || '-'}</div>
+                </div>
               </div>
-            </div>
 
-            {!!statuses.length && (
+              {!!statuses.length && (
+                <div className="mb-3">
+                  <label className="block text-xs text-gray-500 mb-1">Status CRM</label>
+                  <select
+                    value={asId(sel?.status_id) || ''}
+                    onChange={(e) => changeStatus(e.target.value)}
+                    className="border rounded px-2 py-1 text-sm w-full"
+                    data-testid="crm-status-select"
+                  >
+                    <option value="">Sem status</option>
+                    {statuses.map((s) => (
+                      <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="mb-3">
-                <label className="block text-xs text-gray-500 mb-1">Status CRM</label>
-                <select
-                  value={asId(sel?.status_id) || ''}
-                  onChange={(e) => changeStatus(e.target.value)}
-                  className="border rounded px-2 py-1 text-sm w-full"
-                  data-testid="crm-status-select"
-                >
-                  <option value="">Sem status</option>
-                  {statuses.map((s) => (
-                    <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
-                  ))}
-                </select>
+                <div className="text-xs text-gray-500 mb-1">Etiquetas</div>
+                <div className="flex flex-wrap gap-1">
+                  {tags.map((t) => {
+                    const on = (sel?.tags || []).map(asId).includes(asId(t.id));
+                    return (
+                      <button
+                        key={asId(t.id)}
+                        onClick={() => toggleTag(t.id)}
+                        className={`px-2 py-1 text-xs rounded ${on ? 'bg-blue-200' : 'bg-gray-200'}`}
+                        data-testid={`tag-chip-${asId(t.id)}`}
+                      >
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            )}
 
-            <div className="mb-3">
-              <div className="text-xs text-gray-500 mb-1">Etiquetas</div>
-              <div className="flex flex-wrap gap-1">
-                {tags.map((t) => {
-                  const on = (sel?.tags || []).map(asId).includes(asId(t.id));
-                  return (
-                    <button
-                      key={asId(t.id)}
-                      onClick={() => toggleTag(t.id)}
-                      className={`px-2 py-1 text-xs rounded ${on ? 'bg-blue-200' : 'bg-gray-200'}`}
-                      data-testid={`tag-chip-${asId(t.id)}`}
-                    >
-                      {t.name}
-                    </button>
-                  );
-                })}
+              <div className="space-y-2">
+                <label className="block text-xs text-gray-500">Nome</label>
+                <input
+                  value={clientForm.name}
+                  onChange={(e) => handleClientChange('name', e.target.value)}
+                  disabled={sel.is_group}
+                  title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                  aria-invalid={!!clientErrors.name}
+                  className={`w-full border rounded px-2 py-1 ${clientErrors.name ? 'border-red-500' : ''}`}
+                  data-testid="contact-name"
+                />
+                {clientErrors.name && (
+                  <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.name}</div>
+                )}
+
+                <label className="block text-xs text-gray-500">Telefone (+5511999999999)</label>
+                <input
+                  value={clientForm.phone_e164}
+                  onChange={(e) => handleClientChange('phone_e164', e.target.value)}
+                  disabled={sel.is_group}
+                  title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                  aria-invalid={!!clientErrors.phone_e164}
+                  className={`w-full border rounded px-2 py-1 ${clientErrors.phone_e164 ? 'border-red-500' : ''}`}
+                  data-testid="contact-phone"
+                />
+                {clientErrors.phone_e164 && (
+                  <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.phone_e164}</div>
+                )}
+
+                <label className="block text-xs text-gray-500">E-mail</label>
+                <input
+                  value={clientForm.email}
+                  onChange={(e) => handleClientChange('email', e.target.value)}
+                  disabled={sel.is_group}
+                  title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                  aria-invalid={!!clientErrors.email}
+                  className={`w-full border rounded px-2 py-1 ${clientErrors.email ? 'border-red-500' : ''}`}
+                  data-testid="contact-email"
+                />
+                {clientErrors.email && (
+                  <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.email}</div>
+                )}
+
+                {clientDirty && clientStatus !== 'saving' && (
+                  <button
+                    onClick={revertClient}
+                    className="text-xs underline"
+                    data-testid="contact-revert"
+                  >
+                    Reverter
+                  </button>
+                )}
+                <div data-testid="contact-save-status" aria-live="polite" className="text-xs">
+                  {clientStatus === 'saving'
+                    ? 'saving…'
+                    : clientStatus === 'saved'
+                    ? 'salvo ✓'
+                    : clientStatus === 'error'
+                    ? 'erro ✕'
+                    : ''}
+                </div>
               </div>
+
+              <div className="text-xs text-gray-500 mt-4">Última atividade: {sel?.updated_at ? new Date(sel.updated_at).toLocaleString() : '-'}</div>
             </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs text-gray-500">Nome</label>
-              <input
-                value={clientForm.name}
-                onChange={(e) => handleClientChange('name', e.target.value)}
-                disabled={sel.is_group}
-                title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
-                aria-invalid={!!clientErrors.name}
-                className={`w-full border rounded px-2 py-1 ${clientErrors.name ? 'border-red-500' : ''}`}
-                data-testid="contact-name"
-              />
-              {clientErrors.name && (
-                <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.name}</div>
-              )}
-
-              <label className="block text-xs text-gray-500">Telefone (+5511999999999)</label>
-              <input
-                value={clientForm.phone_e164}
-                onChange={(e) => handleClientChange('phone_e164', e.target.value)}
-                disabled={sel.is_group}
-                title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
-                aria-invalid={!!clientErrors.phone_e164}
-                className={`w-full border rounded px-2 py-1 ${clientErrors.phone_e164 ? 'border-red-500' : ''}`}
-                data-testid="contact-phone"
-              />
-              {clientErrors.phone_e164 && (
-                <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.phone_e164}</div>
-              )}
-
-              <label className="block text-xs text-gray-500">E-mail</label>
-              <input
-                value={clientForm.email}
-                onChange={(e) => handleClientChange('email', e.target.value)}
-                disabled={sel.is_group}
-                title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
-                aria-invalid={!!clientErrors.email}
-                className={`w-full border rounded px-2 py-1 ${clientErrors.email ? 'border-red-500' : ''}`}
-                data-testid="contact-email"
-              />
-              {clientErrors.email && (
-                <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.email}</div>
-              )}
-
-              {clientDirty && clientStatus !== 'saving' && (
-                <button
-                  onClick={revertClient}
-                  className="text-xs underline"
-                  data-testid="contact-revert"
-                >
-                  Reverter
-                </button>
-              )}
-              <div data-testid="contact-save-status" aria-live="polite" className="text-xs">
-                {clientStatus === 'saving'
-                  ? 'saving…'
-                  : clientStatus === 'saved'
-                  ? 'salvo ✓'
-                  : clientStatus === 'error'
-                  ? 'erro ✕'
-                  : ''}
-              </div>
-            </div>
-
-            <div className="text-xs text-gray-500 mt-4">Última atividade: {sel?.updated_at ? new Date(sel.updated_at).toLocaleString() : '-'}</div>
-          </div>
-        ) : (
-          <div className="text-gray-500">Selecione uma conversa</div>
-        )}
+          ) : (
+            <div className="text-gray-500">Selecione uma conversa</div>
+          )}
+        </div>
       </div>
 
       {/* Lightbox */}
@@ -2544,6 +2606,7 @@ export default function InboxPage() {
     {cacheHit && <div data-testid="cache-hit" hidden />}
     {cacheRefreshing && <div data-testid="cache-refreshing" hidden />}
     <div data-testid="prefetch-log" hidden>{preloadLog}</div>
+    <ToastHost />
   </>
   );
 }
