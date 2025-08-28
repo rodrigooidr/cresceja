@@ -2,6 +2,15 @@ import '@testing-library/jest-dom';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
+beforeAll(() => {
+  global.IntersectionObserver = class {
+    constructor() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+});
+
 jest.mock('../sockets/socket', () => {
   const handlers = {};
   return {

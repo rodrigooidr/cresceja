@@ -55,7 +55,12 @@ function ConversationItem({ c, onOpen, active }) {
         <div className="text-xs text-gray-500 truncate">{c?.status || '—'}</div>
       </div>
       {c.unread_count ? (
-        <span className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full h-fit">{c.unread_count}</span>
+        <span
+          className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full h-fit"
+          data-testid="unread-badge"
+        >
+          {c.unread_count}
+        </span>
       ) : null}
     </button>
   );
@@ -67,9 +72,26 @@ export default function InboxPage() {
   // Estado base ----------------------------------------------------------
   const [items, setItems] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
+  const [listCursor, setListCursor] = useState(null);
+  const [listPage, setListPage] = useState(1);
+  const [listHasMore, setListHasMore] = useState(true);
+  const [loadingMoreList, setLoadingMoreList] = useState(false);
+  const listRef = useRef(null);
+  const listBottomRef = useRef(null);
   const [sel, setSel] = useState(null);
   const [msgs, setMsgs] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [msgBefore, setMsgBefore] = useState(null);
+  const [msgHasMore, setMsgHasMore] = useState(true);
+  const [loadingMoreMsgs, setLoadingMoreMsgs] = useState(false);
+  const topTriggerRef = useRef(null);
+  const [toastError, setToastError] = useState('');
+  const showError = useCallback((msg) => {
+    setToastError(msg || 'Erro');
+    setTimeout(() => setToastError(''), 5000);
+  }, []);
+  const [showReconnected, setShowReconnected] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
 
   // Filtros --------------------------------------------------------------
   const [search, setSearch] = useState(searchParams.get('search') || searchParams.get('q') || '');
@@ -155,6 +177,37 @@ export default function InboxPage() {
     inboxApi.get('/crm/statuses').then(r => setStatuses(Array.isArray(r?.data?.items) ? r.data.items : [])).catch(() => {});
   }, []);
 
+  const loadMoreConversations = useCallback(async () => {
+    if (loadingMoreList || !listHasMore) return;
+    const params = {};
+    if (search) params.q = search;
+    if (search) params.search = search;
+    if (channelFilters.length) params.channels = channelFilters.join(',');
+    if (tagFilters.length) params.tags = tagFilters.join(',');
+    if (statusFilters.length) params.status = statusFilters.join(',');
+    if (listCursor) params.cursor = listCursor; else params.page = listPage + 1;
+    setLoadingMoreList(true);
+    try {
+      const r = await firstOk([
+        () => inboxApi.get('/inbox/conversations', { params }),
+        () => inboxApi.get('/conversations', { params }),
+      ]);
+      const arr = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
+      setItems((prev) => uniqBy([...(prev || []), ...arr], (c) => c.id));
+      const cursor = r?.data?.next_cursor || r?.data?.cursor;
+      const page = r?.data?.page || listPage + 1;
+      const hasMore = r?.data?.has_more ?? !!cursor;
+      setListCursor(cursor || null);
+      setListPage(page);
+      setListHasMore(hasMore);
+    } catch (e) {
+      console.error('Falha ao obter conversas', e);
+      showError('Erro ao obter conversas');
+    } finally {
+      setLoadingMoreList(false);
+    }
+  }, [loadingMoreList, listHasMore, search, channelFilters, tagFilters, statusFilters, listCursor, listPage, showError]);
+
   // Busca conversas + sincroniza URL ------------------------------------
   useEffect(() => {
     const params = {};
@@ -165,6 +218,9 @@ export default function InboxPage() {
     if (statusFilters.length) params.status = statusFilters.join(',');
 
     setLoadingList(true);
+    setListCursor(null);
+    setListPage(1);
+    setListHasMore(true);
     const t = setTimeout(async () => {
       try {
         const r = await firstOk([
@@ -173,8 +229,15 @@ export default function InboxPage() {
         ]);
         const arr = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
         setItems(arr);
+        const cursor = r?.data?.next_cursor || r?.data?.cursor;
+        const page = r?.data?.page || 1;
+        const hasMore = r?.data?.has_more ?? !!cursor;
+        setListCursor(cursor || null);
+        setListPage(page);
+        setListHasMore(hasMore);
       } catch (e) {
         console.error('Falha ao obter conversas', e);
+        showError('Erro ao obter conversas');
       } finally {
         setLoadingList(false);
       }
@@ -182,7 +245,7 @@ export default function InboxPage() {
 
     setSearchParams(params, { replace: true });
     return () => clearTimeout(t);
-  }, [search, channelFilters, tagFilters, statusFilters, setSearchParams]);
+  }, [search, channelFilters, tagFilters, statusFilters, setSearchParams, reloadTick, showError]);
 
   // Filtro local (fallback) ---------------------------------------------
   const filteredItems = useMemo(() => {
@@ -201,6 +264,19 @@ export default function InboxPage() {
       return okQ && okCh && okStatus && okTags;
     });
   }, [items, search, channelFilters, tagFilters, statusFilters]);
+
+  useEffect(() => {
+    const root = listRef.current;
+    const el = listBottomRef.current;
+    if (!root || !el) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) loadMoreConversations();
+      });
+    }, { root });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadMoreConversations, filteredItems.length]);
 
   // Emoji abre/fecha -----------------------------------------------------
   useEffect(() => {
@@ -236,30 +312,59 @@ export default function InboxPage() {
       .catch(() => setTemplates([]));
   }, [sel]);
 
+  const resyncMessages = useCallback(async () => {
+    if (!sel) return;
+    const last = msgs[msgs.length - 1];
+    if (!last) return;
+    const after = last.id || last.created_at;
+    try {
+      const r = await inboxApi.get(`/conversations/${sel.id}/messages`, { params: { after } });
+      const raw = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
+      const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
+      if (safe.length) setMsgs((prev) => uniqBy([...(prev || []), ...safe], (m) => m.id));
+    } catch (e) {
+      console.error('Falha ao ressincronizar mensagens', e);
+    }
+  }, [sel, msgs]);
+
   // Socket ---------------------------------------------------------------
   useEffect(() => {
     const s = makeSocket();
 
     s.on('message:new', (payload) => {
       const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id;
-      if (!sel?.id || String(sel.id) !== String(convId)) return;
       const raw = payload?.message ?? payload?.data ?? payload;
       const normalized = normalizeMessage(raw);
       if (!normalized) return;
-      if (normalized.temp_id) {
-        setMsgs((prev) => {
-          const idx = (prev || []).findIndex((m) => m.id === normalized.temp_id);
-          if (idx >= 0) {
-            const arr = prev.slice();
-            arr[idx] = { ...normalized, sending: false };
-            return arr;
-          }
-          return uniqBy([...(prev || []), normalized], (m) => m.id);
-        });
+      if (sel?.id && String(sel.id) === String(convId)) {
+        if (normalized.temp_id) {
+          setMsgs((prev) => {
+            const idx = (prev || []).findIndex((m) => m.id === normalized.temp_id);
+            if (idx >= 0) {
+              const arr = prev.slice();
+              arr[idx] = { ...normalized, sending: false };
+              return arr;
+            }
+            return uniqBy([...(prev || []), normalized], (m) => m.id);
+          });
+        } else {
+          setMsgs((prev) => uniqBy([...(prev || []), normalized], (m) => m.id));
+        }
+        const box = msgBoxRef.current;
+        const atBottom = box ? Math.abs(box.scrollHeight - box.scrollTop - box.clientHeight) < 5 : false;
+        if (normalized.is_outbound || atBottom) {
+          setSel((p) =>
+            p ? { ...p, unread_count: 0, last_read_message_id: normalized.id, last_read_at: normalized.created_at } : p
+          );
+          setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
+        } else {
+          setSel((p) => (p ? { ...p, unread_count: (p.unread_count || 0) + 1 } : p));
+          setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)));
+        }
+        setTimeout(() => { msgBoxRef.current && (msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight); }, 0);
       } else {
-        setMsgs((prev) => uniqBy([...(prev || []), normalized], (m) => m.id));
+        setItems((prev) => (prev || []).map((c) => (c.id === convId ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)));
       }
-      setTimeout(() => { msgBoxRef.current && (msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight); }, 0);
     });
 
     s.on('message:updated', (payload) => {
@@ -278,8 +383,19 @@ export default function InboxPage() {
       if (sel?.id === conv.id) setSel((prev) => ({ ...prev, ...conv }));
     });
 
+    s.on('disconnect', () => {
+      showError('Conexão perdida');
+    });
+
+    s.on('connect', async () => {
+      setShowReconnected(true);
+      setTimeout(() => setShowReconnected(false), 2000);
+      setReloadTick((v) => v + 1);
+      try { await resyncMessages(); } catch {}
+    });
+
     return () => { try { s.close?.(); } catch {} try { s.disconnect?.(); } catch {} };
-  }, [sel]);
+  }, [sel, showError, resyncMessages]);
 
   // Abrir conversa -------------------------------------------------------
   const open = useCallback(async (c) => {
@@ -293,12 +409,83 @@ export default function InboxPage() {
       const raw = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
       const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
       setMsgs(safe);
-      setTimeout(() => { msgBoxRef.current && (msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight); }, 0);
+      const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
+      const hasMore = r?.data?.has_more ?? !!cursor;
+      setMsgBefore(cursor || (safe[0] && safe[0].id));
+      setMsgHasMore(hasMore);
+      setTimeout(() => {
+        if (msgBoxRef.current) msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight;
+        composerRef.current && composerRef.current.focus();
+      }, 0);
     } catch (e) {
       console.error('Falha ao carregar mensagens', e);
       setMsgs([]);
+      setMsgBefore(null);
+      setMsgHasMore(false);
+      showError('Erro ao carregar mensagens');
     } finally { setLoadingMsgs(false); }
-  }, []);
+  }, [showError]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!sel || loadingMoreMsgs || !msgHasMore) return;
+    const params = { limit: 20 };
+    if (msgBefore) params.before = msgBefore; else if (msgs[0]) params.before = msgs[0].id || msgs[0].created_at;
+    const box = msgBoxRef.current;
+    const prevHeight = box ? box.scrollHeight : 0;
+    const prevTop = box ? box.scrollTop : 0;
+    setLoadingMoreMsgs(true);
+    try {
+      const r = await firstOk([
+        () => inboxApi.get(`/conversations/${sel.id}/messages`, { params }),
+        () => inboxApi.get(`/inbox/conversations/${sel.id}/messages`, { params }),
+      ]);
+      const raw = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
+      const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
+      setMsgs((prev) => uniqBy([...safe, ...(prev || [])], (m) => m.id));
+      const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
+      const hasMore = r?.data?.has_more ?? !!cursor;
+      setMsgBefore(cursor || (safe[0] && safe[0].id));
+      setMsgHasMore(hasMore);
+      setTimeout(() => {
+        if (box) {
+          const newHeight = box.scrollHeight;
+          box.scrollTop = newHeight - prevHeight + prevTop;
+        }
+        composerRef.current && composerRef.current.focus();
+      }, 0);
+    } catch (e) {
+      console.error('Falha ao carregar mensagens', e);
+      showError('Erro ao carregar mensagens');
+    } finally {
+      setLoadingMoreMsgs(false);
+    }
+  }, [sel, loadingMoreMsgs, msgHasMore, msgBefore, msgs, showError]);
+
+  useEffect(() => {
+    if (!sel) return;
+    const root = msgBoxRef.current;
+    const el = topTriggerRef.current;
+    if (!root || !el) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) loadOlderMessages();
+      });
+    }, { root });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loadOlderMessages, sel, msgs.length]);
+
+  const separatorIdx = useMemo(() => {
+    if (!sel) return -1;
+    const lastReadId = asId(sel.last_read_message_id);
+    const lastReadAt = sel.last_read_at ? new Date(sel.last_read_at).getTime() : null;
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (lastReadId && asId(m.id) === lastReadId) return i + 1;
+      if (lastReadAt && new Date(m.created_at).getTime() > lastReadAt) return i;
+    }
+    return -1;
+  }, [sel, msgs]);
 
   // Upload ---------------------------------------------------------------
   const handleFiles = async (fileList) => {
@@ -341,6 +528,23 @@ export default function InboxPage() {
     });
   const markFailed = (id) =>
     setMsgs((p) => (p || []).map((m) => (m.id === id ? { ...m, failed: true, sending: false } : m)));
+
+  const markAllRead = async () => {
+    if (!sel) return;
+    try {
+      await inboxApi.put(`/conversations/${sel.id}/read`);
+      const last = msgs[msgs.length - 1];
+      setSel((p) =>
+        p
+          ? { ...p, unread_count: 0, last_read_at: new Date().toISOString(), last_read_message_id: last?.id }
+          : p
+      );
+      setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
+    } catch (e) {
+      console.error('Falha ao marcar como lido', e);
+      showError('Erro ao marcar como lido');
+    }
+  };
 
   const send = async () => {
     if (!sel) return;
@@ -387,7 +591,11 @@ export default function InboxPage() {
       const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: tempId });
       const createdRaw = res?.data?.message ?? res?.data?.data ?? res?.data;
       const created = normalizeMessage(createdRaw);
-      if (created) replaceTemp(tempId, created); else markFailed(tempId);
+      if (created) {
+        replaceTemp(tempId, created);
+        setSel((p) => (p ? { ...p, unread_count: 0, last_read_message_id: created.id, last_read_at: created.created_at } : p));
+        setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
+      } else markFailed(tempId);
       setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]); setUploadError('');
     } catch (e) { console.error('Falha ao enviar', e); markFailed(tempId); }
   };
@@ -474,7 +682,16 @@ export default function InboxPage() {
 
   // Render ---------------------------------------------------------------
   return (
-    <div className="grid grid-cols-12 h-[calc(100vh-80px)] bg-gray-50">
+    <>
+      {toastError && (
+        <div
+          data-testid="toast-error"
+          className="fixed top-2 right-2 bg-red-600 text-white px-2 py-1 rounded"
+        >
+          {toastError}
+        </div>
+      )}
+      <div className="grid grid-cols-12 h-[calc(100vh-80px)] bg-gray-50">
       {/* Sidebar (esquerda) */}
       <div className="col-span-3 border-r bg-white flex flex-col">
         <div className="p-3 border-b">
@@ -532,13 +749,19 @@ export default function InboxPage() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" ref={listRef}>
           {loadingList ? (
             <div className="p-3 text-sm text-gray-500" data-testid="conversations-loading">Carregando…</div>
           ) : filteredItems.length ? (
-            filteredItems.map((c) => (
-              <ConversationItem key={c.id} c={c} onOpen={open} active={sel?.id === c.id} />
-            ))
+            <>
+              {filteredItems.map((c) => (
+                <ConversationItem key={c.id} c={c} onOpen={open} active={sel?.id === c.id} />
+              ))}
+              <div ref={listBottomRef} data-testid="infinite-trigger-bottom" />
+              {loadingMoreList && (
+                <div className="p-3 text-sm text-gray-500">Carregando…</div>
+              )}
+            </>
           ) : (
             <div className="p-3 text-sm text-gray-500" data-testid="conversations-empty">Nenhuma conversa.</div>
           )}
@@ -580,17 +803,38 @@ export default function InboxPage() {
           </div>
         </div>
 
+        <div className="bg-white border-b p-2 text-right">
+          <button
+            className="text-xs underline"
+            onClick={markAllRead}
+            data-testid="mark-all-read"
+          >
+            Marcar como lido
+          </button>
+        </div>
+        {showReconnected && (
+          <div className="text-center text-xs bg-yellow-100" data-testid="socket-reconnected">
+            Reconectado
+          </div>
+        )}
+
         {/* Mensagens */}
         <div ref={msgBoxRef} className="flex-1 overflow-y-auto p-4 space-y-2">
-          {loadingMsgs && <div className="text-sm text-gray-500">Carregando…</div>}
-          {(msgs || []).map((m) => (
-            <div
-              key={m.id}
-              data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
-              data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
-              className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
-            >
-              {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
+          <div ref={topTriggerRef} data-testid="infinite-trigger-top" />
+          {(loadingMoreMsgs || loadingMsgs) && (
+            <div className="text-sm text-gray-500">Carregando…</div>
+          )}
+          {(msgs || []).map((m, i) => (
+            <React.Fragment key={m.id}>
+              {i === separatorIdx && (
+                <hr data-testid="new-messages-separator" />
+              )}
+              <div
+                data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
+                data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
+                className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
+              >
+                {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
 
               {!!m.attachments?.length && (
                 <div className="mt-1 flex flex-wrap gap-2">
@@ -650,9 +894,10 @@ export default function InboxPage() {
                 {m.sending && !m.failed && <span className="text-[10px] text-gray-400">Enviando…</span>}
                 <span className="text-[10px] text-gray-500" title={new Date(m.created_at).toLocaleString()}>{formatRelative(m.created_at)}</span>
               </div>
-            </div>
-          ))}
-        </div>
+              </div>
+            </React.Fragment>
+            ))}
+          </div>
 
         {/* Composer */}
         {sel && (
@@ -899,5 +1144,6 @@ export default function InboxPage() {
         />
       )}
     </div>
+  </>
   );
 }
