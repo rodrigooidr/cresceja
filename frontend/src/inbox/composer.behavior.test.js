@@ -39,8 +39,13 @@ function mockApis() {
     }
     return Promise.resolve({ data: {} });
   });
-  inboxApi.post.mockResolvedValue({
-    data: { message: { id: 'srv1', type: 'text', text: 'hello', is_outbound: true } },
+  inboxApi.post.mockImplementation((url) => {
+    if (url.includes('/attachments')) {
+      return Promise.resolve({ data: { assets: [{ id: 'a1', url: '/u', thumb_url: '/t' }] } });
+    }
+    return Promise.resolve({
+      data: { message: { id: 'srv1', type: 'text', text: 'hello', is_outbound: true } },
+    });
   });
 }
 
@@ -160,5 +165,19 @@ describe('composer behavior', () => {
     });
     await waitFor(() => expect(inboxApi.post).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText(/Falha/)).not.toBeInTheDocument());
+  });
+
+  it('adds attachments via drag-and-drop and paste', async () => {
+    await setup();
+    const area = screen.getByTestId('composer-dropzone');
+    const file = new File(['hi'], 'hi.png', { type: 'image/png' });
+    fireEvent.drop(area, { dataTransfer: { files: [file] } });
+    await waitFor(() => screen.getByTestId('pending-attachments'));
+
+    const input = screen.getByTestId('composer-text');
+    fireEvent.paste(input, { clipboardData: { files: [file] } });
+    await waitFor(() => {
+      expect(screen.getByTestId('pending-attachments').children.length).toBeGreaterThan(1);
+    });
   });
 });

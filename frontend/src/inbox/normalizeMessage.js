@@ -1,8 +1,8 @@
 // src/inbox/normalizeMessage.js
 import { apiUrl } from '../utils/apiUrl';
 
-function safeUrl(p) {
-  return p ? apiUrl(p) : undefined; // evita retornar apenas a base quando não há caminho
+function absoluteUrl(p) {
+  return p ? apiUrl(p) : undefined;
 }
 
 export function normalizeMessage(raw) {
@@ -28,10 +28,13 @@ export function normalizeMessage(raw) {
   const attachments = hasAttachments
     ? raw.attachments
         .filter((a) => a && typeof a === 'object')
-        .map((a) => ({
-          ...a,
-          url: safeUrl(a.url),
-          thumb_url: safeUrl(a.thumb_url),
+        .map((a, i) => ({
+          id: a.id || a.asset_id || a.url || String(i),
+          mime: a.mime || a.content_type,
+          size: a.size ?? a.filesize,
+          filename: a.filename || a.name,
+          url: absoluteUrl(a.url),
+          thumb_url: absoluteUrl(a.thumb_url),
         }))
     : [];
 
@@ -42,14 +45,14 @@ export function normalizeMessage(raw) {
     new Date().toISOString();
 
   return {
-    id: raw.id || raw.message_id || `${Date.now()}-${Math.random()}`,
+    id: raw.id || raw.message_id || raw.temp_id,
     temp_id: raw.temp_id,
     type,
     text: raw.text ?? raw.body ?? '',
     from, // 'customer' | 'agent'
     created_at: createdAt,
     attachments,
-    audio_url: safeUrl(raw.audio_url),
+    audio_url: absoluteUrl(raw.audio_url),
     transcript_text: raw.transcript_text ?? null,
     group_meta: raw.group_meta,
   };

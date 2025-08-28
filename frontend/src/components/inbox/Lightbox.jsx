@@ -20,6 +20,8 @@ export default function Lightbox({ items = [], startIndex = 0, onClose }) {
       className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center"
       onClick={onClose}
       data-testid="lightbox"
+      role="dialog"
+      aria-modal="true"
     >
       <img
         src={item.src || item.url}
