@@ -81,14 +81,12 @@ describe('templates flow', () => {
     const sendBtn = screen.getByTestId('send-button');
 
     // required validation
-    await act(async () => {
-      fireEvent.click(sendBtn);
-    });
-    expect(inboxApi.post).not.toHaveBeenCalled();
+    expect(sendBtn).toBeDisabled();
     expect(screen.getByText('Obrigatório')).toBeInTheDocument();
 
     fireEvent.change(nameInput, { target: { value: 'Alice' } });
     fireEvent.change(prodInput, { target: { value: 'Shop' } });
+    expect(sendBtn).toBeEnabled();
     expect(screen.getByTestId('template-preview').textContent).toContain('Hello Alice');
 
     await act(async () => {

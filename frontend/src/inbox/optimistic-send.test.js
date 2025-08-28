@@ -71,7 +71,7 @@ describe('optimistic send', () => {
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
-    const sendingEl = document.querySelector('[data-status="sending"]');
+    const sendingEl = screen.getByTestId('msg-sending');
     expect(sendingEl).toBeTruthy();
     expect(sendingEl.textContent).toContain('hello');
   });
@@ -89,7 +89,7 @@ describe('optimistic send', () => {
     act(() => {
       socketHandlers['message:new']({ conversationId: 1, message: { id: 'srv1', temp_id: tempId, type: 'text', text: 'hello', is_outbound: true } });
     });
-    await waitFor(() => expect(document.querySelector('[data-status="sending"]')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId('msg-sending')).not.toBeInTheDocument());
     resolvePost({ data: { message: { id: 'srv1', type: 'text', text: 'hello', is_outbound: true } } });
     await waitFor(() => expect(screen.getAllByText('hello').length).toBe(1));
   });
@@ -102,13 +102,13 @@ describe('optimistic send', () => {
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
-    await waitFor(() => screen.getByText(/Falha/));
+    await waitFor(() => screen.getByTestId('msg-failed'));
     inboxApi.post.mockResolvedValueOnce({ data: { message: { id: 'srv2', type: 'text', text: 'oops', is_outbound: true } } });
     await act(async () => {
       fireEvent.click(screen.getByTestId('retry-button'));
     });
     await waitFor(() => expect(inboxApi.post).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByText(/Falha/)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId('msg-failed')).not.toBeInTheDocument());
   });
 });
 
