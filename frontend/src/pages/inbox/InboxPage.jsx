@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import inboxApi, { apiUrl } from '../../api/inboxApi';
 import { makeSocket } from '../../sockets/socket';
@@ -39,16 +39,25 @@ async function firstOk(fns = []) {
 }
 
 // Item de conversa (sidebar) --------------------------------------------
-function ConversationItem({ c, onOpen, active }) {
+function ConversationItem({ c, onOpen, active, idx, onHeight }) {
   const contact = c?.contact || {};
   const icon = channelIconBySlug[c?.channel] || channelIconBySlug.default;
   const photo = contact.photo_url ? apiUrl(contact.photo_url) : 'https://placehold.co/40';
+  const ref = useRef(null);
+  const reportHeight = useCallback(() => {
+    if (ref.current && onHeight) onHeight(idx, ref.current.offsetHeight);
+  }, [idx, onHeight]);
+  useLayoutEffect(() => {
+    reportHeight();
+  }, [reportHeight, c, active]);
   return (
     <button
+      ref={ref}
       onClick={() => onOpen(c)}
       className={`w-full px-3 py-2 flex gap-3 border-b hover:bg-gray-100 ${active ? 'bg-gray-100' : ''}`}
+      data-testid="conv-item"
     >
-      <img src={photo} alt="avatar" className="w-10 h-10 rounded-full" />
+      <img src={photo} alt="avatar" className="w-10 h-10 rounded-full" onLoad={reportHeight} />
       <div className="min-w-0 text-left flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium truncate">{contact.name || contact.phone_e164 || 'Contato'}</span>
@@ -80,6 +89,8 @@ export default function InboxPage() {
   const [loadingMoreList, setLoadingMoreList] = useState(false);
   const listRef = useRef(null);
   const listBottomRef = useRef(null);
+  const convItemHeightsRef = useRef([]);
+  const [convVirt, setConvVirt] = useState({ start: 0, end: 0, topSpacer: 0, bottomSpacer: 0 });
   const filterSearchRef = useRef(null);
   const [sel, setSel] = useState(null);
   const [msgs, setMsgs] = useState([]);
@@ -384,6 +395,36 @@ export default function InboxPage() {
     });
   }, [items, search, channelFilters, tagFilters, statusFilters]);
 
+  const handleConvScroll = useCallback(() => {
+    const root = listRef.current;
+    if (!root) return;
+    setConvVirt(
+      computeWindow({
+        scrollTop: root.scrollTop,
+        viewportHeight: root.clientHeight,
+        itemHeights: convItemHeightsRef.current,
+        overscan: 10,
+      })
+    );
+  }, []);
+
+  useLayoutEffect(() => {
+    handleConvScroll();
+  }, []);
+
+  useLayoutEffect(() => {
+    convItemHeightsRef.current = filteredItems.map((_, i) => convItemHeightsRef.current[i] || 64);
+    handleConvScroll();
+  }, [filteredItems, handleConvScroll]);
+
+  useEffect(() => {
+    const root = listRef.current;
+    if (root) {
+      root.scrollTop = 0;
+      handleConvScroll();
+    }
+  }, [search, channelFilters, tagFilters, statusFilters, handleConvScroll]);
+
   useEffect(() => {
     const root = listRef.current;
     const el = listBottomRef.current;
@@ -459,6 +500,22 @@ export default function InboxPage() {
   // Socket ---------------------------------------------------------------
   useEffect(() => {
     const s = makeSocket();
+
+    s.on('conversation:new', (payload) => {
+      const conv = payload?.conversation || payload;
+      if (!conv?.id) return;
+      convItemHeightsRef.current = [64, ...convItemHeightsRef.current];
+      setItems((prev) => {
+        const arr = prev || [];
+        if (arr.find((c) => c.id === conv.id)) return arr;
+        return [conv, ...arr];
+      });
+      const root = listRef.current;
+      if (root && root.scrollTop > 0) {
+        root.scrollTop += convItemHeightsRef.current[0] || 64;
+      }
+      setTimeout(() => handleConvScroll(), 0);
+    });
 
     s.on('message:new', (payload) => {
       const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id;
@@ -572,7 +629,7 @@ export default function InboxPage() {
       try { s.disconnect?.(); } catch {}
       clearTimeout(typingTimeoutRef.current);
     };
-  }, [sel, showError, resyncMessages]);
+  }, [sel, showError, resyncMessages, handleConvScroll]);
 
   // Abrir conversa -------------------------------------------------------
   const open = useCallback(async (c) => {
@@ -976,15 +1033,35 @@ export default function InboxPage() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto" ref={listRef}>
+        <div
+          className="flex-1 overflow-y-auto"
+          ref={listRef}
+          onScroll={handleConvScroll}
+          data-testid="conv-list"
+        >
           {loadingList ? (
             <div className="p-3 text-sm text-gray-500" data-testid="conversations-loading">Carregando…</div>
           ) : filteredItems.length ? (
             <>
-              {filteredItems.map((c) => (
-                <ConversationItem key={c.id} c={c} onOpen={open} active={sel?.id === c.id} />
+              <div style={{ height: convVirt.topSpacer }} />
+              <div data-testid="conv-top-sentinel" />
+              {filteredItems.slice(convVirt.start, convVirt.end).map((c, i) => (
+                <ConversationItem
+                  key={c.id}
+                  c={c}
+                  onOpen={open}
+                  active={sel?.id === c.id}
+                  idx={convVirt.start + i}
+                  onHeight={(idx, h) => {
+                    if (convItemHeightsRef.current[idx] !== h) {
+                      convItemHeightsRef.current[idx] = h;
+                      handleConvScroll();
+                    }
+                  }}
+                />
               ))}
-              <div ref={listBottomRef} data-testid="infinite-trigger-bottom" />
+              <div ref={listBottomRef} data-testid="conv-bottom-sentinel" />
+              <div style={{ height: convVirt.bottomSpacer }} />
               {loadingMoreList && (
                 <div className="p-3 text-sm text-gray-500">Carregando…</div>
               )}
