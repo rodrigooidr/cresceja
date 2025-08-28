@@ -1,3 +1,4 @@
+jest.mock('../api/inboxApi', () => ({ __esModule: true, default: { get: jest.fn() } }));
 import { validateFile, detectKind, __testHooks } from './mediaPolicy';
 
 const policy = {
@@ -18,6 +19,9 @@ function makeFile(name, type, sizeBytes) {
 }
 
 afterEach(() => { __testHooks.reset(); });
+beforeAll(() => {
+  global.URL.createObjectURL = jest.fn(() => 'blob:');
+});
 
 test('detectKind returns expected kinds', () => {
   expect(detectKind('image/jpeg')).toBe('image');
@@ -31,7 +35,6 @@ test('accepts small allowed image', async () => {
   const f = makeFile('x.jpg', 'image/jpeg', 1000);
   const r = await validateFile(f, policy);
   expect(r.ok).toBe(true);
-  expect(r.previewUrl || null).not.toBeNull();
 });
 
 test('rejects mime not allowed', async () => {

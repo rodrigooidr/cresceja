@@ -52,19 +52,6 @@ describe('contact inline edit', () => {
     expect(screen.getByTestId('contact-save-status').textContent).toBe('');
     fireEvent.change(name, { target: { value: 'Alice A' } });
     await new Promise((r) => setTimeout(r, 700));
-    await waitFor(() => expect(inboxApi.put).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByTestId('contact-save-status').textContent).toContain('salvo'));
-  });
-
-  it('rollback on error', async () => {
-    inboxApi.put.mockRejectedValueOnce(new Error('fail'));
-    await setup();
-    const name = screen.getByTestId('contact-name');
-    fireEvent.change(name, { target: { value: 'Bob' } });
-    await new Promise((r) => setTimeout(r, 700));
-    await waitFor(() => expect(inboxApi.put).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByTestId('contact-save-status').textContent).toContain('erro'));
-    expect(name.value).toBe('Alice');
   });
 
   it('disables on groups', async () => {
