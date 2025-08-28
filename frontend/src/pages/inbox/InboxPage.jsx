@@ -16,6 +16,7 @@ const uniqBy = (arr, keyFn) => {
   return Array.from(m.values());
 };
 
+
 function formatRelative(date) {
   const d = new Date(date).getTime();
   const diff = Date.now() - d;
@@ -78,6 +79,7 @@ export default function InboxPage() {
   const [loadingMoreList, setLoadingMoreList] = useState(false);
   const listRef = useRef(null);
   const listBottomRef = useRef(null);
+  const filterSearchRef = useRef(null);
   const [sel, setSel] = useState(null);
   const [msgs, setMsgs] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
@@ -85,6 +87,7 @@ export default function InboxPage() {
   const [msgHasMore, setMsgHasMore] = useState(true);
   const [loadingMoreMsgs, setLoadingMoreMsgs] = useState(false);
   const topTriggerRef = useRef(null);
+  const msgRefs = useRef({});
   const [toastError, setToastError] = useState('');
   const showError = useCallback((msg) => {
     setToastError(msg || 'Erro');
@@ -108,6 +111,7 @@ export default function InboxPage() {
   const [templateId, setTemplateId] = useState('');
   const [templateVars, setTemplateVars] = useState({});
   const [templateErrors, setTemplateErrors] = useState({});
+  const templateSelectRef = useRef(null);
   const selectedTemplate = useMemo(
     () => templates.find((t) => String(t.id) === String(templateId)) || null,
     [templates, templateId]
@@ -134,6 +138,81 @@ export default function InboxPage() {
   const [attachments, setAttachments] = useState([]);
   const [uploadError, setUploadError] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
+
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
+  const [chatMatches, setChatMatches] = useState([]);
+  const [chatMatchIdx, setChatMatchIdx] = useState(0);
+  const chatSearchRef = useRef(null);
+
+  const highlight = useCallback(
+    (text = '') => {
+      if (!chatSearch) return text;
+      const lower = text.toLowerCase();
+      const q = chatSearch.toLowerCase();
+      const parts = [];
+      let i = 0;
+      while (true) {
+        const idx = lower.indexOf(q, i);
+        if (idx === -1) {
+          parts.push(text.slice(i));
+          break;
+        }
+        parts.push(text.slice(i, idx));
+        parts.push(
+          <mark key={idx} className="bg-yellow-200">
+            {text.slice(idx, idx + q.length)}
+          </mark>
+        );
+        i = idx + q.length;
+      }
+      return parts;
+    },
+    [chatSearch]
+  );
+
+  useEffect(() => {
+    if (!chatSearch) {
+      setChatMatches([]);
+      setChatMatchIdx(0);
+      return;
+    }
+    const q = chatSearch.toLowerCase();
+    const arr = [];
+    msgs.forEach((m) => {
+      const text = (m.text || '').toLowerCase();
+      let idx = text.indexOf(q);
+      while (idx !== -1) {
+        arr.push({ id: m.id });
+        idx = text.indexOf(q, idx + q.length);
+      }
+    });
+    setChatMatches(arr);
+    setChatMatchIdx(arr.length ? 0 : 0);
+  }, [chatSearch, msgs]);
+
+  useEffect(() => {
+    if (!chatMatches.length) return;
+    const target = chatMatches[chatMatchIdx];
+    const node = msgRefs.current[target.id];
+    if (node) {
+      node.scrollIntoView({ block: 'center' });
+      node.classList.add('outline', 'outline-2', 'outline-yellow-400');
+      setTimeout(() => node.classList.remove('outline', 'outline-2', 'outline-yellow-400'), 600);
+    }
+  }, [chatMatchIdx, chatMatches]);
+
+  const nextMatch = useCallback(() => {
+    if (!chatMatches.length) return;
+    setChatMatchIdx((i) => (i + 1) % chatMatches.length);
+  }, [chatMatches]);
+
+  const prevMatch = useCallback(() => {
+    if (!chatMatches.length) return;
+    setChatMatchIdx((i) => (i - 1 + chatMatches.length) % chatMatches.length);
+  }, [chatMatches]);
 
   // Painéis -------------------------------------------------------------
   const [showInfo, setShowInfo] = useState(true);
@@ -292,6 +371,7 @@ export default function InboxPage() {
     };
   }, [showEmoji]);
 
+
   // Templates + form cliente quando muda a conversa ---------------------
   useEffect(() => {
     setShowEmoji(false);
@@ -310,6 +390,15 @@ export default function InboxPage() {
       .get('/templates', { params: { channel: sel.channel } })
       .then((r) => setTemplates(Array.isArray(r?.data?.items) ? r.data.items : []))
       .catch(() => setTemplates([]));
+  }, [sel]);
+
+  useEffect(() => {
+    if (!sel) {
+      setShowChatSearch(false);
+      setChatSearch('');
+      setChatMatches([]);
+      setChatMatchIdx(0);
+    }
   }, [sel]);
 
   const resyncMessages = useCallback(async () => {
@@ -376,6 +465,50 @@ export default function InboxPage() {
       setMsgs((prev) => (prev || []).map((m) => (m.id === normalized.id ? normalized : m)));
     });
 
+    s.on('message:status', (payload) => {
+      const id = payload?.id || payload?.message_id;
+      if (!id) return;
+      const updates = {};
+      if (payload.sent_at) updates.sent_at = payload.sent_at;
+      if (payload.delivered_at) updates.delivered_at = payload.delivered_at;
+      if (payload.read_at) updates.read_at = payload.read_at;
+      if (!Object.keys(updates).length) return;
+      setMsgs((prev) => (prev || []).map((m) => (String(m.id) === String(id) ? { ...m, ...updates } : m)));
+    });
+
+    s.on('conversation:sync', (payload) => {
+      const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id;
+      if (!sel?.id || String(sel.id) !== String(convId)) return;
+      const arr = Array.isArray(payload?.messages) ? payload.messages : Array.isArray(payload?.data?.messages) ? payload.data.messages : [];
+      const safe = arr.map((m) => normalizeMessage(m)).filter(Boolean);
+      if (!safe.length) return;
+      setMsgs((prev) => {
+        const map = new Map((prev || []).map((m) => [m.id, m]));
+        safe.forEach((m) => {
+          const ex = map.get(m.id);
+          map.set(m.id, ex ? { ...ex, ...m } : m);
+        });
+        return Array.from(map.values());
+      });
+    });
+
+    s.on('typing:start', (payload) => {
+      const convId = payload?.conversationId || payload?.conversation_id;
+      if (!sel?.id || String(sel.id) !== String(convId)) return;
+      if (payload.actor === 'agent') return;
+      setTyping(true);
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => setTyping(false), 5000);
+    });
+
+    s.on('typing:stop', (payload) => {
+      const convId = payload?.conversationId || payload?.conversation_id;
+      if (!sel?.id || String(sel.id) !== String(convId)) return;
+      if (payload.actor === 'agent') return;
+      clearTimeout(typingTimeoutRef.current);
+      setTyping(false);
+    });
+
     s.on('conversation:updated', (payload) => {
       const conv = payload?.conversation;
       if (!conv?.id) return;
@@ -394,7 +527,11 @@ export default function InboxPage() {
       try { await resyncMessages(); } catch {}
     });
 
-    return () => { try { s.close?.(); } catch {} try { s.disconnect?.(); } catch {} };
+    return () => {
+      try { s.close?.(); } catch {}
+      try { s.disconnect?.(); } catch {}
+      clearTimeout(typingTimeoutRef.current);
+    };
   }, [sel, showError, resyncMessages]);
 
   // Abrir conversa -------------------------------------------------------
@@ -474,6 +611,50 @@ export default function InboxPage() {
     obs.observe(el);
     return () => obs.disconnect();
   }, [loadOlderMessages, sel, msgs.length]);
+
+  // Atalhos de teclado ---------------------------------------------------
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        filterSearchRef.current && filterSearchRef.current.focus();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setShowChatSearch((v) => {
+          const nv = !v;
+          if (!nv) setChatSearch('');
+          setTimeout(() => { if (nv) chatSearchRef.current && chatSearchRef.current.focus(); }, 0);
+          return nv;
+        });
+      }
+      if (e.altKey && e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!filteredItems.length) return;
+        const idx = filteredItems.findIndex((c) => sel && c.id === sel.id);
+        const next = filteredItems[(idx + 1) % filteredItems.length];
+        if (next) open(next);
+      }
+      if (e.altKey && e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!filteredItems.length) return;
+        const idx = filteredItems.findIndex((c) => sel && c.id === sel.id);
+        const prev = filteredItems[(idx - 1 + filteredItems.length) % filteredItems.length];
+        if (prev) open(prev);
+      }
+      if (e.key === 'Escape') {
+        setShowEmoji(false);
+        setLightbox((l) => (l.open ? { ...l, open: false } : l));
+        setShowChatSearch(false);
+      }
+      if (e.key === '/' && !e.target.closest('input, textarea, select')) {
+        e.preventDefault();
+        templateSelectRef.current && templateSelectRef.current.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [filteredItems, sel, open, showChatSearch]);
 
   const separatorIdx = useMemo(() => {
     if (!sel) return -1;
@@ -696,6 +877,7 @@ export default function InboxPage() {
       <div className="col-span-3 border-r bg-white flex flex-col">
         <div className="p-3 border-b">
           <input
+            ref={filterSearchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Pesquisar"
@@ -818,8 +1000,30 @@ export default function InboxPage() {
           </div>
         )}
 
-        {/* Mensagens */}
-        <div ref={msgBoxRef} className="flex-1 overflow-y-auto p-4 space-y-2">
+          {showChatSearch && (
+            <div className="p-2 border-b flex items-center gap-2 bg-white">
+              <input
+                ref={chatSearchRef}
+                value={chatSearch}
+                onChange={(e) => setChatSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); e.shiftKey ? prevMatch() : nextMatch(); }
+                  if (e.key === 'Escape') { e.stopPropagation(); setChatSearch(''); }
+                }}
+                placeholder="Buscar"
+                className="flex-1 border rounded px-2 py-1 text-sm"
+                data-testid="chat-search-input"
+              />
+              <button onClick={prevMatch} data-testid="chat-search-prev" className="px-2">↑</button>
+              <button onClick={nextMatch} data-testid="chat-search-next" className="px-2">↓</button>
+              <span data-testid="chat-search-count" className="text-xs">
+                {chatMatches.length ? `${chatMatchIdx + 1}/${chatMatches.length}` : '0/0'}
+              </span>
+            </div>
+          )}
+
+          {/* Mensagens */}
+          <div ref={msgBoxRef} className="flex-1 overflow-y-auto p-4 space-y-2">
           <div ref={topTriggerRef} data-testid="infinite-trigger-top" />
           {(loadingMoreMsgs || loadingMsgs) && (
             <div className="text-sm text-gray-500">Carregando…</div>
@@ -830,11 +1034,12 @@ export default function InboxPage() {
                 <hr data-testid="new-messages-separator" />
               )}
               <div
+                ref={(el) => { if (el) msgRefs.current[m.id] = el; }}
                 data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
                 data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
                 className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
               >
-                {m.text && <div className="whitespace-pre-wrap">{m.text}</div>}
+                {m.text && <div className="whitespace-pre-wrap">{highlight(m.text)}</div>}
 
               {!!m.attachments?.length && (
                 <div className="mt-1 flex flex-wrap gap-2">
@@ -892,12 +1097,32 @@ export default function InboxPage() {
                   </button>
                 )}
                 {m.sending && !m.failed && <span className="text-[10px] text-gray-400">Enviando…</span>}
+                {m.from === 'agent' && (m.sent_at || m.delivered_at || m.read_at) ? (
+                  <span
+                    data-testid="msg-receipt"
+                    className={`text-[10px] ${m.read_at ? 'text-blue-600' : 'text-gray-500'}`}
+                    aria-label={m.read_at ? 'Lida' : m.delivered_at ? 'Entregue' : 'Enviada'}
+                    title={`${formatRelative(m.read_at || m.delivered_at || m.sent_at)} — ${new Date(m.read_at || m.delivered_at || m.sent_at).toLocaleString()}`}
+                  >
+                    {m.read_at ? '✓✓' : m.delivered_at ? '✓✓' : '✓'}
+                  </span>
+                ) : null}
                 <span className="text-[10px] text-gray-500" title={new Date(m.created_at).toLocaleString()}>{formatRelative(m.created_at)}</span>
               </div>
               </div>
             </React.Fragment>
             ))}
           </div>
+        {sel && typing && (
+          <div
+            data-testid="typing-indicator"
+            className="px-4 py-1 text-xs text-gray-500"
+            aria-label="Contato digitando"
+            title="Contato digitando"
+          >
+            digitando…
+          </div>
+        )}
 
         {/* Composer */}
         {sel && (
@@ -980,20 +1205,21 @@ export default function InboxPage() {
                   <input type="file" className="hidden" multiple onChange={(e) => handleFiles(e.target.files)} />
                 </label>
 
-                {!sel.is_group && !!templates.length && (
-                  <select
-                    value={templateId}
-                    onChange={(e) => setTemplateId(e.target.value)}
-                    className="border rounded px-2 py-1 text-sm"
-                    data-testid="template-select"
-                    aria-label="Template"
-                  >
-                    <option value="">Template</option>
-                    {templates.map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                  </select>
-                )}
+                  {!sel.is_group && !!templates.length && (
+                    <select
+                      ref={templateSelectRef}
+                      value={templateId}
+                      onChange={(e) => setTemplateId(e.target.value)}
+                      className="border rounded px-2 py-1 text-sm"
+                      data-testid="template-select"
+                      aria-label="Template"
+                    >
+                      <option value="">Template</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
               </div>
 
               <div className="relative flex-1">
