@@ -7,6 +7,7 @@ import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
 import Lightbox from '../../components/inbox/Lightbox.jsx';
 import { estimateItemHeight, computeWindow } from '../../inbox/virt';
+import { readConvCache, writeConvCache, mergeMessages, pruneLRU } from '../../inbox/cache';
 
 // Utilidades -------------------------------------------------------------
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
@@ -39,7 +40,7 @@ async function firstOk(fns = []) {
 }
 
 // Item de conversa (sidebar) --------------------------------------------
-function ConversationItem({ c, onOpen, active, idx, onHeight }) {
+function ConversationItem({ c, onOpen, active, idx, onHeight, onHover }) {
   const contact = c?.contact || {};
   const icon = channelIconBySlug[c?.channel] || channelIconBySlug.default;
   const photo = contact.photo_url ? apiUrl(contact.photo_url) : 'https://placehold.co/40';
@@ -54,6 +55,7 @@ function ConversationItem({ c, onOpen, active, idx, onHeight }) {
     <button
       ref={ref}
       onClick={() => onOpen(c)}
+      onMouseEnter={() => onHover && onHover(c)}
       className={`w-full px-3 py-2 flex gap-3 border-b hover:bg-gray-100 ${active ? 'bg-gray-100' : ''}`}
       data-testid="conv-item"
     >
@@ -110,6 +112,49 @@ export default function InboxPage() {
   }, []);
   const [showReconnected, setShowReconnected] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [cacheHit, setCacheHit] = useState(false);
+  const [cacheRefreshing, setCacheRefreshing] = useState(false);
+  const [preloadLog, setPreloadLog] = useState('');
+  const preloadingRef = useRef({});
+  const hoverTimerRef = useRef(null);
+  const selPreloadTimerRef = useRef(null);
+
+  const logPreload = useCallback((id) => {
+    setPreloadLog((s) => s + String(id));
+  }, []);
+
+  const preloadConv = useCallback(
+    async (id) => {
+      if (!id) return;
+      if (readConvCache(id)) return;
+      if (preloadingRef.current[id]) return;
+      preloadingRef.current[id] = true;
+      try {
+        const r = await inboxApi.get(`/conversations/${id}/messages`);
+        const raw = Array.isArray(r?.data?.items)
+          ? r.data.items
+          : Array.isArray(r?.data)
+          ? r.data
+          : [];
+        const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
+        writeConvCache(id, { items: safe, updatedAt: Date.now(), etag: r?.headers?.etag });
+        pruneLRU();
+        logPreload(id);
+      } catch (_) {
+      } finally {
+        delete preloadingRef.current[id];
+      }
+    },
+    [logPreload]
+  );
+
+  const handleHover = useCallback(
+    (c) => {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = setTimeout(() => preloadConv(c.id), 250);
+    },
+    [preloadConv]
+  );
 
 
   // Filtros --------------------------------------------------------------
@@ -438,6 +483,19 @@ export default function InboxPage() {
     return () => obs.disconnect();
   }, [loadMoreConversations, filteredItems.length]);
 
+  useEffect(() => {
+    if (!sel) return;
+    clearTimeout(selPreloadTimerRef.current);
+    selPreloadTimerRef.current = setTimeout(() => {
+      const idx = filteredItems.findIndex((c) => c.id === sel.id);
+      const prev = filteredItems[idx - 1];
+      const next = filteredItems[idx + 1];
+      if (prev) preloadConv(prev.id);
+      if (next) preloadConv(next.id);
+    }, 300);
+    return () => clearTimeout(selPreloadTimerRef.current);
+  }, [sel, filteredItems, preloadConv]);
+
   // Emoji abre/fecha -----------------------------------------------------
   useEffect(() => {
     const onEsc = (e) => e.key === 'Escape' && setShowEmoji(false);
@@ -551,15 +609,26 @@ export default function InboxPage() {
       } else {
         setItems((prev) => (prev || []).map((c) => (c.id === convId ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)));
       }
+      const cache = readConvCache(convId);
+      if (cache) {
+        const merged = mergeMessages(cache.items, [normalized]);
+        writeConvCache(convId, { items: merged, updatedAt: Date.now(), etag: cache.etag });
+      }
     });
 
     s.on('message:updated', (payload) => {
       const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id;
-      if (!sel?.id || String(sel.id) !== String(convId)) return;
       const raw = payload?.message ?? payload?.data ?? payload;
       const normalized = normalizeMessage(raw);
       if (!normalized) return;
-      setMsgs((prev) => (prev || []).map((m) => (m.id === normalized.id ? normalized : m)));
+      if (sel?.id && String(sel.id) === String(convId)) {
+        setMsgs((prev) => (prev || []).map((m) => (m.id === normalized.id ? normalized : m)));
+      }
+      const cache = readConvCache(convId);
+      if (cache) {
+        const merged = mergeMessages(cache.items, [normalized]);
+        writeConvCache(convId, { items: merged, updatedAt: Date.now(), etag: cache.etag });
+      }
     });
 
     s.on('message:status', (payload) => {
@@ -634,19 +703,16 @@ export default function InboxPage() {
   // Abrir conversa -------------------------------------------------------
   const open = useCallback(async (c) => {
     setShowEmoji(false);
-    setSel(c); setLoadingMsgs(true);
-    try {
-      const r = await firstOk([
-        () => inboxApi.get(`/conversations/${c.id}/messages`),
-        () => inboxApi.get(`/inbox/conversations/${c.id}/messages`),
-      ]);
-      const raw = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
-      const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
-      setMsgs(safe);
-      const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
-      const hasMore = r?.data?.has_more ?? !!cursor;
-      setMsgBefore(cursor || (safe[0] && safe[0].id));
-      setMsgHasMore(hasMore);
+    setSel(c);
+    setCacheHit(false);
+    setCacheRefreshing(false);
+    const cached = readConvCache(c.id);
+    if (cached) {
+      setCacheHit(true);
+      setMsgs(cached.items);
+      setMsgBefore(cached.items[0] ? cached.items[0].id : null);
+      setMsgHasMore(true);
+      setLoadingMsgs(false);
       setTimeout(() => {
         if (msgBoxRef.current) {
           msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight;
@@ -655,14 +721,85 @@ export default function InboxPage() {
         }
         composerRef.current && composerRef.current.focus();
       }, 0);
-    } catch (e) {
-      console.error('Falha ao carregar mensagens', e);
-      setMsgs([]);
-      setMsgBefore(null);
-      setMsgHasMore(false);
-      showError('Erro ao carregar mensagens');
-    } finally { setLoadingMsgs(false); }
-  }, [showError]);
+      setCacheRefreshing(true);
+      try {
+        const box = msgBoxRef.current;
+        const prevHeight = box ? box.scrollHeight : 0;
+        const prevTop = box ? box.scrollTop : 0;
+        const r = await firstOk([
+          () => inboxApi.get(`/conversations/${c.id}/messages`),
+          () => inboxApi.get(`/inbox/conversations/${c.id}/messages`),
+        ]);
+        const raw = Array.isArray(r?.data?.items)
+          ? r.data.items
+          : Array.isArray(r?.data)
+          ? r.data
+          : [];
+        const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
+        const merged = mergeMessages(cached.items, safe);
+        setMsgs(merged);
+        const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
+        const hasMore = r?.data?.has_more ?? !!cursor;
+        setMsgBefore(cursor || (merged[0] && merged[0].id));
+        setMsgHasMore(hasMore);
+        writeConvCache(c.id, { items: merged, updatedAt: Date.now(), etag: r?.headers?.etag });
+        pruneLRU();
+        setTimeout(() => {
+          if (box) {
+            const newHeight = box.scrollHeight;
+            if (stickToBottomRef.current) {
+              box.scrollTop = box.scrollHeight;
+            } else {
+              box.scrollTop = newHeight - prevHeight + prevTop;
+            }
+            handleScroll();
+          }
+          composerRef.current && composerRef.current.focus();
+        }, 0);
+      } catch (e) {
+        console.error('Falha ao carregar mensagens', e);
+      } finally {
+        setCacheRefreshing(false);
+      }
+    } else {
+      setLoadingMsgs(true);
+      try {
+        const r = await firstOk([
+          () => inboxApi.get(`/conversations/${c.id}/messages`),
+          () => inboxApi.get(`/inbox/conversations/${c.id}/messages`),
+        ]);
+        const raw = Array.isArray(r?.data?.items)
+          ? r.data.items
+          : Array.isArray(r?.data)
+          ? r.data
+          : [];
+        const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
+        setMsgs(safe);
+        const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
+        const hasMore = r?.data?.has_more ?? !!cursor;
+        setMsgBefore(cursor || (safe[0] && safe[0].id));
+        setMsgHasMore(hasMore);
+        setTimeout(() => {
+          if (msgBoxRef.current) {
+            msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight;
+            stickToBottomRef.current = true;
+            handleScroll();
+          }
+          composerRef.current && composerRef.current.focus();
+        }, 0);
+        writeConvCache(c.id, { items: safe, updatedAt: Date.now(), etag: r?.headers?.etag });
+        pruneLRU();
+      } catch (e) {
+        console.error('Falha ao carregar mensagens', e);
+        setMsgs([]);
+        setMsgBefore(null);
+        setMsgHasMore(false);
+        showError('Erro ao carregar mensagens');
+      } finally {
+        setLoadingMsgs(false);
+      }
+    }
+  }, [showError, handleScroll]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!sel || loadingMoreMsgs || !msgHasMore) return;
@@ -680,6 +817,12 @@ export default function InboxPage() {
       const raw = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
       const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
       setMsgs((prev) => uniqBy([...safe, ...(prev || [])], (m) => m.id));
+      const cache = readConvCache(sel.id);
+      const cacheMerged = mergeMessages(cache ? cache.items : [], safe);
+      if (cache) {
+        writeConvCache(sel.id, { items: cacheMerged, updatedAt: Date.now(), etag: cache.etag });
+        pruneLRU();
+      }
       const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
       const hasMore = r?.data?.has_more ?? !!cursor;
       setMsgBefore(cursor || (safe[0] && safe[0].id));
@@ -1050,6 +1193,7 @@ export default function InboxPage() {
                   key={c.id}
                   c={c}
                   onOpen={open}
+                  onHover={handleHover}
                   active={sel?.id === c.id}
                   idx={convVirt.start + i}
                   onHeight={(idx, h) => {
@@ -1522,6 +1666,9 @@ export default function InboxPage() {
         />
       )}
     </div>
+    {cacheHit && <div data-testid="cache-hit" hidden />}
+    {cacheRefreshing && <div data-testid="cache-refreshing" hidden />}
+    <div data-testid="prefetch-log" hidden>{preloadLog}</div>
   </>
   );
 }
