@@ -51,6 +51,9 @@ export function normalizeMessage(raw) {
     text: raw.text ?? raw.body ?? '',
     from, // 'customer' | 'agent'
     created_at: createdAt,
+    sent_at: raw.sent_at || null,
+    delivered_at: raw.delivered_at || null,
+    read_at: raw.read_at || null,
     attachments,
     audio_url: absoluteUrl(raw.audio_url),
     transcript_text: raw.transcript_text ?? null,
