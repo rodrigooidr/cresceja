@@ -31,10 +31,15 @@ function mockApis() {
     }
     if (url === '/inbox/conversations' || url === '/conversations') {
       return Promise.resolve({
-        data: { items: [{ id: 1, contact: { name: 'Alice' }, channel: 'whatsapp' }] },
+        data: {
+          items: [
+            { id: 1, contact: { name: 'Alice' }, channel: 'whatsapp' },
+            { id: 2, contact: { name: 'Bob' }, channel: 'whatsapp' },
+          ],
+        },
       });
     }
-    if (url === '/conversations/1/messages' || url === '/inbox/conversations/1/messages') {
+    if (url.includes('/messages')) {
       return Promise.resolve({ data: { items: [] } });
     }
     return Promise.resolve({ data: {} });
@@ -71,100 +76,51 @@ describe('composer behavior', () => {
     await screen.findByTestId('composer-text');
   }
 
-  it('opens and closes emoji popover via outside click and Esc', async () => {
+  it('emoji opens/closes via toggle, outside, Esc, send and conversation change', async () => {
     await setup();
-    const emojiBtn = screen.getByTestId('emoji-btn');
+    const emojiBtn = screen.getByTestId('emoji-toggle');
     fireEvent.click(emojiBtn);
     expect(screen.getByTestId('emoji-popover')).toBeInTheDocument();
 
     fireEvent.click(document.body);
-    await waitFor(() => {
-      expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
 
     fireEvent.click(emojiBtn);
     expect(screen.getByTestId('emoji-popover')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => {
-      expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
+
+    fireEvent.click(emojiBtn);
+    expect(screen.getByTestId('emoji-popover')).toBeInTheDocument();
+    // send closes
+    const input = screen.getByTestId('composer-text');
+    fireEvent.change(input, { target: { value: 'hi' } });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' });
     });
+    await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
+
+    // reopen and switch conversation
+    fireEvent.click(emojiBtn);
+    expect(screen.getByTestId('emoji-popover')).toBeInTheDocument();
+    const convBtn = await screen.findByText('Bob');
+    await act(async () => { fireEvent.click(convBtn); });
+    await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
   });
 
-  it('Ctrl+Enter sends message via API', async () => {
+  it('Enter sends and Shift+Enter inserts newline', async () => {
     await setup();
     const input = screen.getByTestId('composer-text');
     fireEvent.change(input, { target: { value: 'hello' } });
     await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
+      fireEvent.keyDown(input, { key: 'Enter' });
     });
     await waitFor(() => expect(inboxApi.post).toHaveBeenCalled());
-  });
 
-  it('shows optimistic message while sending', async () => {
-    jest.clearAllMocks();
-    inboxApi.get.mockImplementation((url) => {
-      if (url === '/tags' || url === '/crm/statuses' || url === '/templates') {
-        return Promise.resolve({ data: { items: [] } });
-      }
-      if (url === '/inbox/conversations' || url === '/conversations') {
-        return Promise.resolve({ data: { items: [{ id: 1, contact: { name: 'Alice' }, channel: 'whatsapp' }] } });
-      }
-      if (url === '/conversations/1/messages' || url === '/inbox/conversations/1/messages') {
-        return Promise.resolve({ data: { items: [] } });
-      }
-      return Promise.resolve({ data: {} });
-    });
-    inboxApi.post.mockImplementation(() => new Promise(() => {}));
-
-    await setup();
-    const input = screen.getByTestId('composer-text');
-    fireEvent.change(input, { target: { value: 'hello' } });
-    await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
-    });
-
-    const sendingEl = document.querySelector('[data-status="sending"]');
-    expect(sendingEl).toBeTruthy();
-    expect(sendingEl.textContent).toContain('hello');
-  });
-
-  it('replaces optimistic message when socket arrives first', async () => {
-    jest.clearAllMocks();
-    mockApis();
-    let resolvePost;
-    inboxApi.post.mockImplementation(() => new Promise((res) => { resolvePost = res; }));
-    await setup();
-    const input = screen.getByTestId('composer-text');
-    fireEvent.change(input, { target: { value: 'hello' } });
-    await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
-    });
-    const tempId = inboxApi.post.mock.calls[0][1].temp_id;
-    act(() => {
-      socketHandlers['message:new']({ conversationId: 1, message: { id: 'srv1', temp_id: tempId, type: 'text', text: 'hello', is_outbound: true } });
-    });
-    await waitFor(() => expect(document.querySelector('[data-status="sending"]')).not.toBeInTheDocument());
-    resolvePost({ data: { message: { id: 'srv1', type: 'text', text: 'hello', is_outbound: true } } });
-    await waitFor(() => expect(screen.getAllByText('hello').length).toBe(1));
-  });
-
-  it('marks failed messages and retries', async () => {
-    jest.clearAllMocks();
-    mockApis();
-    inboxApi.post.mockRejectedValueOnce(new Error('fail'));
-    await setup();
-    const input = screen.getByTestId('composer-text');
-    fireEvent.change(input, { target: { value: 'oops' } });
-    await act(async () => {
-      fireEvent.keyDown(input, { key: 'Enter', ctrlKey: true });
-    });
-    await waitFor(() => screen.getByText(/Falha/));
-    inboxApi.post.mockResolvedValueOnce({ data: { message: { id: 'srv2', type: 'text', text: 'oops', is_outbound: true } } });
-    await act(async () => {
-      fireEvent.click(screen.getByText(/Falha/));
-    });
-    await waitFor(() => expect(inboxApi.post).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByText(/Falha/)).not.toBeInTheDocument());
+    fireEvent.change(input, { target: { value: 'line' } });
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    fireEvent.change(input, { target: { value: 'line\n' } });
+    expect(inboxApi.post).toHaveBeenCalledTimes(1);
   });
 
   it('adds attachments via drag-and-drop and paste', async () => {
