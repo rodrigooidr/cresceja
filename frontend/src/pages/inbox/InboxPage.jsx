@@ -38,7 +38,7 @@ import {
 } from '../../inbox/snippets';
 import AuditPanel from '../../components/inbox/AuditPanel.jsx';
 import ToastHost, { useToasts } from '../../components/ToastHost.jsx';
-import { validateFile } from '../../inbox/mediaPolicy.js';
+import { validateUploadFile } from '../../inbox/mediaPolicy.js';
 import auditlog from '../../inbox/auditlog.js';
 
 // Utilidades -------------------------------------------------------------
@@ -1270,7 +1270,7 @@ export default function InboxPage() {
     const files = Array.from(fileList || []);
     const newItems = [];
     for (const f of files) {
-      const v = await validateFile(f);
+      const v = await validateUploadFile(f);
       if (!v.ok) {
         addToast({ kind: 'error', text: `${f.name} rejeitado (${v.reason})` });
         auditlog.append(sel.id, { kind: 'media', action: 'rejected', meta: { name: f.name, reason: v.reason } });
@@ -1383,9 +1383,17 @@ export default function InboxPage() {
         replaceTemp(tempId, created);
         setSel((p) => (p ? { ...p, unread_count: 0, last_read_message_id: created.id, last_read_at: created.created_at } : p));
         setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
-      } else markFailed(tempId);
+        auditlog.append(sel.id, { kind: 'message', action: 'sent', meta: { type: payload.type } });
+      } else {
+        markFailed(tempId);
+        auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+      }
       setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]);
-    } catch (e) { console.error('Falha ao enviar', e); markFailed(tempId); }
+    } catch (e) {
+      console.error('Falha ao enviar', e);
+      markFailed(tempId);
+      auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+    }
   };
 
   const resend = async (m) => {
@@ -1402,8 +1410,18 @@ export default function InboxPage() {
     try {
       const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: m.id });
       const created = normalizeMessage(res?.data?.message ?? res?.data?.data ?? res?.data);
-      if (created) replaceTemp(m.id, created); else markFailed(m.id);
-    } catch (e) { console.error('Falha ao reenviar', e); markFailed(m.id); }
+      if (created) {
+        replaceTemp(m.id, created);
+        auditlog.append(sel.id, { kind: 'message', action: 'sent', meta: { type: payload.type } });
+      } else {
+        markFailed(m.id);
+        auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+      }
+    } catch (e) {
+      console.error('Falha ao reenviar', e);
+      markFailed(m.id);
+      auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+    }
   };
 
   const handleComposerKeyDown = useCallback(
@@ -1458,8 +1476,10 @@ export default function InboxPage() {
     if (!sel) return;
     const cur = (sel.tags || []).map(asId);
     const t = asId(tagId);
-    const newTags = cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t];
+    const action = cur.includes(t) ? 'removed' : 'added';
+    const newTags = action === 'removed' ? cur.filter((x) => x !== t) : [...cur, t];
     setSel((prev) => ({ ...prev, tags: newTags }));
+    auditlog.append(sel.id, { kind: 'tag', action, meta: { tagId: t } });
     try {
       const { data } = await inboxApi.put(`/conversations/${sel.id}/tags`, { tags: newTags });
       const conv = data?.conversation || data; setSel(conv);
@@ -1470,6 +1490,7 @@ export default function InboxPage() {
   const changeStatus = async (statusId) => {
     if (!sel) return;
     setSel((prev) => ({ ...prev, status_id: statusId || '' }));
+    auditlog.append(sel.id, { kind: 'crm', action: 'status_changed', meta: { to: statusId || '' } });
     try {
       const { data } = await inboxApi.put(`/conversations/${sel.id}/crm-status`, { status_id: statusId || null });
       const conv = data?.conversation || data; setSel(conv);
@@ -1480,6 +1501,7 @@ export default function InboxPage() {
   const toggleAi = async () => {
     if (!sel || sel.is_group) return;
     const enabled = !sel.ai_enabled; setSel((prev) => ({ ...prev, ai_enabled: enabled }));
+    auditlog.append(sel.id, { kind: 'ai', action: enabled ? 'enabled' : 'disabled' });
     try {
       const { data } = await inboxApi.put(`/conversations/${sel.id}/ai`, { enabled });
       const conv = data?.conversation || data; setSel(conv);
@@ -2129,7 +2151,13 @@ export default function InboxPage() {
                   aria-label="Anexar arquivos"
                 >
                   📎
-                  <input type="file" className="hidden" multiple onChange={(e) => handleFiles(e.target.files)} />
+                  <input
+                    type="file"
+                    className="hidden"
+                    multiple
+                    onChange={(e) => handleFiles(e.target.files)}
+                    data-testid="composer-file-input"
+                  />
                 </label>
 
                   {!sel.is_group && !!templates.length && (
