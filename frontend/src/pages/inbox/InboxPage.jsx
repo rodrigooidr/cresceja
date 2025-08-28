@@ -91,6 +91,22 @@ export default function InboxPage() {
     [templates, templateId]
   );
 
+  useEffect(() => {
+    if (!selectedTemplate) {
+      setTemplateErrors({});
+      return;
+    }
+    const errs = {};
+    selectedTemplate.variables?.forEach((v) => {
+      if (v.required && !templateVars[v.key]) errs[v.key] = 'Obrigatório';
+    });
+    setTemplateErrors(errs);
+  }, [selectedTemplate, templateVars]);
+
+  useEffect(() => {
+    setTemplateVars({});
+  }, [templateId]);
+
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -108,6 +124,15 @@ export default function InboxPage() {
   const msgBoxRef = useRef(null);
   const emojiRef = useRef(null);
   const composerRef = useRef(null);
+  const emojiBtnRef = useRef(null);
+
+  const prevShowEmoji = useRef(false);
+  useEffect(() => {
+    if (prevShowEmoji.current && !showEmoji) {
+      emojiBtnRef.current && emojiBtnRef.current.focus();
+    }
+    prevShowEmoji.current = showEmoji;
+  }, [showEmoji]);
 
   // Sincroniza estados quando searchParams mudam ------------------------
   useEffect(() => {
@@ -330,19 +355,22 @@ export default function InboxPage() {
     } else return;
 
     const tempId = `temp:${Date.now()}:${Math.random()}`;
+    const base = normalizeMessage({
+      id: tempId,
+      temp_id: tempId,
+      type: payload.type || 'text',
+      text:
+        payload.type === 'template'
+          ? renderTemplatePreview(selectedTemplate, payload.variables)
+          : payload.text || '',
+      is_outbound: true,
+      attachments: (payload.attachments || []).map((id) => attachments.find((a) => a.id === id)),
+      created_at: new Date().toISOString(),
+    });
     const optimistic = {
-      ...normalizeMessage({
-        id: tempId,
-        temp_id: tempId,
-        type: payload.type || 'text',
-        text:
-          payload.type === 'template'
-            ? renderTemplatePreview(selectedTemplate, payload.variables)
-            : payload.text || '',
-        is_outbound: true,
-        attachments: (payload.attachments || []).map((id) => attachments.find((a) => a.id === id)),
-        created_at: new Date().toISOString(),
-      }),
+      ...base,
+      template_id: payload.template_id,
+      variables: payload.variables,
       sending: true,
     };
     setMsgs((prev) => [...(prev || []), optimistic]);
@@ -359,9 +387,14 @@ export default function InboxPage() {
 
   const resend = async (m) => {
     if (!sel) return;
-    const payload = m.type === 'file'
-      ? { type: 'file', attachments: (m.attachments || []).map((a) => a.id) }
-      : { type: 'text', text: m.text };
+    let payload;
+    if (m.type === 'file') {
+      payload = { type: 'file', attachments: (m.attachments || []).map((a) => a.id) };
+    } else if (m.type === 'template') {
+      payload = { type: 'template', template_id: m.template_id, variables: m.variables };
+    } else {
+      payload = { type: 'text', text: m.text };
+    }
     setMsgs((p) => p.map((x) => (x.id === m.id ? { ...x, failed: false, sending: true } : x)));
     try {
       const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: m.id });
@@ -429,6 +462,8 @@ export default function InboxPage() {
       const client = res?.data?.client || res?.data; setSel((prev) => ({ ...prev, contact: client }));
     } catch (e) { console.error('Falha ao salvar cliente', e); }
   };
+
+  const sendDisabled = templateId && Object.keys(templateErrors).length > 0;
 
   // Render ---------------------------------------------------------------
   return (
@@ -539,6 +574,7 @@ export default function InboxPage() {
           {(msgs || []).map((m) => (
             <div
               key={m.id}
+              data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
               data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
               className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
             >
@@ -585,6 +621,7 @@ export default function InboxPage() {
                     className="text-[10px] text-red-600 underline"
                     onClick={() => resend(m)}
                     data-testid="retry-button"
+                    aria-label="Tentar novamente"
                   >
                     Falha — Tentar novamente
                   </button>
@@ -635,6 +672,7 @@ export default function InboxPage() {
                         templateErrors[v.key] ? 'border-red-500' : ''
                       }`}
                       placeholder={v.key}
+                      aria-label={v.key}
                       data-testid={`template-var-${v.key}`}
                     />
                     {templateErrors[v.key] && (
@@ -655,6 +693,8 @@ export default function InboxPage() {
               <div className="flex items-center gap-2">
                 <button
                   data-testid="emoji-toggle"
+                  ref={emojiBtnRef}
+                  aria-label="Emojis"
                   onClick={(e) => { e.stopPropagation(); setShowEmoji((v) => !v); }}
                   className="px-2 py-1 rounded hover:bg-gray-100"
                   title="Emojis"
@@ -663,7 +703,11 @@ export default function InboxPage() {
                   😊
                 </button>
 
-                <label className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer" title="Anexar">
+                <label
+                  className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
+                  title="Anexar"
+                  aria-label="Anexar arquivos"
+                >
                   📎
                   <input type="file" className="hidden" multiple onChange={(e) => handleFiles(e.target.files)} />
                 </label>
@@ -674,6 +718,7 @@ export default function InboxPage() {
                     onChange={(e) => setTemplateId(e.target.value)}
                     className="border rounded px-2 py-1 text-sm"
                     data-testid="template-select"
+                    aria-label="Template"
                   >
                     <option value="">Template</option>
                     {templates.map((t) => (
@@ -714,7 +759,15 @@ export default function InboxPage() {
                 />
               </div>
 
-              <button data-testid="send-button" onClick={send} className="px-4 py-2 bg-blue-600 text-white rounded">Enviar</button>
+              <button
+                data-testid="send-button"
+                onClick={send}
+                className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
+                disabled={sendDisabled}
+                aria-label="Enviar mensagem"
+              >
+                Enviar
+              </button>
             </div>
           </div>
         )}

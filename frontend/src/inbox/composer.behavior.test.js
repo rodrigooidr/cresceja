@@ -84,11 +84,13 @@ describe('composer behavior', () => {
 
     fireEvent.click(document.body);
     await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(emojiBtn);
 
     fireEvent.click(emojiBtn);
     expect(screen.getByTestId('emoji-popover')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(emojiBtn);
 
     fireEvent.click(emojiBtn);
     expect(screen.getByTestId('emoji-popover')).toBeInTheDocument();
@@ -99,6 +101,7 @@ describe('composer behavior', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
     await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
+    expect(document.activeElement).toBe(emojiBtn);
 
     // reopen and switch conversation
     fireEvent.click(emojiBtn);
@@ -106,6 +109,8 @@ describe('composer behavior', () => {
     const convBtn = await screen.findByText('Bob');
     await act(async () => { fireEvent.click(convBtn); });
     await waitFor(() => expect(screen.queryByTestId('emoji-popover')).not.toBeInTheDocument());
+    const newBtn = screen.getByTestId('emoji-toggle');
+    expect(document.activeElement).toBe(newBtn);
   });
 
   it('Enter sends and Shift+Enter inserts newline', async () => {
