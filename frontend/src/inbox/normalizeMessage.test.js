@@ -19,11 +19,24 @@ describe('normalizeMessage', () => {
       id: '3',
       type: 'audio',
       audio_url: '/a.mp3',
-      attachments: [{ id: 'a', url: '/f', thumb_url: '/t' }],
+      attachments: [
+        {
+          id: 'a',
+          url: '/f',
+          thumb_url: '/t',
+          mime: 'image/png',
+          size: 123,
+          filename: 'f.png',
+        },
+      ],
     };
     const msg = normalizeMessage(raw);
     expect(msg.audio_url).toBe(apiUrl('/a.mp3'));
-    expect(msg.attachments[0]).toMatchObject({
+    expect(msg.attachments[0]).toEqual({
+      id: 'a',
+      mime: 'image/png',
+      size: 123,
+      filename: 'f.png',
       url: apiUrl('/f'),
       thumb_url: apiUrl('/t'),
     });
@@ -31,7 +44,14 @@ describe('normalizeMessage', () => {
   it('normalizes attachment URLs', () => {
     const raw = { id: '5', attachments: [{ id: 'x', url: '/x' }] };
     const msg = normalizeMessage(raw);
-    expect(msg.attachments[0].url).toBe(apiUrl('/x'));
+    expect(msg.attachments[0]).toEqual({
+      id: 'x',
+      mime: undefined,
+      size: undefined,
+      filename: undefined,
+      url: apiUrl('/x'),
+      thumb_url: undefined,
+    });
   });
 
   it('handles group meta', () => {
@@ -45,12 +65,37 @@ describe('normalizeMessage', () => {
     const msg = normalizeMessage(raw);
     expect(msg.temp_id).toBe('tmp123');
   });
+
+  it('uses temp_id as id when id is missing', () => {
+    const raw = { temp_id: 'tmp-only', text: 'hi' };
+    const msg = normalizeMessage(raw);
+    expect(msg.id).toBe('tmp-only');
+  });
+
+  it('falls back to url when attachment id missing', () => {
+    const raw = { id: '8', attachments: [{ url: '/foo.png' }] };
+    const msg = normalizeMessage(raw);
+    expect(msg.attachments[0]).toEqual({
+      id: '/foo.png',
+      mime: undefined,
+      size: undefined,
+      filename: undefined,
+      url: apiUrl('/foo.png'),
+      thumb_url: undefined,
+    });
+  });
     
   it('does not return bare API base when urls are missing', () => {
     const raw = { id: '6', attachments: [{ id: 'z' }] }; // sem url/thumb_url
     const msg = normalizeMessage(raw);
-    expect(msg.attachments[0].url).toBeUndefined();
-    expect(msg.attachments[0].thumb_url).toBeUndefined();
+    expect(msg.attachments[0]).toEqual({
+      id: 'z',
+      mime: undefined,
+      size: undefined,
+      filename: undefined,
+      url: undefined,
+      thumb_url: undefined,
+    });
     expect(msg.audio_url).toBeUndefined();
   });
 });

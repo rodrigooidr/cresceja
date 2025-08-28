@@ -16,6 +16,19 @@ const uniqBy = (arr, keyFn) => {
   return Array.from(m.values());
 };
 
+function formatRelative(date) {
+  const d = new Date(date).getTime();
+  const diff = Date.now() - d;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `há ${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `há ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `há ${hr} h`;
+  const day = Math.floor(hr / 24);
+  return `há ${day} d`;
+}
+
 async function firstOk(fns = []) {
   for (const fn of fns) {
     try { const r = await fn(); if (r?.data) return r; } catch (_) {}
@@ -78,7 +91,7 @@ export default function InboxPage() {
 
   // Painéis -------------------------------------------------------------
   const [showInfo, setShowInfo] = useState(true);
-  const [lightbox, setLightbox] = useState({ open: false, items: [], index: 0 });
+  const [lightbox, setLightbox] = useState({ open: false, items: [], index: 0, trigger: null });
 
   // Form cliente --------------------------------------------------------
   const [clientForm, setClientForm] = useState({ name: '', phone_e164: '' });
@@ -87,6 +100,7 @@ export default function InboxPage() {
   // Refs ----------------------------------------------------------------
   const msgBoxRef = useRef(null);
   const emojiRef = useRef(null);
+  const composerRef = useRef(null);
 
   // Sincroniza estados quando searchParams mudam ------------------------
   useEffect(() => {
@@ -320,6 +334,12 @@ export default function InboxPage() {
     } catch (e) { console.error('Falha ao reenviar', e); markFailed(m.id); }
   };
 
+  const closeLightbox = useCallback(() => {
+    const trigger = lightbox.trigger;
+    setLightbox({ open: false, items: [], index: 0, trigger: null });
+    if (trigger && typeof trigger.focus === 'function') trigger.focus();
+  }, [lightbox]);
+
   // Tags / Status / IA ---------------------------------------------------
   const toggleTag = async (tagId) => {
     if (!sel) return;
@@ -486,11 +506,11 @@ export default function InboxPage() {
                           .filter((x) => isImage(x.thumb_url || x.url))
                           .map((x) => ({ src: x.url || x.thumb_url }));
                         const idx = imgs.findIndex((x) => x.src === (a.url || a.thumb_url));
-                        setLightbox({ open: true, items: imgs, index: idx >= 0 ? idx : 0 });
+                        setLightbox({ open: true, items: imgs, index: idx >= 0 ? idx : 0, trigger: e.currentTarget });
                       }
                     };
                     return (
-                      <a key={a.id || href} href={href} target="_blank" rel="noreferrer" onClick={open}>
+                      <a key={a.id || href} href={href} target="_blank" rel="noreferrer" onClick={open} data-testid="thumb">
                         {thumb ? (
                           <img src={thumb} alt="file" className="w-28 h-28 object-cover rounded" />
                         ) : (
@@ -520,7 +540,7 @@ export default function InboxPage() {
                   </button>
                 )}
                 {m.sending && !m.failed && <span className="text-[10px] text-gray-400">Enviando…</span>}
-                <span className="text-[10px] text-gray-500">{new Date(m.created_at).toLocaleString()}</span>
+                <span className="text-[10px] text-gray-500" title={new Date(m.created_at).toLocaleString()}>{formatRelative(m.created_at)}</span>
               </div>
             </div>
           ))}
@@ -528,9 +548,15 @@ export default function InboxPage() {
 
         {/* Composer */}
         {sel && (
-          <div className="bg-white border-t p-3">
+          <div
+            className="bg-white border-t p-3"
+            ref={composerRef}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+            data-testid="composer-dropzone"
+          >
             {!!attachments.length && (
-              <div className="mb-2 flex flex-wrap gap-2">
+              <div className="mb-2 flex flex-wrap gap-2" data-testid="pending-attachments">
                 {attachments.map((a) => (
                   <img key={a.id} src={a.thumb_url || a.url} alt="att" className="w-14 h-14 object-cover rounded" />
                 ))}
@@ -592,6 +618,7 @@ export default function InboxPage() {
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   onKeyDown={(e) => (e.key === 'Enter' && !e.shiftKey ? (e.preventDefault(), send()) : null)}
+                  onPaste={(e) => { if (e.clipboardData?.files?.length) { handleFiles(e.clipboardData.files); e.preventDefault(); } }}
                   placeholder="Digite uma mensagem"
                   className="w-full border rounded px-3 py-2 resize-none max-h-40"
                   rows={1}
@@ -698,7 +725,7 @@ export default function InboxPage() {
         <Lightbox
           items={lightbox.items}
           startIndex={lightbox.index}
-          onClose={() => setLightbox({ open: false, items: [], index: 0 })}
+          onClose={closeLightbox}
         />
       )}
     </div>
