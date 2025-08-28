@@ -184,4 +184,8 @@ export const __testHooks = {
   reset: () => { __hooks.imageResolver = null; __hooks.mediaResolver = null; },
 };
 
-export default { getPolicy, validateFile, detectKind, extToMime, __testHooks };
+export async function validateUploadFile(file) {
+  return validateFile(file);
+}
+
+export default { getPolicy, validateFile, detectKind, extToMime, __testHooks, validateUploadFile };

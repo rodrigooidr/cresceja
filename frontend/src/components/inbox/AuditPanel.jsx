@@ -1,16 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import auditlog from '../../inbox/auditlog.js';
 
-const KIND_OPTS = [
-  { key: 'message', label: 'Mensagem' },
-  { key: 'ai', label: 'IA' },
-  { key: 'crm', label: 'CRM' },
-  { key: 'tag', label: 'Tag' },
-  { key: 'media', label: 'Mídia' },
-  { key: 'client', label: 'Contato' },
-  { key: 'socket', label: 'Socket' },
-];
-
 export default function AuditPanel({ conversationId, onClose }) {
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState('');
@@ -32,11 +22,18 @@ export default function AuditPanel({ conversationId, onClose }) {
     setKinds((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
   };
 
-  const filtered = auditlog.filter(items, { query, kinds });
+  const filtered = items.filter((e) => {
+    if (kinds.length && !kinds.includes(e.kind)) return false;
+    if (query) {
+      const blob = `${e.kind} ${e.action} ${JSON.stringify(e.meta || {})}`.toLowerCase();
+      if (!blob.includes(query.toLowerCase())) return false;
+    }
+    return true;
+  });
   const groups = groupByDate(filtered);
 
   const handleExport = () => {
-    const json = auditlog.exportJson(filtered);
+    const json = auditlog.exportJson(conversationId);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -70,15 +67,15 @@ export default function AuditPanel({ conversationId, onClose }) {
         )}
       </div>
       <div className="flex flex-wrap gap-2 mb-2 text-xs">
-        {KIND_OPTS.map((opt) => (
-          <label key={opt.key} className="flex items-center gap-1">
+        {auditlog.listTypes().map((k) => (
+          <label key={k} className="flex items-center gap-1">
             <input
               type="checkbox"
-              checked={kinds.includes(opt.key)}
-              onChange={() => toggleKind(opt.key)}
-              data-testid={`audit-filter-${opt.key}`}
+              checked={kinds.includes(k)}
+              onChange={() => toggleKind(k)}
+              data-testid={`audit-filter-${k}`}
             />
-            {opt.label}
+            {k}
           </label>
         ))}
       </div>

@@ -28,13 +28,31 @@ test('filter by type', () => {
   expect(screen.getAllByTestId('audit-item').length).toBe(1);
 });
 
+test('search filters list', () => {
+  const now = new Date().toISOString();
+  auditlog.save(CID, [
+    { id: '1', ts: now, kind: 'message', action: 'sent' },
+    { id: '2', ts: now, kind: 'media', action: 'accepted' },
+  ]);
+  render(<AuditPanel conversationId={CID} />);
+  expect(screen.getAllByTestId('audit-item').length).toBe(2);
+  fireEvent.change(screen.getByTestId('audit-search'), { target: { value: 'accepted' } });
+  expect(screen.getAllByTestId('audit-item').length).toBe(1);
+});
+
 test('export json triggers download', () => {
   auditlog.append(CID, { kind: 'message', action: 'sent' });
-  const spy = jest.spyOn(auditlog, 'exportJson');
+  const json = '[{"a":1}]';
+  jest.spyOn(auditlog, 'exportJson').mockReturnValue(json);
+  const origBlob = global.Blob;
+  const blobSpy = jest.fn(() => ({}));
+  global.Blob = blobSpy;
   global.URL.createObjectURL = jest.fn(() => 'blob:');
   render(<AuditPanel conversationId={CID} />);
   fireEvent.click(screen.getByTestId('audit-export'));
-  expect(spy).toHaveBeenCalled();
+  expect(auditlog.exportJson).toHaveBeenCalledWith(CID);
+  expect(blobSpy).toHaveBeenCalledWith([json], { type: 'application/json' });
+  global.Blob = origBlob;
 });
 
 test('clear removes entries', () => {

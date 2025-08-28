@@ -53,8 +53,13 @@ export function filter(entries, { query = '', kinds = [] } = {}) {
   return out;
 }
 
-export function exportJson(entries) {
-  return JSON.stringify(entries || [], null, 2);
+export function exportJson(entriesOrId) {
+  if (Array.isArray(entriesOrId)) return JSON.stringify(entriesOrId || [], null, 2);
+  return JSON.stringify(load(entriesOrId), null, 2);
 }
 
-export default { load, save, append, clear, filter, exportJson };
+export function listTypes() {
+  return ['message', 'ai', 'crm', 'tag', 'media', 'client', 'socket'];
+}
+
+export default { load, save, append, clear, filter, exportJson, listTypes };

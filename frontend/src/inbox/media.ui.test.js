@@ -43,17 +43,16 @@ test('shows toasts for rejected and accepted uploads', async () => {
   });
   await screen.findByText('Alice');
   fireEvent.click(screen.getByText('Alice'));
-  const dropzone = await screen.findByTestId('composer-dropzone');
+  const input = await screen.findByTestId('composer-file-input');
 
   const bad = new File([new Uint8Array(1)], 'bad.txt', { type: 'text/plain' });
   await act(async () => {
-    fireEvent.drop(dropzone, { dataTransfer: { files: [bad] } });
+    fireEvent.change(input, { target: { files: [bad] } });
   });
   expect(await screen.findByText(/mime-not-allowed/)).toBeInTheDocument();
-
   const good = new File([new Uint8Array(1)], 'ok.png', { type: 'image/png' });
   await act(async () => {
-    fireEvent.drop(dropzone, { dataTransfer: { files: [good] } });
+    fireEvent.change(input, { target: { files: [good] } });
   });
   expect(await screen.findByText(/ok.png pronto para enviar/)).toBeInTheDocument();
   expect(screen.getAllByTestId('pending-attachment').length).toBeGreaterThan(0);
