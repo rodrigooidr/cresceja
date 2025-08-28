@@ -66,6 +66,7 @@ export default function InboxPage() {
 
   // Estado base ----------------------------------------------------------
   const [items, setItems] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
   const [sel, setSel] = useState(null);
   const [msgs, setMsgs] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
@@ -83,6 +84,12 @@ export default function InboxPage() {
   const [statuses, setStatuses] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [templateId, setTemplateId] = useState('');
+  const [templateVars, setTemplateVars] = useState({});
+  const [templateErrors, setTemplateErrors] = useState({});
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => String(t.id) === String(templateId)) || null,
+    [templates, templateId]
+  );
 
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
@@ -131,6 +138,7 @@ export default function InboxPage() {
     if (tagFilters.length) params.tags = tagFilters.join(',');
     if (statusFilters.length) params.status = statusFilters.join(',');
 
+    setLoadingList(true);
     const t = setTimeout(async () => {
       try {
         const r = await firstOk([
@@ -141,8 +149,10 @@ export default function InboxPage() {
         setItems(arr);
       } catch (e) {
         console.error('Falha ao obter conversas', e);
+      } finally {
+        setLoadingList(false);
       }
-    }, 220);
+    }, 300);
 
     setSearchParams(params, { replace: true });
     return () => clearTimeout(t);
@@ -182,6 +192,10 @@ export default function InboxPage() {
 
   // Templates + form cliente quando muda a conversa ---------------------
   useEffect(() => {
+    setShowEmoji(false);
+    setAttachments([]);
+    setTemplateVars({});
+    setTemplateErrors({});
     if (!sel) {
       setTemplates([]); setTemplateId(''); setClientForm({ name: '', phone_e164: '' });
       return;
@@ -277,6 +291,15 @@ export default function InboxPage() {
     if (uploaded.length) setAttachments((prev) => [...prev, ...uploaded]);
   };
 
+  const removeAttachment = (id) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  const renderTemplatePreview = (tpl, vars = {}) => {
+    const body = tpl?.body || tpl?.text || '';
+    return body.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || '');
+  };
+
   // Envio otimista -------------------------------------------------------
   const replaceTemp = (id, real) =>
     setMsgs((p) => {
@@ -291,10 +314,20 @@ export default function InboxPage() {
     if (!sel) return;
     setShowEmoji(false);
     let payload = null;
-    if (attachments.length) payload = { type: 'file', attachments: attachments.map((a) => a.id) };
-    else if (templateId) payload = { type: 'template', template_id: templateId, template: templateId, variables: {} };
-    else if (text.trim()) payload = { type: 'text', text: text.trim() };
-    else return;
+    if (attachments.length) {
+      payload = { type: 'file', attachments: attachments.map((a) => a.id) };
+    } else if (templateId) {
+      const vars = { ...templateVars };
+      const errs = {};
+      selectedTemplate?.variables?.forEach((v) => {
+        if (v.required && !vars[v.key]) errs[v.key] = 'Obrigatório';
+      });
+      setTemplateErrors(errs);
+      if (Object.keys(errs).length) return;
+      payload = { type: 'template', template_id: templateId, variables: vars };
+    } else if (text.trim()) {
+      payload = { type: 'text', text: text.trim() };
+    } else return;
 
     const tempId = `temp:${Date.now()}:${Math.random()}`;
     const optimistic = {
@@ -302,7 +335,10 @@ export default function InboxPage() {
         id: tempId,
         temp_id: tempId,
         type: payload.type || 'text',
-        text: payload.text || '',
+        text:
+          payload.type === 'template'
+            ? renderTemplatePreview(selectedTemplate, payload.variables)
+            : payload.text || '',
         is_outbound: true,
         attachments: (payload.attachments || []).map((id) => attachments.find((a) => a.id === id)),
         created_at: new Date().toISOString(),
@@ -317,7 +353,7 @@ export default function InboxPage() {
       const createdRaw = res?.data?.message ?? res?.data?.data ?? res?.data;
       const created = normalizeMessage(createdRaw);
       if (created) replaceTemp(tempId, created); else markFailed(tempId);
-      setText(''); setTemplateId(''); setAttachments([]);
+      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]);
     } catch (e) { console.error('Falha ao enviar', e); markFailed(tempId); }
   };
 
@@ -377,7 +413,7 @@ export default function InboxPage() {
   // Validação de cliente -------------------------------------------------
   const validateClient = useCallback((f) => {
     const errs = {};
-    if (f.name && f.name.trim().length < 2) errs.name = 'Nome muito curto';
+    if (!f.name || !f.name.trim()) errs.name = 'Nome obrigatório';
     if (f.phone_e164 && !/^\+?[1-9]\d{7,14}$/.test(f.phone_e164)) errs.phone_e164 = 'Telefone E.164 inválido';
     return errs;
   }, []);
@@ -405,6 +441,7 @@ export default function InboxPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Pesquisar"
             className="w-full border rounded-full px-4 py-2 text-sm"
+            data-testid="filter-search"
           />
           <div className="mt-2 flex gap-2 text-xs flex-wrap">
             {['whatsapp', 'instagram', 'facebook'].map((ch) => (
@@ -413,6 +450,7 @@ export default function InboxPage() {
                   type="checkbox"
                   checked={channelFilters.includes(ch)}
                   onChange={(e) => setChannelFilters((prev) => (e.target.checked ? [...prev, ch] : prev.filter((c) => c !== ch)))}
+                  data-testid={`filter-channel-${ch}`}
                 />
                 {ch}
               </label>
@@ -426,6 +464,7 @@ export default function InboxPage() {
                 value={tagFilters}
                 onChange={(e) => setTagFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
                 className="w-full border rounded px-2 py-1 text-xs"
+                data-testid="filter-tags"
               >
                 {tags.map((t) => (
                   <option key={asId(t.id)} value={asId(t.id)}>{t.name}</option>
@@ -441,6 +480,7 @@ export default function InboxPage() {
                 value={statusFilters}
                 onChange={(e) => setStatusFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
                 className="w-full border rounded px-2 py-1 text-xs"
+                data-testid="filter-status"
               >
                 {statuses.map((s) => (
                   <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
@@ -451,10 +491,15 @@ export default function InboxPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {filteredItems.map((c) => (
-            <ConversationItem key={c.id} c={c} onOpen={open} active={sel?.id === c.id} />
-          ))}
-          {!filteredItems.length && <div className="p-3 text-sm text-gray-500">Nenhuma conversa.</div>}
+          {loadingList ? (
+            <div className="p-3 text-sm text-gray-500" data-testid="loading">Carregando…</div>
+          ) : filteredItems.length ? (
+            filteredItems.map((c) => (
+              <ConversationItem key={c.id} c={c} onOpen={open} active={sel?.id === c.id} />
+            ))
+          ) : (
+            <div className="p-3 text-sm text-gray-500" data-testid="empty">Nenhuma conversa.</div>
+          )}
         </div>
       </div>
 
@@ -474,11 +519,16 @@ export default function InboxPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {!sel?.is_group && (
-              <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
-                <input type="checkbox" checked={!!sel?.ai_enabled} onChange={toggleAi} /> IA
-              </label>
-            )}
+            <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!sel?.ai_enabled}
+                onChange={toggleAi}
+                disabled={sel?.is_group}
+                data-testid="ai-toggle"
+              />
+              IA
+            </label>
             <button className="text-sm" onClick={() => setShowInfo((v) => !v)} title="Detalhes">ℹ️</button>
           </div>
         </div>
@@ -534,7 +584,7 @@ export default function InboxPage() {
                   <button
                     className="text-[10px] text-red-600 underline"
                     onClick={() => resend(m)}
-                    data-testid="retry-btn"
+                    data-testid="retry-button"
                   >
                     Falha — Tentar novamente
                   </button>
@@ -558,15 +608,53 @@ export default function InboxPage() {
             {!!attachments.length && (
               <div className="mb-2 flex flex-wrap gap-2" data-testid="pending-attachments">
                 {attachments.map((a) => (
-                  <img key={a.id} src={a.thumb_url || a.url} alt="att" className="w-14 h-14 object-cover rounded" />
+                  <div key={a.id} className="relative">
+                    <img src={a.thumb_url || a.url} alt="att" className="w-14 h-14 object-cover rounded" />
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(a.id)}
+                      className="absolute top-0 right-0 text-xs bg-white rounded-full px-1"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
+              </div>
+            )}
+
+            {selectedTemplate && (
+              <div className="mb-2 space-y-1">
+                {selectedTemplate.variables?.map((v) => (
+                  <div key={v.key}>
+                    <input
+                      value={templateVars[v.key] || ''}
+                      onChange={(e) =>
+                        setTemplateVars((prev) => ({ ...prev, [v.key]: e.target.value }))
+                      }
+                      className={`border rounded px-2 py-1 text-sm w-full ${
+                        templateErrors[v.key] ? 'border-red-500' : ''
+                      }`}
+                      placeholder={v.key}
+                      data-testid={`template-var-${v.key}`}
+                    />
+                    {templateErrors[v.key] && (
+                      <div className="text-[11px] text-red-600">{templateErrors[v.key]}</div>
+                    )}
+                  </div>
+                ))}
+                <div
+                  className="text-sm text-gray-700 whitespace-pre-wrap"
+                  data-testid="template-preview"
+                >
+                  {renderTemplatePreview(selectedTemplate, templateVars)}
+                </div>
               </div>
             )}
 
             <div className="flex items-end gap-2">
               <div className="flex items-center gap-2">
                 <button
-                  data-testid="emoji-btn"
+                  data-testid="emoji-toggle"
                   onClick={(e) => { e.stopPropagation(); setShowEmoji((v) => !v); }}
                   className="px-2 py-1 rounded hover:bg-gray-100"
                   title="Emojis"
@@ -585,6 +673,7 @@ export default function InboxPage() {
                     value={templateId}
                     onChange={(e) => setTemplateId(e.target.value)}
                     className="border rounded px-2 py-1 text-sm"
+                    data-testid="template-select"
                   >
                     <option value="">Template</option>
                     {templates.map((t) => (
@@ -625,7 +714,7 @@ export default function InboxPage() {
                 />
               </div>
 
-              <button data-testid="send-btn" onClick={send} className="px-4 py-2 bg-blue-600 text-white rounded">Enviar</button>
+              <button data-testid="send-button" onClick={send} className="px-4 py-2 bg-blue-600 text-white rounded">Enviar</button>
             </div>
           </div>
         )}
@@ -656,6 +745,7 @@ export default function InboxPage() {
                   value={asId(sel?.status_id) || ''}
                   onChange={(e) => changeStatus(e.target.value)}
                   className="border rounded px-2 py-1 text-sm w-full"
+                  data-testid="crm-status-select"
                 >
                   <option value="">Sem status</option>
                   {statuses.map((s) => (
@@ -675,6 +765,7 @@ export default function InboxPage() {
                       key={asId(t.id)}
                       onClick={() => toggleTag(t.id)}
                       className={`px-2 py-1 text-xs rounded ${on ? 'bg-blue-200' : 'bg-gray-200'}`}
+                      data-testid={`tag-chip-${asId(t.id)}`}
                     >
                       {t.name}
                     </button>
@@ -707,6 +798,7 @@ export default function InboxPage() {
                   onClick={saveClient}
                   disabled={Object.keys(clientErrors).length > 0}
                   className="px-3 py-1.5 bg-blue-600 text-white rounded disabled:opacity-50"
+                  data-testid="client-save"
                 >
                   {sel?.contact?.id ? 'Salvar' : 'Criar'}
                 </button>
