@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import auditlog from '../../inbox/auditlog.js';
+import auditlog, { downloadCSVForConversation } from '../../inbox/auditlog.js';
 
 export default function AuditPanel({ conversationId, onClose }) {
   const [items, setItems] = useState([]);
@@ -39,28 +39,6 @@ export default function AuditPanel({ conversationId, onClose }) {
     const a = document.createElement('a');
     a.href = url;
     a.download = `audit-${conversationId}.json`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  };
-
-  const handleExportCsv = () => {
-    const entries = auditlog.load(conversationId) || [];
-    const esc = (v) => {
-      const s = String(v ?? '').replace(/"/g, '""');
-      return /[",\n]/.test(s) ? `"${s}"` : s;
-    };
-    const lines = [["timestamp", "type", "actor", "summary"]];
-    entries.forEach((e) => {
-      const actor = e.meta?.actor || e.meta?.user || '';
-      const summary = `${e.action || ''} ${Object.keys(e.meta || {}).length ? JSON.stringify(e.meta) : ''}`.trim();
-      lines.push([e.ts, e.kind, actor, summary]);
-    });
-    const csv = lines.map((r) => r.map(esc).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `audit-${conversationId}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
@@ -127,10 +105,10 @@ export default function AuditPanel({ conversationId, onClose }) {
           Exportar JSON
         </button>
         <button
-          onClick={handleExportCsv}
+          onClick={() => downloadCSVForConversation(conversationId, auditlog.load(conversationId) || [])}
           data-testid="audit-export-csv"
           aria-label="Exportar CSV"
-          className="px-2 py-1 border rounded"
+          className="px-2 py-1 text-sm border rounded"
         >
           Exportar CSV
         </button>

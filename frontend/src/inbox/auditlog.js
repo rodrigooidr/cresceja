@@ -62,4 +62,55 @@ export function listTypes() {
   return ['message', 'ai', 'crm', 'tag', 'media', 'client', 'socket'];
 }
 
+function csvEscape(s) {
+  if (s == null) return '';
+  const str = String(s);
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+export function toCSVRows(events = []) {
+  const headers = [
+    'timestamp',
+    'type',
+    'actor',
+    'summary',
+    'conversation_id',
+    'meta'
+  ];
+  const lines = [headers.join(',')];
+
+  for (const ev of (events || [])) {
+    const ts = ev.timestamp || ev.created_at || ev.ts || '';
+    const type = ev.type || ev.kind || '';
+    const actor = ev.actor?.name || ev.actor?.id || ev.user?.name || ev.meta?.actor || '';
+    const summary = ev.summary || ev.message || ev.description || ev.action || '';
+    const convo = ev.conversation_id || ev.conversationId || ev.conversation?.id || '';
+    const meta = ev.meta ? JSON.stringify(ev.meta) : '';
+    lines.push([
+      csvEscape(ts),
+      csvEscape(type),
+      csvEscape(actor),
+      csvEscape(summary),
+      csvEscape(convo),
+      csvEscape(meta)
+    ].join(','));
+  }
+  return lines.join('\n');
+}
+
+export function downloadCSVForConversation(conversationId, events = []) {
+  const csv = toCSVRows(events);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const when = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.download = `audit-${conversationId || 'conversation'}-${when}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 1000);
+}
+
 export default { load, save, append, clear, filter, exportJson, listTypes };

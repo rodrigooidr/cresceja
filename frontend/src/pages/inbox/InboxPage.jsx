@@ -38,7 +38,7 @@ import {
 } from '../../inbox/snippets';
 import AuditPanel from '../../components/inbox/AuditPanel.jsx';
 import ToastHost, { useToasts } from '../../components/ToastHost.jsx';
-import { validateUploadFile } from '../../inbox/mediaPolicy.js';
+import { MAX_UPLOAD_MB, exceedsSize, isAllowed, violationMessage } from '../../inbox/mediaPolicy.js';
 import auditlog from '../../inbox/auditlog.js';
 
 // Utilidades -------------------------------------------------------------
@@ -409,8 +409,10 @@ export default function InboxPage() {
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
-  const [pendingUploads, setPendingUploads] = useState([]);
+  // Lista de uploads em andamento/falha (somente do composer actual)
+  const [uploads, setUploads] = useState([]); // estrutura: { id, file, progress, status: 'uploading'|'error', error?, controller }
   const [showEmoji, setShowEmoji] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [typing, setTyping] = useState(false);
   const typingTimeoutRef = useRef(null);
 
@@ -419,9 +421,10 @@ export default function InboxPage() {
   const [chatMatches, setChatMatches] = useState([]);
   const [chatMatchIdx, setChatMatchIdx] = useState(0);
   const chatSearchRef = useRef(null);
-  const { addToast } = useToasts();
+  const { add: addToast } = useToasts?.() || { add: () => {} };
 
   useEffect(() => { setShowQR(false); qrVarItemRef.current = null; }, [sel]);
+  useEffect(() => { composerRef.current?.focus?.(); }, [sel?.id]);
 
   const highlight = useCallback(
     (text = '') => {
@@ -1275,59 +1278,75 @@ export default function InboxPage() {
   }, [sel, msgs]);
 
   // Upload ---------------------------------------------------------------
+  function startUpload(file) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const controller = new AbortController();
+
+    setUploads((prev) => [...prev, { id, file, progress: 0, status: 'uploading', controller }]);
+
+    const form = new FormData();
+    form.append('files[]', file);
+
+    inboxApi
+      .post(
+        `/conversations/${sel.id}/attachments`,
+        form,
+        {
+          signal: controller.signal,
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (ev) => {
+            const prog = ev.total ? Math.round((ev.loaded / ev.total) * 100) : 0;
+            setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, progress: prog } : u)));
+          },
+        }
+      )
+      .then(({ data }) => {
+        const assets = Array.isArray(data?.assets) ? data.assets : [];
+        if (assets.length) {
+          setAttachments((prev) => [
+            ...prev,
+            ...assets.map((a) => ({
+              ...a,
+              url: a.url,
+              thumb_url: a.thumb_url,
+            })),
+          ]);
+        }
+        setUploads((prev) => prev.filter((u) => u.id !== id));
+      })
+      .catch((err) => {
+        setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, status: 'error', error: err?.message || 'Falha no upload' } : u)));
+        addToast?.(`Falha ao enviar “${file.name}”.`, { variant: 'error' });
+      });
+  }
+
+  function retryUpload(uploadId) {
+    const u = uploads.find((x) => x.id === uploadId);
+    if (!u || !sel) return;
+    setUploads((prev) => prev.filter((x) => x.id !== uploadId));
+    startUpload(u.file);
+  }
+
+  function cancelUpload(uploadId) {
+    const u = uploads.find((x) => x.id === uploadId);
+    if (!u) return;
+    try {
+      u.controller?.abort?.();
+    } catch {}
+    setUploads((prev) => prev.filter((x) => x.id !== uploadId));
+  }
+
   const handleFiles = async (fileList) => {
     if (!sel) return;
-    const files = Array.from(fileList || []);
-    files.forEach(async (f) => {
-      const v = await validateUploadFile(f);
-      if (!v.ok) {
-        addToast({ kind: 'error', text: `${f.name} rejeitado (${v.reason})` });
-        auditlog.append(sel.id, { kind: 'media', action: 'rejected', meta: { name: f.name, reason: v.reason } });
-        return;
-      }
-      const id = `up-${Date.now()}-${Math.random()}`;
-      const controller = new AbortController();
-      setPendingUploads((p) => [...p, { id, name: f.name, progress: 0, previewUrl: v.previewUrl, controller }]);
-      const form = new FormData();
-      const fileToSend = v.transformedFile || f;
-      form.append('files[]', fileToSend);
-      try {
-        const { data } = await inboxApi.post(`/conversations/${sel.id}/attachments`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          signal: controller.signal,
-          onUploadProgress: (e) => {
-            if (e.total) {
-              const pct = Math.round((e.loaded / e.total) * 100);
-              setPendingUploads((p) => p.map((it) => (it.id === id ? { ...it, progress: pct } : it)));
-            }
-          },
-        });
-        const assets = Array.isArray(data?.assets)
-          ? data.assets.map((a) => ({ ...a, url: apiUrl(a.url), thumb_url: apiUrl(a.thumb_url) }))
-          : [];
-        setPendingUploads((p) => p.filter((it) => it.id !== id));
-        try { v.previewUrl && URL.revokeObjectURL(v.previewUrl); } catch {}
-        if (assets.length) setAttachments((prev) => [...prev, ...assets]);
-        addToast({ kind: 'success', text: `${f.name} pronto para enviar` });
-        auditlog.append(sel.id, { kind: 'media', action: 'accepted', meta: { name: f.name } });
-      } catch (e) {
-        setPendingUploads((p) => p.filter((it) => it.id !== id));
-        try { v.previewUrl && URL.revokeObjectURL(v.previewUrl); } catch {}
-        const canceled = controller.signal.aborted;
-        addToast({ kind: 'error', text: canceled ? 'Upload cancelado' : `${f.name} erro ao enviar` });
-        auditlog.append(sel.id, {
-          kind: 'media',
-          action: 'rejected',
-          meta: { name: f.name, reason: canceled ? 'canceled' : 'upload-failed' },
-        });
-      }
-    });
-  };
 
-  const cancelUpload = (id) => {
-    const it = pendingUploads.find((p) => p.id === id);
-    if (it) {
-      try { it.controller.abort(); } catch {}
+    const files = Array.from(fileList || []);
+    for (const file of files) {
+      const msg = violationMessage(file);
+      if (msg) {
+        addToast?.(msg, { variant: 'error' });
+        continue;
+      }
+      startUpload(file);
     }
   };
 
@@ -1335,15 +1354,17 @@ export default function InboxPage() {
   const [editingClient, setEditingClient] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
-  const [editErrors, setEditErrors] = useState({});
+  const [savingClient, setSavingClient] = useState(false);
   const editPrevRef = useRef(null);
+  const phoneOk = /^\+?\d[\d\s\-()]{6,}$/.test(editPhone || '');
+  const nameOk = (editName || '').trim().length >= 2;
+  const canSaveClient = nameOk && phoneOk;
 
   const startClientEdit = () => {
     if (!sel) return;
     editPrevRef.current = { name: sel.contact?.name || '', phone_e164: sel.contact?.phone_e164 || '' };
     setEditName(sel.contact?.name || '');
     setEditPhone(sel.contact?.phone_e164 || '');
-    setEditErrors({});
     setEditingClient(true);
   };
 
@@ -1354,11 +1375,9 @@ export default function InboxPage() {
   };
 
   const saveClientEdit = async () => {
-    const errs = {};
-    if (!editName.trim()) errs.name = 'nome obrigatório';
-    setEditErrors(errs);
-    if (Object.keys(errs).length) return;
+    if (!canSaveClient || savingClient) return;
     const payload = { name: editName.trim(), phone_e164: editPhone.trim() };
+    setSavingClient(true);
     try {
       let res;
       if (sel.contact?.id) res = await inboxApi.put(`/clients/${sel.contact.id}`, payload);
@@ -1373,12 +1392,13 @@ export default function InboxPage() {
       editPrevRef.current = normalized;
       setSel((prev) => (prev ? { ...prev, contact: normalized } : prev));
       setItems((prev) => prev.map((c) => (c.id === sel.id ? { ...c, contact: normalized } : c)));
-      addToast({ kind: 'success', text: 'Contato atualizado' });
+      addToast('Contato atualizado', { variant: 'success' });
     } catch (e) {
       setSel((prev) => (prev ? { ...prev, contact: editPrevRef.current } : prev));
       setItems((prev) => prev.map((c) => (c.id === sel.id ? { ...c, contact: editPrevRef.current } : c)));
-      addToast({ kind: 'error', text: 'Erro ao atualizar contato' });
+      addToast('Erro ao atualizar contato', { variant: 'error' });
     }
+    setSavingClient(false);
     setEditingClient(false);
   };
 
@@ -1475,7 +1495,7 @@ export default function InboxPage() {
         markFailed(tempId);
         auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
       }
-      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]);
+      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]); setShowEmoji(false);
     } catch (e) {
       console.error('Falha ao enviar', e);
       markFailed(tempId);
@@ -1732,7 +1752,10 @@ export default function InboxPage() {
     URL.revokeObjectURL(url);
   };
 
-  const sendDisabled = templateId && Object.keys(templateErrors).length > 0;
+  const composerDisabled =
+    savingClient ||
+    (templateId && Object.keys(templateErrors).length > 0) ||
+    (uploads.some((u) => u.status === 'uploading') && !attachments.length && !templateId && !text.trim());
 
   const visibleItems = filteredItems.slice(convVirt.start, convVirt.end);
   const visibleIds = visibleItems.map((c) => c.id);
@@ -1936,12 +1959,9 @@ export default function InboxPage() {
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     className="border rounded px-1 text-sm w-full"
-                    aria-invalid={!!editErrors.name}
+                    aria-invalid={!nameOk}
                     data-testid="client-edit-name"
                   />
-                  {editErrors.name && (
-                    <div className="text-[11px] text-red-600">{editErrors.name}</div>
-                  )}
                   <input
                     value={editPhone}
                     onChange={(e) => setEditPhone(e.target.value)}
@@ -1951,10 +1971,11 @@ export default function InboxPage() {
                   <div className="flex gap-1 mt-1">
                     <button
                       onClick={saveClientEdit}
-                      className="text-xs bg-blue-600 text-white px-2 rounded"
+                      disabled={!canSaveClient || savingClient}
+                      className="text-xs bg-blue-600 text-white px-2 rounded disabled:bg-gray-400"
                       data-testid="client-edit-save"
                     >
-                      Salvar
+                      {sel.contact?.id ? 'Salvar' : 'Criar'}
                     </button>
                     <button
                       onClick={cancelClientEdit}
@@ -2186,28 +2207,54 @@ export default function InboxPage() {
             onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
             data-testid="composer-dropzone"
           >
-            {!!pendingUploads.length && (
-              <div className="mb-2 flex flex-wrap gap-2" data-testid="attachments-pending">
-                {pendingUploads.map((p) => (
-                  <div key={p.id} className="relative" data-testid="attachments-pending-item">
-                    {p.previewUrl ? (
-                      <img src={p.previewUrl} alt="upload" className="w-14 h-14 object-cover rounded" />
+            {/* Região acessível com status de upload */}
+            <div aria-live="polite" className="sr-only" data-testid="composer-aria-live">
+              {uploads.some((u) => u.status === 'error')
+                ? 'Um upload falhou.'
+                : uploads.some((u) => u.status === 'uploading')
+                ? `Enviando ${uploads.filter((u) => u.status === 'uploading').length} arquivo(s).`
+                : ''}
+            </div>
+
+            {/* Uploads in-flight / erro */}
+            {uploads.length > 0 && (
+              <div className="flex flex-col gap-2 mb-2" data-testid="uploader-list">
+                {uploads.map((u) => (
+                  <div key={u.id} className="flex items-center gap-2 text-sm">
+                    <div className="truncate max-w-[40%]">{u.file?.name}</div>
+                    {u.status === 'uploading' ? (
+                      <>
+                        <div className="flex-1 h-2 bg-gray-200 rounded overflow-hidden">
+                          <div className="h-full bg-blue-500" style={{ width: `${u.progress || 0}%` }} />
+                        </div>
+                        <span className="w-10 text-right">{u.progress || 0}%</span>
+                        <button
+                          className="px-2 py-1 text-xs bg-gray-200 rounded"
+                          onClick={() => cancelUpload(u.id)}
+                          aria-label="Cancelar upload"
+                        >
+                          Cancelar
+                        </button>
+                      </>
                     ) : (
-                      <div className="w-14 h-14 flex items-center justify-center bg-gray-200 rounded text-[10px]">
-                        {p.name}
-                      </div>
+                      <>
+                        <span className="text-red-600">Falhou</span>
+                        <button
+                          className="px-2 py-1 text-xs bg-gray-200 rounded"
+                          onClick={() => retryUpload(u.id)}
+                          aria-label="Tentar novamente"
+                        >
+                          Tentar novamente
+                        </button>
+                        <button
+                          className="px-2 py-1 text-xs bg-gray-200 rounded"
+                          onClick={() => cancelUpload(u.id)}
+                          aria-label="Remover upload com falha"
+                        >
+                          Remover
+                        </button>
+                      </>
                     )}
-                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-xs">
-                      {p.progress}%
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => cancelUpload(p.id)}
-                      className="absolute top-0 right-0 text-xs bg-white rounded-full px-1"
-                      data-testid="attachments-cancel"
-                    >
-                      ×
-                    </button>
                   </div>
                 ))}
               </div>
@@ -2279,13 +2326,20 @@ export default function InboxPage() {
             <div className="flex items-end gap-2">
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setExpanded((e) => !e)}
+                  className="px-2"
+                  aria-label={expanded ? 'Recolher editor' : 'Expandir editor'}
+                >
+                  {expanded ? '↙' : '↗'}
+                </button>
+                <button
                   data-testid="emoji-toggle"
                   ref={emojiBtnRef}
-                  aria-label="Emojis"
-                  onClick={(e) => { e.stopPropagation(); setShowEmoji((v) => !v); }}
-                  className="px-2 py-1 rounded hover:bg-gray-100"
-                  title="Emojis"
-                  disabled={sel.is_group}
+                  onClick={() => setShowEmoji((v) => !v)}
+                  className="px-2"
+                  disabled={sel?.is_group}
+                  aria-label="Alternar emojis"
+                  aria-expanded={!!showEmoji}
                 >
                   😊
                 </button>
@@ -2527,7 +2581,7 @@ export default function InboxPage() {
                   onKeyDown={handleComposerKeyDown}
                   onPaste={(e) => { if (e.clipboardData?.files?.length) { handleFiles(e.clipboardData.files); e.preventDefault(); } }}
                   placeholder="Digite uma mensagem"
-                  className="w-full border rounded px-3 py-2 resize-none max-h-40"
+                  className={`w-full border rounded px-3 py-2 resize-none ${expanded ? 'max-h-80' : 'max-h-40'}`}
                   rows={1}
                 />
               </div>
@@ -2535,8 +2589,9 @@ export default function InboxPage() {
               <button
                 data-testid="send-button"
                 onClick={send}
-                className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-                disabled={sendDisabled}
+                disabled={composerDisabled}
+                className={`self-end px-4 py-2 rounded text-white ${composerDisabled ? 'bg-gray-400' : 'bg-blue-600'}`}
+                aria-disabled={composerDisabled}
                 aria-label="Enviar mensagem"
               >
                 Enviar
@@ -2616,6 +2671,7 @@ export default function InboxPage() {
                       <button
                         key={asId(t.id)}
                         onClick={() => toggleTag(t.id)}
+                        aria-label={`Alternar tag ${t.name}`}
                         className={`px-2 py-1 text-xs rounded ${on ? 'bg-blue-200' : 'bg-gray-200'}`}
                         data-testid={`tag-chip-${asId(t.id)}`}
                       >
