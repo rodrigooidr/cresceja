@@ -133,12 +133,12 @@ describe('composer behavior', () => {
     const area = screen.getByTestId('composer-dropzone');
     const file = new File(['hi'], 'hi.png', { type: 'image/png' });
     fireEvent.drop(area, { dataTransfer: { files: [file] } });
-    await waitFor(() => screen.getByTestId('pending-attachments'));
+    await waitFor(() => screen.getAllByTestId('pending-attachment'));
 
     const input = screen.getByTestId('composer-text');
     fireEvent.paste(input, { clipboardData: { files: [file] } });
     await waitFor(() => {
-      expect(screen.getByTestId('pending-attachments').children.length).toBeGreaterThan(1);
+      expect(screen.getAllByTestId('pending-attachment').length).toBeGreaterThan(1);
     });
   });
 });
