@@ -8,6 +8,15 @@ import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
 import Lightbox from '../../components/inbox/Lightbox.jsx';
 import { estimateItemHeight, computeWindow } from '../../inbox/virt';
 import { readConvCache, writeConvCache, mergeMessages, pruneLRU } from '../../inbox/cache';
+import {
+  loadQuickReplies,
+  saveQuickReply,
+  updateQuickReply,
+  deleteQuickReply,
+  searchQuickReplies,
+  parseVariables,
+  fillDefaultVariables,
+} from '../../inbox/quickreplies';
 
 // Utilidades -------------------------------------------------------------
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
@@ -178,6 +187,15 @@ export default function InboxPage() {
     [templates, templateId]
   );
 
+  // Quick replies -------------------------------------------------------
+  const [quickReplies, setQuickReplies] = useState([]);
+  const [showQR, setShowQR] = useState(false);
+  const [qrQuery, setQrQuery] = useState('');
+  const [qrIdx, setQrIdx] = useState(0);
+  const qrStartRef = useRef(null);
+  const qrVarItemRef = useRef(null);
+  const [qrVarValues, setQrVarValues] = useState({});
+
   useEffect(() => {
     if (!selectedTemplate) {
       setTemplateErrors({});
@@ -194,6 +212,10 @@ export default function InboxPage() {
     setTemplateVars({});
   }, [templateId]);
 
+  useEffect(() => {
+    loadQuickReplies().then((r) => setQuickReplies(Array.isArray(r?.items) ? r.items : [])).catch(() => {});
+  }, []);
+
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
@@ -207,6 +229,8 @@ export default function InboxPage() {
   const [chatMatches, setChatMatches] = useState([]);
   const [chatMatchIdx, setChatMatchIdx] = useState(0);
   const chatSearchRef = useRef(null);
+
+  useEffect(() => { setShowQR(false); qrVarItemRef.current = null; }, [sel]);
 
   const highlight = useCallback(
     (text = '') => {
@@ -287,6 +311,7 @@ export default function InboxPage() {
   const msgBoxRef = useRef(null);
   const emojiRef = useRef(null);
   const composerRef = useRef(null);
+  const composerBoxRef = useRef(null);
   const emojiBtnRef = useRef(null);
 
   const handleScroll = useCallback(() => {
@@ -327,10 +352,122 @@ export default function InboxPage() {
   const prevShowEmoji = useRef(false);
   useEffect(() => {
     if (prevShowEmoji.current && !showEmoji) {
-      emojiBtnRef.current && emojiBtnRef.current.focus();
+      setTimeout(() => {
+        emojiBtnRef.current && emojiBtnRef.current.focus();
+      }, 0);
     }
     prevShowEmoji.current = showEmoji;
   }, [showEmoji]);
+
+  const openQR = useCallback(() => {
+    setShowQR(true);
+    setQrQuery('');
+    setQrIdx(0);
+    setTimeout(() => {
+      const el = document.querySelector('[data-testid="qr-search"]');
+      el && el.focus();
+    }, 0);
+  }, []);
+
+  const closeQR = useCallback(() => {
+    setShowQR(false);
+    setQrQuery('');
+    setQrIdx(0);
+    qrVarItemRef.current = null;
+    setQrVarValues({});
+    setTimeout(() => composerRef.current && composerRef.current.focus(), 0);
+  }, []);
+
+  const insertText = useCallback(
+    (content) => {
+      const start = qrStartRef.current ?? composerRef.current?.selectionStart ?? 0;
+      const end = composerRef.current?.selectionEnd ?? start;
+      const before = text.slice(0, start);
+      const after = text.slice(end);
+      const newText = before + content + after;
+      setText(newText);
+      closeQR();
+      setTimeout(() => {
+        const pos = before.length + content.length;
+        if (composerRef.current) {
+          composerRef.current.selectionStart = composerRef.current.selectionEnd = pos;
+          composerRef.current.focus();
+        }
+      }, 0);
+    },
+    [text, closeQR]
+  );
+
+  const selectQRItem = useCallback(
+    (it) => {
+      const vars = parseVariables(it.content || '');
+      if (vars.length) {
+        qrVarItemRef.current = it;
+        const defaults = fillDefaultVariables(vars, sel);
+        setQrVarValues(defaults);
+        setShowQR(false);
+        setQrQuery('');
+        setQrIdx(0);
+        setTimeout(() => {
+          const el = document.querySelector(`[data-testid="qr-var-${vars[0]}"]`);
+          el && el.focus();
+        }, 0);
+      } else {
+        insertText(it.content || '');
+      }
+    },
+    [insertText, sel]
+  );
+
+  const commitVars = useCallback(() => {
+    const it = qrVarItemRef.current;
+    if (!it) return;
+    const vars = parseVariables(it.content || '');
+    let content = it.content || '';
+    vars.forEach((v) => {
+      const val = qrVarValues[v] || '';
+      const re = new RegExp(`\\{\\{\\s*${v}\\s*\\}}`, 'g');
+      content = content.replace(re, val);
+    });
+    insertText(content);
+    qrVarItemRef.current = null;
+    setQrVarValues({});
+  }, [qrVarValues, insertText]);
+
+  const [showSaveQR, setShowSaveQR] = useState(false);
+  const [saveQRForm, setSaveQRForm] = useState({ title: '', content: '', id: null });
+
+  const openSaveQR = useCallback(() => {
+    const ta = composerRef.current;
+    const selText = ta && ta.selectionStart !== ta.selectionEnd
+      ? ta.value.slice(ta.selectionStart, ta.selectionEnd)
+      : text;
+    setSaveQRForm({ title: '', content: selText, id: null });
+    setShowSaveQR(true);
+  }, [text]);
+
+  const openEditQR = useCallback((it) => {
+    setSaveQRForm({ title: it.title, content: it.content, id: it.id });
+    setShowSaveQR(true);
+  }, []);
+
+  const handleSaveQR = useCallback(async () => {
+    if (!saveQRForm.title) return;
+    if (saveQRForm.id) {
+      const item = await updateQuickReply(saveQRForm.id, { title: saveQRForm.title, content: saveQRForm.content });
+      setQuickReplies((arr) => arr.map((i) => (String(i.id) === String(item.id) ? item : i)));
+    } else {
+      const item = await saveQuickReply({ title: saveQRForm.title, content: saveQRForm.content });
+      setQuickReplies((arr) => [...arr, item]);
+    }
+    setShowSaveQR(false);
+  }, [saveQRForm]);
+
+  const handleDeleteQR = useCallback(async (id) => {
+    await deleteQuickReply(id);
+    setQuickReplies((arr) => arr.filter((i) => String(i.id) !== String(id)));
+  }, []);
+
 
   // Sincroniza estados quando searchParams mudam ------------------------
   useEffect(() => {
@@ -975,6 +1112,7 @@ export default function InboxPage() {
   const send = async () => {
     if (!sel) return;
     setShowEmoji(false);
+    closeQR();
     let payload = null;
     if (attachments.length) {
       payload = { type: 'file', attachments: attachments.map((a) => a.id) };
@@ -1043,6 +1181,37 @@ export default function InboxPage() {
       if (created) replaceTemp(m.id, created); else markFailed(m.id);
     } catch (e) { console.error('Falha ao reenviar', e); markFailed(m.id); }
   };
+
+  const handleComposerKeyDown = useCallback(
+    (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (showQR) closeQR();
+        else {
+          qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
+          openQR();
+        }
+        return;
+      }
+      if (e.key === '/' && !showQR) {
+        const pos = composerRef.current?.selectionStart ?? 0;
+        const before = text.slice(0, pos);
+        if (pos === 0 || /\s$/.test(before)) {
+          qrStartRef.current = pos;
+          openQR();
+        }
+      }
+      if (e.key === 'Escape' && showQR) {
+        e.preventDefault();
+        closeQR();
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    },
+    [showQR, text, openQR, closeQR, send]
+  );
 
   const closeLightbox = useCallback(() => {
     const trigger = lightbox.trigger;
@@ -1424,7 +1593,7 @@ export default function InboxPage() {
         {sel && (
           <div
             className="bg-white border-t p-3"
-            ref={composerRef}
+            ref={composerBoxRef}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
             data-testid="composer-dropzone"
@@ -1492,6 +1661,19 @@ export default function InboxPage() {
                   😊
                 </button>
 
+                <button
+                  data-testid="qr-toggle"
+                  aria-label="Respostas rápidas"
+                  onClick={() => {
+                    qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
+                    if (showQR) closeQR(); else openQR();
+                  }}
+                  className="px-2 py-1 rounded hover:bg-gray-100"
+                  title="Respostas rápidas"
+                >
+                  ⚡
+                </button>
+
                 <label
                   className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
                   title="Anexar"
@@ -1537,11 +1719,66 @@ export default function InboxPage() {
                   </div>
                 )}
 
+                {showQR && (
+                  <div
+                    data-testid="qr-palette"
+                    className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
+                    role="listbox"
+                  >
+                    <input
+                      data-testid="qr-search"
+                      value={qrQuery}
+                      onChange={(e) => { setQrQuery(e.target.value); setQrIdx(0); }}
+                      onKeyDown={(e) => {
+                        const results = searchQuickReplies(quickReplies, qrQuery);
+                        if (e.key === 'ArrowDown') { e.preventDefault(); setQrIdx((i) => Math.min(i + 1, results.length - 1)); }
+                        if (e.key === 'ArrowUp') { e.preventDefault(); setQrIdx((i) => Math.max(i - 1, 0)); }
+                        if (e.key === 'Enter') { e.preventDefault(); const it = results[qrIdx]; it && selectQRItem(it); }
+                        if (e.key === 'Escape') { e.preventDefault(); closeQR(); }
+                      }}
+                      className="border rounded px-1 py-0.5 w-full mb-2"
+                    />
+                    <div className="max-h-64 overflow-y-auto">
+                      {searchQuickReplies(quickReplies, qrQuery).slice(0,8).map((it, i) => (
+                        <div
+                          key={it.id}
+                          data-testid={`qr-item-${it.id}`}
+                          role="option"
+                          onMouseDown={(e) => { e.preventDefault(); selectQRItem(it); }}
+                          className={`px-2 py-1 cursor-pointer ${i === qrIdx ? 'bg-gray-100' : ''}`}
+                        >
+                          <div className="font-medium">{it.title}</div>
+                          <div className="text-xs text-gray-600 truncate">{it.content}</div>
+                          {it.scope === 'personal' && (
+                            <div className="flex gap-1 mt-1">
+                              <button
+                                data-testid={`qr-edit-open-${it.id}`}
+                                onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); openEditQR(it); }}
+                                className="text-xs underline"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                data-testid={`qr-delete-${it.id}`}
+                                onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteQR(it.id); }}
+                                className="text-xs underline text-red-600"
+                              >
+                                Excluir
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <textarea
+                  ref={composerRef}
                   data-testid="composer-text"
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  onKeyDown={(e) => (e.key === 'Enter' && !e.shiftKey ? (e.preventDefault(), send()) : null)}
+                  onKeyDown={handleComposerKeyDown}
                   onPaste={(e) => { if (e.clipboardData?.files?.length) { handleFiles(e.clipboardData.files); e.preventDefault(); } }}
                   placeholder="Digite uma mensagem"
                   className="w-full border rounded px-3 py-2 resize-none max-h-40"
@@ -1559,6 +1796,13 @@ export default function InboxPage() {
                 Enviar
               </button>
             </div>
+            {(text.trim() || (composerRef.current && composerRef.current.selectionStart !== composerRef.current.selectionEnd)) && (
+              <div className="mt-2">
+                <button data-testid="qr-save-open" className="text-sm text-blue-600 underline" onClick={openSaveQR}>
+                  Salvar como resposta rápida
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1664,6 +1908,56 @@ export default function InboxPage() {
           startIndex={lightbox.index}
           onClose={closeLightbox}
         />
+      )}
+      {qrVarItemRef.current && (
+        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20">
+          <div className="bg-white p-4 rounded shadow space-y-2">
+            {parseVariables(qrVarItemRef.current.content || '').map((v) => (
+              <input
+                key={v}
+                data-testid={`qr-var-${v}`}
+                value={qrVarValues[v] || ''}
+                onChange={(e) => setQrVarValues((s) => ({ ...s, [v]: e.target.value }))}
+                className="border rounded px-2 py-1 w-full"
+                placeholder={v}
+              />
+            ))}
+            <button
+              data-testid="qr-insert"
+              onClick={commitVars}
+              disabled={parseVariables(qrVarItemRef.current.content || '').some((v) => !qrVarValues[v])}
+              className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+            >
+              Inserir
+            </button>
+          </div>
+        </div>
+      )}
+      {showSaveQR && (
+        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20">
+          <div className="bg-white p-4 rounded shadow space-y-2 w-72">
+            <input
+              value={saveQRForm.title}
+              onChange={(e) => setSaveQRForm((f) => ({ ...f, title: e.target.value }))}
+              className="border rounded px-2 py-1 w-full"
+              placeholder="Título"
+            />
+            <textarea
+              value={saveQRForm.content}
+              onChange={(e) => setSaveQRForm((f) => ({ ...f, content: e.target.value }))}
+              className="border rounded px-2 py-1 w-full"
+              rows={3}
+            />
+            <button
+              data-testid="qr-save-submit"
+              onClick={handleSaveQR}
+              disabled={!saveQRForm.title}
+              className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+            >
+              Salvar
+            </button>
+          </div>
+        </div>
       )}
     </div>
     {cacheHit && <div data-testid="cache-hit" hidden />}
