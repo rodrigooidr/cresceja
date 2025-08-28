@@ -32,7 +32,7 @@ function mockApis() {
               from: 'agent',
               attachments: [
                 { id: 'a1', url: '/img1.jpg', thumb_url: '/img1.jpg' },
-                { id: 'a2', url: '/img2.jpg', thumb_url: '/img2.jpg' },
+                { id: 'a2', url: '/file.pdf', thumb_url: '/file-thumb.jpg' },
               ],
             },
           ],
@@ -62,14 +62,20 @@ describe('Lightbox behavior', () => {
     });
     const btn = await screen.findByText('Alice');
     await act(async () => { fireEvent.click(btn); });
-    const thumbs = await screen.findAllByTestId('thumb');
+    const thumbs = await screen.findAllByTestId('attachment-thumb');
     const first = thumbs[0];
     first.focus();
     fireEvent.click(first);
-    expect(screen.getByTestId('lightbox')).toBeInTheDocument();
+    expect(screen.getByTestId('lightbox-open')).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByTestId('lightbox')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId('lightbox-open')).not.toBeInTheDocument());
     expect(first).toHaveFocus();
+
+    const fileLink = thumbs[1];
+    expect(fileLink).toHaveAttribute('target', '_blank');
+    expect(fileLink).toHaveAttribute('download');
+    fireEvent.click(fileLink);
+    expect(screen.queryByTestId('lightbox-open')).not.toBeInTheDocument();
   });
 });

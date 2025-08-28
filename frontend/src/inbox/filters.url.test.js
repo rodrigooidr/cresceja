@@ -50,13 +50,13 @@ describe('filters and URL sync', () => {
       </MemoryRouter>
     );
 
-    const searchInput = await screen.findByTestId('filter-search');
+    const searchInput = await screen.findByTestId('filter-search-input');
     expect(searchInput).toHaveValue('foo');
-    const whatsapp = screen.getByTestId('filter-channel-whatsapp');
+    const whatsapp = screen.getByTestId('filter-channel-checkbox-whatsapp');
     expect(whatsapp).toBeChecked();
-    const tagSelect = screen.getByTestId('filter-tags');
+    const tagSelect = screen.getByTestId('filter-tags-select');
     expect(Array.from(tagSelect.selectedOptions).map((o) => o.value)).toEqual(['1']);
-    const statusSelect = screen.getByTestId('filter-status');
+    const statusSelect = screen.getByTestId('filter-status-select');
     expect(Array.from(statusSelect.selectedOptions).map((o) => o.value)).toEqual(['2']);
 
     fireEvent.change(searchInput, { target: { value: 'bar' } });

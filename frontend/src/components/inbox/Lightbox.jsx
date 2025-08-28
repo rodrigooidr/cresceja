@@ -19,10 +19,18 @@ export default function Lightbox({ items = [], startIndex = 0, onClose }) {
     <div
       className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center"
       onClick={onClose}
-      data-testid="lightbox"
+      data-testid="lightbox-open"
       role="dialog"
       aria-modal="true"
     >
+      <button
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        className="absolute top-3 right-3 text-white text-2xl"
+        aria-label="Fechar"
+        data-testid="lightbox-close"
+      >
+        ×
+      </button>
       <img
         src={item.src || item.url}
         alt="media"

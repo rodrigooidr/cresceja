@@ -110,6 +110,7 @@ export default function InboxPage() {
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
+  const [uploadError, setUploadError] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
 
   // Painéis -------------------------------------------------------------
@@ -304,14 +305,20 @@ export default function InboxPage() {
     if (!sel) return;
     const files = Array.from(fileList || []);
     const uploaded = [];
+    setUploadError('');
     for (const f of files) {
       const form = new FormData();
       form.append('files[]', f);
       try {
         const { data } = await inboxApi.post(`/conversations/${sel.id}/attachments`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
-        const assets = Array.isArray(data?.assets) ? data.assets.map((a) => ({ ...a, url: apiUrl(a.url), thumb_url: apiUrl(a.thumb_url) })) : [];
+        const assets = Array.isArray(data?.assets)
+          ? data.assets.map((a) => ({ ...a, url: apiUrl(a.url), thumb_url: apiUrl(a.thumb_url) }))
+          : [];
         uploaded.push(...assets);
-      } catch (e) { console.error('Falha no upload', e); }
+      } catch (e) {
+        console.error('Falha no upload', e);
+        setUploadError('Erro ao enviar arquivo');
+      }
     }
     if (uploaded.length) setAttachments((prev) => [...prev, ...uploaded]);
   };
@@ -381,7 +388,7 @@ export default function InboxPage() {
       const createdRaw = res?.data?.message ?? res?.data?.data ?? res?.data;
       const created = normalizeMessage(createdRaw);
       if (created) replaceTemp(tempId, created); else markFailed(tempId);
-      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]);
+      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]); setUploadError('');
     } catch (e) { console.error('Falha ao enviar', e); markFailed(tempId); }
   };
 
@@ -476,7 +483,7 @@ export default function InboxPage() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Pesquisar"
             className="w-full border rounded-full px-4 py-2 text-sm"
-            data-testid="filter-search"
+            data-testid="filter-search-input"
           />
           <div className="mt-2 flex gap-2 text-xs flex-wrap">
             {['whatsapp', 'instagram', 'facebook'].map((ch) => (
@@ -485,7 +492,7 @@ export default function InboxPage() {
                   type="checkbox"
                   checked={channelFilters.includes(ch)}
                   onChange={(e) => setChannelFilters((prev) => (e.target.checked ? [...prev, ch] : prev.filter((c) => c !== ch)))}
-                  data-testid={`filter-channel-${ch}`}
+                  data-testid={`filter-channel-checkbox-${ch}`}
                 />
                 {ch}
               </label>
@@ -499,7 +506,7 @@ export default function InboxPage() {
                 value={tagFilters}
                 onChange={(e) => setTagFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
                 className="w-full border rounded px-2 py-1 text-xs"
-                data-testid="filter-tags"
+                data-testid="filter-tags-select"
               >
                 {tags.map((t) => (
                   <option key={asId(t.id)} value={asId(t.id)}>{t.name}</option>
@@ -515,7 +522,7 @@ export default function InboxPage() {
                 value={statusFilters}
                 onChange={(e) => setStatusFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
                 className="w-full border rounded px-2 py-1 text-xs"
-                data-testid="filter-status"
+                data-testid="filter-status-select"
               >
                 {statuses.map((s) => (
                   <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
@@ -527,13 +534,13 @@ export default function InboxPage() {
 
         <div className="flex-1 overflow-y-auto">
           {loadingList ? (
-            <div className="p-3 text-sm text-gray-500" data-testid="loading">Carregando…</div>
+            <div className="p-3 text-sm text-gray-500" data-testid="conversations-loading">Carregando…</div>
           ) : filteredItems.length ? (
             filteredItems.map((c) => (
               <ConversationItem key={c.id} c={c} onOpen={open} active={sel?.id === c.id} />
             ))
           ) : (
-            <div className="p-3 text-sm text-gray-500" data-testid="empty">Nenhuma conversa.</div>
+            <div className="p-3 text-sm text-gray-500" data-testid="conversations-empty">Nenhuma conversa.</div>
           )}
         </div>
       </div>
@@ -564,6 +571,11 @@ export default function InboxPage() {
               />
               IA
             </label>
+            {sel?.is_group && (
+              <span className="text-[10px] text-gray-500" data-testid="ai-toggle-disabled-hint">
+                Indisponível em grupos
+              </span>
+            )}
             <button className="text-sm" onClick={() => setShowInfo((v) => !v)} title="Detalhes">ℹ️</button>
           </div>
         </div>
@@ -582,21 +594,30 @@ export default function InboxPage() {
 
               {!!m.attachments?.length && (
                 <div className="mt-1 flex flex-wrap gap-2">
-                  {m.attachments.map((a, i) => {
+                  {m.attachments.map((a) => {
                     const href = a.url || '#';
                     const thumb = a.thumb_url || a.url;
+                    const isImg = isImage(a.url || a.thumb_url);
                     const open = (e) => {
-                      if (isImage(thumb)) {
+                      if (isImg) {
                         e.preventDefault();
                         const imgs = m.attachments
-                          .filter((x) => isImage(x.thumb_url || x.url))
+                          .filter((x) => isImage(x.url || x.thumb_url))
                           .map((x) => ({ src: x.url || x.thumb_url }));
                         const idx = imgs.findIndex((x) => x.src === (a.url || a.thumb_url));
                         setLightbox({ open: true, items: imgs, index: idx >= 0 ? idx : 0, trigger: e.currentTarget });
                       }
                     };
                     return (
-                      <a key={a.id || href} href={href} target="_blank" rel="noreferrer" onClick={open} data-testid="thumb">
+                      <a
+                        key={a.id || href}
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={open}
+                        data-testid="attachment-thumb"
+                        download={isImg ? undefined : ''}
+                      >
                         {thumb ? (
                           <img src={thumb} alt="file" className="w-28 h-28 object-cover rounded" />
                         ) : (
@@ -643,14 +664,15 @@ export default function InboxPage() {
             data-testid="composer-dropzone"
           >
             {!!attachments.length && (
-              <div className="mb-2 flex flex-wrap gap-2" data-testid="pending-attachments">
+              <div className="mb-2 flex flex-wrap gap-2">
                 {attachments.map((a) => (
-                  <div key={a.id} className="relative">
+                  <div key={a.id} className="relative" data-testid="pending-attachment">
                     <img src={a.thumb_url || a.url} alt="att" className="w-14 h-14 object-cover rounded" />
                     <button
                       type="button"
                       onClick={() => removeAttachment(a.id)}
                       className="absolute top-0 right-0 text-xs bg-white rounded-full px-1"
+                      data-testid="remove-pending-attachment"
                     >
                       ×
                     </button>
@@ -658,6 +680,7 @@ export default function InboxPage() {
                 ))}
               </div>
             )}
+            {uploadError && <div className="text-xs text-red-600 mb-2">{uploadError}</div>}
 
             {selectedTemplate && (
               <div className="mb-2 space-y-1">
@@ -837,7 +860,9 @@ export default function InboxPage() {
                   onChange={(e) => setClientForm((f) => ({ ...f, name: e.target.value }))}
                   className={`w-full border rounded px-2 py-1 ${clientErrors.name ? 'border-red-500' : ''}`}
                 />
-                {clientErrors.name && <div className="text-[11px] text-red-600">{clientErrors.name}</div>}
+                {clientErrors.name && (
+                  <div className="text-[11px] text-red-600" data-testid="client-name-error">{clientErrors.name}</div>
+                )}
 
                 <label className="block text-xs text-gray-500">Telefone (+5511999999999)</label>
                 <input
