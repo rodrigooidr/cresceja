@@ -9,6 +9,14 @@ import Lightbox from '../../components/inbox/Lightbox.jsx';
 import { estimateItemHeight, computeWindow } from '../../inbox/virt';
 import { readConvCache, writeConvCache, mergeMessages, pruneLRU } from '../../inbox/cache';
 import {
+  toggle,
+  rangeToggle,
+  isAllPageSelected,
+  selectAllPage,
+  clearAllPage,
+  clearOnFilterChange,
+} from '../../inbox/selection';
+import {
   loadQuickReplies,
   saveQuickReply,
   updateQuickReply,
@@ -49,7 +57,7 @@ async function firstOk(fns = []) {
 }
 
 // Item de conversa (sidebar) --------------------------------------------
-function ConversationItem({ c, onOpen, active, idx, onHeight, onHover }) {
+function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected, onToggle }) {
   const contact = c?.contact || {};
   const icon = channelIconBySlug[c?.channel] || channelIconBySlug.default;
   const photo = contact.photo_url ? apiUrl(contact.photo_url) : 'https://placehold.co/40';
@@ -61,30 +69,44 @@ function ConversationItem({ c, onOpen, active, idx, onHeight, onHover }) {
     reportHeight();
   }, [reportHeight, c, active]);
   return (
-    <button
+    <div
       ref={ref}
-      onClick={() => onOpen(c)}
       onMouseEnter={() => onHover && onHover(c)}
-      className={`w-full px-3 py-2 flex gap-3 border-b hover:bg-gray-100 ${active ? 'bg-gray-100' : ''}`}
-      data-testid="conv-item"
+      className={`w-full flex items-center border-b hover:bg-gray-100 ${active ? 'bg-gray-100' : ''}`}
     >
-      <img src={photo} alt="avatar" className="w-10 h-10 rounded-full" onLoad={reportHeight} />
-      <div className="min-w-0 text-left flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium truncate">{contact.name || contact.phone_e164 || 'Contato'}</span>
-          <span className="text-[11px] text-gray-500">{icon}</span>
+      <input
+        type="checkbox"
+        checked={!!selected}
+        onChange={(e) => {
+          e.stopPropagation();
+          onToggle && onToggle(c.id, e);
+        }}
+        className="ml-2 mr-2"
+        data-testid={`conv-check-${c.id}`}
+      />
+      <button
+        onClick={() => onOpen(c)}
+        className="flex-1 px-3 py-2 flex gap-3 text-left"
+        data-testid="conv-item"
+      >
+        <img src={photo} alt="avatar" className="w-10 h-10 rounded-full" onLoad={reportHeight} />
+        <div className="min-w-0 text-left flex-1">
+          <div className="flex items-center gap-2">
+            <span className="font-medium truncate">{contact.name || contact.phone_e164 || 'Contato'}</span>
+            <span className="text-[11px] text-gray-500">{icon}</span>
+          </div>
+          <div className="text-xs text-gray-500 truncate">{c?.status || '—'}</div>
         </div>
-        <div className="text-xs text-gray-500 truncate">{c?.status || '—'}</div>
-      </div>
-      {c.unread_count ? (
-        <span
-          className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full h-fit"
-          data-testid="unread-badge"
-        >
-          {c.unread_count}
-        </span>
-      ) : null}
-    </button>
+        {c.unread_count ? (
+          <span
+            className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full h-fit"
+            data-testid="unread-badge"
+          >
+            {c.unread_count}
+          </span>
+        ) : null}
+      </button>
+    </div>
   );
 }
 
@@ -104,6 +126,9 @@ export default function InboxPage() {
   const [convVirt, setConvVirt] = useState({ start: 0, end: 0, topSpacer: 0, bottomSpacer: 0 });
   const filterSearchRef = useRef(null);
   const [sel, setSel] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [selAnchor, setSelAnchor] = useState(null);
+  const [undoInfo, setUndoInfo] = useState(null);
   const [msgs, setMsgs] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [msgBefore, setMsgBefore] = useState(null);
@@ -127,6 +152,30 @@ export default function InboxPage() {
   const preloadingRef = useRef({});
   const hoverTimerRef = useRef(null);
   const selPreloadTimerRef = useRef(null);
+
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
+  const role = user?.role || 'unknown';
+  const unknownRole = !['agent', 'supervisor', 'org_admin', 'super_admin'].includes(role);
+  const can = useCallback(
+    (action) => {
+      const map = {
+        read: ['agent', 'supervisor', 'org_admin', 'super_admin'],
+        assign: ['agent', 'supervisor', 'org_admin', 'super_admin'],
+        archive: ['supervisor', 'org_admin', 'super_admin'],
+        close: ['supervisor', 'org_admin', 'super_admin'],
+        spam: ['org_admin', 'super_admin'],
+      };
+      const allowed = map[action] ? map[action].includes(role) : true;
+      return unknownRole ? true : allowed;
+    },
+    [role, unknownRole]
+  );
 
   const logPreload = useCallback((id) => {
     setPreloadLog((s) => s + String(id));
@@ -165,6 +214,105 @@ export default function InboxPage() {
     [preloadConv]
   );
 
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  const performApi = useCallback(async (action, ids, payload) => {
+    try {
+      await inboxApi.post('/conversations/bulk', { ids, action, payload });
+    } catch (e) {
+      if (e?.response?.status === 404) {
+        await Promise.all(
+          ids.map((id) => {
+            switch (action) {
+              case 'read':
+                return inboxApi.post(`/conversations/${id}/read`, payload);
+              case 'assign':
+                return inboxApi.put(`/conversations/${id}/assign`, payload);
+              case 'archive':
+                return inboxApi.put(`/conversations/${id}/archive`, payload);
+              case 'close':
+                return inboxApi.put(`/conversations/${id}/close`, payload);
+              case 'spam':
+                return inboxApi.put(`/conversations/${id}/spam`, payload);
+              default:
+                return Promise.resolve();
+            }
+          })
+        );
+      } else {
+        throw e;
+      }
+    }
+  }, []);
+
+  const performBulk = useCallback(
+    async (action, payload = {}) => {
+      const ids = Array.from(selectedIds);
+      if (!ids.length) return;
+      setUndoInfo({ action, ids, payload });
+      clearSelection();
+      setItems((prev) => {
+        if (action === 'read')
+          return prev.map((c) => (ids.includes(c.id) ? { ...c, unread_count: 0 } : c));
+        if (action === 'assign')
+          return prev.map((c) => (ids.includes(c.id) ? { ...c, assignee_id: payload.assignee_id } : c));
+        if (['archive', 'close', 'spam'].includes(action))
+          return prev.filter((c) => !ids.includes(c.id));
+        return prev;
+      });
+      await performApi(action, ids, payload);
+    },
+    [selectedIds, clearSelection, performApi]
+  );
+
+  const inversePayload = (action, payload) => {
+    switch (action) {
+      case 'read':
+        return { read: !payload.read };
+      case 'assign':
+        return { assignee_id: payload.prevAssigneeId || null };
+      case 'archive':
+        return { archived: false };
+      case 'close':
+        return { closed: false };
+      case 'spam':
+        return { spam: false };
+      default:
+        return {};
+    }
+  };
+
+  const handleUndo = useCallback(async () => {
+    const info = undoInfo;
+    if (!info) return;
+    setUndoInfo(null);
+    setItems((prev) => {
+      if (info.action === 'read') {
+        return prev.map((c) =>
+          info.ids.includes(c.id) ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c
+        );
+      }
+      return prev;
+    });
+    await performApi(info.action, info.ids, inversePayload(info.action, info.payload));
+  }, [undoInfo, performApi]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') clearSelection();
+      if (!selectedIds.size) return;
+      const k = e.key.toLowerCase();
+      if (k === 'r' && can('read')) performBulk('read', { read: true });
+      if (k === 'x' && can('archive')) performBulk('archive', { archived: true });
+      if (k === 'e' && can('close')) performBulk('close', { closed: true });
+      if (k === 's' && can('spam')) performBulk('spam', { spam: true });
+      if (k === 'a' && can('assign'))
+        performBulk('assign', { assignee_id: user.id, prevAssigneeId: null });
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedIds, performBulk, can, user, clearSelection]);
+
 
   // Filtros --------------------------------------------------------------
   const [search, setSearch] = useState(searchParams.get('search') || searchParams.get('q') || '');
@@ -173,6 +321,10 @@ export default function InboxPage() {
   );
   const [tagFilters, setTagFilters] = useState((searchParams.get('tags') || '').split(',').filter(Boolean));
   const [statusFilters, setStatusFilters] = useState((searchParams.get('status') || '').split(',').filter(Boolean));
+
+  useEffect(() => {
+    setSelectedIds(clearOnFilterChange(selectedIds));
+  }, [search, channelFilters, tagFilters, statusFilters]);
 
   // Meta ----------------------------------------------------------------
   const [tags, setTags] = useState([]);
@@ -815,7 +967,15 @@ export default function InboxPage() {
     s.on('conversation:updated', (payload) => {
       const conv = payload?.conversation;
       if (!conv?.id) return;
-      setItems((prev) => (prev || []).map((c) => (c.id === conv.id ? { ...c, ...conv } : c)));
+      setItems((prev) => {
+        const idx = prev.findIndex((c) => c.id === conv.id);
+        if (idx === -1) return prev;
+        const updated = { ...prev[idx], ...conv };
+        if (updated.archived || updated.closed || updated.spam) {
+          return prev.filter((c) => c.id !== conv.id);
+        }
+        return prev.map((c) => (c.id === conv.id ? updated : c));
+      });
       if (sel?.id === conv.id) setSel((prev) => ({ ...prev, ...conv }));
     });
 
@@ -1275,6 +1435,10 @@ export default function InboxPage() {
 
   const sendDisabled = templateId && Object.keys(templateErrors).length > 0;
 
+  const visibleItems = filteredItems.slice(convVirt.start, convVirt.end);
+  const visibleIds = visibleItems.map((c) => c.id);
+  const orderedIds = filteredItems.map((c) => c.id);
+
   // Render ---------------------------------------------------------------
   return (
     <>
@@ -1284,6 +1448,66 @@ export default function InboxPage() {
           className="fixed top-2 right-2 bg-red-600 text-white px-2 py-1 rounded"
         >
           {toastError}
+        </div>
+      )}
+      {selectedIds.size > 0 && (
+        <div
+          data-testid="qa-bar"
+          className="bg-white border-b p-2 flex gap-2"
+          data-permission={unknownRole ? 'unknown' : undefined}
+        >
+          <button
+            data-testid="qa-assign-btn"
+            disabled={!can('assign')}
+            onClick={() => can('assign') && performBulk('assign', { assignee_id: user.id, prevAssigneeId: null })}
+            title={!can('assign') ? 'Sem permissão' : undefined}
+            aria-label="Atribuir"
+          >
+            Atribuir
+          </button>
+          <button
+            data-testid="qa-read-btn"
+            disabled={!can('read')}
+            onClick={() => can('read') && performBulk('read', { read: true })}
+            title={!can('read') ? 'Sem permissão' : undefined}
+            aria-label="Marcar como lido"
+          >
+            Lido
+          </button>
+          <button
+            data-testid="qa-archive-btn"
+            disabled={!can('archive')}
+            onClick={() => can('archive') && performBulk('archive', { archived: true })}
+            title={!can('archive') ? 'Sem permissão' : undefined}
+            aria-label="Arquivar"
+          >
+            Arquivar
+          </button>
+          <button
+            data-testid="qa-close-btn"
+            disabled={!can('close')}
+            onClick={() => can('close') && performBulk('close', { closed: true })}
+            title={!can('close') ? 'Sem permissão' : undefined}
+            aria-label="Encerrar"
+          >
+            Encerrar
+          </button>
+          <button
+            data-testid="qa-spam-btn"
+            disabled={!can('spam')}
+            onClick={() => can('spam') && performBulk('spam', { spam: true })}
+            title={!can('spam') ? 'Sem permissão' : undefined}
+            aria-label="Spam"
+          >
+            Spam
+          </button>
+        </div>
+      )}
+      {undoInfo && (
+        <div className="fixed bottom-2 right-2 bg-gray-800 text-white px-2 py-1 rounded" data-testid="undo-toast">
+          <button data-testid="undo-btn" onClick={handleUndo} className="underline">
+            Desfazer
+          </button>
         </div>
       )}
       <div className="grid grid-cols-12 h-[calc(100vh-80px)] bg-gray-50">
@@ -1357,10 +1581,20 @@ export default function InboxPage() {
             <>
               <div style={{ height: convVirt.topSpacer }} />
               <div data-testid="conv-top-sentinel" />
-              {filteredItems.slice(convVirt.start, convVirt.end).map((c, i) => (
+              {visibleItems.map((c, i) => (
                 <ConversationItem
                   key={c.id}
                   c={c}
+                  selected={selectedIds.has(c.id)}
+                  onToggle={(id, e) => {
+                    setSelectedIds((prev) => {
+                      if (e.shiftKey && selAnchor !== null) {
+                        return rangeToggle(prev, orderedIds, selAnchor, id);
+                      }
+                      return toggle(prev, id);
+                    });
+                    if (!e.shiftKey) setSelAnchor(id);
+                  }}
                   onOpen={open}
                   onHover={handleHover}
                   active={sel?.id === c.id}
