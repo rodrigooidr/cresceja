@@ -6,6 +6,7 @@ import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
 import Lightbox from '../../components/inbox/Lightbox.jsx';
+import { estimateItemHeight, computeWindow } from '../../inbox/virt';
 
 // Utilidades -------------------------------------------------------------
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
@@ -88,6 +89,9 @@ export default function InboxPage() {
   const [loadingMoreMsgs, setLoadingMoreMsgs] = useState(false);
   const topTriggerRef = useRef(null);
   const msgRefs = useRef({});
+  const [virt, setVirt] = useState({ start: 0, end: 0, topSpacer: 0, bottomSpacer: 0 });
+  const itemHeightsRef = useRef([]);
+  const stickToBottomRef = useRef(true);
   const [toastError, setToastError] = useState('');
   const showError = useCallback((msg) => {
     setToastError(msg || 'Erro');
@@ -95,6 +99,7 @@ export default function InboxPage() {
   }, []);
   const [showReconnected, setShowReconnected] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+
 
   // Filtros --------------------------------------------------------------
   const [search, setSearch] = useState(searchParams.get('search') || searchParams.get('q') || '');
@@ -227,6 +232,41 @@ export default function InboxPage() {
   const emojiRef = useRef(null);
   const composerRef = useRef(null);
   const emojiBtnRef = useRef(null);
+
+  const handleScroll = useCallback(() => {
+    const box = msgBoxRef.current;
+    if (!box) return;
+    const atBottom = Math.abs(box.scrollHeight - box.scrollTop - box.clientHeight) < 5;
+    stickToBottomRef.current = atBottom;
+    setVirt(
+      computeWindow({
+        scrollTop: box.scrollTop,
+        viewportHeight: box.clientHeight,
+        itemHeights: itemHeightsRef.current,
+        overscan: 10,
+      })
+    );
+  }, []);
+
+  useEffect(() => {
+    itemHeightsRef.current = msgs.map(
+      (m, i) => itemHeightsRef.current[i] || estimateItemHeight(m)
+    );
+    const box = msgBoxRef.current;
+    if (box) {
+      if (stickToBottomRef.current) {
+        box.scrollTop = box.scrollHeight;
+      }
+      setVirt(
+        computeWindow({
+          scrollTop: box.scrollTop,
+          viewportHeight: box.clientHeight,
+          itemHeights: itemHeightsRef.current,
+          overscan: 10,
+        })
+      );
+    }
+  }, [msgs]);
 
   const prevShowEmoji = useRef(false);
   useEffect(() => {
@@ -441,6 +481,7 @@ export default function InboxPage() {
         }
         const box = msgBoxRef.current;
         const atBottom = box ? Math.abs(box.scrollHeight - box.scrollTop - box.clientHeight) < 5 : false;
+        stickToBottomRef.current = atBottom;
         if (normalized.is_outbound || atBottom) {
           setSel((p) =>
             p ? { ...p, unread_count: 0, last_read_message_id: normalized.id, last_read_at: normalized.created_at } : p
@@ -450,7 +491,6 @@ export default function InboxPage() {
           setSel((p) => (p ? { ...p, unread_count: (p.unread_count || 0) + 1 } : p));
           setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)));
         }
-        setTimeout(() => { msgBoxRef.current && (msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight); }, 0);
       } else {
         setItems((prev) => (prev || []).map((c) => (c.id === convId ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)));
       }
@@ -551,7 +591,11 @@ export default function InboxPage() {
       setMsgBefore(cursor || (safe[0] && safe[0].id));
       setMsgHasMore(hasMore);
       setTimeout(() => {
-        if (msgBoxRef.current) msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight;
+        if (msgBoxRef.current) {
+          msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight;
+          stickToBottomRef.current = true;
+          handleScroll();
+        }
         composerRef.current && composerRef.current.focus();
       }, 0);
     } catch (e) {
@@ -587,6 +631,7 @@ export default function InboxPage() {
         if (box) {
           const newHeight = box.scrollHeight;
           box.scrollTop = newHeight - prevHeight + prevTop;
+          handleScroll();
         }
         composerRef.current && composerRef.current.focus();
       }, 0);
@@ -766,7 +811,7 @@ export default function InboxPage() {
       sending: true,
     };
     setMsgs((prev) => [...(prev || []), optimistic]);
-    setTimeout(() => { msgBoxRef.current && (msgBoxRef.current.scrollTop = msgBoxRef.current.scrollHeight); }, 0);
+    stickToBottomRef.current = true;
 
     try {
       const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: tempId });
@@ -1023,21 +1068,49 @@ export default function InboxPage() {
           )}
 
           {/* Mensagens */}
-          <div ref={msgBoxRef} className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div
+            ref={msgBoxRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto p-4"
+            data-testid="messages-container"
+          >
           <div ref={topTriggerRef} data-testid="infinite-trigger-top" />
+          <div style={{ height: virt.topSpacer }} />
           {(loadingMoreMsgs || loadingMsgs) && (
             <div className="text-sm text-gray-500">Carregando…</div>
           )}
-          {(msgs || []).map((m, i) => (
+          {msgs.slice(virt.start, virt.end).map((m, i) => {
+            const idx = virt.start + i;
+            return (
             <React.Fragment key={m.id}>
-              {i === separatorIdx && (
+              {idx === separatorIdx && (
                 <hr data-testid="new-messages-separator" />
               )}
               <div
-                ref={(el) => { if (el) msgRefs.current[m.id] = el; }}
+                ref={(el) => {
+                  if (el) {
+                    msgRefs.current[m.id] = el;
+                    const h = el.offsetHeight;
+                    if (itemHeightsRef.current[idx] !== h) {
+                      itemHeightsRef.current[idx] = h;
+                      const box = msgBoxRef.current;
+                      if (box) {
+                        setVirt(
+                          computeWindow({
+                            scrollTop: box.scrollTop,
+                            viewportHeight: box.clientHeight,
+                            itemHeights: itemHeightsRef.current,
+                            overscan: 10,
+                          })
+                        );
+                      }
+                    }
+                  }
+                }}
+                data-message="true"
                 data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
                 data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
-                className={`max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
+                className={`mb-2 max-w-[70%] p-2 rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
               >
                 {m.text && <div className="whitespace-pre-wrap">{highlight(m.text)}</div>}
 
@@ -1085,33 +1158,35 @@ export default function InboxPage() {
                 </div>
               )}
 
-              <div className="mt-1 flex items-center justify-end gap-2">
-                {m.failed && (
-                  <button
-                    className="text-[10px] text-red-600 underline"
-                    onClick={() => resend(m)}
-                    data-testid="retry-button"
-                    aria-label="Tentar novamente"
-                  >
-                    Falha — Tentar novamente
-                  </button>
-                )}
-                {m.sending && !m.failed && <span className="text-[10px] text-gray-400">Enviando…</span>}
-                {m.from === 'agent' && (m.sent_at || m.delivered_at || m.read_at) ? (
-                  <span
-                    data-testid="msg-receipt"
-                    className={`text-[10px] ${m.read_at ? 'text-blue-600' : 'text-gray-500'}`}
-                    aria-label={m.read_at ? 'Lida' : m.delivered_at ? 'Entregue' : 'Enviada'}
-                    title={`${formatRelative(m.read_at || m.delivered_at || m.sent_at)} — ${new Date(m.read_at || m.delivered_at || m.sent_at).toLocaleString()}`}
-                  >
-                    {m.read_at ? '✓✓' : m.delivered_at ? '✓✓' : '✓'}
-                  </span>
-                ) : null}
-                <span className="text-[10px] text-gray-500" title={new Date(m.created_at).toLocaleString()}>{formatRelative(m.created_at)}</span>
-              </div>
-              </div>
-            </React.Fragment>
-            ))}
+                    <div className="mt-1 flex items-center justify-end gap-2">
+                      {m.failed && (
+                        <button
+                          className="text-[10px] text-red-600 underline"
+                          onClick={() => resend(m)}
+                          data-testid="retry-button"
+                          aria-label="Tentar novamente"
+                        >
+                          Falha — Tentar novamente
+                        </button>
+                      )}
+                      {m.sending && !m.failed && <span className="text-[10px] text-gray-400">Enviando…</span>}
+                      {m.from === 'agent' && (m.sent_at || m.delivered_at || m.read_at) ? (
+                        <span
+                          data-testid="msg-receipt"
+                          className={`text-[10px] ${m.read_at ? 'text-blue-600' : 'text-gray-500'}`}
+                          aria-label={m.read_at ? 'Lida' : m.delivered_at ? 'Entregue' : 'Enviada'}
+                          title={`${formatRelative(m.read_at || m.delivered_at || m.sent_at)} — ${new Date(m.read_at || m.delivered_at || m.sent_at).toLocaleString()}`}
+                        >
+                          {m.read_at ? '✓✓' : m.delivered_at ? '✓✓' : '✓'}
+                        </span>
+                      ) : null}
+                      <span className="text-[10px] text-gray-500" title={new Date(m.created_at).toLocaleString()}>{formatRelative(m.created_at)}</span>
+                    </div>
+                  </div>
+                </React.Fragment>
+            );
+          })}
+          <div style={{ height: virt.bottomSpacer }} />
           </div>
         {sel && typing && (
           <div
