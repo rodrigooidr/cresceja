@@ -54,7 +54,10 @@ if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => 
 
 // 3) MSW v1 – registra handlers globais
 const { setupServer } = require('msw/node');
-const { handlers: channelHandlers } = require('./inbox/channels.summary.msw');
+let channelHandlers = [];
+try {
+  ({ handlers: channelHandlers } = require('./inbox/channels.summary.msw'));
+} catch {}
 const server = setupServer(...(channelHandlers || []));
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));

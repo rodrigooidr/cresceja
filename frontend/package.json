@@ -6,6 +6,8 @@
   "dependencies": {
     "@hello-pangea/dnd": "^16.6.0",
     "axios": "^1.7.2",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.453.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.23.1",
@@ -30,16 +32,15 @@
     "guardrail:inbox": "node scripts/guardrail-inbox.js"
   },
   "jest": {
-  "testEnvironment": "jsdom",
-  "transformIgnorePatterns": [
-    "node_modules/(?!(msw|@mswjs|axios|nanoid|uuid|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
-  ],
-  "moduleNameMapper": {
-    "^.+\\.(css|scss|sass|less)$": "identity-obj-proxy",
-    "^tough-cookie$": "<rootDir>/src/test-shims/tough-cookie.js",
-    "^@bundled-es-modules/tough-cookie(.*)$": "<rootDir>/src/test-shims/tough-cookie.js"
-  }
-},
+    "transformIgnorePatterns": [
+      "node_modules/(?!(msw|@mswjs|axios|nanoid|uuid|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
+    ],
+    "moduleNameMapper": {
+      "^.+\\.(css|scss|sass|less)$": "identity-obj-proxy",
+      "^tough-cookie$": "<rootDir>/src/test-shims/tough-cookie.js",
+      "^@bundled-es-modules/tough-cookie(.*)$": "<rootDir>/src/test-shims/tough-cookie.js"
+    }
+  },
   "browserslist": {
     "production": [
       ">0.2%",

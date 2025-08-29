@@ -1,0 +1,14 @@
+:root{
+  --ui-bg:#fff; --ui-muted:#f6f7f9; --ui-border:#e5e7eb;
+  --ui-text:#0f172a; --ui-subtle:#475569;
+  --ui-primary:#2563eb; --ui-primary-600:#1d4ed8; --ui-ring:#93c5fd;
+  --ui-radius:14px; --ui-shadow:0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.06);
+}
+html,body,#root{height:100%}
+body{color:var(--ui-text);background:var(--ui-muted)}
+.ui-card{background:var(--ui-bg);border:1px solid var(--ui-border);border-radius:var(--ui-radius);box-shadow:var(--ui-shadow)}
+.ui-input{width:100%;border:1px solid var(--ui-border);border-radius:10px;padding:.5rem .75rem;background:#fff}
+.ui-input:focus{outline:none;border-color:var(--ui-primary);box-shadow:0 0 0 3px color-mix(in oklab,var(--ui-ring) 40%, transparent)}
+.ui-btn{border-radius:10px;padding:.5rem .9rem;border:1px solid var(--ui-border);background:#fff}
+.ui-btn--primary{background:var(--ui-primary);color:#fff;border-color:var(--ui-primary)}
+.ui-btn--primary:hover{background:var(--ui-primary-600)}
