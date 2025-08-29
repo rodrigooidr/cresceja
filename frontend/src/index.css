@@ -2,8 +2,4 @@
 @tailwind components;
 @tailwind utilities;
 
-/* opcional: estilos base do app */
-@layer base {
-  html, body, #root { height: 100%; }
-  body { @apply bg-white text-gray-900; }
-}
+@import './styles/theme.css';

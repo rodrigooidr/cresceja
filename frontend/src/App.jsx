@@ -1,7 +1,7 @@
 // src/App.jsx
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import MainLayout from './components/MainLayout';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom';
+import AppShell from './ui/layout/AppShell';
 import InboxPage from './pages/inbox/InboxPage.jsx';
 import ChannelsPage from './pages/settings/ChannelsPage.jsx';
 import LoginPage from './pages/auth/LoginPage.jsx';
@@ -63,68 +63,70 @@ function Placeholder({ label }) {
 export default function App() {
   return (
     <Router>
-      <Routes>
-        {/* Público */}
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
-        <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
+      <AppShell>
+        <Routes>
+          {/* Público */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<PublicOnly><LoginPage /></PublicOnly>} />
+          <Route path="/register" element={<PublicOnly><RegisterPage /></PublicOnly>} />
 
-        {/* App autenticado */}
-        <Route
-          path="/app"
-          element={
-            <RequireAuth>
-              <MainLayout />
-            </RequireAuth>
-          }
-        >
-          {/* Index seguro (NÃO redireciona). Evita loop quando papel não bate */}
-          <Route index element={<Placeholder label="Bem-vindo(a) 👋" />} />
-
+          {/* App autenticado */}
           <Route
-            path="inbox"
+            path="/app"
             element={
-              <RequireRole minRole="Agent">
-                <InboxPage />
-              </RequireRole>
+              <RequireAuth>
+                <Outlet />
+              </RequireAuth>
             }
-          />
+          >
+            {/* Index seguro (NÃO redireciona). Evita loop quando papel não bate */}
+            <Route index element={<Placeholder label="Bem-vindo(a) 👋" />} />
 
-          <Route path="content/calendar" element={<RequireRole minRole="Agent"><ContentCalendar /></RequireRole>} />
-          <Route path="calendars"         element={<RequireRole minRole="Agent"><ActivitiesPage /></RequireRole>} />
-          <Route path="marketing"         element={<RequireRole minRole="Agent"><MarketingHome /></RequireRole>} />
-          <Route path="marketing/lists"   element={<RequireRole minRole="Agent"><ListsPage /></RequireRole>} />
-          <Route path="marketing/templates" element={<RequireRole minRole="Agent"><TemplatesPage /></RequireRole>} />
-          <Route path="marketing/campaigns" element={<RequireRole minRole="Manager"><CampaignsPage /></RequireRole>} />
-          <Route path="marketing/automations" element={<RequireRole minRole="Manager"><AutomationsPage /></RequireRole>} />
+            <Route
+              path="inbox"
+              element={
+                <RequireRole minRole="Agent">
+                  <InboxPage />
+                </RequireRole>
+              }
+            />
 
-          <Route path="settings/channels" element={<RequireRole minRole="Manager"><ChannelsPage /></RequireRole>} />
-          <Route path="settings/users"    element={<RequireRole minRole="Manager"><Placeholder label="Settings Users" /></RequireRole>} />
-          <Route path="settings/permissions" element={<RequireRole minRole="Manager"><Placeholder label="Settings Permissions" /></RequireRole>} />
-          <Route path="settings/plan"     element={<RequireRole minRole="OrgOwner"><Placeholder label="Settings Plan" /></RequireRole>} />
+            <Route path="content/calendar" element={<RequireRole minRole="Agent"><ContentCalendar /></RequireRole>} />
+            <Route path="calendars"         element={<RequireRole minRole="Agent"><ActivitiesPage /></RequireRole>} />
+            <Route path="marketing"         element={<RequireRole minRole="Agent"><MarketingHome /></RequireRole>} />
+            <Route path="marketing/lists"   element={<RequireRole minRole="Agent"><ListsPage /></RequireRole>} />
+            <Route path="marketing/templates" element={<RequireRole minRole="Agent"><TemplatesPage /></RequireRole>} />
+            <Route path="marketing/campaigns" element={<RequireRole minRole="Manager"><CampaignsPage /></RequireRole>} />
+            <Route path="marketing/automations" element={<RequireRole minRole="Manager"><AutomationsPage /></RequireRole>} />
 
-          {/* Página de acesso negado */}
-          <Route path="forbidden" element={<Placeholder label="Acesso negado" />} />
-        </Route>
+            <Route path="settings/channels" element={<RequireRole minRole="Manager"><ChannelsPage /></RequireRole>} />
+            <Route path="settings/users"    element={<RequireRole minRole="Manager"><Placeholder label="Settings Users" /></RequireRole>} />
+            <Route path="settings/permissions" element={<RequireRole minRole="Manager"><Placeholder label="Settings Permissions" /></RequireRole>} />
+            <Route path="settings/plan"     element={<RequireRole minRole="OrgOwner"><Placeholder label="Settings Plan" /></RequireRole>} />
 
-        {/* Admin */}
-        <Route
-          path="/admin"
-          element={
-            <RequireAuth>
-              <MainLayout />
-            </RequireAuth>
-          }
-        >
-          <Route index element={<Navigate to="orgs" replace />} />
-          <Route path="orgs"    element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Orgs" /></RequireRole>} />
-          <Route path="billing" element={<RequireRole minRole="SuperAdmin"><BillingPage /></RequireRole>} />
-          <Route path="support" element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Support" /></RequireRole>} />
-        </Route>
+            {/* Página de acesso negado */}
+            <Route path="forbidden" element={<Placeholder label="Acesso negado" />} />
+          </Route>
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          {/* Admin */}
+          <Route
+            path="/admin"
+            element={
+              <RequireAuth>
+                <Outlet />
+              </RequireAuth>
+            }
+          >
+            <Route index element={<Navigate to="orgs" replace />} />
+            <Route path="orgs"    element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Orgs" /></RequireRole>} />
+            <Route path="billing" element={<RequireRole minRole="SuperAdmin"><BillingPage /></RequireRole>} />
+            <Route path="support" element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Support" /></RequireRole>} />
+          </Route>
+
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AppShell>
     </Router>
   );
 }
