@@ -12,7 +12,7 @@ beforeAll(() => {
 });
 
 jest.mock('../sockets/socket', () => ({
-  makeSocket: () => ({ on: jest.fn(), close: jest.fn(), disconnect: jest.fn() }),
+  getSocket: () => ({ on: jest.fn(), close: jest.fn(), disconnect: jest.fn() }),
 }));
 
 jest.mock('../api/inboxApi', () => ({

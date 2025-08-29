@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom';
 
 jest.mock('../sockets/socket', () => ({
-  makeSocket: () => ({ on: jest.fn(), close: jest.fn(), disconnect: jest.fn() }),
+  getSocket: () => ({ on: jest.fn(), close: jest.fn(), disconnect: jest.fn() }),
 }));
 
 jest.mock('../api/inboxApi', () => ({

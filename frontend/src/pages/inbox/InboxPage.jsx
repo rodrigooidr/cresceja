@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import inboxApi, { apiUrl } from '../../api/inboxApi';
-import { makeSocket } from '../../sockets/socket';
+import { getSocket } from '../../sockets/socket';
 import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
@@ -112,14 +112,14 @@ function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected,
           </div>
           <div className="text-xs text-gray-500 truncate">{c?.status || '—'}</div>
         </div>
-        {c.unread_count ? (
+        {c?.unread_count > 0 && (
           <span
-            className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full h-fit"
+            className="ml-2 shrink-0 rounded-full bg-blue-600 text-white text-xs px-2 py-0.5"
             data-testid="unread-badge"
           >
             {c.unread_count}
           </span>
-        ) : null}
+        )}
       </button>
     </div>
   );
@@ -182,6 +182,9 @@ export default function InboxPage() {
   const hoverTimerRef = useRef(null);
   const selPreloadTimerRef = useRef(null);
   const [density, setDensity] = useState(() => localStorage.getItem('cj:inbox:density') || 'cozy');
+  const [connected, setConnected] = useState(true);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const toggleDensity = () => {
     const next = density === 'compact' ? 'cozy' : 'compact';
@@ -218,6 +221,26 @@ export default function InboxPage() {
   const logPreload = useCallback((id) => {
     setPreloadLog((s) => s + String(id));
   }, []);
+
+  async function markRead(conv, lastSeenMessageId) {
+    if (!conv?.id) return;
+    try {
+      // Se existir endpoint no backend, usa; se não existir, ignora o erro.
+      await inboxApi.post(`/conversations/${conv.id}/read`, {
+        last_seen_message_id: lastSeenMessageId || null,
+      });
+    } catch (e) {
+      // best-effort: seguimos com o estado local
+    }
+    // Zera badge local
+    setItems(prev =>
+      (prev || []).map(c =>
+        String(c.id) === String(conv.id)
+          ? { ...c, unread_count: 0, last_seen_message_id: lastSeenMessageId || c.last_seen_message_id }
+          : c
+      )
+    );
+  }
 
   const preloadConv = useCallback(
     async (id) => {
@@ -913,156 +936,73 @@ export default function InboxPage() {
 
   // Socket ---------------------------------------------------------------
   useEffect(() => {
-    const s = makeSocket();
+    const s = getSocket();
 
-    s.on('conversation:new', (payload) => {
-      const conv = payload?.conversation || payload;
-      if (!conv?.id) return;
-      convItemHeightsRef.current = [64, ...convItemHeightsRef.current];
-      setItems((prev) => {
-        const arr = prev || [];
-        if (arr.find((c) => c.id === conv.id)) return arr;
-        return [conv, ...arr];
-      });
-      const root = listRef.current;
-      if (root && root.scrollTop > 0) {
-        root.scrollTop += convItemHeightsRef.current[0] || 64;
-      }
-      setTimeout(() => handleConvScroll(), 0);
-    });
+    const onConnect = () => mountedRef.current && setConnected(true);
+    const onDisconnect = () => mountedRef.current && setConnected(false);
 
-    s.on('message:new', (payload) => {
-      const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id;
+    const onNew = (payload) => {
+      const convId =
+        payload?.conversationId ||
+        payload?.conversation_id ||
+        payload?.conversation?.id;
+
       const raw = payload?.message ?? payload?.data ?? payload;
-      const normalized = normalizeMessage(raw);
-      if (!normalized) return;
+      const msg = normalizeMessage(raw);
+      if (!msg) return;
+
+      // Se a conversa aberta é a mesma, injeta no timeline e marca como lida
       if (sel?.id && String(sel.id) === String(convId)) {
-        if (normalized.temp_id) {
-          setMsgs((prev) => {
-            const idx = (prev || []).findIndex((m) => m.id === normalized.temp_id);
-            if (idx >= 0) {
-              const arr = prev.slice();
-              arr[idx] = { ...normalized, sending: false };
-              return arr;
-            }
-            return uniqBy([...(prev || []), normalized], (m) => m.id);
-          });
-        } else {
-          setMsgs((prev) => uniqBy([...(prev || []), normalized], (m) => m.id));
-        }
-        const box = msgBoxRef.current;
-        const atBottom = box ? Math.abs(box.scrollHeight - box.scrollTop - box.clientHeight) < 5 : false;
-        stickToBottomRef.current = atBottom;
-        if (normalized.is_outbound || atBottom) {
-          setSel((p) =>
-            p ? { ...p, unread_count: 0, last_read_message_id: normalized.id, last_read_at: normalized.created_at } : p
-          );
-          setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
-        } else {
-          setSel((p) => (p ? { ...p, unread_count: (p.unread_count || 0) + 1 } : p));
-          setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)));
-        }
+        setMsgs(prev => [msg, ...(prev || [])]);
+        markRead(sel, msg.id);
       } else {
-        setItems((prev) => (prev || []).map((c) => (c.id === convId ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)));
+        // Incrementa badge na conversa correspondente
+        setItems(prev =>
+          (prev || []).map(c =>
+            String(c.id) === String(convId)
+              ? { ...c, unread_count: (c.unread_count || 0) + 1 }
+              : c
+          )
+        );
       }
-      const cache = readConvCache(convId);
-      if (cache) {
-        const merged = mergeMessages(cache.items, [normalized]);
-        writeConvCache(convId, { items: merged, updatedAt: Date.now(), etag: cache.etag });
-      }
-    });
+    };
 
-    s.on('message:updated', (payload) => {
-      const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id;
+    const onUpdate = (payload) => {
+      const convId =
+        payload?.conversationId ||
+        payload?.conversation_id ||
+        payload?.conversation?.id;
+
       const raw = payload?.message ?? payload?.data ?? payload;
-      const normalized = normalizeMessage(raw);
-      if (!normalized) return;
+      const msg = normalizeMessage(raw);
+      if (!msg) return;
+
       if (sel?.id && String(sel.id) === String(convId)) {
-        setMsgs((prev) => (prev || []).map((m) => (m.id === normalized.id ? normalized : m)));
+        setMsgs(prev => prev.map(m => (m.id === msg.id ? msg : m)));
       }
-      const cache = readConvCache(convId);
-      if (cache) {
-        const merged = mergeMessages(cache.items, [normalized]);
-        writeConvCache(convId, { items: merged, updatedAt: Date.now(), etag: cache.etag });
-      }
-    });
+    };
 
-    s.on('message:status', (payload) => {
-      const id = payload?.id || payload?.message_id;
-      if (!id) return;
-      const updates = {};
-      if (payload.sent_at) updates.sent_at = payload.sent_at;
-      if (payload.delivered_at) updates.delivered_at = payload.delivered_at;
-      if (payload.read_at) updates.read_at = payload.read_at;
-      if (!Object.keys(updates).length) return;
-      setMsgs((prev) => (prev || []).map((m) => (String(m.id) === String(id) ? { ...m, ...updates } : m)));
-    });
-
-    s.on('conversation:sync', (payload) => {
-      const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id;
-      if (!sel?.id || String(sel.id) !== String(convId)) return;
-      const arr = Array.isArray(payload?.messages) ? payload.messages : Array.isArray(payload?.data?.messages) ? payload.data.messages : [];
-      const safe = arr.map((m) => normalizeMessage(m)).filter(Boolean);
-      if (!safe.length) return;
-      setMsgs((prev) => {
-        const map = new Map((prev || []).map((m) => [m.id, m]));
-        safe.forEach((m) => {
-          const ex = map.get(m.id);
-          map.set(m.id, ex ? { ...ex, ...m } : m);
-        });
-        return Array.from(map.values());
-      });
-    });
-
-    s.on('typing:start', (payload) => {
-      const convId = payload?.conversationId || payload?.conversation_id;
-      if (!sel?.id || String(sel.id) !== String(convId)) return;
-      if (payload.actor === 'agent') return;
-      setTyping(true);
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => setTyping(false), 5000);
-    });
-
-    s.on('typing:stop', (payload) => {
-      const convId = payload?.conversationId || payload?.conversation_id;
-      if (!sel?.id || String(sel.id) !== String(convId)) return;
-      if (payload.actor === 'agent') return;
-      clearTimeout(typingTimeoutRef.current);
-      setTyping(false);
-    });
-
-    s.on('conversation:updated', (payload) => {
+    const onConvUpdated = (payload) => {
       const conv = payload?.conversation;
       if (!conv?.id) return;
-      setItems((prev) => {
-        const idx = prev.findIndex((c) => c.id === conv.id);
-        if (idx === -1) return prev;
-        const updated = { ...prev[idx], ...conv };
-        if (updated.archived || updated.closed || updated.spam) {
-          return prev.filter((c) => c.id !== conv.id);
-        }
-        return prev.map((c) => (c.id === conv.id ? updated : c));
-      });
-      if (sel?.id === conv.id) setSel((prev) => ({ ...prev, ...conv }));
-    });
+      setItems(prev => (prev || []).map(c => (c.id === conv.id ? { ...c, ...conv } : c)));
+      if (sel?.id && sel.id === conv.id) setSel(prev => ({ ...prev, ...conv }));
+    };
 
-    s.on('disconnect', () => {
-      showError('Conexão perdida');
-    });
-
-    s.on('connect', async () => {
-      setShowReconnected(true);
-      setTimeout(() => setShowReconnected(false), 2000);
-      setReloadTick((v) => v + 1);
-      try { await resyncMessages(); } catch {}
-    });
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+    s.on('message:new', onNew);
+    s.on('message:updated', onUpdate);
+    s.on('conversation:updated', onConvUpdated);
 
     return () => {
-      try { s.close?.(); } catch {}
-      try { s.disconnect?.(); } catch {}
-      clearTimeout(typingTimeoutRef.current);
+      s.off('connect', onConnect);
+      s.off('disconnect', onDisconnect);
+      s.off('message:new', onNew);
+      s.off('message:updated', onUpdate);
+      s.off('conversation:updated', onConvUpdated);
     };
-  }, [sel, showError, resyncMessages, handleConvScroll]);
+  }, [sel?.id]);
 
   // Abrir conversa -------------------------------------------------------
   const open = useCallback(async (c) => {
@@ -1070,6 +1010,7 @@ export default function InboxPage() {
     setSel(c);
     setCacheHit(false);
     setCacheRefreshing(false);
+    markRead(c);
     const cached = readConvCache(c.id);
     if (cached) {
       setCacheHit(true);
@@ -1102,6 +1043,8 @@ export default function InboxPage() {
         const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
         const merged = mergeMessages(cached.items, safe);
         setMsgs(merged);
+        const newestId = safe[0]?.id || safe[safe.length - 1]?.id;
+        markRead(c, newestId);
         const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
         const hasMore = r?.data?.has_more ?? !!cursor;
         setMsgBefore(cursor || (merged[0] && merged[0].id));
@@ -1139,6 +1082,8 @@ export default function InboxPage() {
           : [];
         const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
         setMsgs(safe);
+        const newestId = safe[0]?.id || safe[safe.length - 1]?.id;
+        markRead(c, newestId);
         const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
         const hasMore = r?.data?.has_more ?? !!cursor;
         setMsgBefore(cursor || (safe[0] && safe[0].id));
@@ -1579,6 +1524,25 @@ export default function InboxPage() {
   }, [lightbox]);
 
   // Tags / Status / IA ---------------------------------------------------
+  const toggleClientTag = async (tagId) => {
+    if (!sel?.contact?.id) return;
+    const current = Array.isArray(sel.contact.tags) ? sel.contact.tags : [];
+    const next = current.includes(tagId) ? current.filter(t => t !== tagId) : [...current, tagId];
+
+    // otimista
+    setSel(prev => ({ ...prev, contact: { ...(prev?.contact || {}), tags: next } }));
+
+    try {
+      const { data } = await inboxApi.put(`/clients/${sel.contact.id}/tags`, { tags: next });
+      const client = data?.client || data;
+      setSel(prev => ({ ...prev, contact: client || prev?.contact }));
+    } catch (e) {
+      // rollback
+      setSel(prev => ({ ...prev, contact: { ...(prev?.contact || {}), tags: current } }));
+      console.error('Falha ao atualizar tags do cliente', e);
+    }
+  };
+
   const toggleTag = async (tagId) => {
     if (!sel) return;
     const cur = (sel.tags || []).map(asId);
@@ -2063,6 +2027,30 @@ export default function InboxPage() {
               <span data-testid="chat-search-count" className="text-xs">
                 {chatMatches.length ? `${chatMatchIdx + 1}/${chatMatches.length}` : '0/0'}
               </span>
+            </div>
+          )}
+
+          {sel && (
+            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b px-4 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-gray-500 mr-1">Tags do cliente:</span>
+                {tags.map((t) => {
+                  const active = !!sel?.contact?.tags?.includes(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => toggleClientTag(t.id)}
+                      className={`px-2 py-0.5 rounded text-xs border ${
+                        active ? 'bg-blue-100 border-blue-300 text-blue-800'
+                               : 'bg-gray-100 border-gray-300 text-gray-700'
+                      }`}
+                      title={active ? 'Remover tag' : 'Adicionar tag'}
+                    >
+                      {t.name}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 

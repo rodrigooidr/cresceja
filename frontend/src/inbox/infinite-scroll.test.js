@@ -18,7 +18,7 @@ beforeEach(() => {
 });
 
 jest.mock('../sockets/socket', () => ({
-  makeSocket: () => ({
+  getSocket: () => ({
     on: jest.fn(),
     close: jest.fn(),
     disconnect: jest.fn(),
