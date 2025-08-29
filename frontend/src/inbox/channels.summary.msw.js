@@ -2,10 +2,17 @@ import { rest } from 'msw';
 
 const defaultSummary = {
   whatsapp_official: { max_numbers: 2, items: [] },
-  whatsapp_baileys: { allowed: true, max_slots: 1, items: [] },
-  instagram: { enabled: true, connected: false },
-  facebook: { enabled: true, connected: false },
+  whatsapp_baileys:  { enabled: true, items: [] },
+  instagram:         { connected: false },
+  facebook:          { connected: false }
 };
+
+export const handlers = [
+  // Observação: usar '*/' torna o path robusto a baseURL/proxy
+  rest.get('*/channels/summary', (req, res, ctx) => {
+    return res(ctx.json(defaultSummary));
+  }),
+];
 
 let summary = JSON.parse(JSON.stringify(defaultSummary));
 
@@ -24,13 +31,6 @@ export function addOfficialNumber(item) {
 export function addBaileysSession(item) {
   summary.whatsapp_baileys.items.push(item);
 }
-
-export const handlers = [
-  // Summary dashboard
-  rest.get('/channels/summary', (req, res, ctx) => {
-    return res(ctx.json(summary));
-  }),
-
   // WhatsApp Official
   rest.post('/channels/whatsapp/official/numbers', async (req, res, ctx) => {
     const { label, phone_e164 } = await req.json();
