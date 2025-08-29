@@ -16,6 +16,7 @@
     "@testing-library/react": "^14.3.1",
     "autoprefixer": "^10.4.21",
     "cross-env": "^10.0.0",
+    "identity-obj-proxy": "^3.0.0",
     "msw": "^2.10.5",
     "postcss": "^8.5.6",
     "react-scripts": "^5.0.1",
@@ -27,6 +28,19 @@
     "test": "react-scripts test --watchAll=false",
     "test:watch": "react-scripts test",
     "guardrail:inbox": "node scripts/guardrail-inbox.js"
+  },
+  "jest": {
+    "testEnvironment": "jsdom",
+    "setupFilesAfterEnv": [
+      "<rootDir>/src/setupTests.js"
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(msw|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
+    ],
+    "moduleNameMapper": {
+      "^.+\\.(css|scss|sass|less)$": "identity-obj-proxy",
+      "^@bundled-es-modules/tough-cookie.*$": "<rootDir>/src/test-shims/empty.js"
+    }
   },
   "browserslist": {
     "production": [

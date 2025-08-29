@@ -14,7 +14,7 @@ beforeEach(() => {
 jest.mock('../sockets/socket', () => {
   const handlers = {};
   return {
-    makeSocket: () => ({
+    getSocket: () => ({
       on: (evt, cb) => {
         handlers[evt] = cb;
       },
