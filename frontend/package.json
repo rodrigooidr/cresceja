@@ -30,9 +30,7 @@
     "guardrail:inbox": "node scripts/guardrail-inbox.js"
   },
   "jest": {
-    "testEnvironment": "jsdom",
-    "setupFilesAfterEnv": [
-      "<rootDir>/src/setupTests.js"
+    "testEnvironment": "jsdom"
     ],
     "transformIgnorePatterns": [
       "node_modules/(?!(msw|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
