@@ -1,3 +1,4 @@
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { useApi } from '../../contexts/useApi';
@@ -11,14 +12,14 @@ function ContentCalendar() {
   useEffect(() => {
     (async () => {
       try {
-        const resCal = await api.get('/calendar');
+        const resCal = await inboxApi.get('/calendar');
         const cal = resCal.data?.data?.[0];
         if (cal) {
           setCalendarId(cal.id);
-          const res = await api.get(`/calendar/${cal.id}/events`);
+          const res = await inboxApi.get(`/calendar/${cal.id}/events`);
           let evts = res.data.data || [];
           try {
-            const campRes = await api.get('/marketing/campaigns');
+            const campRes = await inboxApi.get('/marketing/campaigns');
             const camps = (campRes.data.data || []).map((c) => ({
               id: c.id,
               title: c.name,
@@ -48,7 +49,7 @@ function ContentCalendar() {
     const base = new Date();
     const newDate = new Date(base.getTime() + result.destination.index * 3600000);
     try {
-      await api.patch(`/calendar/${calendarId}/events/${moved.id}`, {
+      await  inboxApi.patch(`/calendar/${calendarId}/events/${moved.id}`, {
         scheduledAt: newDate.toISOString(),
       });
     } catch (err) {
@@ -113,3 +114,5 @@ function ContentCalendar() {
 }
 
 export default ContentCalendar;
+
+

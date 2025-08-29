@@ -1,3 +1,4 @@
+import inboxApi from "../../api/inboxApi";
 import { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -15,7 +16,7 @@ export default function ActivitiesPage() {
 
   async function loadCalendars() {
     try {
-      const res = await api.get('/activities/calendars');
+      const res = await inboxApi.get('/activities/calendars');
       setCalendars(res.data?.data || []);
     } catch (err) {
       console.error('Erro ao carregar calendários', err);
@@ -25,7 +26,7 @@ export default function ActivitiesPage() {
   async function createCalendar(e) {
     e.preventDefault();
     try {
-      const res = await api.post('/activities/calendars', { name: newCal });
+      const res = await inboxApi.post('/activities/calendars', { name: newCal });
       setCalendars([res.data, ...calendars]);
       setNewCal('');
     } catch (err) {
@@ -35,7 +36,7 @@ export default function ActivitiesPage() {
 
   async function removeCalendar(id) {
     try {
-      await api.delete(`/activities/calendars/${id}`);
+      await inboxApi.delete(`/activities/calendars/${id}`);
       setCalendars(calendars.filter((c) => c.id !== id));
       if (selected === id) {
         setSelected(null);
@@ -49,7 +50,7 @@ export default function ActivitiesPage() {
   async function selectCalendar(id) {
     setSelected(id);
     try {
-      const res = await api.get(`/activities/calendars/${id}/events`);
+      const res = await inboxApi.get(`/activities/calendars/${id}/events`);
       setEvents(res.data?.data || []);
     } catch (err) {
       console.error('Erro ao carregar eventos', err);
@@ -60,7 +61,7 @@ export default function ActivitiesPage() {
     e.preventDefault();
     if (!selected) return;
     try {
-      const res = await api.post(`/activities/calendars/${selected}/events`, {
+      const res = await inboxApi.post(`/activities/calendars/${selected}/events`, {
         title: eventForm.title,
         clientName: eventForm.client,
         startAt: eventForm.start,
@@ -167,3 +168,5 @@ export default function ActivitiesPage() {
     </div>
   );
 }
+
+

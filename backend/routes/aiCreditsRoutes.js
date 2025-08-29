@@ -1,8 +1,8 @@
 import express from 'express';
-import { authenticate } from '../middleware/authenticate.js';
+import { authRequired } from '../middleware/auth.js';
 import * as controller from '../controllers/aiCreditsController.js';
 
 const router = express.Router();
-router.use(authenticate);
+router.use(authRequired);
 router.get('/status', controller.getStatus);
 export default router;

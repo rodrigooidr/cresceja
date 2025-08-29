@@ -1,23 +1,24 @@
+import inboxApi from "../../api/inboxApi";
 
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/axios';
+ 
 
 export default function TemplatesPage(){
   const [items, setItems] = useState([]);
   const [form, setForm] = useState({ name:'boas_vindas', category:'MARKETING', language:'pt_BR', body:'Olá {{nome}}, podemos te ajudar?' });
 
   const load = async () => {
-    const r = await api.get('/whatsapp/templates');
+    const r = await inboxApi.get('/whatsapp/templates');
     setItems(r.data);
   };
   useEffect(()=>{ load(); },[]);
 
   const create = async () => {
-    await api.post('/whatsapp/templates', form);
+    await inboxApi.post('/whatsapp/templates', form);
     await load();
   };
   const setStatus = async (id, status) => {
-    await api.patch(`/whatsapp/templates/${id}/status`, { status });
+    await  inboxApi.patch(`/whatsapp/templates/${id}/status`, { status });
     await load();
   };
 
@@ -46,3 +47,5 @@ export default function TemplatesPage(){
     </div>
   );
 }
+
+

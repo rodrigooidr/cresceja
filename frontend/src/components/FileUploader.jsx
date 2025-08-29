@@ -1,6 +1,6 @@
-
+import inboxApi from "../../api/inboxApi";
 import React, { useState } from 'react';
-import { api } from '../api/axios';
+
 export default function FileUploader({ onUploaded }){
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -11,7 +11,7 @@ export default function FileUploader({ onUploaded }){
     setLoading(true);
     const fd = new FormData();
     fd.append('file', file);
-    const r = await api.post('/attachments/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    const r = await inboxApi.post('/attachments/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
     setResult(r.data);
     onUploaded && onUploaded(r.data);
     setLoading(false);
@@ -31,3 +31,5 @@ export default function FileUploader({ onUploaded }){
     </div>
   );
 }
+
+

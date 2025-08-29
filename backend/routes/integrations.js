@@ -1,14 +1,13 @@
 import express from 'express';
 const router = express.Router();
 import { Pool } from 'pg';
-import { authenticate } from '../middleware/authenticate.js';
-import { requireRole } from '../middleware/rbac.js';
+import { authRequired, requireRole } from '../middleware/auth.js';
 import fs from 'fs/promises';
 import path from 'path';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-router.use(authenticate, requireRole('owner', 'client_admin'));
+router.use(authRequired, requireRole('owner', 'client_admin'));
 
 router.post('/:type/connect', async (req, res) => {
   const user = req.user;

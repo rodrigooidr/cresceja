@@ -1,14 +1,15 @@
+import inboxApi from "../../api/inboxApi";
 
 import React, { useState } from 'react';
-import { api } from '../api/axios';
+ 
 import PostPreview from '../components/PostPreview';
 export default function RepurposePage(){
   const [postId, setPostId] = useState('');
   const [status, setStatus] = useState(null);
   const [channel, setChannel] = useState('instagram');
   const enqueue = async () => {
-    await api.post(`/repurpose/${postId}`, { modes: ['story','email','video'] });
-    const r = await api.get(`/repurpose/${postId}/status`);
+    await inboxApi.post(`/repurpose/${postId}`, { modes: ['story','email','video'] });
+    const r = await inboxApi.get(`/repurpose/${postId}/status`);
     setStatus(r.data);
   };
   return (
@@ -33,3 +34,5 @@ export default function RepurposePage(){
     </div>
   );
 }
+
+

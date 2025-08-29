@@ -480,3 +480,173 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   payload JSONB
 );
+
+DO $$
+DECLARE
+  v_user_email text := 'rodrigooidr@hotmail.com';  -- ajuste se precisar
+  v_user_id uuid;
+  v_org_id  uuid;
+
+  has_created boolean;
+  has_updated boolean;
+
+  sql_ins text;
+BEGIN
+  -- 1) usuário
+  SELECT id INTO v_user_id
+  FROM public.users
+  WHERE email = v_user_email
+  LIMIT 1;
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Usuário % não encontrado', v_user_email;
+  END IF;
+
+  -- 2) org CresceJá (cria se não existir)
+  SELECT id INTO v_org_id
+  FROM public.orgs
+  WHERE name = 'CresceJá'
+  LIMIT 1;
+
+  IF v_org_id IS NULL THEN
+    -- Se sua tabela orgs não tiver created_at/updated_at, remova-os abaixo
+    INSERT INTO public.orgs (id, name, created_at, updated_at)
+    VALUES (uuid_generate_v4(), 'CresceJá', now(), now())
+    RETURNING id INTO v_org_id;
+  END IF;
+
+  -- 3) vincular na org_users (sem coluna perms)
+  IF NOT EXISTS (SELECT 1 FROM public.org_users WHERE org_id = v_org_id AND user_id = v_user_id) THEN
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='org_users' AND column_name='created_at'
+    ) INTO has_created;
+
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='org_users' AND column_name='updated_at'
+    ) INTO has_updated;
+
+    sql_ins := 'INSERT INTO public.org_users (org_id, user_id, role';
+    IF has_created THEN sql_ins := sql_ins || ', created_at'; END IF;
+    IF has_updated THEN sql_ins := sql_ins || ', updated_at'; END IF;
+    sql_ins := sql_ins || ') VALUES ($1, $2, ''OrgOwner''';
+    IF has_created THEN sql_ins := sql_ins || ', now()'; END IF;
+    IF has_updated THEN sql_ins := sql_ins || ', now()'; END IF;
+    sql_ins := sql_ins || ')';
+
+    EXECUTE sql_ins USING v_org_id, v_user_id;
+  END IF;
+
+  RAISE NOTICE 'OK: usuário % vinculado à org %', v_user_id, v_org_id;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_conversations_org_contact ON conversations(org_id, contact_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_channel_id   ON conversations(channel_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_phone             ON contacts(phone_e164);
+
+ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS ai_enabled boolean NOT NULL DEFAULT true;
+  
+  ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS ai_enabled boolean NOT NULL DEFAULT true;
+  
+  CREATE INDEX IF NOT EXISTS idx_conversations_org_last ON public.conversations(org_id, last_message_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversations_org_contact ON public.conversations(org_id, contact_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON public.messages(conversation_id, created_at DESC);
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+DO $$
+DECLARE
+  v_org_id  uuid := '00000000-0000-0000-0000-000000000001'; -- troque se quiser
+  v_phone   text := '+5511999990001';
+  v_ch_id   uuid;
+  v_ct_id   uuid;
+  v_conv_id uuid;
+  v_wa_type text;
+BEGIN
+  -- pega um tipo de WhatsApp aceito pelo seu CHECK
+  SELECT CASE
+           WHEN EXISTS (
+             SELECT 1 FROM pg_constraint
+              WHERE conrelid='public.channels'::regclass
+                AND conname='channels_type_check'
+                AND pg_get_constraintdef(oid) ILIKE '%''whatsapp_cloud''%'
+           ) THEN 'whatsapp_cloud'
+           WHEN EXISTS (
+             SELECT 1 FROM pg_constraint
+              WHERE conrelid='public.channels'::regclass
+                AND conname='channels_type_check'
+                AND pg_get_constraintdef(oid) ILIKE '%''whatsapp_baileys''%'
+           ) THEN 'whatsapp_baileys'
+           ELSE 'whatsapp_cloud'
+         END INTO v_wa_type;
+
+  -- canal
+  SELECT id INTO v_ch_id
+  FROM public.channels
+  WHERE org_id = v_org_id AND type = v_wa_type AND name = 'WhatsApp Principal'
+  LIMIT 1;
+
+  IF v_ch_id IS NULL THEN
+    INSERT INTO public.channels (id, org_id, type, name, config, secrets, created_at)
+    VALUES (uuid_generate_v4(), v_org_id, v_wa_type, 'WhatsApp Principal', '{}'::jsonb, '{}'::jsonb, now())
+    RETURNING id INTO v_ch_id;
+  END IF;
+
+  -- contato
+  SELECT id INTO v_ct_id
+  FROM public.contacts
+  WHERE org_id = v_org_id AND phone_e164 = v_phone
+  LIMIT 1;
+
+  IF v_ct_id IS NULL THEN
+    INSERT INTO public.contacts (id, org_id, name, phone_e164, created_at, updated_at, tags)
+    VALUES (uuid_generate_v4(), v_org_id, 'Cliente Teste', v_phone, now(), now(), ARRAY['vip'])
+    RETURNING id INTO v_ct_id;
+  END IF;
+
+  -- conversa
+  SELECT id INTO v_conv_id
+  FROM public.conversations
+  WHERE org_id = v_org_id AND contact_id = v_ct_id AND channel_id = v_ch_id
+  LIMIT 1;
+
+  IF v_conv_id IS NULL THEN
+    INSERT INTO public.conversations (id, org_id, contact_id, channel_id, status, unread_count, last_message_at, created_at, updated_at)
+    VALUES (uuid_generate_v4(), v_org_id, v_ct_id, v_ch_id, 'pending', 0, now(), now(), now())
+    RETURNING id INTO v_conv_id;
+  END IF;
+
+  -- insere mensagens somente se ainda não houver
+  IF NOT EXISTS (SELECT 1 FROM public.messages WHERE org_id=v_org_id AND conversation_id=v_conv_id) THEN
+    -- detecta colunas opcionais
+    PERFORM 1
+    FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='messages' AND column_name='sender';
+
+    IF FOUND THEN
+      -- sua base exige sender e (provavelmente) direction; use os valores aceitos pelo CHECK
+      INSERT INTO public.messages
+        (id, org_id, conversation_id, sender, direction, "from", provider, type, text, status, created_at, updated_at)
+      VALUES
+        -- cliente → inbound
+        (uuid_generate_v4(), v_org_id, v_conv_id, 'contact', 'inbound',  'customer', 'wa', 'text', 'Olá! Quero saber sobre o serviço.', 'sent', now(), now()),
+        -- agente → outbound
+        (uuid_generate_v4(), v_org_id, v_conv_id, 'agent',   'outbound', 'agent',    'wa', 'text', 'Oi! Posso ajudar, qual a sua dúvida?', 'sent', now(), now());
+    ELSE
+      -- versão simples (sem sender/direction)
+      INSERT INTO public.messages
+        (id, org_id, conversation_id, "from", provider, type, text, status, created_at, updated_at)
+      VALUES
+        (uuid_generate_v4(), v_org_id, v_conv_id, 'customer', 'wa', 'text', 'Olá! Quero saber sobre o serviço.', 'sent', now(), now()),
+        (uuid_generate_v4(), v_org_id, v_conv_id, 'agent',    'wa', 'text', 'Oi! Posso ajudar, qual a sua dúvida?', 'sent', now(), now());
+    END IF;
+  END IF;
+
+  UPDATE public.conversations
+     SET last_message_at = now(), updated_at = now()
+   WHERE id = v_conv_id;
+END
+$$;

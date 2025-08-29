@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import axios from 'axios';
+import inboxApi, { setAuthToken } from '../api/inboxApi';
 
 const AuthContext = createContext(null);
 
@@ -9,23 +9,18 @@ function safeParse(s, fallback = null) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => safeParse(localStorage.getItem('user')));
+  const [user, setUser]   = useState(() => safeParse(localStorage.getItem('user')));
   const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [loading, setLoading] = useState(false);
 
-  // Propaga/limpa Authorization no axios
+  // Reaplica token no inboxApi da Inbox ao montar / ao mudar token
   useEffect(() => {
-    if (token) {
-      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
-    } else {
-      delete axios.defaults.headers.common.Authorization;
-    }
+    setAuthToken(token || undefined);
   }, [token]);
 
-  // ✅ Se não há token mas existe "user" antigo no storage, limpa para evitar "login fantasma"
+  // Se não há token, zera o user “fantasma”
   useEffect(() => {
     if (!token && user) {
-      console.warn('Empty token! Limpando usuário em memória.');
       localStorage.removeItem('user');
       setUser(null);
     }
@@ -34,15 +29,22 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setLoading(true);
     try {
-      const { data } = await axios.post('/api/auth/login', { email, password });
-      const tk = data?.token || null;
+      // ATENÇÃO: baseURL já tem /api → então aqui é só '/auth/login'
+      const { data } = await inboxApi.post('/auth/login', { email, password });
+
+      const tk  = data?.token;
       const usr = data?.user ?? null;
+      if (!tk) throw new Error('Falha no login: token ausente.');
 
-      if (tk) localStorage.setItem('token', tk); else localStorage.removeItem('token');
-      if (usr !== null) localStorage.setItem('user', JSON.stringify(usr)); else localStorage.removeItem('user');
-
+      // injeta Authorization no cliente inboxApi e persiste
+      setAuthToken(tk);
+      localStorage.setItem('token', tk);
       setToken(tk);
-      setUser(usr);
+
+      if (usr) {
+        localStorage.setItem('user', JSON.stringify(usr));
+        setUser(usr);
+      }
       return true;
     } finally {
       setLoading(false);
@@ -50,13 +52,19 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    setAuthToken(null); // remove Authorization do cliente
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
   };
 
-  const value = useMemo(() => ({ user, token, loading, login, logout }), [user, token, loading]);
+  const isAuthenticated = !!token;
+
+  const value = useMemo(
+    () => ({ user, token, isAuthenticated, loading, login, logout }),
+    [user, token, isAuthenticated, loading]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

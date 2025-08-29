@@ -1,6 +1,7 @@
+import inboxApi from "../../api/inboxApi";
 
 import React, { useState } from 'react';
-import { api } from '../api/axios';
+ 
 export default function LeadImportPage(){
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
@@ -8,7 +9,7 @@ export default function LeadImportPage(){
     e.preventDefault();
     const fd = new FormData();
     fd.append('file', file);
-    const r = await api.post('/leads/import-csv', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+    const r = await inboxApi.post('/leads/import-csv', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
     setResult(r.data);
   };
   return (
@@ -23,3 +24,5 @@ export default function LeadImportPage(){
     </main>
   );
 }
+
+

@@ -1,3 +1,4 @@
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../contexts/useApi';
 
@@ -18,7 +19,7 @@ function CrmOportunidades() {
   const fetchOportunidades = async () => {
     try {
       const qs = filtro ? `?status=${encodeURIComponent(filtro)}` : '';
-      const res = await api.get(`/crm/oportunidades${qs}`);
+      const res = await inboxApi.get(`/crm/oportunidades${qs}`);
       setOportunidades(res.data);
     } catch (err) {
       console.error('Erro ao buscar oportunidades', err);
@@ -30,7 +31,7 @@ function CrmOportunidades() {
       setSalvando(id);
       // atualização otimista
       setOportunidades(prev => prev.map(o => o.id === id ? { ...o, status } : o));
-      await api.put(`/crm/oportunidades/${id}`, { status });
+      await inboxApi.put(`/crm/oportunidades/${id}`, { status });
     } catch (err) {
       console.error('Erro ao atualizar status', err);
       // fallback: recarrega lista
@@ -106,3 +107,4 @@ function CrmOportunidades() {
 }
 
 export default CrmOportunidades;
+

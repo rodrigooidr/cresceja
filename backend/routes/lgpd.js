@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { query, getClient } from '../config/db-client.js';
+import { query, getClient } from '../config/db.js';
 const router = express.Router();
 
 // Registrar/atualizar consentimento de um lead

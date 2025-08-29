@@ -1,3 +1,4 @@
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useMemo, useState } from 'react';
 import { useApi } from '../contexts/useApi';
 
@@ -65,7 +66,7 @@ function CrmKanban() {
   const carregar = async () => {
     try {
       setCarregando(true);
-      const res = await api.get('/crm/oportunidades');
+      const res = await inboxApi.get('/crm/oportunidades');
       setItens(res.data);
       setErro('');
     } catch (e) {
@@ -107,7 +108,7 @@ function CrmKanban() {
     setItens(prev => prev.map(i => i.id === id ? { ...i, status: colunaDestino } : i));
 
     try {
-      await api.put(`/crm/oportunidades/${id}`, { status: colunaDestino });
+      await inboxApi.put(`/crm/oportunidades/${id}`, { status: colunaDestino });
     } catch (err) {
       console.error('Erro ao atualizar status', err);
       // desfaz se falhar
@@ -134,7 +135,7 @@ function CrmKanban() {
       return;
     }
     try {
-      await api.post('/agenda', {
+      await inboxApi.post('/agenda', {
         title: form.title,
         date: form.date,
         channel: form.channel,
@@ -223,3 +224,4 @@ function CrmKanban() {
 }
 
 export default CrmKanban;
+

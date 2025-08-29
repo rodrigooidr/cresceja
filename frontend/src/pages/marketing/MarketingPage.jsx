@@ -13,7 +13,7 @@ function MarketingPage() {
 
   const carregarPosts = async () => {
     try {
-      const res = await api.get('/posts');
+      const res = await inboxApi.get('/posts');
       setPosts(res.data);
     } catch (err) {
       console.error('Erro ao carregar posts', err);
@@ -23,7 +23,7 @@ function MarketingPage() {
   const criarPost = async () => {
     if (!texto || !canal) return;
     try {
-      await api.post('/posts', {
+      await inboxApi.post('/posts', {
         text: texto,
         channel: canal,
         scheduledFor: data,
@@ -93,5 +93,5 @@ function MarketingPage() {
     </div>
   );
 }
-
 export default MarketingPage;
+

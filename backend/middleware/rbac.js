@@ -1,8 +1,13 @@
-
-export function requireRole(...roles){
-  return (req,res,next)=>{
-    const user = req.user || {};
-    if(roles.includes(user.role) || user.is_owner){ return next(); }
-    return res.status(403).json({ error: 'forbidden' });
+// backend/middleware/rbac.js
+export function requireAny(roles) {
+  return (req, res, next) => {
+    const role = req.user?.role;
+    if (!role || !roles.includes(role)) {
+      return res.status(403).json({ message: 'forbidden' });
+    }
+    next();
   };
 }
+
+export const requireAgent = requireAny(['Agent','Manager','OrgOwner','SuperAdmin']);
+export const requireManager = requireAny(['Manager','OrgOwner','SuperAdmin']);

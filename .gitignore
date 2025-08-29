@@ -53,6 +53,7 @@ infra/.env
 infra/.env.*
 infra/docker-compose.override.yml
 infra/docker-compose.override.*.yml
+infra/node_modules/
 
 # Volumes
 pgdata/

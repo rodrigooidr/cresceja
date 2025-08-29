@@ -3,6 +3,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import inboxApi from "./api/inboxApi";
 
 // Providers (importe apenas os que você tem no projeto)
 import { TrialProvider } from "./contexts/TrialContext";

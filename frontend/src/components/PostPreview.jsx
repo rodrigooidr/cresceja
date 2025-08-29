@@ -1,11 +1,11 @@
-
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/axios';
+
 export default function PostPreview({ postId, channel='instagram' }){
   const [data, setData] = useState(null);
   useEffect(()=>{
     (async()=>{
-      const r = await api.get(`/repurpose/preview/${postId}`, { params: { channel } });
+      const r = await inboxApi.get(`/repurpose/preview/${postId}`, { params: { channel } });
       setData(r.data);
     })();
   }, [postId, channel]);
@@ -19,3 +19,5 @@ export default function PostPreview({ postId, channel='instagram' }){
     </div>
   );
 }
+
+

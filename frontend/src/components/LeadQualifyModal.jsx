@@ -1,5 +1,6 @@
+import inboxApi from "../../api/inboxApi";
 import React, { useState } from 'react';
-import api from '../api/api';
+import inboxApi from '../api/inboxApi.js'; 
 
 export default function LeadQualifyModal({ lead, onClose, onSaved }) {
   const [form, setForm] = useState({
@@ -25,7 +26,7 @@ export default function LeadQualifyModal({ lead, onClose, onSaved }) {
       return;
     }
     try {
-      await api.put(`/api/leads/${lead.id}/qualificar`, {
+      await inboxApi.put(`/leads/${lead.id}/qualificar`, {
         score,
         tags: form.tags
           .split(',')
@@ -91,3 +92,5 @@ export default function LeadQualifyModal({ lead, onClose, onSaved }) {
     </div>
   );
 }
+
+

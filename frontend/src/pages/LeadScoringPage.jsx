@@ -1,10 +1,11 @@
+import inboxApi from "../../api/inboxApi";
 
 import React, { useState } from 'react';
-import { api } from '../api/axios';
+ 
 export default function LeadScoringPage(){
   const [res, setRes] = useState(null);
   const recompute = async () => {
-    const r = await api.post('/leads/score/recompute');
+    const r = await inboxApi.post('/leads/score/recompute');
     setRes(r.data);
   };
   return (
@@ -15,3 +16,5 @@ export default function LeadScoringPage(){
     </div>
   );
 }
+
+

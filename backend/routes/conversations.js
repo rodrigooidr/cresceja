@@ -1,99 +1,89 @@
+// backend/routes/conversations.js
 import { Router } from 'express';
-import { authRequired } from '../middleware/auth.js';
-import { withOrg } from '../middleware/withOrg.js';
-import { requireRole } from '../middleware/requireRole.js';
+import {
+  listConversations,
+  getConversation,
+  listMessages,
+  appendMessage,
+} from '../services/conversationsService.js';
 
 const router = Router();
 
-router.use(authRequired, withOrg, requireRole('Agent'));
+// GET /api/conversations
+router.get('/', async (req, res, next) => {
+  try {
+    const orgId = req.orgId ?? req.user?.org_id;
+    if (!orgId) return res.status(401).json({ error: 'missing_org' });
 
-// GET /api/conversations?status=pendente&assigned_to=me
-router.get('/', async (req, res) => {
-  const { status, assigned_to } = req.query;
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
-  const offset = (page - 1) * limit;
+    const { q, status, tags, limit } = req.query;
+    const parsedTags =
+      typeof tags === 'string' && tags.length ? tags.split(',') : undefined;
+    const lim = Math.min(100, Math.max(1, parseInt(limit ?? '30', 10)));
 
-  let where = 'WHERE org_id = $1';
-  const params = [req.orgId];
-  if (status) {
-    params.push(status);
-    where += ` AND status = $${params.length}`;
-  } else if (assigned_to === 'me') {
-    params.push(req.user.email);
-    where += ` AND assigned_to = $${params.length}`;
+    const items = await listConversations(
+      req.db,             // <-- IMPORTANTE: usa o client com RLS
+      orgId,
+      { q, status, tags: parsedTags, limit: lim }
+    );
+    res.json({ items });
+  } catch (err) {
+    next(err);
   }
-
-  const countRes = await req.db.query(`SELECT COUNT(*) FROM conversations ${where}`, params);
-  const total = Number(countRes.rows[0]?.count || 0);
-
-  const listParams = [...params, limit, offset];
-  const { rows } = await req.db.query(
-    `SELECT * FROM conversations ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    listParams
-  );
-  res.json({ data: rows, meta: { page, limit, total } });
 });
 
-// PUT /api/conversations/:id/assumir
-router.put('/:id/assumir', async (req, res) => {
-  const { id } = req.params;
-  await req.db.query(
-    `UPDATE conversations SET assigned_to = $1, status = $2, updated_at = NOW()
-     WHERE id = $3 AND org_id = $4`,
-    [req.user.email, 'em_andamento', id, req.orgId]
-  );
-  res.json({ data: { success: true } });
-});
+// GET /api/conversations/:id
+router.get('/:id', async (req, res, next) => {
+  try {
+    const orgId = req.orgId ?? req.user?.org_id;
+    if (!orgId) return res.status(401).json({ error: 'missing_org' });
 
-// PUT /api/conversations/:id/encerrar
-router.put('/:id/encerrar', async (req, res) => {
-  const { id } = req.params;
-  await req.db.query(
-    `UPDATE conversations SET status = $1, updated_at = NOW() WHERE id = $2 AND org_id = $3`,
-    ['resolvido', id, req.orgId]
-  );
-  res.json({ data: { success: true } });
+    const convo = await getConversation(req.db, orgId, req.params.id);
+    if (!convo) return res.status(404).json({ error: 'not_found' });
+    res.json(convo);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // GET /api/conversations/:id/messages
-router.get('/:id/messages', async (req, res) => {
-  const { id } = req.params;
-  const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-  const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
-  const offset = (page - 1) * limit;
+router.get('/:id/messages', async (req, res, next) => {
+  try {
+    const orgId = req.orgId ?? req.user?.org_id;
+    if (!orgId) return res.status(401).json({ error: 'missing_org' });
 
-  const countRes = await req.db.query(
-    `SELECT COUNT(*) FROM messages WHERE conversation_id = $1 AND org_id = $2`,
-    [id, req.orgId]
-  );
-  const total = Number(countRes.rows[0]?.count || 0);
+    const { limit, before } = req.query;
+    const lim = Math.min(200, Math.max(1, parseInt(limit ?? '50', 10)));
 
-  const { rows } = await req.db.query(
-    `SELECT * FROM messages
-       WHERE conversation_id = $1 AND org_id = $2
-       ORDER BY created_at ASC
-       LIMIT $3 OFFSET $4`,
-    [id, req.orgId, limit, offset]
-  );
-  res.json({ data: rows, meta: { page, limit, total } });
+    const items = await listMessages(
+      req.db,            // <-- RLS
+      orgId,
+      req.params.id,
+      { limit: lim, before }
+    );
+    res.json({ items });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/conversations/:id/messages
-router.post('/:id/messages', async (req, res) => {
-  const { id } = req.params;
-  const { content, sender = 'agente' } = req.body;
-  if (!content) return res.status(400).json({ error: 'conteudo_obrigatorio' });
+router.post('/:id/messages', async (req, res, next) => {
+  try {
+    const orgId = req.orgId ?? req.user?.org_id;
+    if (!orgId) return res.status(401).json({ error: 'missing_org' });
 
-  const { rows } = await req.db.query(
-    `INSERT INTO messages (org_id, conversation_id, sender, content)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [req.orgId, id, sender, content]
-  );
-  const msg = rows[0];
-  const io = req.app.get('io');
-  if (io) io.to(`conversation:${id}`).emit('message:new', msg);
-  res.status(201).json({ data: msg });
+    const { from = 'agent', ...payload } = req.body || {};
+    const created = await appendMessage(
+      req.db,            // <-- RLS
+      orgId,
+      req.params.id,
+      from,
+      payload
+    );
+    res.status(201).json(created);
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

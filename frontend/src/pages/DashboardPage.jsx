@@ -1,5 +1,6 @@
+import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/axios';
+ 
 
 export default function DashboardPage() {
   const [period, setPeriod] = useState('30');
@@ -13,10 +14,10 @@ export default function DashboardPage() {
     async function fetchData() {
       try {
         const [p, c, a, n] = await Promise.all([
-          api.get('/reports/pipeline', { params: { channel } }),
-          api.get('/reports/conversion', { params: { channel } }),
-          api.get('/reports/atendimento', { params: { channel } }),
-          api.get(`/reports/nps?days=${period}${channel ? `&channel=${channel}` : ''}`)
+          inboxApi.get('/reports/pipeline', { params: { channel } }),
+          inboxApi.get('/reports/conversion', { params: { channel } }),
+          inboxApi.get('/reports/atendimento', { params: { channel } }),
+          inboxApi.get(`/reports/nps?days=${period}${channel ? `&channel=${channel}` : ''}`)
         ]);
         setPipeline(p.data);
         setConversion(c.data);
@@ -82,3 +83,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+

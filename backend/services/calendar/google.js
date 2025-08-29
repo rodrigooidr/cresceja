@@ -1,6 +1,6 @@
 // backend/services/calendar/google.js
 import { google } from 'googleapis';
-import { query } from '../../config/db-client.js';
+import { query } from '../../config/db.js';
 
 function getOAuthClient() {
   const oauth2Client = new google.auth.OAuth2(

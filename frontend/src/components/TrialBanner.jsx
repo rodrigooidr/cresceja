@@ -1,14 +1,14 @@
-
+import inboxApi from "../../api/inboxApi";
 import React from 'react';
 import { useEffect, useState } from 'react';
-import { api } from '../api/axios';
+
 
 export default function TrialBanner(){
   const [sub, setSub] = useState(null);
   useEffect(()=>{
     (async()=>{
       try{
-        const r = await api.get('/subscription/status');
+        const r = await inboxApi.get('/subscription/status');
         setSub(r.data);
       }catch{}
     })();
@@ -21,3 +21,5 @@ export default function TrialBanner(){
     </div>
   );
 }
+
+

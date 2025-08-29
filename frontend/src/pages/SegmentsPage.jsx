@@ -1,19 +1,20 @@
+import inboxApi from "../../api/inboxApi";
 
 import React, { useEffect, useState } from 'react';
-import { api } from '../api/axios';
+ 
 export default function SegmentsPage(){
   const [segments, setSegments] = useState([]);
   const [name, setName] = useState('Leads quentes');
   const [minScore, setMinScore] = useState(60);
   const [channel, setChannel] = useState('');
   const load = async () => {
-    const r = await api.get('/crm/segments');
+    const r = await inboxApi.get('/crm/segments');
     setSegments(r.data);
   };
   useEffect(()=>{ load(); },[]);
   const create = async () => {
     const filter = { min_score: Number(minScore), channel: channel || undefined };
-    await api.post('/crm/segments', { name, filter });
+    await inboxApi.post('/crm/segments', { name, filter });
     await load();
   };
   return (
@@ -31,3 +32,5 @@ export default function SegmentsPage(){
     </div>
   );
 }
+
+

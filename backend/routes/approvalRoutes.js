@@ -1,12 +1,12 @@
 // backend/routes/approvalRoutes.js
 import express from 'express';
-import { authenticate } from '../middleware/authenticate.js';
+import { authRequired } from '../middleware/auth.js';
 import { query } from '../config/db.js';
 
 const router = express.Router();
 
 // Protege todas as rotas abaixo com JWT
-router.use(authenticate);
+router.use(authRequired);
 
 // Lista aprovações pendentes (se a tabela existir)
 router.get('/pending', async (_req, res) => {
