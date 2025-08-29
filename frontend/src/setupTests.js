@@ -1,28 +1,56 @@
-// frontend/src/setupTests.js
-
-// Asserts úteis do Testing Library
 import '@testing-library/jest-dom';
 import 'whatwg-fetch';
 
+// 🧩 Shims adicionais
 import './test-shims/broadcast-channel';
+import './test-shims/intersection-observer';
+import './test-shims/resize-observer';
 
-// (opcionais úteis; mantenha os que você já tem)
-global.URL.createObjectURL =
-  global.URL.createObjectURL || (() => 'blob:jest-mock');
+// URL.createObjectURL (upload/preview)
+if (!global.URL.createObjectURL) {
+  global.URL.createObjectURL = () => 'blob:jest-mock';
+}
 
-window.matchMedia =
-  window.matchMedia ||
-  function () {
-    return {
-      matches: false,
-      addEventListener() {},
-      removeEventListener() {},
-      addListener() {},
-      removeListener() {},
-      onchange: null,
-      dispatchEvent() { return false; },
-    };
-  };
+// scroll helpers usados por virtualização/inf. scroll
+if (!window.scrollTo) window.scrollTo = () => {};
+if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
+if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+
+// matchMedia (alguns libs consultam)
+if (!window.matchMedia) {
+  window.matchMedia = () => ({
+    matches: false,
+    media: '',
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+    onchange: null,
+    dispatchEvent() { return false; },
+  });
+}
+
+// requestAnimationFrame/ cancelAnimationFrame
+if (!global.requestAnimationFrame) {
+  global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+}
+if (!global.cancelAnimationFrame) {
+  global.cancelAnimationFrame = (id) => clearTimeout(id);
+}
+
+// 🔌 Limpeza do socket entre testes p/ evitar vazamentos
+afterEach(() => {
+  try {
+    const { __resetSocketForTests } = require('./sockets/socket');
+    if (typeof __resetSocketForTests === 'function') __resetSocketForTests();
+  } catch {}
+});
+
+// Opcional: reset de mocks
+afterEach(() => {
+  jest.clearAllMocks();
+});
+
 
 // ---- Mocks de módulos ESM que quebram no CRA/Jest (CJS) ----
 jest.mock('@bundled-es-modules/tough-cookie', () => ({}));
