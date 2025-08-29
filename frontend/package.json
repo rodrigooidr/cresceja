@@ -39,7 +39,7 @@
     "^tough-cookie$": "<rootDir>/src/test-shims/tough-cookie.js",
     "^@bundled-es-modules/tough-cookie(.*)$": "<rootDir>/src/test-shims/tough-cookie.js"
   }
-}
+},
   "browserslist": {
     "production": [
       ">0.2%",
