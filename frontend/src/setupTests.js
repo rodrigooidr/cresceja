@@ -2,6 +2,27 @@
 
 // Asserts úteis do Testing Library
 import '@testing-library/jest-dom';
+import 'whatwg-fetch';
+
+import './test-shims/broadcast-channel';
+
+// (opcionais úteis; mantenha os que você já tem)
+global.URL.createObjectURL =
+  global.URL.createObjectURL || (() => 'blob:jest-mock');
+
+window.matchMedia =
+  window.matchMedia ||
+  function () {
+    return {
+      matches: false,
+      addEventListener() {},
+      removeEventListener() {},
+      addListener() {},
+      removeListener() {},
+      onchange: null,
+      dispatchEvent() { return false; },
+    };
+  };
 
 // ---- Mocks de módulos ESM que quebram no CRA/Jest (CJS) ----
 jest.mock('@bundled-es-modules/tough-cookie', () => ({}));
