@@ -1,8 +1,5 @@
-import inboxApi from "../../api/inboxApi";
-// src/pages/Admin/AdminPlans.jsx
 import React, { useEffect, useState } from "react";
 import inboxApi from "../../api/inboxApi";
-
 const DEFAULT_PLAN = () => ({
   id: "",
   name: "",
@@ -41,9 +38,9 @@ export default function AdminPlans() {
       setLoading(true);
       let res;
       try {
-        res = await inboxApi.get(`/api/admin/plans`);
+        res = await inboxApi.get(`/admin/plans`);
       } catch {
-        res = await inboxApi.get(`/api/public/plans`);
+        res = await inboxApi.get(`/public/plans`);
       }
       const data = res?.data;
       const list = Array.isArray(data?.plans)
@@ -110,9 +107,9 @@ export default function AdminPlans() {
       };
 
       if (!plan._isNew) {
-        await  inboxApi.patch(`/api/admin/plans/${plan.id}`, body);
+        await  inboxApi.patch(`/admin/plans/${plan.id}`, body);
       } else {
-        const { data } = await inboxApi.post(`/api/admin/plans`, body);
+        const { data } = await inboxApi.post(`/admin/plans`, body);
         const newId = data?.id || body.id;
         setItems((prev) =>
           prev.map((it) =>
@@ -146,11 +143,11 @@ export default function AdminPlans() {
     setSavingId(plan.id || "_new_");
     try {
       try {
-        await inboxApi.post(`/api/admin/plans/${plan.id}/publish`, {
+        await inboxApi.post(`/admin/plans/${plan.id}/publish`, {
           is_published: value,
         });
       } catch {
-        await  inboxApi.patch(`/api/admin/plans/${plan.id}`, { is_published: value });
+        await  inboxApi.patch(`/admin/plans/${plan.id}`, { is_published: value });
       }
       setItems((prev) =>
         prev.map((it) =>
@@ -170,7 +167,7 @@ export default function AdminPlans() {
     if (plan._isNew) return removePlanLocal(plan);
     if (!window.confirm('Excluir plano permanentemente?')) return;
     try {
-      await inboxApi.delete(`/api/admin/plans/${plan.id}`);
+      await inboxApi.delete(`/admin/plans/${plan.id}`);
       setItems((prev) => prev.filter((p) => p._key !== plan._key));
       window.dispatchEvent(new CustomEvent('plans-updated'));
     } catch (e) {
@@ -485,6 +482,3 @@ export default function AdminPlans() {
       )}
     </div>
   );
-}
-
-

@@ -15,6 +15,7 @@ import TemplatesPage from './pages/marketing/TemplatesPage.jsx';
 import CampaignsPage from './pages/marketing/CampaignsPage.jsx';
 import AutomationsPage from './pages/marketing/AutomationsPage.jsx';
 import BillingPage from './pages/admin/BillingPage.jsx';
+
 import LandingPage from './pages/LandingPage.jsx';
 
 const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];

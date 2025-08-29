@@ -1,4 +1,3 @@
-import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
 
@@ -94,6 +93,5 @@ function MarketingPage() {
     </div>
   );
 }
-
 export default MarketingPage;
 

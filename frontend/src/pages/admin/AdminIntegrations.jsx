@@ -1,6 +1,6 @@
-import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from "react";
 import inboxApi from "../../api/inboxApi";
+
 
 const TABS = [
   {
@@ -70,7 +70,7 @@ export default function AdminIntegrations() {
     let alive = true;
     (async () => {
       try {
-        const { data } = await inboxApi.get(`/api/integrations/${tab}/status`);
+        const { data } = await inboxApi.get(`/integrations/${tab}/status`);
         if (alive) setForm(data?.integration?.config || {});
       } catch {
         if (alive) setForm({});
@@ -83,7 +83,7 @@ export default function AdminIntegrations() {
 
   const save = async () => {
     try {
-      await inboxApi.post(`/api/integrations/${current.key}/connect`, { config: form });
+      await inboxApi.post(`/integrations/${current.key}/connect`, { config: form });
       setStatus((s) => ({ ...s, [current.key]: "ok" }));
     } catch {
       setStatus((s) => ({ ...s, [current.key]: "erro" }));
@@ -147,5 +147,3 @@ export default function AdminIntegrations() {
     </div>
   );
 }
-
-

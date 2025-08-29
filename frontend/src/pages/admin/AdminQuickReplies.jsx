@@ -1,6 +1,6 @@
-import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from "react";
 import inboxApi from "../../api/inboxApi";
+
 
 export default function AdminQuickReplies() {
   const [items, setItems] = useState([]);
@@ -29,7 +29,7 @@ export default function AdminQuickReplies() {
 
   const remove = async (id) => {
     if (!window.confirm("Excluir esta resposta?")) return;
-    await inboxApi.delete(`/api/quick-replies/${id}`);
+    await inboxApi.delete(`/quick-replies/${id}`);
     load();
   };
 
@@ -105,6 +105,3 @@ export default function AdminQuickReplies() {
     </div>
   );
 }
-
-
-

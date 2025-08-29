@@ -17,7 +17,12 @@ function ChatWindow({ channel }) {
       <h2 className="font-semibold mb-2">Canal: {channel.toUpperCase()}</h2>
       <div className="h-64 overflow-y-auto border p-2 mb-2">
         {messages.map((m, i) => (
-          <div key={i} className={\`mb-1 text-sm \${m.from === 'agent' ? 'text-right text-blue-700' : 'text-left text-gray-800'}\`}>
+          <div
+            key={i}
+            className={`mb-1 text-sm ${
+              m.from === 'agent' ? 'text-right text-blue-700' : 'text-left text-gray-800'
+            }`}
+          >
             {m.text}
           </div>
         ))}
@@ -29,7 +34,9 @@ function ChatWindow({ channel }) {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Digite sua resposta..."
         />
-        <button className="bg-blue-600 text-white px-4 rounded" onClick={sendMessage}>Enviar</button>
+        <button className="bg-blue-600 text-white px-4 rounded" onClick={sendMessage}>
+          Enviar
+        </button>
       </div>
     </div>
   );
