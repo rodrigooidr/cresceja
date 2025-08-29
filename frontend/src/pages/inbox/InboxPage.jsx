@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import inboxApi, { apiUrl } from '../../api/inboxApi';
-import { getSocket } from '../../sockets/socket';
+import { makeSocket as getSocket } from '../../sockets/socket';
 import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
