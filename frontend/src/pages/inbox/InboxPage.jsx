@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import inboxApi, { apiUrl } from '../../api/inboxApi';
-import { makeSocket as getSocket } from '../../sockets/socket';
+import { makeSocket } from '../../sockets/socket';
 import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
@@ -69,6 +69,23 @@ async function firstOk(fns = []) {
     try { const r = await fn(); if (r?.data) return r; } catch (_) {}
   }
   throw new Error('Nenhum endpoint respondeu');
+}
+
+function useOutsideClose(ref, onClose, deps = []) {
+  React.useEffect(() => {
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) onClose?.();
+    }
+    function onKey(ev) {
+      if (ev.key === 'Escape') onClose?.();
+    }
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, deps);
 }
 
 // Item de conversa (sidebar) --------------------------------------------
@@ -222,24 +239,16 @@ export default function InboxPage() {
     setPreloadLog((s) => s + String(id));
   }, []);
 
-  async function markRead(conv, lastSeenMessageId) {
-    if (!conv?.id) return;
-    try {
-      // Se existir endpoint no backend, usa; se não existir, ignora o erro.
-      await inboxApi.post(`/conversations/${conv.id}/read`, {
-        last_seen_message_id: lastSeenMessageId || null,
-      });
-    } catch (e) {
-      // best-effort: seguimos com o estado local
-    }
-    // Zera badge local
-    setItems(prev =>
-      (prev || []).map(c =>
-        String(c.id) === String(conv.id)
-          ? { ...c, unread_count: 0, last_seen_message_id: lastSeenMessageId || c.last_seen_message_id }
-          : c
+  async function markRead(conversationId) {
+    if (!conversationId) return;
+    setItems((prev) =>
+      (prev || []).map((c) =>
+        String(c.id) === String(conversationId) ? { ...c, unread_count: 0 } : c
       )
     );
+    try {
+      await inboxApi.post(`/conversations/${conversationId}/read`);
+    } catch {}
   }
 
   const preloadConv = useCallback(
@@ -402,7 +411,7 @@ export default function InboxPage() {
 
   // Quick replies -------------------------------------------------------
   const [quickReplies, setQuickReplies] = useState([]);
-  const [showQR, setShowQR] = useState(false);
+  const [showQuick, setShowQuick] = useState(false);
   const [qrQuery, setQrQuery] = useState('');
   const [qrIdx, setQrIdx] = useState(0);
   const qrStartRef = useRef(null);
@@ -432,8 +441,6 @@ export default function InboxPage() {
   // Composer ------------------------------------------------------------
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
-  // Lista de uploads em andamento/falha (somente do composer actual)
-  const [uploads, setUploads] = useState([]); // estrutura: { id, file, progress, status: 'uploading'|'error', error?, controller }
   const [showEmoji, setShowEmoji] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [typing, setTyping] = useState(false);
@@ -446,7 +453,9 @@ export default function InboxPage() {
   const chatSearchRef = useRef(null);
   const { add: addToast } = useToasts?.() || { add: () => {} };
 
-  useEffect(() => { setShowQR(false); qrVarItemRef.current = null; }, [sel]);
+  useEffect(() => { setShowQuick(false); qrVarItemRef.current = null; }, [sel]);
+  useEffect(() => setShowEmoji(false), [sel]);
+  useEffect(() => setShowSnippets(false), [sel]);
   useEffect(() => { composerRef.current?.focus?.(); }, [sel?.id]);
 
   const highlight = useCallback(
@@ -530,7 +539,7 @@ export default function InboxPage() {
 
   // Snippets ------------------------------------------------------------
   const [snipState, setSnipState] = useState(() => loadSnippets());
-  const [showSnip, setShowSnip] = useState(false);
+  const [showSnippets, setShowSnippets] = useState(false);
   const [snipQuery, setSnipQuery] = useState('');
   const [snipEdit, setSnipEdit] = useState(null);
   const [snipMsg, setSnipMsg] = useState('');
@@ -539,9 +548,15 @@ export default function InboxPage() {
   // Refs ----------------------------------------------------------------
   const msgBoxRef = useRef(null);
   const emojiRef = useRef(null);
+  const quickRef = useRef(null);
+  const snipRef = useRef(null);
   const composerRef = useRef(null);
   const composerBoxRef = useRef(null);
   const emojiBtnRef = useRef(null);
+
+  useOutsideClose(emojiRef, () => setShowEmoji(false), [sel?.id]);
+  useOutsideClose(quickRef, () => setShowQuick(false), [sel?.id]);
+  useOutsideClose(snipRef, () => setShowSnippets(false), [sel?.id]);
 
   const handleScroll = useCallback(() => {
     const box = msgBoxRef.current;
@@ -588,8 +603,8 @@ export default function InboxPage() {
     prevShowEmoji.current = showEmoji;
   }, [showEmoji]);
 
-  const openQR = useCallback(() => {
-    setShowQR(true);
+  const openQuick = useCallback(() => {
+    setShowQuick(true);
     setQrQuery('');
     setQrIdx(0);
     setTimeout(() => {
@@ -598,8 +613,8 @@ export default function InboxPage() {
     }, 0);
   }, []);
 
-  const closeQR = useCallback(() => {
-    setShowQR(false);
+  const closeQuick = useCallback(() => {
+    setShowQuick(false);
     setQrQuery('');
     setQrIdx(0);
     qrVarItemRef.current = null;
@@ -615,7 +630,7 @@ export default function InboxPage() {
       const after = text.slice(end);
       const newText = before + content + after;
       setText(newText);
-      closeQR();
+      closeQuick();
       setTimeout(() => {
         const pos = before.length + content.length;
         if (composerRef.current) {
@@ -624,7 +639,7 @@ export default function InboxPage() {
         }
       }, 0);
     },
-    [text, closeQR]
+    [text, closeQuick]
   );
 
   const selectQRItem = useCallback(
@@ -634,7 +649,7 @@ export default function InboxPage() {
         qrVarItemRef.current = it;
         const defaults = fillDefaultVariables(vars, sel);
         setQrVarValues(defaults);
-        setShowQR(false);
+        setShowQuick(false);
         setQrQuery('');
         setQrIdx(0);
         setTimeout(() => {
@@ -862,21 +877,6 @@ export default function InboxPage() {
     return () => clearTimeout(selPreloadTimerRef.current);
   }, [sel, filteredItems, preloadConv]);
 
-  // Emoji abre/fecha -----------------------------------------------------
-  useEffect(() => {
-    const onEsc = (e) => e.key === 'Escape' && setShowEmoji(false);
-    const onClick = (e) => {
-      if (showEmoji && emojiRef.current && !emojiRef.current.contains(e.target)) setShowEmoji(false);
-    };
-    window.addEventListener('keydown', onEsc);
-    window.addEventListener('click', onClick);
-    return () => {
-      window.removeEventListener('keydown', onEsc);
-      window.removeEventListener('click', onClick);
-    };
-  }, [showEmoji]);
-
-
   // Templates + form cliente quando muda a conversa ---------------------
   useEffect(() => {
     setShowEmoji(false);
@@ -936,7 +936,7 @@ export default function InboxPage() {
 
   // Socket ---------------------------------------------------------------
   useEffect(() => {
-    const s = getSocket();
+    const s = makeSocket();
 
     const onConnect = () => mountedRef.current && setConnected(true);
     const onDisconnect = () => mountedRef.current && setConnected(false);
@@ -954,7 +954,7 @@ export default function InboxPage() {
       // Se a conversa aberta é a mesma, injeta no timeline e marca como lida
       if (sel?.id && String(sel.id) === String(convId)) {
         setMsgs(prev => [msg, ...(prev || [])]);
-        markRead(sel, msg.id);
+        markRead(sel.id);
       } else {
         // Incrementa badge na conversa correspondente
         setItems(prev =>
@@ -1010,7 +1010,7 @@ export default function InboxPage() {
     setSel(c);
     setCacheHit(false);
     setCacheRefreshing(false);
-    markRead(c);
+    markRead(c.id);
     const cached = readConvCache(c.id);
     if (cached) {
       setCacheHit(true);
@@ -1044,7 +1044,7 @@ export default function InboxPage() {
         const merged = mergeMessages(cached.items, safe);
         setMsgs(merged);
         const newestId = safe[0]?.id || safe[safe.length - 1]?.id;
-        markRead(c, newestId);
+        markRead(c.id);
         const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
         const hasMore = r?.data?.has_more ?? !!cursor;
         setMsgBefore(cursor || (merged[0] && merged[0].id));
@@ -1083,7 +1083,7 @@ export default function InboxPage() {
         const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
         setMsgs(safe);
         const newestId = safe[0]?.id || safe[safe.length - 1]?.id;
-        markRead(c, newestId);
+        markRead(c.id);
         const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
         const hasMore = r?.data?.has_more ?? !!cursor;
         setMsgBefore(cursor || (safe[0] && safe[0].id));
@@ -1223,77 +1223,50 @@ export default function InboxPage() {
   }, [sel, msgs]);
 
   // Upload ---------------------------------------------------------------
-  function startUpload(file) {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const controller = new AbortController();
-
-    setUploads((prev) => [...prev, { id, file, progress: 0, status: 'uploading', controller }]);
-
-    const form = new FormData();
-    form.append('files[]', file);
-
-    inboxApi
-      .post(
-        `/conversations/${sel.id}/attachments`,
-        form,
-        {
-          signal: controller.signal,
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (ev) => {
-            const prog = ev.total ? Math.round((ev.loaded / ev.total) * 100) : 0;
-            setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, progress: prog } : u)));
-          },
-        }
-      )
-      .then(({ data }) => {
-        const assets = Array.isArray(data?.assets) ? data.assets : [];
-        if (assets.length) {
-          setAttachments((prev) => [
-            ...prev,
-            ...assets.map((a) => ({
-              ...a,
-              url: a.url,
-              thumb_url: a.thumb_url,
-            })),
-          ]);
-        }
-        setUploads((prev) => prev.filter((u) => u.id !== id));
-      })
-      .catch((err) => {
-        setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, status: 'error', error: err?.message || 'Falha no upload' } : u)));
-        addToast?.(`Falha ao enviar “${file.name}”.`, { variant: 'error' });
-      });
-  }
-
-  function retryUpload(uploadId) {
-    const u = uploads.find((x) => x.id === uploadId);
-    if (!u || !sel) return;
-    setUploads((prev) => prev.filter((x) => x.id !== uploadId));
-    startUpload(u.file);
-  }
-
-  function cancelUpload(uploadId) {
-    const u = uploads.find((x) => x.id === uploadId);
-    if (!u) return;
-    try {
-      u.controller?.abort?.();
-    } catch {}
-    setUploads((prev) => prev.filter((x) => x.id !== uploadId));
-  }
-
-  const handleFiles = async (fileList) => {
+  async function handleFiles(fileList) {
     if (!sel) return;
-
     const files = Array.from(fileList || []);
-    for (const file of files) {
-      const msg = violationMessage(file);
-      if (msg) {
-        addToast?.(msg, { variant: 'error' });
-        continue;
+    if (!files.length) return;
+
+    const valid = [];
+    files.forEach((f) => {
+      const msg = violationMessage(f);
+      if (msg) addToast?.(msg, { variant: 'error' });
+      else valid.push(f);
+    });
+    if (!valid.length) return;
+
+    setAttachments((prev) => [
+      ...prev,
+      ...valid.map((f) => ({ id: 'local-' + crypto.randomUUID(), name: f.name, localFile: f }))
+    ]);
+
+    for (const f of valid) {
+      const form = new FormData();
+      form.append('files[]', f);
+      try {
+        const { data } = await inboxApi.post(`/conversations/${sel.id}/attachments`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        const assets = Array.isArray(data?.assets) ? data.assets : [];
+        setAttachments((prev) => prev
+          .filter((a) => !a.localFile || a.localFile !== f)
+          .concat(
+            assets.map((a) => ({
+              id: a.id || a.asset_id || a.url,
+              url: a.url ? apiUrl(a.url) : undefined,
+              thumb_url: a.thumb_url ? apiUrl(a.thumb_url) : undefined,
+              filename: a.filename || a.name || f.name,
+              mime: a.mime_type || a.content_type
+            }))
+          )
+        );
+      } catch (err) {
+        setAttachments((prev) => prev.filter((a) => a.localFile !== f));
+        console.error('Upload failed', err);
       }
-      startUpload(file);
     }
-  };
+  }
 
   // Inline client edit --------------------------------------------------
   const [editingClient, setEditingClient] = useState(false);
@@ -1388,10 +1361,10 @@ export default function InboxPage() {
   const send = async () => {
     if (!sel) return;
     setShowEmoji(false);
-    closeQR();
+    closeQuick();
     let payload = null;
-    if (attachments.filter((a) => !a.error).length) {
-      payload = { type: 'file', attachments: attachments.filter((a) => !a.error).map((a) => a.id) };
+    if (attachments.filter((a) => !a.error && !a.localFile).length) {
+      payload = { type: 'file', attachments: attachments.filter((a) => !a.error && !a.localFile).map((a) => a.id) };
     } else if (templateId) {
       const vars = { ...templateVars };
       const errs = {};
@@ -1480,33 +1453,33 @@ export default function InboxPage() {
     (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
         e.preventDefault();
-        setShowSnip((v) => !v);
+        setShowSnippets((v) => !v);
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
-        if (showQR) closeQR();
+        if (showQuick) closeQuick();
         else {
           qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
-          openQR();
+          openQuick();
         }
         return;
       }
-      if (e.key === '/' && !showQR) {
+      if (e.key === '/' && !showQuick) {
         const pos = composerRef.current?.selectionStart ?? 0;
         const before = text.slice(0, pos);
         if (pos === 0 || /\s$/.test(before)) {
           qrStartRef.current = pos;
-          openQR();
+          openQuick();
         }
       }
-      if (e.key === 'Escape' && showQR) {
+      if (e.key === 'Escape' && showQuick) {
         e.preventDefault();
-        closeQR();
+        closeQuick();
       }
-      if (e.key === 'Escape' && showSnip) {
+      if (e.key === 'Escape' && showSnippets) {
         e.preventDefault();
-        setShowSnip(false);
+        setShowSnippets(false);
         snipBtnRef.current?.focus();
       }
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -1514,7 +1487,7 @@ export default function InboxPage() {
         send();
       }
     },
-    [showQR, showSnip, text, openQR, closeQR, send]
+    [showQuick, showSnippets, text, openQuick, closeQuick, send]
   );
 
   const closeLightbox = useCallback(() => {
@@ -1676,7 +1649,7 @@ export default function InboxPage() {
       ta.focus();
       ta.setSelectionRange(pos, pos);
     });
-    setShowSnip(false);
+    setShowSnippets(false);
   };
 
   const handleSnippetDelete = (id) => {
@@ -1719,7 +1692,7 @@ export default function InboxPage() {
   const composerDisabled =
     savingClient ||
     (templateId && Object.keys(templateErrors).length > 0) ||
-    (uploads.some((u) => u.status === 'uploading') && !attachments.length && !templateId && !text.trim());
+    (attachments.some((a) => a.localFile) && !templateId && !text.trim());
 
   const visibleItems = filteredItems.slice(convVirt.start, convVirt.end);
   const visibleIds = visibleItems.map((c) => c.id);
@@ -1796,9 +1769,14 @@ export default function InboxPage() {
           </button>
         </div>
       )}
-      <div className="grid grid-cols-12 h-[calc(100vh-80px)] bg-gray-50">
+      <div className="h-[calc(100vh-56px)] grid grid-cols-[320px_1fr_360px] overflow-hidden bg-gray-50">
       {/* Sidebar (esquerda) */}
-      <div className="col-span-3 border-r bg-white flex flex-col">
+      <div
+        className="border-r bg-white flex flex-col overflow-y-auto"
+        ref={listRef}
+        onScroll={handleConvScroll}
+        data-testid="conv-list"
+      >
         <div className="p-3 border-b">
           <input
             ref={filterSearchRef}
@@ -1855,22 +1833,16 @@ export default function InboxPage() {
           )}
         </div>
 
-        <div
-          className="flex-1 overflow-y-auto"
-          ref={listRef}
-          onScroll={handleConvScroll}
-          data-testid="conv-list"
-        >
-          {loadingList ? (
-            <div className="p-3 text-sm text-gray-500" data-testid="conversations-loading">Carregando…</div>
-          ) : filteredItems.length ? (
-            <>
-              <div style={{ height: convVirt.topSpacer }} />
-              <div data-testid="conv-top-sentinel" />
-              {visibleItems.map((c, i) => (
-                <ConversationItem
-                  key={c.id}
-                  c={c}
+        {loadingList ? (
+          <div className="p-3 text-sm text-gray-500" data-testid="conversations-loading">Carregando…</div>
+        ) : filteredItems.length ? (
+          <>
+            <div style={{ height: convVirt.topSpacer }} />
+            <div data-testid="conv-top-sentinel" />
+            {visibleItems.map((c, i) => (
+              <ConversationItem
+                key={c.id}
+                c={c}
                   density={density}
                   selected={selectedIds.has(c.id)}
                   onToggle={(id, e) => {
@@ -1894,20 +1866,19 @@ export default function InboxPage() {
                   }}
                 />
               ))}
-              <div ref={listBottomRef} data-testid="conv-bottom-sentinel" />
-              <div style={{ height: convVirt.bottomSpacer }} />
-              {loadingMoreList && (
-                <div className="p-3 text-sm text-gray-500">Carregando…</div>
-              )}
-            </>
-          ) : (
-            <div className="p-3 text-sm text-gray-500" data-testid="conversations-empty">Nenhuma conversa.</div>
-          )}
-        </div>
+            <div ref={listBottomRef} data-testid="conv-bottom-sentinel" />
+            <div style={{ height: convVirt.bottomSpacer }} />
+            {loadingMoreList && (
+              <div className="p-3 text-sm text-gray-500">Carregando…</div>
+            )}
+          </>
+        ) : (
+          <div className="p-3 text-sm text-gray-500" data-testid="conversations-empty">Nenhuma conversa.</div>
+        )}
       </div>
 
       {/* Chat (centro) */}
-      <div className="col-span-6 flex flex-col bg-gray-100">
+      <div className="flex flex-col bg-gray-100">
         {/* Header estilo WhatsApp */}
         <div className="h-14 bg-white border-b px-4 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
@@ -2106,7 +2077,7 @@ export default function InboxPage() {
                   {m.attachments.map((a) => {
                     const href = a.url || '#';
                     const thumb = a.thumb_url || a.url;
-                    const isImg = isImage(a.url || a.thumb_url);
+                    const isImg = isImage(thumb);
                     const open = (e) => {
                       if (isImg) {
                         e.preventDefault();
@@ -2120,17 +2091,17 @@ export default function InboxPage() {
                     return (
                       <a
                         key={a.id || href}
-                        href={href}
+                        href={a.url}
                         target="_blank"
                         rel="noreferrer"
                         onClick={open}
                         data-testid="attachment-thumb"
                         download={isImg ? undefined : ''}
                       >
-                        {thumb ? (
+                        {isImg ? (
                           <img src={thumb} alt="file" className="w-28 h-28 object-cover rounded" />
                         ) : (
-                          <span className="underline text-sm">arquivo</span>
+                          <span className="flex items-center gap-1 underline text-sm">📄 {a.filename || a.name || 'arquivo'}</span>
                         )}
                       </a>
                     );
@@ -2195,58 +2166,7 @@ export default function InboxPage() {
             onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
             data-testid="composer-dropzone"
           >
-            {/* Região acessível com status de upload */}
-            <div aria-live="polite" className="sr-only" data-testid="composer-aria-live">
-              {uploads.some((u) => u.status === 'error')
-                ? 'Um upload falhou.'
-                : uploads.some((u) => u.status === 'uploading')
-                ? `Enviando ${uploads.filter((u) => u.status === 'uploading').length} arquivo(s).`
-                : ''}
-            </div>
-
-            {/* Uploads in-flight / erro */}
-            {uploads.length > 0 && (
-              <div className="flex flex-col gap-2 mb-2" data-testid="uploader-list">
-                {uploads.map((u) => (
-                  <div key={u.id} className="flex items-center gap-2 text-sm">
-                    <div className="truncate max-w-[40%]">{u.file?.name}</div>
-                    {u.status === 'uploading' ? (
-                      <>
-                        <div className="flex-1 h-2 bg-gray-200 rounded overflow-hidden">
-                          <div className="h-full bg-blue-500" style={{ width: `${u.progress || 0}%` }} />
-                        </div>
-                        <span className="w-10 text-right">{u.progress || 0}%</span>
-                        <button
-                          className="px-2 py-1 text-xs bg-gray-200 rounded"
-                          onClick={() => cancelUpload(u.id)}
-                          aria-label="Cancelar upload"
-                        >
-                          Cancelar
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-red-600">Falhou</span>
-                        <button
-                          className="px-2 py-1 text-xs bg-gray-200 rounded"
-                          onClick={() => retryUpload(u.id)}
-                          aria-label="Tentar novamente"
-                        >
-                          Tentar novamente
-                        </button>
-                        <button
-                          className="px-2 py-1 text-xs bg-gray-200 rounded"
-                          onClick={() => cancelUpload(u.id)}
-                          aria-label="Remover upload com falha"
-                        >
-                          Remover
-                        </button>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Upload status removido */}
 
             {!!attachments.length && (
               <div className="mb-2 flex flex-wrap gap-2">
@@ -2337,7 +2257,7 @@ export default function InboxPage() {
                   aria-label="Respostas rápidas"
                   onClick={() => {
                     qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
-                    if (showQR) closeQR(); else openQR();
+                    if (showQuick) closeQuick(); else openQuick();
                   }}
                   className="px-2 py-1 rounded hover:bg-gray-100"
                   title="Respostas rápidas"
@@ -2349,7 +2269,7 @@ export default function InboxPage() {
                   data-testid="snippets-toggle"
                   aria-label="Snippets"
                   ref={snipBtnRef}
-                  onClick={() => setShowSnip((v) => !v)}
+                  onClick={() => setShowSnippets((v) => !v)}
                   className="px-2 py-1 rounded hover:bg-gray-100"
                   title="Snippets"
                 >
@@ -2396,19 +2316,20 @@ export default function InboxPage() {
                     className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10"
                   >
                     {EmojiPicker ? (
-                      <EmojiPicker onSelect={(e) => setText((t) => t + e)} />
+                      <EmojiPicker onSelect={(e) => { setText((t) => t + e); setShowEmoji(false); }} />
                     ) : (
                       <div className="flex gap-2 text-xl">
                         {['😀','😅','😍','👍','🙏','🎉','🔥','🥳'].map((em) => (
-                          <button key={em} onClick={() => setText((t) => t + em)}>{em}</button>
+                          <button key={em} onClick={() => { setText((t) => t + em); setShowEmoji(false); }}>{em}</button>
                         ))}
                       </div>
                     )}
                   </div>
                 )}
 
-                {showQR && (
+                {showQuick && (
                   <div
+                    ref={quickRef}
                     data-testid="qr-palette"
                     className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
                     role="listbox"
@@ -2422,7 +2343,7 @@ export default function InboxPage() {
                         if (e.key === 'ArrowDown') { e.preventDefault(); setQrIdx((i) => Math.min(i + 1, results.length - 1)); }
                         if (e.key === 'ArrowUp') { e.preventDefault(); setQrIdx((i) => Math.max(i - 1, 0)); }
                         if (e.key === 'Enter') { e.preventDefault(); const it = results[qrIdx]; it && selectQRItem(it); }
-                        if (e.key === 'Escape') { e.preventDefault(); closeQR(); }
+                        if (e.key === 'Escape') { e.preventDefault(); closeQuick(); }
                       }}
                       className="border rounded px-1 py-0.5 w-full mb-2"
                     />
@@ -2461,8 +2382,9 @@ export default function InboxPage() {
                   </div>
                 )}
 
-                {showSnip && (
+                {showSnippets && (
                   <div
+                    ref={snipRef}
                     data-testid="snippets-palette"
                     className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
                     role="dialog"
@@ -2474,7 +2396,7 @@ export default function InboxPage() {
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') {
                           e.preventDefault();
-                          setShowSnip(false);
+                          setShowSnippets(false);
                           snipBtnRef.current?.focus();
                         }
                       }}
@@ -2597,7 +2519,7 @@ export default function InboxPage() {
       </div>
 
       {/* Painel direito */}
-      <div className={`col-span-3 border-l bg-white flex flex-col ${showInfo ? '' : 'hidden xl:block'}`}>
+      <div className={`border-l bg-white flex flex-col overflow-y-auto ${showInfo ? '' : 'hidden xl:block'}`}>
         <div className="flex border-b text-sm">
           <button
             onClick={() => setPanel('details')}
@@ -2614,7 +2536,7 @@ export default function InboxPage() {
             Histórico
           </button>
         </div>
-        <div className="p-4 overflow-y-auto flex-1">
+        <div className="p-4 flex-1">
           {panel === 'audit' ? (
             sel ? <AuditPanel conversationId={sel.id} /> : <div className="text-gray-500">Selecione uma conversa</div>
           ) : sel ? (
