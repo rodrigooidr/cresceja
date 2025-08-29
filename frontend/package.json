@@ -30,14 +30,15 @@
     "guardrail:inbox": "node scripts/guardrail-inbox.js"
   },
   "jest": {
-    "testEnvironment": "jsdom"
-    ],
+    "testEnvironment": "jsdom",
     "transformIgnorePatterns": [
-      "node_modules/(?!(msw|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
+      "node_modules/(?!(msw|@mswjs|axios|nanoid|uuid|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
     ],
     "moduleNameMapper": {
       "^.+\\.(css|scss|sass|less)$": "identity-obj-proxy",
-      "^@bundled-es-modules/tough-cookie.*$": "<rootDir>/src/test-shims/empty.js"
+      "^msw/src/core/ws$": "<rootDir>/src/test-shims/empty.js",
+      "^tough-cookie$": "<rootDir>/src/test-shims/tough-cookie.js",
+      "^@bundled-es-modules/tough-cookie(.*)$": "<rootDir>/src/test-shims/tough-cookie.js"
     }
   },
   "browserslist": {
