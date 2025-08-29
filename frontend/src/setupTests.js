@@ -1,3 +1,51 @@
+// frontend/src/setupTests.js
+
+// Asserts úteis do Testing Library
+import '@testing-library/jest-dom';
+
+// ---- Mocks de módulos ESM que quebram no CRA/Jest (CJS) ----
+jest.mock('@bundled-es-modules/tough-cookie', () => ({}));
+jest.mock('@bundled-es-modules/tough-cookie/index-esm.js', () => ({}));
+
+// ---- Polyfills de browser ausentes no JSDOM ----
+if (!window.IntersectionObserver) {
+  class IO {
+    constructor() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  }
+  window.IntersectionObserver = IO;
+  global.IntersectionObserver = IO;
+}
+
+if (!window.ResizeObserver) {
+  class RO {
+    constructor() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  window.ResizeObserver = RO;
+  global.ResizeObserver = RO;
+}
+
+// Algumas partes do código usam crypto.randomUUID()
+// Em JSDOM pode não existir — criamos um fallback simples
+if (!global.crypto) {
+  global.crypto = {};
+}
+if (!global.crypto.randomUUID) {
+  global.crypto.randomUUID = () =>
+    'test-' + Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
+
+// Opcional: evitar erros de scrollTo em JSDOM
+if (!window.scrollTo) {
+  window.scrollTo = () => {};
+}
+
 // 1) Jest-DOM helpers
 require('@testing-library/jest-dom');
 const { TextEncoder, TextDecoder } = require('util');
