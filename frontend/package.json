@@ -38,8 +38,10 @@
     "moduleNameMapper": {
       "^.+\\.(css|scss|sass|less)$": "identity-obj-proxy",
       "^tough-cookie$": "<rootDir>/src/test-shims/tough-cookie.js",
-      "^@bundled-es-modules/tough-cookie.*$": "<rootDir>/src/test-shims/tough-cookie.js",
-      "^.*sockets\\/socket$": "<rootDir>/src/test-shims/socket.mock.js"
+      "^@bundled-es-modules/tough-cookie.*$": "<rootDir>/src/test-shims/empty.js",
+      "^sockets\\/socket$": "<rootDir>/src/test-shims/socket.mock.js",
+      "^\\.\\.?\\/.*sockets\\/socket(\\.\\w+)?$": "<rootDir>/src/test-shims/socket.mock.js",
+      "^src\\/sockets\\/socket(\\.\\w+)?$": "<rootDir>/src/test-shims/socket.mock.js"
     }
   },
   "browserslist": {
