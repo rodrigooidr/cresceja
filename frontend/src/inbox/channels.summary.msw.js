@@ -1,18 +1,11 @@
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 
 const defaultSummary = {
   whatsapp_official: { max_numbers: 2, items: [] },
-  whatsapp_baileys:  { enabled: true, items: [] },
-  instagram:         { connected: false },
-  facebook:          { connected: false }
+  whatsapp_baileys: { enabled: true, items: [] },
+  instagram: { connected: false },
+  facebook: { connected: false },
 };
-
-export const handlers = [
-  // Observação: usar '*/' torna o path robusto a baseURL/proxy
-  rest.get('*/channels/summary', (req, res, ctx) => {
-    return res(ctx.json(defaultSummary));
-  }),
-];
 
 let summary = JSON.parse(JSON.stringify(defaultSummary));
 
@@ -31,75 +24,77 @@ export function addOfficialNumber(item) {
 export function addBaileysSession(item) {
   summary.whatsapp_baileys.items.push(item);
 }
+
+export const handlers = [
+  // Observação: usar '*/' torna o path robusto a baseURL/proxy
+  http.get('*/channels/summary', () => HttpResponse.json(summary)),
+
   // WhatsApp Official
-  rest.post('/channels/whatsapp/official/numbers', async (req, res, ctx) => {
-    const { label, phone_e164 } = await req.json();
+  http.post('/channels/whatsapp/official/numbers', async ({ request }) => {
+    const { label, phone_e164 } = await request.json();
     const id = 'waof_' + (summary.whatsapp_official.items.length + 1);
     const item = { id, label, phone_e164, status: 'verifying' };
     summary.whatsapp_official.items.push(item);
-    return res(ctx.json(item));
+    return HttpResponse.json(item);
   }),
-  rest.post('/channels/whatsapp/official/numbers/:id/verify', async (req, res, ctx) => {
-    const { id } = req.params;
+  http.post('/channels/whatsapp/official/numbers/:id/verify', async ({ params }) => {
+    const { id } = params;
     const item = summary.whatsapp_official.items.find((i) => i.id === id);
     if (item) item.status = 'connected';
-    return res(ctx.json({}));
+    return HttpResponse.json({});
   }),
-  rest.delete('/channels/whatsapp/official/numbers/:id', (req, res, ctx) => {
-    const { id } = req.params;
+  http.delete('/channels/whatsapp/official/numbers/:id', ({ params }) => {
+    const { id } = params;
     summary.whatsapp_official.items = summary.whatsapp_official.items.filter((i) => i.id !== id);
-    return res(ctx.json({}));
+    return HttpResponse.json({});
   }),
 
   // WhatsApp Baileys sessions
-  rest.post('/channels/whatsapp/baileys/sessions', async (req, res, ctx) => {
-    const { label } = await req.json();
+  http.post('/channels/whatsapp/baileys/sessions', async ({ request }) => {
+    const { label } = await request.json();
     const id = 'sess_' + (summary.whatsapp_baileys.items.length + 1);
     const item = { id, label, status: 'qr' };
     summary.whatsapp_baileys.items.push(item);
-    return res(ctx.json(item));
+    return HttpResponse.json(item);
   }),
-  rest.get('/channels/whatsapp/baileys/sessions/:id/qr', (req, res, ctx) => {
-    return res(ctx.json({ qr_data_url: 'data:image/png;base64,AAAA' }));
-  }),
-  rest.get('/channels/whatsapp/baileys/sessions/:id', (req, res, ctx) => {
-    const { id } = req.params;
+  http.get('/channels/whatsapp/baileys/sessions/:id/qr', () =>
+    HttpResponse.json({ qr_data_url: 'data:image/png;base64,AAAA' }),
+  ),
+  http.get('/channels/whatsapp/baileys/sessions/:id', ({ params }) => {
+    const { id } = params;
     const sess = summary.whatsapp_baileys.items.find((i) => i.id === id);
     if (sess && sess.status === 'qr') {
       sess.status = 'connected';
       sess.phone_e164 = '+5511999990000';
     }
-    return res(ctx.json(sess || {}));
+    return HttpResponse.json(sess || {});
   }),
-  rest.delete('/channels/whatsapp/baileys/sessions/:id', (req, res, ctx) => {
-    const { id } = req.params;
+  http.delete('/channels/whatsapp/baileys/sessions/:id', ({ params }) => {
+    const { id } = params;
     summary.whatsapp_baileys.items = summary.whatsapp_baileys.items.filter((i) => i.id !== id);
-    return res(ctx.json({}));
+    return HttpResponse.json({});
   }),
 
   // Instagram
-  rest.get('/channels/instagram', (req, res, ctx) => {
-    return res(ctx.json(summary.instagram));
-  }),
-  rest.post('/channels/instagram/connect', (req, res, ctx) => {
+  http.get('/channels/instagram', () => HttpResponse.json(summary.instagram)),
+  http.post('/channels/instagram/connect', () => {
     summary.instagram.connected = true;
-    return res(ctx.json({}));
+    return HttpResponse.json({});
   }),
-  rest.delete('/channels/instagram/disconnect', (req, res, ctx) => {
+  http.delete('/channels/instagram/disconnect', () => {
     summary.instagram.connected = false;
-    return res(ctx.json({}));
+    return HttpResponse.json({});
   }),
 
   // Facebook
-  rest.get('/channels/facebook', (req, res, ctx) => {
-    return res(ctx.json(summary.facebook));
-  }),
-  rest.post('/channels/facebook/connect', (req, res, ctx) => {
+  http.get('/channels/facebook', () => HttpResponse.json(summary.facebook)),
+  http.post('/channels/facebook/connect', () => {
     summary.facebook.connected = true;
-    return res(ctx.json({}));
+    return HttpResponse.json({});
   }),
-  rest.delete('/channels/facebook/disconnect', (req, res, ctx) => {
+  http.delete('/channels/facebook/disconnect', () => {
     summary.facebook.connected = false;
-    return res(ctx.json({}));
+    return HttpResponse.json({});
   }),
 ];
+
