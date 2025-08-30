@@ -52,16 +52,20 @@ if (!window.scrollTo) window.scrollTo = () => {};
 if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
-// 3) MSW v1 – registra handlers globais
+// 3) MSW – registra handlers globais
 const { setupServer } = require('msw/node');
 let channelHandlers = [];
+let resetChannelSummary;
 try {
-  ({ handlers: channelHandlers } = require('./inbox/channels.summary.msw'));
+  ({ handlers: channelHandlers, resetSummary: resetChannelSummary } = require('./inbox/channels.summary.msw'));
 } catch {}
 const server = setupServer(...(channelHandlers || []));
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'warn' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  if (typeof resetChannelSummary === 'function') resetChannelSummary();
+});
 afterAll(() => server.close());
 
 // Se algum teste quiser usar:  server.use(...)
@@ -70,7 +74,7 @@ module.exports.server = server;
 // 4) Evita vazamento de socket entre testes
 afterEach(() => {
   try {
-    const { __resetSocketForTests } = require('./sockets/socket');
+    const { __resetSocketForTests } = require('./test-shims/socket.mock');
     if (typeof __resetSocketForTests === 'function') __resetSocketForTests();
   } catch {}
 });
