@@ -33,7 +33,7 @@
   },
   "jest": {
     "transformIgnorePatterns": [
-      "node_modules/(?!(msw|@mswjs|axios|nanoid|uuid|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
+      "node_modules/(?!(lucide-react|msw|@mswjs|axios|nanoid|uuid|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
     ],
     "moduleNameMapper": {
       "^.+\\.(css|scss|sass|less)$": "identity-obj-proxy",

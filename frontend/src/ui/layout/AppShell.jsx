@@ -1,21 +1,22 @@
-import React from 'react';
-import Sidebar from './Sidebar';
+// src/ui/layout/AppShell.jsx
+import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import Sidebar from './Sidebar';
 
-export default function AppShell({ headerRight=null, children }) {
+export default function AppShell() {
+  const [expanded, setExpanded] = useState(false); // colapsado por padrão
+  const sbWidth = expanded ? 220 : 64;
+
   return (
-    <div className="h-screen w-full grid grid-rows-[56px_1fr]">
-      <header className="bg-white border-b border-gray-200 flex items-center justify-between px-4">
-        <div className="font-semibold">CresceJá</div>
-        <div>{headerRight}</div>
-      </header>
-
-      <div className="grid grid-cols-[auto_1fr] overflow-hidden">
-        <Sidebar />
-        <section className="overflow-hidden">
-          {children ?? <Outlet/>}
-        </section>
-      </div>
+    <div className="min-h-screen">
+      <Sidebar expanded={expanded} setExpanded={setExpanded} />
+      {/* O main recebe padding-left igual à largura do sidebar */}
+      <main
+        style={{ paddingLeft: sbWidth }}
+        className="transition-[padding] duration-200 h-screen overflow-hidden"
+      >
+        <Outlet />
+      </main>
     </div>
   );
 }

@@ -1,38 +1,37 @@
-import React, { useState } from 'react';
+// src/ui/layout/Sidebar.jsx
+import React from 'react';
 import { NavLink } from 'react-router-dom';
-import {
-  MessageSquare, Users, BarChart3, Settings, Bot, Calendar, FileText, Zap
-} from 'lucide-react';
+import { MessageSquare, Users, BarChart3, Settings, Bot, Calendar, FileText, Zap } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const NAV = [
-  { to: '/app/inbox',        label: 'Inbox',         icon: MessageSquare },
-  { to: '/app/crm',          label: 'CRM',           icon: Users },
-  { to: '/app/calendars',    label: 'Calendários',   icon: Calendar },
-  { to: '/app/reports',      label: 'Relatórios',    icon: BarChart3 },
-  { to: '/app/templates',    label: 'Snippets',      icon: FileText },
-  { to: '/app/automations',  label: 'Automations',   icon: Zap },
-  { to: '/app/settings',     label: 'Configurações', icon: Settings },
-  { to: '/app/ai',           label: 'IA',            icon: Bot },
+  { to: '/app/inbox',               label: 'Inbox',         icon: MessageSquare },
+  { to: '/app/marketing',           label: 'Marketing',     icon: Zap },
+  { to: '/app/marketing/lists',     label: 'Listas',        icon: Users },
+  { to: '/app/marketing/templates', label: 'Snippets',      icon: FileText },
+  { to: '/app/calendars',           label: 'Calendários',   icon: Calendar },
+  { to: '/app/settings/channels',   label: 'Configurações', icon: Settings },
+  { to: '/app/ai',                  label: 'IA',            icon: Bot },
 ];
 
-export default function Sidebar(){
-  const [expanded, setExpanded] = useState(false); // colapsado por padrão
-  const w = expanded ? 220 : 64;
+export default function Sidebar({ expanded, setExpanded }) {
+  const width = expanded ? 220 : 64;
+  const { logout } = useAuth();
 
   return (
     <aside
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
-      className="border-r bg-white overflow-hidden transition-[width] duration-200"
-      style={{ width: w }}
+      className="fixed inset-y-0 left-0 border-r bg-white overflow-hidden transition-[width] duration-200 z-30 flex flex-col"
+      style={{ width }}
       data-testid="sidebar"
     >
-      <nav className="py-2">
-        {NAV.map(({to,label,icon:Icon}) => (
+      <nav className="py-2 flex-1 overflow-y-auto">
+        {NAV.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
-            className={({isActive}) =>
+            className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-2 text-sm hover:bg-gray-50
                ${isActive ? 'text-blue-600 font-medium' : 'text-gray-700'}`
             }
@@ -44,6 +43,17 @@ export default function Sidebar(){
           </NavLink>
         ))}
       </nav>
+
+      {/* Botão Sair */}
+      <div className="border-t p-2">
+        <button
+          type="button"
+          onClick={logout}
+          className="w-full text-left text-sm text-red-600 hover:underline"
+        >
+          {expanded ? 'Sair' : '⎋'}
+        </button>
+      </div>
     </aside>
   );
 }

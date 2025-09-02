@@ -1,6 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
+// src/pages/inbox/InboxPage.jsx
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useLayoutEffect,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
-import inboxApi, { apiUrl } from '../../api/inboxApi';
+import inboxApi from '../../api/inboxApi'; // <- só default
 import { makeSocket } from '../../sockets/socket';
 import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
@@ -38,10 +46,29 @@ import {
 } from '../../inbox/snippets';
 import AuditPanel from '../../components/inbox/AuditPanel.jsx';
 import ToastHost, { useToasts } from '../../components/ToastHost.jsx';
-import { MAX_UPLOAD_MB, exceedsSize, isAllowed, violationMessage } from '../../inbox/mediaPolicy.js';
+import { MAX_UPLOAD_MB, exceedsSize /* isAllowed, violationMessage */ } from '../../inbox/mediaPolicy.js';
 import auditlog from '../../inbox/auditlog.js';
 
-// Utilidades -------------------------------------------------------------
+// ------------------------------------------------------------- Utils
+
+// base para montar URLs absolutas a partir do baseURL do axios
+const __API_BASE = (() => {
+  const b = inboxApi?.defaults?.baseURL || '';
+  // ex.: http://localhost:4000/api -> http://localhost:4000
+  return b.replace(/\/api\/?$/, '');
+})();
+
+const apiUrl = (u) => {
+  if (!u) return '';
+  const s = String(u);
+  if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith('/')) return `${__API_BASE}${s}`;
+  return `${__API_BASE}/${s}`;
+};
+
+// URL que pode vir relativa do backend
+const safeApiUrl = (u) => (u ? apiUrl(u) : undefined);
+
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
 const asId = (v) => (v === 0 ? '0' : v ? String(v) : '');
 const uniqBy = (arr, keyFn) => {
@@ -49,7 +76,16 @@ const uniqBy = (arr, keyFn) => {
   arr.forEach((x) => m.set(keyFn(x), x));
   return Array.from(m.values());
 };
-
+const toDateInput = (val) => {
+  if (!val) return '';
+  const d = new Date(val);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+const fromDateInput = (val) => (val ? new Date(val).toISOString() : null);
 
 function formatRelative(date) {
   const d = new Date(date).getTime();
@@ -66,29 +102,36 @@ function formatRelative(date) {
 
 async function firstOk(fns = []) {
   for (const fn of fns) {
-    try { const r = await fn(); if (r?.data) return r; } catch (_) {}
+    try { const r = await fn(); if (r?.data) return r; } catch (_) { }
   }
   throw new Error('Nenhum endpoint respondeu');
 }
 
-function useOutsideClose(ref, onClose, deps = []) {
+/**
+ * Fecha um popover ao clicar fora (em captura) ou pressionar ESC.
+ * Aceita refs a serem ignoradas (ex.: o botão que abriu o popover).
+ */
+function useOutsideClose(ref, onClose, deps = [], ignoreRefs = []) {
   React.useEffect(() => {
-    function onDoc(e) {
-      if (ref.current && !ref.current.contains(e.target)) onClose?.();
-    }
-    function onKey(ev) {
-      if (ev.key === 'Escape') onClose?.();
-    }
-    document.addEventListener('mousedown', onDoc);
+    const onDocClick = (e) => {
+      const t = e.target;
+      const inside = ref.current && ref.current.contains(t);
+      const inIgnored = ignoreRefs.some(r => r?.current && r.current.contains(t));
+      if (!inside && !inIgnored) onClose?.();
+    };
+    const onKey = (ev) => { if (ev.key === 'Escape') onClose?.(); };
+
+    document.addEventListener('click', onDocClick, true); // captura
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('click', onDocClick, true);
       document.removeEventListener('keydown', onKey);
     };
+    // eslint-disable-next-line
   }, deps);
 }
 
-// Item de conversa (sidebar) --------------------------------------------
+// ------------------------------------------------------------- Conversation item
 function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected, onToggle, density }) {
   const contact = c?.contact || {};
   const icon = channelIconBySlug[c?.channel] || channelIconBySlug.default;
@@ -97,9 +140,8 @@ function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected,
   const reportHeight = useCallback(() => {
     if (ref.current && onHeight) onHeight(idx, ref.current.offsetHeight);
   }, [idx, onHeight]);
-  useLayoutEffect(() => {
-    reportHeight();
-  }, [reportHeight, c, active]);
+  useLayoutEffect(() => { reportHeight(); }, [reportHeight, c, active]);
+
   return (
     <div
       ref={ref}
@@ -142,6 +184,7 @@ function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected,
   );
 }
 
+// ------------------------------------------------------------- Page
 export default function InboxPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [panel, setPanelState] = useState(searchParams.get('panel') === 'audit' ? 'audit' : 'details');
@@ -159,7 +202,7 @@ export default function InboxPage() {
     if (p === 'audit' || p === 'details') setPanelState(p);
   }, [searchParams]);
 
-  // Estado base ----------------------------------------------------------
+  // ------------------------------ Estado base
   const [items, setItems] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [listCursor, setListCursor] = useState(null);
@@ -186,6 +229,14 @@ export default function InboxPage() {
   const itemHeightsRef = useRef([]);
   const stickToBottomRef = useRef(true);
   const [toastError, setToastError] = useState('');
+
+  // ---------- toasts (sempre função)
+  let addToast = () => {};
+  try {
+    const toastsCtx = useToasts ? useToasts() : null;
+    if (toastsCtx && typeof toastsCtx.add === 'function') addToast = toastsCtx.add;
+  } catch { /* noop */ }
+
   const showError = useCallback((msg) => {
     setToastError(msg || 'Erro');
     setTimeout(() => setToastError(''), 5000);
@@ -200,34 +251,44 @@ export default function InboxPage() {
   const selPreloadTimerRef = useRef(null);
   const [density, setDensity] = useState(() => localStorage.getItem('cj:inbox:density') || 'cozy');
   const [connected, setConnected] = useState(true);
+  const [typing, setTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+
+  // drafts por conversa
+  const DRAFTS_KEY = 'cj:inbox:drafts';
+  const draftsRef = useRef({});
+  useEffect(() => {
+    try { draftsRef.current = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}'); } catch { draftsRef.current = {}; }
+  }, []);
+  const saveDraft = useCallback((convId, draft) => {
+    if (!convId) return;
+    draftsRef.current = { ...(draftsRef.current || {}), [convId]: draft || '' };
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(draftsRef.current)); } catch {}
+  }, []);
+  const loadDraft = useCallback((convId) => (draftsRef.current?.[convId] || ''), []);
 
   const toggleDensity = () => {
     const next = density === 'compact' ? 'cozy' : 'compact';
     setDensity(next);
-    try {
-      localStorage.setItem('cj:inbox:density', next);
-    } catch {}
+    try { localStorage.setItem('cj:inbox:density', next); } catch { }
   };
 
   const user = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem('user') || '{}');
-    } catch {
-      return {};
-    }
+    try { return JSON.parse(localStorage.getItem('user') || '{}'); }
+    catch { return {}; }
   }, []);
   const role = user?.role || 'unknown';
-  const unknownRole = !['agent', 'supervisor', 'org_admin', 'super_admin'].includes(role);
+  const unknownRole = !['agent', 'supervisor', 'org_admin', 'super_admin', 'manager', 'OrgOwner', 'SuperAdmin'].includes(role);
   const can = useCallback(
     (action) => {
       const map = {
-        read: ['agent', 'supervisor', 'org_admin', 'super_admin'],
-        assign: ['agent', 'supervisor', 'org_admin', 'super_admin'],
-        archive: ['supervisor', 'org_admin', 'super_admin'],
-        close: ['supervisor', 'org_admin', 'super_admin'],
-        spam: ['org_admin', 'super_admin'],
+        read: ['agent', 'supervisor', 'org_admin', 'super_admin', 'manager', 'OrgOwner', 'SuperAdmin'],
+        assign: ['agent', 'supervisor', 'org_admin', 'super_admin', 'manager', 'OrgOwner', 'SuperAdmin'],
+        archive: ['supervisor', 'org_admin', 'super_admin', 'manager', 'OrgOwner', 'SuperAdmin'],
+        close: ['supervisor', 'org_admin', 'super_admin', 'manager', 'OrgOwner', 'SuperAdmin'],
+        spam: ['org_admin', 'super_admin', 'SuperAdmin'],
       };
       const allowed = map[action] ? map[action].includes(role) : true;
       return unknownRole ? true : allowed;
@@ -248,7 +309,7 @@ export default function InboxPage() {
     );
     try {
       await inboxApi.post(`/conversations/${conversationId}/read`);
-    } catch {}
+    } catch { }
   }
 
   const preloadConv = useCallback(
@@ -262,8 +323,8 @@ export default function InboxPage() {
         const raw = Array.isArray(r?.data?.items)
           ? r.data.items
           : Array.isArray(r?.data)
-          ? r.data
-          : [];
+            ? r.data
+            : [];
         const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
         writeConvCache(id, { items: safe, updatedAt: Date.now(), etag: r?.headers?.etag });
         pruneLRU();
@@ -383,8 +444,7 @@ export default function InboxPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedIds, performBulk, can, user, clearSelection]);
 
-
-  // Filtros --------------------------------------------------------------
+  // ------------------------------ Filtros
   const [search, setSearch] = useState(searchParams.get('search') || searchParams.get('q') || '');
   const [channelFilters, setChannelFilters] = useState(
     (searchParams.get('channels') || searchParams.get('channel') || '').split(',').filter(Boolean)
@@ -396,7 +456,7 @@ export default function InboxPage() {
     setSelectedIds(clearOnFilterChange(selectedIds));
   }, [search, channelFilters, tagFilters, statusFilters]);
 
-  // Meta ----------------------------------------------------------------
+  // ------------------------------ Meta
   const [tags, setTags] = useState([]);
   const [statuses, setStatuses] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -409,7 +469,7 @@ export default function InboxPage() {
     [templates, templateId]
   );
 
-  // Quick replies -------------------------------------------------------
+  // ------------------------------ Quick replies
   const [quickReplies, setQuickReplies] = useState([]);
   const [showQuick, setShowQuick] = useState(false);
   const [qrQuery, setQrQuery] = useState('');
@@ -430,53 +490,53 @@ export default function InboxPage() {
     setTemplateErrors(errs);
   }, [selectedTemplate, templateVars]);
 
-  useEffect(() => {
-    setTemplateVars({});
-  }, [templateId]);
+  useEffect(() => { setTemplateVars({}); }, [templateId]);
 
   useEffect(() => {
-    loadQuickReplies().then((r) => setQuickReplies(Array.isArray(r?.items) ? r.items : [])).catch(() => {});
+    loadQuickReplies().then((r) => setQuickReplies(Array.isArray(r?.items) ? r.items : [])).catch(() => { });
   }, []);
 
-  // Composer ------------------------------------------------------------
+  // ------------------------------ Composer
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [showEmoji, setShowEmoji] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [typing, setTyping] = useState(false);
-  const typingTimeoutRef = useRef(null);
-
   const [showChatSearch, setShowChatSearch] = useState(false);
   const [chatSearch, setChatSearch] = useState('');
   const [chatMatches, setChatMatches] = useState([]);
   const [chatMatchIdx, setChatMatchIdx] = useState(0);
   const chatSearchRef = useRef(null);
-  const { add: addToast } = useToasts?.() || { add: () => {} };
 
+  // drafts: troca de conversa carrega/guarda texto
   useEffect(() => { setShowQuick(false); qrVarItemRef.current = null; }, [sel]);
   useEffect(() => setShowEmoji(false), [sel]);
   useEffect(() => setShowSnippets(false), [sel]);
-  useEffect(() => { composerRef.current?.focus?.(); }, [sel?.id]);
+  useEffect(() => {
+    if (sel?.id) {
+      setText(loadDraft(sel.id));
+      setAttachments([]); // não carrega anexos entre conversas
+      setTimeout(() => { composerRef.current?.focus?.(); }, 0);
+    } else {
+      setText('');
+      setAttachments([]);
+    }
+  }, [sel, loadDraft]);
+  useEffect(() => {
+    if (sel?.id != null) saveDraft(sel.id, text);
+  }, [text, sel, saveDraft]);
 
   const highlight = useCallback(
-    (text = '') => {
-      if (!chatSearch) return text;
-      const lower = text.toLowerCase();
+    (textV = '') => {
+      if (!chatSearch) return textV;
+      const lower = textV.toLowerCase();
       const q = chatSearch.toLowerCase();
       const parts = [];
       let i = 0;
       while (true) {
         const idx = lower.indexOf(q, i);
-        if (idx === -1) {
-          parts.push(text.slice(i));
-          break;
-        }
-        parts.push(text.slice(i, idx));
-        parts.push(
-          <mark key={idx} className="bg-yellow-200">
-            {text.slice(idx, idx + q.length)}
-          </mark>
-        );
+        if (idx === -1) { parts.push(textV.slice(i)); break; }
+        parts.push(textV.slice(i, idx));
+        parts.push(<mark key={idx} className="bg-yellow-200">{textV.slice(idx, idx + q.length)}</mark>);
         i = idx + q.length;
       }
       return parts;
@@ -485,20 +545,13 @@ export default function InboxPage() {
   );
 
   useEffect(() => {
-    if (!chatSearch) {
-      setChatMatches([]);
-      setChatMatchIdx(0);
-      return;
-    }
+    if (!chatSearch) { setChatMatches([]); setChatMatchIdx(0); return; }
     const q = chatSearch.toLowerCase();
     const arr = [];
     msgs.forEach((m) => {
-      const text = (m.text || '').toLowerCase();
-      let idx = text.indexOf(q);
-      while (idx !== -1) {
-        arr.push({ id: m.id });
-        idx = text.indexOf(q, idx + q.length);
-      }
+      const tx = (m.text || '').toLowerCase();
+      let idx = tx.indexOf(q);
+      while (idx !== -1) { arr.push({ id: m.id }); idx = tx.indexOf(q, idx + q.length); }
     });
     setChatMatches(arr);
     setChatMatchIdx(arr.length ? 0 : 0);
@@ -525,19 +578,19 @@ export default function InboxPage() {
     setChatMatchIdx((i) => (i - 1 + chatMatches.length) % chatMatches.length);
   }, [chatMatches]);
 
-  // Painéis -------------------------------------------------------------
+  // ------------------------------ Painéis
   const [showInfo, setShowInfo] = useState(true);
   const [lightbox, setLightbox] = useState({ open: false, items: [], index: 0, trigger: null });
 
-  // Form cliente --------------------------------------------------------
-  const [clientForm, setClientForm] = useState({ name: '', phone_e164: '', email: '' });
-  const [clientSaved, setClientSaved] = useState({ name: '', phone_e164: '', email: '' });
+  // ------------------------------ Form cliente (+campos extras)
+  const [clientForm, setClientForm] = useState({ name: '', phone_e164: '', email: '', birth_date: '', notes: '' });
+  const [clientSaved, setClientSaved] = useState({ name: '', phone_e164: '', email: '', birth_date: '', notes: '' });
   const [clientErrors, setClientErrors] = useState({});
   const [clientStatus, setClientStatus] = useState('idle');
   const [clientDirty, setClientDirty] = useState(false);
   const clientTimerRef = useRef(null);
 
-  // Snippets ------------------------------------------------------------
+  // ------------------------------ Snippets
   const [snipState, setSnipState] = useState(() => loadSnippets());
   const [showSnippets, setShowSnippets] = useState(false);
   const [snipQuery, setSnipQuery] = useState('');
@@ -545,7 +598,7 @@ export default function InboxPage() {
   const [snipMsg, setSnipMsg] = useState('');
   const snipBtnRef = useRef(null);
 
-  // Refs ----------------------------------------------------------------
+  // ------------------------------ Refs
   const msgBoxRef = useRef(null);
   const emojiRef = useRef(null);
   const quickRef = useRef(null);
@@ -554,9 +607,10 @@ export default function InboxPage() {
   const composerBoxRef = useRef(null);
   const emojiBtnRef = useRef(null);
 
-  useOutsideClose(emojiRef, () => setShowEmoji(false), [sel?.id]);
-  useOutsideClose(quickRef, () => setShowQuick(false), [sel?.id]);
-  useOutsideClose(snipRef, () => setShowSnippets(false), [sel?.id]);
+  // popovers estáveis
+  useOutsideClose(emojiRef, () => setShowEmoji(false), [sel?.id, showEmoji], [emojiBtnRef]);
+  useOutsideClose(quickRef, () => setShowQuick(false), [sel?.id, showQuick]);
+  useOutsideClose(snipRef, () => setShowSnippets(false), [sel?.id, showSnippets], [snipBtnRef]);
 
   const handleScroll = useCallback(() => {
     const box = msgBoxRef.current;
@@ -697,29 +751,50 @@ export default function InboxPage() {
 
   const handleSaveQR = useCallback(async () => {
     if (!saveQRForm.title) return;
-    if (saveQRForm.id) {
-      const item = await updateQuickReply(saveQRForm.id, { title: saveQRForm.title, content: saveQRForm.content });
-      setQuickReplies((arr) => arr.map((i) => (String(i.id) === String(item.id) ? item : i)));
-    } else {
-      const item = await saveQuickReply({ title: saveQRForm.title, content: saveQRForm.content });
-      setQuickReplies((arr) => [...arr, item]);
+    try {
+      if (saveQRForm.id) {
+        const item = await updateQuickReply(saveQRForm.id, {
+          title: saveQRForm.title,
+          content: saveQRForm.content
+        });
+        setQuickReplies((arr) => arr.map((i) => (String(i.id) === String(item.id) ? item : i)));
+      } else {
+        const item = await saveQuickReply({
+          title: saveQRForm.title,
+          content: saveQRForm.content
+        });
+        setQuickReplies((arr) => [...arr, item]);
+      }
+      setShowSaveQR(false);
+    } catch (err) {
+      // fallback local
+      const local = {
+        id: saveQRForm.id || `local-${Date.now()}`,
+        title: saveQRForm.title,
+        content: saveQRForm.content,
+        scope: 'personal'
+      };
+      setQuickReplies((arr) => {
+        if (saveQRForm.id) {
+          return arr.map((i) => (String(i.id) === String(local.id) ? local : i));
+        }
+        return [...arr, local];
+      });
+      setShowSaveQR(false);
     }
-    setShowSaveQR(false);
   }, [saveQRForm]);
 
   const handleDeleteQR = useCallback(async (id) => {
-    await deleteQuickReply(id);
+    try { await deleteQuickReply(id); } catch { }
     setQuickReplies((arr) => arr.filter((i) => String(i.id) !== String(id)));
   }, []);
 
-
-  // Sincroniza estados quando searchParams mudam ------------------------
+  // ------------------------------ Sincroniza URL -> estado
   useEffect(() => {
     const s = searchParams.get('search') || searchParams.get('q') || '';
     if (s !== search) setSearch(s);
     const ch = (searchParams.get('channels') || searchParams.get('channel') || '')
-      .split(',')
-      .filter(Boolean);
+      .split(',').filter(Boolean);
     if (ch.join(',') !== channelFilters.join(',')) setChannelFilters(ch);
     const tg = (searchParams.get('tags') || '').split(',').filter(Boolean);
     if (tg.join(',') !== tagFilters.join(',')) setTagFilters(tg);
@@ -727,12 +802,15 @@ export default function InboxPage() {
     if (st.join(',') !== statusFilters.join(',')) setStatusFilters(st);
   }, [searchParams]);
 
-  // Carrega tags/statuses -----------------------------------------------
+  // ------------------------------ Meta: tags/status
   useEffect(() => {
-    inboxApi.get('/tags').then(r => setTags(Array.isArray(r?.data?.items) ? r.data.items : [])).catch(() => {});
-    inboxApi.get('/crm/statuses').then(r => setStatuses(Array.isArray(r?.data?.items) ? r.data.items : [])).catch(() => {});
+    inboxApi.get('/tags').then(r => setTags(Array.isArray(r?.data?.items) ? r.data.items : [])).catch(() => { });
+  }, []);
+  useEffect(() => {
+    inboxApi.get('/crm/statuses').then(r => setStatuses(Array.isArray(r?.data?.items) ? r.data.items : [])).catch(() => { });
   }, []);
 
+  // ----------------------------------------------------------------- paginação da lista (lado esquerdo)
   const loadMoreConversations = useCallback(async () => {
     if (loadingMoreList || !listHasMore) return;
     const params = {};
@@ -764,7 +842,7 @@ export default function InboxPage() {
     }
   }, [loadingMoreList, listHasMore, search, channelFilters, tagFilters, statusFilters, listCursor, listPage, showError]);
 
-  // Busca conversas + sincroniza URL ------------------------------------
+  // ----------------------------------------------------------------- busca e sincroniza URL
   useEffect(() => {
     const params = {};
     if (search) params.q = search;
@@ -803,7 +881,7 @@ export default function InboxPage() {
     return () => clearTimeout(t);
   }, [search, channelFilters, tagFilters, statusFilters, setSearchParams, reloadTick, showError]);
 
-  // Filtro local (fallback) ---------------------------------------------
+  // ----------------------------------------------------------------- filtro local (fallback)
   const filteredItems = useMemo(() => {
     const q = (search || '').toLowerCase();
     const byCh = new Set(channelFilters);
@@ -821,6 +899,7 @@ export default function InboxPage() {
     });
   }, [items, search, channelFilters, tagFilters, statusFilters]);
 
+  // ----------------------------------------------------------------- virtualização e scroll lista
   const handleConvScroll = useCallback(() => {
     const root = listRef.current;
     if (!root) return;
@@ -834,10 +913,7 @@ export default function InboxPage() {
     );
   }, []);
 
-  useLayoutEffect(() => {
-    handleConvScroll();
-  }, []);
-
+  useLayoutEffect(() => { handleConvScroll(); }, []); // inicial
   useLayoutEffect(() => {
     convItemHeightsRef.current = filteredItems.map((_, i) => convItemHeightsRef.current[i] || 64);
     handleConvScroll();
@@ -856,9 +932,7 @@ export default function InboxPage() {
     const el = listBottomRef.current;
     if (!root || !el) return;
     const obs = new IntersectionObserver((entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting) loadMoreConversations();
-      });
+      entries.forEach((e) => { if (e.isIntersecting) loadMoreConversations(); });
     }, { root });
     obs.observe(el);
     return () => obs.disconnect();
@@ -877,134 +951,7 @@ export default function InboxPage() {
     return () => clearTimeout(selPreloadTimerRef.current);
   }, [sel, filteredItems, preloadConv]);
 
-  // Templates + form cliente quando muda a conversa ---------------------
-  useEffect(() => {
-    setShowEmoji(false);
-    setAttachments([]);
-    setTemplateVars({});
-    setTemplateErrors({});
-    if (!sel) {
-      setTemplates([]); setTemplateId('');
-      const empty = { name: '', phone_e164: '', email: '' };
-      setClientForm(empty);
-      setClientSaved(empty);
-      setClientStatus('idle');
-      setClientDirty(false);
-      return;
-    }
-    const initial = {
-      name: sel?.contact?.name || '',
-      phone_e164: sel?.contact?.phone_e164 || '',
-      email: sel?.contact?.email || '',
-    };
-    setClientForm(initial);
-    setClientSaved(initial);
-    setClientStatus('idle');
-    setClientDirty(false);
-
-    if (sel.is_group) { setTemplates([]); setTemplateId(''); return; }
-
-    inboxApi
-      .get('/templates', { params: { channel: sel.channel } })
-      .then((r) => setTemplates(Array.isArray(r?.data?.items) ? r.data.items : []))
-      .catch(() => setTemplates([]));
-  }, [sel]);
-
-  useEffect(() => {
-    if (!sel) {
-      setShowChatSearch(false);
-      setChatSearch('');
-      setChatMatches([]);
-      setChatMatchIdx(0);
-    }
-  }, [sel]);
-
-  const resyncMessages = useCallback(async () => {
-    if (!sel) return;
-    const last = msgs[msgs.length - 1];
-    if (!last) return;
-    const after = last.id || last.created_at;
-    try {
-      const r = await inboxApi.get(`/conversations/${sel.id}/messages`, { params: { after } });
-      const raw = Array.isArray(r?.data?.items) ? r.data.items : Array.isArray(r?.data) ? r.data : [];
-      const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
-      if (safe.length) setMsgs((prev) => uniqBy([...(prev || []), ...safe], (m) => m.id));
-    } catch (e) {
-      console.error('Falha ao ressincronizar mensagens', e);
-    }
-  }, [sel, msgs]);
-
-  // Socket ---------------------------------------------------------------
-  useEffect(() => {
-    const s = makeSocket();
-
-    const onConnect = () => mountedRef.current && setConnected(true);
-    const onDisconnect = () => mountedRef.current && setConnected(false);
-
-    const onNew = (payload) => {
-      const convId =
-        payload?.conversationId ||
-        payload?.conversation_id ||
-        payload?.conversation?.id;
-
-      const raw = payload?.message ?? payload?.data ?? payload;
-      const msg = normalizeMessage(raw);
-      if (!msg) return;
-
-      // Se a conversa aberta é a mesma, injeta no timeline e marca como lida
-      if (sel?.id && String(sel.id) === String(convId)) {
-        setMsgs(prev => [msg, ...(prev || [])]);
-        markRead(sel.id);
-      } else {
-        // Incrementa badge na conversa correspondente
-        setItems(prev =>
-          (prev || []).map(c =>
-            String(c.id) === String(convId)
-              ? { ...c, unread_count: (c.unread_count || 0) + 1 }
-              : c
-          )
-        );
-      }
-    };
-
-    const onUpdate = (payload) => {
-      const convId =
-        payload?.conversationId ||
-        payload?.conversation_id ||
-        payload?.conversation?.id;
-
-      const raw = payload?.message ?? payload?.data ?? payload;
-      const msg = normalizeMessage(raw);
-      if (!msg) return;
-
-      if (sel?.id && String(sel.id) === String(convId)) {
-        setMsgs(prev => prev.map(m => (m.id === msg.id ? msg : m)));
-      }
-    };
-
-    const onConvUpdated = (payload) => {
-      const conv = payload?.conversation;
-      if (!conv?.id) return;
-      setItems(prev => (prev || []).map(c => (c.id === conv.id ? { ...c, ...conv } : c)));
-      if (sel?.id && sel.id === conv.id) setSel(prev => ({ ...prev, ...conv }));
-    };
-
-    s.on('connect', onConnect);
-    s.on('disconnect', onDisconnect);
-    s.on('message:new', onNew);
-    s.on('message:updated', onUpdate);
-    s.on('conversation:updated', onConvUpdated);
-
-    return () => {
-      s.off('connect', onConnect);
-      s.off('disconnect', onDisconnect);
-      s.off('message:new', onNew);
-      s.off('message:updated', onUpdate);
-      s.off('conversation:updated', onConvUpdated);
-    };
-  }, [sel?.id]);
-
-  // Abrir conversa -------------------------------------------------------
+  // ----------------------------------------------------------------- abrir conversa
   const open = useCallback(async (c) => {
     setShowEmoji(false);
     setSel(c);
@@ -1038,12 +985,11 @@ export default function InboxPage() {
         const raw = Array.isArray(r?.data?.items)
           ? r.data.items
           : Array.isArray(r?.data)
-          ? r.data
-          : [];
+            ? r.data
+            : [];
         const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
         const merged = mergeMessages(cached.items, safe);
         setMsgs(merged);
-        const newestId = safe[0]?.id || safe[safe.length - 1]?.id;
         markRead(c.id);
         const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
         const hasMore = r?.data?.has_more ?? !!cursor;
@@ -1078,11 +1024,10 @@ export default function InboxPage() {
         const raw = Array.isArray(r?.data?.items)
           ? r.data.items
           : Array.isArray(r?.data)
-          ? r.data
-          : [];
+            ? r.data
+            : [];
         const safe = raw.map((m) => normalizeMessage(m)).filter(Boolean);
         setMsgs(safe);
-        const newestId = safe[0]?.id || safe[safe.length - 1]?.id;
         markRead(c.id);
         const cursor = r?.data?.next_cursor || r?.data?.cursor || r?.data?.before;
         const hasMore = r?.data?.has_more ?? !!cursor;
@@ -1110,6 +1055,7 @@ export default function InboxPage() {
     }
   }, [showError, handleScroll]);
 
+  // ----------------------------------------------------------------- carregar mensagens antigas (scroll topo)
   const loadOlderMessages = useCallback(async () => {
     if (!sel || loadingMoreMsgs || !msgHasMore) return;
     const params = { limit: 20 };
@@ -1158,15 +1104,95 @@ export default function InboxPage() {
     const el = topTriggerRef.current;
     if (!root || !el) return;
     const obs = new IntersectionObserver((entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting) loadOlderMessages();
-      });
+      entries.forEach((e) => { if (e.isIntersecting) loadOlderMessages(); });
     }, { root });
     obs.observe(el);
     return () => obs.disconnect();
   }, [loadOlderMessages, sel, msgs.length]);
 
-  // Atalhos de teclado ---------------------------------------------------
+  // ----------------------------------------------------------------- socket (inclui typing)
+  useEffect(() => {
+    const s = makeSocket();
+
+    const onConnect = () => mountedRef.current && setConnected(true);
+    const onDisconnect = () => mountedRef.current && setConnected(false);
+
+    const startTyping = (payload) => {
+      const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id || payload?.id;
+      if (!sel?.id || String(sel.id) !== String(convId)) return;
+      setTyping(true);
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => setTyping(false), 3000);
+    };
+
+    const onNew = (payload) => {
+      const convId =
+        payload?.conversationId ||
+        payload?.conversation_id ||
+        payload?.conversation?.id;
+
+      const raw = payload?.message ?? payload?.data ?? payload;
+      const msg = normalizeMessage(raw);
+      if (!msg) return;
+
+      if (sel?.id && String(sel.id) === String(convId)) {
+        setMsgs(prev => ([...(prev || []), msg]));
+        markRead(sel.id);
+      } else {
+        setItems(prev =>
+          (prev || []).map(c =>
+            String(c.id) === String(convId)
+              ? { ...c, unread_count: (c.unread_count || 0) + 1 }
+              : c
+          )
+        );
+      }
+    };
+
+    const onUpdate = (payload) => {
+      const convId =
+        payload?.conversationId ||
+        payload?.conversation_id ||
+        payload?.conversation?.id;
+
+      const raw = payload?.message ?? payload?.data ?? payload;
+      const msg = normalizeMessage(raw);
+      if (!msg) return;
+
+      if (sel?.id && String(sel.id) === String(convId)) {
+        setMsgs(prev => prev.map(m => (m.id === msg.id ? msg : m)));
+      }
+    };
+
+    const onConvUpdated = (payload) => {
+      const conv = payload?.conversation;
+      if (!conv?.id) return;
+      setItems(prev => (prev || []).map(c => (c.id === conv.id ? { ...c, ...conv } : c)));
+      if (sel?.id && sel.id === conv.id) setSel(prev => ({ ...prev, ...conv }));
+    };
+
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+    s.on('message:new', onNew);
+    s.on('message:updated', onUpdate);
+    s.on('conversation:updated', onConvUpdated);
+
+    // eventos de digitação (nomes variam por integração)
+    s.on('typing', startTyping);
+    s.on('message:typing', startTyping);
+
+    return () => {
+      s.off('connect', onConnect);
+      s.off('disconnect', onDisconnect);
+      s.off('message:new', onNew);
+      s.off('message:updated', onUpdate);
+      s.off('conversation:updated', onConvUpdated);
+      s.off('typing', startTyping);
+      s.off('message:typing', startTyping);
+    };
+  }, [sel?.id]);
+
+  // ----------------------------------------------------------------- atalhos de teclado diversos
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -1210,6 +1236,7 @@ export default function InboxPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [filteredItems, sel, open, showChatSearch]);
 
+  // ----------------------------------------------------------------- separador de "novas mensagens"
   const separatorIdx = useMemo(() => {
     if (!sel) return -1;
     const lastReadId = asId(sel.last_read_message_id);
@@ -1222,53 +1249,303 @@ export default function InboxPage() {
     return -1;
   }, [sel, msgs]);
 
-  // Upload ---------------------------------------------------------------
+  // ----------------------------------------------------------------- drag & drop global
+  useEffect(() => {
+    const onDragOver = (e) => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); };
+    const onDrop = (e) => {
+      if (e.dataTransfer?.files?.length) {
+        e.preventDefault();
+        handleFiles(e.dataTransfer.files);
+      }
+    };
+    window.addEventListener('dragover', onDragOver);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', onDragOver);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, [sel]);
+
+  // ----------------------------------------------------------------- upload + preview local (com dedupe)
   async function handleFiles(fileList) {
     if (!sel) return;
     const files = Array.from(fileList || []);
     if (!files.length) return;
 
+    // valida: só bloqueia por tamanho
     const valid = [];
     files.forEach((f) => {
-      const msg = violationMessage(f);
-      if (msg) addToast?.(msg, { variant: 'error' });
-      else valid.push(f);
+      if (exceedsSize?.(f)) {
+        const mb = Math.round((f.size / (1024 * 1024)) * 10) / 10;
+        const max = MAX_UPLOAD_MB || 25;
+        addToast(`Arquivo muito grande (${mb}MB). Máximo permitido: ${max}MB.`, { variant: 'error' });
+      } else {
+        valid.push(f);
+      }
     });
     if (!valid.length) return;
 
-    setAttachments((prev) => [
-      ...prev,
-      ...valid.map((f) => ({ id: 'local-' + crypto.randomUUID(), name: f.name, localFile: f }))
-    ]);
+    // deduplica por (name+size)
+    const keyOf = (f) => `${f.name}#${f.size}`;
+    const existing = new Set(
+      (attachments || []).map((a) =>
+        a.localFile ? keyOf(a.localFile) : `${a.filename || a.name}#${a.size || 0}`
+      )
+    );
 
-    for (const f of valid) {
-      const form = new FormData();
-      form.append('files[]', f);
-      try {
-        const { data } = await inboxApi.post(`/conversations/${sel.id}/attachments`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-        const assets = Array.isArray(data?.assets) ? data.assets : [];
-        setAttachments((prev) => prev
-          .filter((a) => !a.localFile || a.localFile !== f)
-          .concat(
-            assets.map((a) => ({
-              id: a.id || a.asset_id || a.url,
-              url: a.url ? apiUrl(a.url) : undefined,
-              thumb_url: a.thumb_url ? apiUrl(a.thumb_url) : undefined,
-              filename: a.filename || a.name || f.name,
-              mime: a.mime_type || a.content_type
-            }))
-          )
-        );
-      } catch (err) {
-        setAttachments((prev) => prev.filter((a) => a.localFile !== f));
-        console.error('Upload failed', err);
-      }
-    }
+    const locals = valid
+      .filter((f) => !existing.has(keyOf(f)))
+      .map((f) => {
+        const localUrl = URL.createObjectURL(f);
+        return {
+          id: 'local-' + (crypto?.randomUUID?.() || Math.random().toString(36).slice(2)),
+          name: f.name,
+          localFile: f,
+          localUrl,
+          isImage: /^image\//.test(f.type)
+        };
+      });
+
+    if (!locals.length) return;
+    setAttachments((prev) => [...prev, ...locals]);
   }
 
-  // Inline client edit --------------------------------------------------
+  const removeAttachment = (id) => {
+    setAttachments((prev) => {
+      const item = prev.find((x) => x.id === id);
+      if (item?.localUrl) URL.revokeObjectURL(item.localUrl);
+      return prev.filter((a) => a.id !== id);
+    });
+  };
+
+  // sobe anexos locais e normaliza retorno
+  const uploadLocalAttachments = useCallback(async (convId) => {
+    const locals = attachments.filter((a) => a.localFile && !a.error);
+    if (!locals.length) return [];
+
+    const uploadedAssets = [];
+    for (const a of locals) {
+      const form = new FormData();
+      form.append('files[]', a.localFile);
+      try {
+        const { data } = await inboxApi.post(`/conversations/${convId}/attachments`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        let assetsRaw = [];
+        if (Array.isArray(data?.assets)) assetsRaw = data.assets;
+        else if (Array.isArray(data?.items)) assetsRaw = data.items;
+        else if (Array.isArray(data?.files)) assetsRaw = data.files;
+        else if (data?.asset || data?.file) assetsRaw = [data.asset || data.file];
+        else if (Array.isArray(data)) assetsRaw = data;
+
+        const normalized = assetsRaw.map((asset) => ({
+          id: asset.id || asset.asset_id || asset.file_id || asset.url,
+          url: safeApiUrl(asset.url || asset.preview_url || asset.thumb_url),
+          thumb_url: safeApiUrl(asset.thumb_url || asset.preview_url),
+          filename: asset.filename || asset.name || a.name,
+          mime: asset.mime_type || asset.content_type || asset.type || a.localFile?.type
+        }));
+
+        setAttachments((prev) =>
+          prev
+            .filter((x) => x.id !== a.id)
+            .concat(
+              normalized.map((na) => ({
+                id: na.id,
+                url: na.url,
+                thumb_url: na.thumb_url,
+                filename: na.filename,
+                mime: na.mime
+              }))
+            )
+        );
+        uploadedAssets.push(...normalized);
+
+        if (a.localUrl) URL.revokeObjectURL(a.localUrl);
+      } catch (err) {
+        setAttachments((prev) => prev.map((x) => (x.id === a.id ? { ...x, error: true } : x)));
+        addToast(`Falha ao enviar arquivo ${a.name}`, { variant: 'error' });
+      }
+    }
+    return uploadedAssets;
+  }, [attachments]);
+
+  // ----------------------------------------------------------------- helpers de envio com fallback
+  function normalizeOutgoingPayload(payload) {
+    if (payload?.type === 'file') {
+      const ids = payload.attachments || payload.attachments_ids || payload.files || [];
+      return [
+        { ...payload }, // como veio
+        { type: 'file', attachments: ids },
+        { type: 'file', attachments_ids: ids },
+        { files: ids },
+      ];
+    }
+    if (payload?.type === 'template') {
+      return [
+        payload,
+        { type: 'template', template_id: payload.template_id, variables: payload.variables || {} },
+        { template_id: payload.template_id, variables: payload.variables || {} },
+      ];
+    }
+    // texto
+    return [
+      payload,
+      { type: 'text', text: payload.text || '' },
+      { text: payload.text || '' },
+    ];
+  }
+
+  async function postMessageWithFallback(convId, payload, tempId) {
+    const shapes = normalizeOutgoingPayload(payload);
+    const tries = [];
+    for (const p of shapes) {
+      tries.push(() => inboxApi.post(`/conversations/${convId}/messages`, { ...p, temp_id: tempId }));
+      tries.push(() => inboxApi.post(`/inbox/conversations/${convId}/messages`, { ...p, temp_id: tempId }));
+    }
+    let lastErr;
+    for (const fn of tries) {
+      try { return await fn(); } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
+
+  // ----------------------------------------------------------------- envio/reenvio (VERSÃO ÚNICA — sem duplicações)
+  const replaceTemp = (id, real) =>
+    setMsgs((p) => {
+      const idx = (p || []).findIndex((m) => m.id === id);
+      if (idx >= 0) return p.map((m) => (m.id === id ? { ...real, sending: false } : m));
+      return uniqBy([...(p || []), { ...real, sending: false }], (m) => m.id);
+    });
+  const markFailed = (id) =>
+    setMsgs((p) => (p || []).map((m) => (m.id === id ? { ...m, failed: true, sending: false } : m)));
+
+  const markAllRead = async () => {
+    if (!sel) return;
+    try {
+      await inboxApi.put(`/conversations/${sel.id}/read`);
+      const last = msgs[msgs.length - 1];
+      setSel((p) =>
+        p
+          ? { ...p, unread_count: 0, last_read_at: new Date().toISOString(), last_read_message_id: last?.id }
+          : p
+      );
+      setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
+    } catch (e) {
+      console.error('Falha ao marcar como lido', e);
+      showError('Erro ao marcar como lido');
+    }
+  };
+
+  const renderTemplatePreview = (tpl, vars = {}) => {
+    const body = tpl?.body || tpl?.text || '';
+    return body.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || '');
+  };
+
+  const send = async () => {
+    if (!sel) return;
+    setShowEmoji(false);
+    setShowQuick(false);
+
+    // 1) sobe anexos locais
+    const uploadedNow = await uploadLocalAttachments(sel.id);
+
+    // 2) pega anexos prontos (inclui recém-subidos)
+    const alreadyReady = attachments.filter((a) => !a.error && !a.localFile && a.id);
+    const allReady = [...alreadyReady, ...uploadedNow];
+
+    let payload = null;
+    if (allReady.length) {
+      payload = { type: 'file', attachments: allReady.map((a) => a.id) };
+    } else if (templateId) {
+      const vars = { ...templateVars };
+      const errs = {};
+      selectedTemplate?.variables?.forEach((v) => { if (v.required && !vars[v.key]) errs[v.key] = 'Obrigatório'; });
+      setTemplateErrors(errs);
+      if (Object.keys(errs).length) {
+        if (!text.trim()) return; // nenhum conteúdo válido
+      } else {
+        payload = { type: 'template', template_id: templateId, variables: vars };
+      }
+    }
+
+    if (!payload && text.trim()) payload = { type: 'text', text: text.trim() };
+    if (!payload) return;
+
+    const tempId = `temp:${Date.now()}:${Math.random()}`;
+    const base = normalizeMessage({
+      id: tempId,
+      temp_id: tempId,
+      type: payload.type || 'text',
+      text:
+        payload.type === 'template'
+          ? renderTemplatePreview(selectedTemplate, payload.variables || {})
+          : payload.text || '',
+      is_outbound: true,
+      from: 'agent',
+      attachments:
+        payload.type === 'file'
+          ? allReady.map((a) => ({
+              id: a.id,
+              url: a.url,
+              thumb_url: a.thumb_url,
+              filename: a.filename || a.name,
+              mime: a.mime,
+            }))
+          : [],
+      created_at: new Date().toISOString(),
+    });
+    setMsgs((prev) => [...(prev || []), { ...base, sending: true }]);
+    stickToBottomRef.current = true;
+
+    try {
+      const res = await postMessageWithFallback(sel.id, payload, tempId);
+      const createdRaw = res?.data?.message ?? res?.data?.data ?? res?.data;
+      const created = normalizeMessage(createdRaw);
+      if (created) {
+        replaceTemp(tempId, created);
+        setSel((p) => (p ? { ...p, unread_count: 0, last_read_message_id: created.id, last_read_at: created.created_at } : p));
+        setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
+        auditlog.append(sel.id, { kind: 'message', action: 'sent', meta: { type: payload.type } });
+      } else {
+        markFailed(tempId);
+        auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+      }
+      setText(''); saveDraft(sel.id, '');
+      setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]); setShowEmoji(false);
+    } catch (e) {
+      console.error('Falha ao enviar', e);
+      markFailed(tempId);
+      auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+    }
+  };
+
+  const resend = async (m) => {
+    if (!sel) return;
+    let payload;
+    if (m.type === 'file') payload = { type: 'file', attachments: (m.attachments || []).map((a) => a.id) };
+    else if (m.type === 'template') payload = { type: 'template', template_id: m.template_id, variables: m.variables };
+    else payload = { type: 'text', text: m.text };
+    setMsgs((p) => p.map((x) => (x.id === m.id ? { ...x, failed: false, sending: true } : x)));
+    try {
+      const res = await postMessageWithFallback(sel.id, payload, m.id);
+      const created = normalizeMessage(res?.data?.message ?? res?.data?.data ?? res?.data);
+      if (created) {
+        replaceTemp(m.id, created);
+        auditlog.append(sel.id, { kind: 'message', action: 'sent', meta: { type: payload.type } });
+      } else {
+        markFailed(m.id);
+        auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+      }
+    } catch (e) {
+      console.error('Falha ao reenviar', e);
+      markFailed(m.id);
+      auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
+    }
+  };
+
+  // ------------------------------ edição rápida do cliente (header)
   const [editingClient, setEditingClient] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -1306,6 +1583,8 @@ export default function InboxPage() {
         name: client.name || '',
         phone_e164: client.phone_e164 || '',
         email: client.email || '',
+        date_of_birth: client.date_of_birth || client.birth_date || null,
+        notes: client.notes || client.other_info || '',
       };
       editPrevRef.current = normalized;
       setSel((prev) => (prev ? { ...prev, contact: normalized } : prev));
@@ -1322,195 +1601,17 @@ export default function InboxPage() {
 
   useEffect(() => { setEditingClient(false); }, [sel]);
 
-  const removeAttachment = (id) => {
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
-  };
-
-  const renderTemplatePreview = (tpl, vars = {}) => {
-    const body = tpl?.body || tpl?.text || '';
-    return body.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || '');
-  };
-
-  // Envio otimista -------------------------------------------------------
-  const replaceTemp = (id, real) =>
-    setMsgs((p) => {
-      const idx = (p || []).findIndex((m) => m.id === id);
-      if (idx >= 0) return p.map((m) => (m.id === id ? { ...real, sending: false } : m));
-      return uniqBy([...(p || []), { ...real, sending: false }], (m) => m.id);
-    });
-  const markFailed = (id) =>
-    setMsgs((p) => (p || []).map((m) => (m.id === id ? { ...m, failed: true, sending: false } : m)));
-
-  const markAllRead = async () => {
-    if (!sel) return;
-    try {
-      await inboxApi.put(`/conversations/${sel.id}/read`);
-      const last = msgs[msgs.length - 1];
-      setSel((p) =>
-        p
-          ? { ...p, unread_count: 0, last_read_at: new Date().toISOString(), last_read_message_id: last?.id }
-          : p
-      );
-      setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
-    } catch (e) {
-      console.error('Falha ao marcar como lido', e);
-      showError('Erro ao marcar como lido');
-    }
-  };
-
-  const send = async () => {
-    if (!sel) return;
-    setShowEmoji(false);
-    closeQuick();
-    let payload = null;
-    if (attachments.filter((a) => !a.error && !a.localFile).length) {
-      payload = { type: 'file', attachments: attachments.filter((a) => !a.error && !a.localFile).map((a) => a.id) };
-    } else if (templateId) {
-      const vars = { ...templateVars };
-      const errs = {};
-      selectedTemplate?.variables?.forEach((v) => {
-        if (v.required && !vars[v.key]) errs[v.key] = 'Obrigatório';
-      });
-      setTemplateErrors(errs);
-      if (Object.keys(errs).length) return;
-      payload = { type: 'template', template_id: templateId, variables: vars };
-    } else if (text.trim()) {
-      payload = { type: 'text', text: text.trim() };
-    } else return;
-
-    const tempId = `temp:${Date.now()}:${Math.random()}`;
-    const base = normalizeMessage({
-      id: tempId,
-      temp_id: tempId,
-      type: payload.type || 'text',
-      text:
-        payload.type === 'template'
-          ? renderTemplatePreview(selectedTemplate, payload.variables)
-          : payload.text || '',
-      is_outbound: true,
-      attachments: (payload.attachments || []).map((id) => attachments.find((a) => a.id === id)),
-      created_at: new Date().toISOString(),
-    });
-    const optimistic = {
-      ...base,
-      template_id: payload.template_id,
-      variables: payload.variables,
-      sending: true,
-    };
-    setMsgs((prev) => [...(prev || []), optimistic]);
-    stickToBottomRef.current = true;
-
-    try {
-      const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: tempId });
-      const createdRaw = res?.data?.message ?? res?.data?.data ?? res?.data;
-      const created = normalizeMessage(createdRaw);
-      if (created) {
-        replaceTemp(tempId, created);
-        setSel((p) => (p ? { ...p, unread_count: 0, last_read_message_id: created.id, last_read_at: created.created_at } : p));
-        setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
-        auditlog.append(sel.id, { kind: 'message', action: 'sent', meta: { type: payload.type } });
-      } else {
-        markFailed(tempId);
-        auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
-      }
-      setText(''); setTemplateId(''); setTemplateVars({}); setTemplateErrors({}); setAttachments([]); setShowEmoji(false);
-    } catch (e) {
-      console.error('Falha ao enviar', e);
-      markFailed(tempId);
-      auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
-    }
-  };
-
-  const resend = async (m) => {
-    if (!sel) return;
-    let payload;
-    if (m.type === 'file') {
-      payload = { type: 'file', attachments: (m.attachments || []).map((a) => a.id) };
-    } else if (m.type === 'template') {
-      payload = { type: 'template', template_id: m.template_id, variables: m.variables };
-    } else {
-      payload = { type: 'text', text: m.text };
-    }
-    setMsgs((p) => p.map((x) => (x.id === m.id ? { ...x, failed: false, sending: true } : x)));
-    try {
-      const res = await inboxApi.post(`/conversations/${sel.id}/messages`, { ...payload, temp_id: m.id });
-      const created = normalizeMessage(res?.data?.message ?? res?.data?.data ?? res?.data);
-      if (created) {
-        replaceTemp(m.id, created);
-        auditlog.append(sel.id, { kind: 'message', action: 'sent', meta: { type: payload.type } });
-      } else {
-        markFailed(m.id);
-        auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
-      }
-    } catch (e) {
-      console.error('Falha ao reenviar', e);
-      markFailed(m.id);
-      auditlog.append(sel.id, { kind: 'message', action: 'failed', meta: { type: payload.type } });
-    }
-  };
-
-  const handleComposerKeyDown = useCallback(
-    (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
-        e.preventDefault();
-        setShowSnippets((v) => !v);
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        if (showQuick) closeQuick();
-        else {
-          qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
-          openQuick();
-        }
-        return;
-      }
-      if (e.key === '/' && !showQuick) {
-        const pos = composerRef.current?.selectionStart ?? 0;
-        const before = text.slice(0, pos);
-        if (pos === 0 || /\s$/.test(before)) {
-          qrStartRef.current = pos;
-          openQuick();
-        }
-      }
-      if (e.key === 'Escape' && showQuick) {
-        e.preventDefault();
-        closeQuick();
-      }
-      if (e.key === 'Escape' && showSnippets) {
-        e.preventDefault();
-        setShowSnippets(false);
-        snipBtnRef.current?.focus();
-      }
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        send();
-      }
-    },
-    [showQuick, showSnippets, text, openQuick, closeQuick, send]
-  );
-
-  const closeLightbox = useCallback(() => {
-    const trigger = lightbox.trigger;
-    setLightbox({ open: false, items: [], index: 0, trigger: null });
-    if (trigger && typeof trigger.focus === 'function') trigger.focus();
-  }, [lightbox]);
-
-  // Tags / Status / IA ---------------------------------------------------
+  // ------------------------------ Tags / Status / IA / CRM
   const toggleClientTag = async (tagId) => {
     if (!sel?.contact?.id) return;
     const current = Array.isArray(sel.contact.tags) ? sel.contact.tags : [];
     const next = current.includes(tagId) ? current.filter(t => t !== tagId) : [...current, tagId];
-
-    // otimista
     setSel(prev => ({ ...prev, contact: { ...(prev?.contact || {}), tags: next } }));
-
     try {
       const { data } = await inboxApi.put(`/clients/${sel.contact.id}/tags`, { tags: next });
       const client = data?.client || data;
       setSel(prev => ({ ...prev, contact: client || prev?.contact }));
     } catch (e) {
-      // rollback
       setSel(prev => ({ ...prev, contact: { ...(prev?.contact || {}), tags: current } }));
       console.error('Falha ao atualizar tags do cliente', e);
     }
@@ -1553,7 +1654,19 @@ export default function InboxPage() {
     } catch (e) { console.error('Falha ao alternar IA', e); }
   };
 
-  // Validação de cliente -------------------------------------------------
+  const createOpportunity = async () => {
+    if (!sel?.contact) return;
+    try {
+      const payload = { client_id: sel.contact.id, conversation_id: sel.id };
+      const { data } = await inboxApi.post('/crm/opportunities', payload);
+      addToast('Oportunidade criada no CRM', { variant: 'success' });
+      if (!sel.status_id && statuses[0]?.id) changeStatus(asId(statuses[0].id));
+    } catch (e) {
+      console.error('Falha ao criar oportunidade', e);
+      addToast('Erro ao criar oportunidade', { variant: 'error' });
+    }
+  };
+
   const validateClient = useCallback((f) => {
     const errs = {};
     if (!isRequired(f.name)) errs.name = 'Nome obrigatório';
@@ -1568,7 +1681,9 @@ export default function InboxPage() {
     const dirty =
       clientForm.name !== clientSaved.name ||
       clientForm.phone_e164 !== clientSaved.phone_e164 ||
-      clientForm.email !== clientSaved.email;
+      clientForm.email !== clientSaved.email ||
+      clientForm.birth_date !== clientSaved.birth_date ||
+      clientForm.notes !== clientSaved.notes;
     setClientDirty(dirty);
   }, [clientForm, clientSaved, validateClient]);
 
@@ -1578,7 +1693,13 @@ export default function InboxPage() {
     if (Object.keys(clientErrors).length) return;
     setClientStatus('saving');
     if (clientTimerRef.current) clearTimeout(clientTimerRef.current);
-    const payload = { ...clientForm };
+    const payload = {
+      name: clientForm.name,
+      phone_e164: clientForm.phone_e164,
+      email: clientForm.email,
+      date_of_birth: clientForm.birth_date ? fromDateInput(clientForm.birth_date) : null,
+      notes: clientForm.notes || '',
+    };
     const prev = { ...clientSaved };
     clientTimerRef.current = setTimeout(async () => {
       try {
@@ -1590,12 +1711,14 @@ export default function InboxPage() {
           name: client.name || '',
           phone_e164: client.phone_e164 || '',
           email: client.email || '',
+          birth_date: toDateInput(client.date_of_birth || client.birth_date) || '',
+          notes: client.notes || client.other_info || '',
         };
         setClientSaved(normalized);
         setClientForm(normalized);
-        setSel((prevSel) => (prevSel ? { ...prevSel, contact: normalized } : prevSel));
+        setSel((prevSel) => (prevSel ? { ...prevSel, contact: { ...(prevSel.contact || {}), ...client } } : prevSel));
         setItems((prevItems) =>
-          (prevItems || []).map((c) => (c.id === sel.id ? { ...c, contact: normalized } : c))
+          (prevItems || []).map((c) => (c.id === sel.id ? { ...c, contact: { ...(c.contact || {}), ...client } } : c))
         );
         setClientStatus('saved');
         setTimeout(() => setClientStatus('idle'), 1000);
@@ -1641,7 +1764,7 @@ export default function InboxPage() {
     const start = ta.selectionStart ?? text.length;
     const end = ta.selectionEnd ?? text.length;
     const before = text.slice(0, start);
-    const after = text.slice(end);
+    const after = text.slice(0, start) === text.slice(0, end) ? text.slice(end) : text.slice(end);
     const newText = before + content + after;
     setText(newText);
     const pos = start + content.length;
@@ -1689,16 +1812,17 @@ export default function InboxPage() {
     URL.revokeObjectURL(url);
   };
 
+  // habilita envio quando há anexos prontos/locais mesmo com template inválido
+  const hasValidAttachments = attachments.some((a) => !a.error);
   const composerDisabled =
     savingClient ||
-    (templateId && Object.keys(templateErrors).length > 0) ||
-    (attachments.some((a) => a.localFile) && !templateId && !text.trim());
+    (templateId && Object.keys(templateErrors).length > 0 && !hasValidAttachments && !text.trim());
 
   const visibleItems = filteredItems.slice(convVirt.start, convVirt.end);
   const visibleIds = visibleItems.map((c) => c.id);
   const orderedIds = filteredItems.map((c) => c.id);
 
-  // Render ---------------------------------------------------------------
+  // ------------------------------------------------------------- Render
   return (
     <>
       {toastError && (
@@ -1709,6 +1833,7 @@ export default function InboxPage() {
           {toastError}
         </div>
       )}
+
       {selectedIds.size > 0 && (
         <div
           data-testid="qa-bar"
@@ -1762,6 +1887,7 @@ export default function InboxPage() {
           </button>
         </div>
       )}
+
       {undoInfo && (
         <div className="fixed bottom-2 right-2 bg-gray-800 text-white px-2 py-1 rounded" data-testid="undo-toast">
           <button data-testid="undo-btn" onClick={handleUndo} className="underline">
@@ -1769,218 +1895,227 @@ export default function InboxPage() {
           </button>
         </div>
       )}
-      <div className="h-[calc(100vh-56px)] grid grid-cols-[320px_1fr_360px] overflow-hidden bg-gray-50">
-      {/* Sidebar (esquerda) */}
-      <div
-        className="border-r bg-white flex flex-col overflow-y-auto"
-        ref={listRef}
-        onScroll={handleConvScroll}
-        data-testid="conv-list"
-      >
-        <div className="p-3 border-b">
-          <input
-            ref={filterSearchRef}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Pesquisar"
-            className="w-full border rounded-full px-4 py-2 text-sm"
-            data-testid="filter-search-input"
-          />
-          <div className="mt-2 flex gap-2 text-xs flex-wrap">
-            {['whatsapp', 'instagram', 'facebook'].map((ch) => (
-              <label key={ch} className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded-full">
+
+      {/* LAYOUT */}
+      <div className="h-full min-h-0 grid grid-cols-[320px_1fr_360px] overflow-hidden bg-gray-50">
+        {/* ESQUERDA */}
+        <div className="border-r bg-white flex flex-col min-h-0 overflow-hidden">
+          {/* cabeçalho fixo */}
+          <div className="p-3 border-b shrink-0">
+            <input
+              ref={filterSearchRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Pesquisar"
+              className="w-full border rounded-full px-4 py-2 text-sm"
+              data-testid="filter-search-input"
+            />
+            <div className="mt-2 flex gap-2 text-xs flex-wrap">
+              {['whatsapp', 'instagram', 'facebook'].map((ch) => (
+                <label key={ch} className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded-full">
+                  <input
+                    type="checkbox"
+                    checked={channelFilters.includes(ch)}
+                    onChange={(e) =>
+                      setChannelFilters((prev) => (e.target.checked ? [...prev, ch] : prev.filter((c) => c !== ch)))
+                    }
+                    data-testid={`filter-channel-checkbox-${ch}`}
+                  />
+                  {ch}
+                </label>
+              ))}
+            </div>
+            {!!tags.length && (
+              <div className="mt-2">
+                <label className="text-[11px] text-gray-500">Etiquetas</label>
+                <select
+                  multiple
+                  value={tagFilters}
+                  onChange={(e) => setTagFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                  className="w-full border rounded px-2 py-1 text-xs"
+                  data-testid="filter-tags-select"
+                >
+                  {tags.map((t) => (
+                    <option key={asId(t.id)} value={asId(t.id)}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {!!statuses.length && (
+              <div className="mt-2">
+                <label className="text-[11px] text-gray-500">Status CRM</label>
+                <select
+                  multiple
+                  value={statusFilters}
+                  onChange={(e) => setStatusFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
+                  className="w-full border rounded px-2 py-1 text-xs"
+                  data-testid="filter-status-select"
+                >
+                  {statuses.map((s) => (
+                    <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* lista com rolagem própria */}
+          <div
+            className="flex-1 min-h-0 overflow-y-auto"
+            ref={listRef}
+            onScroll={handleConvScroll}
+            data-testid="conv-list"
+          >
+            {loadingList ? (
+              <div className="p-3 text-sm text-gray-500" data-testid="conversations-loading">Carregando…</div>
+            ) : filteredItems.length ? (
+              <>
+                <div style={{ height: convVirt.topSpacer }} />
+                <div data-testid="conv-top-sentinel" />
+                {visibleItems.map((c, i) => (
+                  <ConversationItem
+                    key={c.id}
+                    c={c}
+                    density={density}
+                    selected={selectedIds.has(c.id)}
+                    onToggle={(id, e) => {
+                      setSelectedIds((prev) => {
+                        if (e.shiftKey && selAnchor !== null) {
+                          return rangeToggle(prev, orderedIds, selAnchor, id);
+                        }
+                        return toggle(prev, id);
+                      });
+                      if (!e.shiftKey) setSelAnchor(id);
+                    }}
+                    onOpen={open}
+                    onHover={handleHover}
+                    active={sel?.id === c.id}
+                    idx={convVirt.start + i}
+                    onHeight={(idx, h) => {
+                      if (convItemHeightsRef.current[idx] !== h) {
+                        convItemHeightsRef.current[idx] = h;
+                        handleConvScroll();
+                      }
+                    }}
+                  />
+                ))}
+                <div ref={listBottomRef} data-testid="conv-bottom-sentinel" />
+                <div style={{ height: convVirt.bottomSpacer }} />
+                {loadingMoreList && (
+                  <div className="p-3 text-sm text-gray-500">Carregando…</div>
+                )}
+              </>
+            ) : (
+              <div className="p-3 text-sm text-gray-500" data-testid="conversations-empty">Nenhuma conversa.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Coluna CENTRAL */}
+        <div className="flex flex-col min-h-0 bg-gray-100 overflow-hidden">
+          {/* Header */}
+          <div className="h-14 bg-white border-b px-4 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <img
+                src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/40'}
+                alt="avatar"
+                className="w-8 h-8 rounded-full"
+              />
+              <div className="min-w-0">
+                {editingClient ? (
+                  <>
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="border rounded px-1 text-sm w-full"
+                      aria-invalid={!nameOk}
+                      data-testid="client-edit-name"
+                    />
+                    <input
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      className="border rounded px-1 text-xs w-full mt-1"
+                      data-testid="client-edit-phone"
+                    />
+                    <div className="flex gap-1 mt-1">
+                      <button
+                        onClick={saveClientEdit}
+                        disabled={!canSaveClient || savingClient}
+                        className="text-xs bg-blue-600 text-white px-2 rounded disabled:bg-gray-400"
+                        data-testid="client-edit-save"
+                      >
+                        {sel?.contact?.id ? 'Salvar' : 'Criar'}
+                      </button>
+                      <button
+                        onClick={cancelClientEdit}
+                        className="text-xs bg-gray-200 px-2 rounded"
+                        data-testid="client-edit-cancel"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div
+                      className="font-medium truncate cursor-pointer"
+                      onClick={startClientEdit}
+                      data-testid="client-edit-toggle"
+                    >
+                      {sel?.contact?.name || '—'}
+                    </div>
+                    <div
+                      className="text-xs text-gray-500 truncate cursor-pointer"
+                      onClick={startClientEdit}
+                      data-testid="client-edit-toggle"
+                    >
+                      {sel?.contact?.phone_e164 || ''}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={toggleDensity} className="text-xs" data-testid="density-toggle">
+                Densidade: {density === 'compact' ? 'Compacta' : 'Cozy'}
+              </button>
+              <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={channelFilters.includes(ch)}
-                  onChange={(e) => setChannelFilters((prev) => (e.target.checked ? [...prev, ch] : prev.filter((c) => c !== ch)))}
-                  data-testid={`filter-channel-checkbox-${ch}`}
+                  checked={!!sel?.ai_enabled}
+                  onChange={toggleAi}
+                  disabled={sel?.is_group}
+                  data-testid="ai-toggle"
                 />
-                {ch}
+                IA
               </label>
-            ))}
-          </div>
-          {!!tags.length && (
-            <div className="mt-2">
-              <label className="text-[11px] text-gray-500">Etiquetas</label>
-              <select
-                multiple
-                value={tagFilters}
-                onChange={(e) => setTagFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
-                className="w-full border rounded px-2 py-1 text-xs"
-                data-testid="filter-tags-select"
-              >
-                {tags.map((t) => (
-                  <option key={asId(t.id)} value={asId(t.id)}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {!!statuses.length && (
-            <div className="mt-2">
-              <label className="text-[11px] text-gray-500">Status CRM</label>
-              <select
-                multiple
-                value={statusFilters}
-                onChange={(e) => setStatusFilters(Array.from(e.target.selectedOptions).map((o) => o.value))}
-                className="w-full border rounded px-2 py-1 text-xs"
-                data-testid="filter-status-select"
-              >
-                {statuses.map((s) => (
-                  <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-
-        {loadingList ? (
-          <div className="p-3 text-sm text-gray-500" data-testid="conversations-loading">Carregando…</div>
-        ) : filteredItems.length ? (
-          <>
-            <div style={{ height: convVirt.topSpacer }} />
-            <div data-testid="conv-top-sentinel" />
-            {visibleItems.map((c, i) => (
-              <ConversationItem
-                key={c.id}
-                c={c}
-                  density={density}
-                  selected={selectedIds.has(c.id)}
-                  onToggle={(id, e) => {
-                    setSelectedIds((prev) => {
-                      if (e.shiftKey && selAnchor !== null) {
-                        return rangeToggle(prev, orderedIds, selAnchor, id);
-                      }
-                      return toggle(prev, id);
-                    });
-                    if (!e.shiftKey) setSelAnchor(id);
-                  }}
-                  onOpen={open}
-                  onHover={handleHover}
-                  active={sel?.id === c.id}
-                  idx={convVirt.start + i}
-                  onHeight={(idx, h) => {
-                    if (convItemHeightsRef.current[idx] !== h) {
-                      convItemHeightsRef.current[idx] = h;
-                      handleConvScroll();
-                    }
-                  }}
-                />
-              ))}
-            <div ref={listBottomRef} data-testid="conv-bottom-sentinel" />
-            <div style={{ height: convVirt.bottomSpacer }} />
-            {loadingMoreList && (
-              <div className="p-3 text-sm text-gray-500">Carregando…</div>
-            )}
-          </>
-        ) : (
-          <div className="p-3 text-sm text-gray-500" data-testid="conversations-empty">Nenhuma conversa.</div>
-        )}
-      </div>
-
-      {/* Chat (centro) */}
-      <div className="flex flex-col bg-gray-100">
-        {/* Header estilo WhatsApp */}
-        <div className="h-14 bg-white border-b px-4 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <img
-              src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/40'}
-              alt="avatar"
-              className="w-8 h-8 rounded-full"
-            />
-            <div className="min-w-0">
-              {editingClient ? (
-                <>
-                  <input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    className="border rounded px-1 text-sm w-full"
-                    aria-invalid={!nameOk}
-                    data-testid="client-edit-name"
-                  />
-                  <input
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    className="border rounded px-1 text-xs w-full mt-1"
-                    data-testid="client-edit-phone"
-                  />
-                  <div className="flex gap-1 mt-1">
-                    <button
-                      onClick={saveClientEdit}
-                      disabled={!canSaveClient || savingClient}
-                      className="text-xs bg-blue-600 text-white px-2 rounded disabled:bg-gray-400"
-                      data-testid="client-edit-save"
-                    >
-                      {sel.contact?.id ? 'Salvar' : 'Criar'}
-                    </button>
-                    <button
-                      onClick={cancelClientEdit}
-                      className="text-xs bg-gray-200 px-2 rounded"
-                      data-testid="client-edit-cancel"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div
-                    className="font-medium truncate cursor-pointer"
-                    onClick={startClientEdit}
-                    data-testid="client-edit-toggle"
-                  >
-                    {sel?.contact?.name || '—'}
-                  </div>
-                  <div
-                    className="text-xs text-gray-500 truncate cursor-pointer"
-                    onClick={startClientEdit}
-                    data-testid="client-edit-toggle"
-                  >
-                    {sel?.contact?.phone_e164 || ''}
-                  </div>
-                </>
+              {sel?.is_group && (
+                <span className="text-[10px] text-gray-500" data-testid="ai-toggle-disabled-hint">
+                  Indisponível em grupos
+                </span>
               )}
+              <button className="text-sm" onClick={() => setShowInfo((v) => !v)} title="Detalhes">ℹ️</button>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={toggleDensity} className="text-xs" data-testid="density-toggle">
-              Densidade: {density === 'compact' ? 'Compacta' : 'Cozy'}
-            </button>
-            <label className="text-xs flex items-center gap-1 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={!!sel?.ai_enabled}
-                onChange={toggleAi}
-                disabled={sel?.is_group}
-                data-testid="ai-toggle"
-              />
-              IA
-            </label>
-            {sel?.is_group && (
-              <span className="text-[10px] text-gray-500" data-testid="ai-toggle-disabled-hint">
-                Indisponível em grupos
-              </span>
-            )}
-            <button className="text-sm" onClick={() => setShowInfo((v) => !v)} title="Detalhes">ℹ️</button>
-          </div>
-        </div>
 
-        <div className="bg-white border-b p-2 text-right">
-          <button
-            className="text-xs underline"
-            onClick={markAllRead}
-            data-testid="mark-all-read"
-          >
-            Marcar como lido
-          </button>
-        </div>
-        {showReconnected && (
-          <div className="text-center text-xs bg-yellow-100" data-testid="socket-reconnected">
-            Reconectado
+          <div className="bg-white border-b p-2 text-right shrink-0">
+            <button
+              className="text-xs underline"
+              onClick={markAllRead}
+              data-testid="mark-all-read"
+            >
+              Marcar como lido
+            </button>
           </div>
-        )}
+
+          {showReconnected && (
+            <div className="text-center text-xs bg-yellow-100" data-testid="socket-reconnected">
+              Reconectado
+            </div>
+          )}
 
           {showChatSearch && (
-            <div className="p-2 border-b flex items-center gap-2 bg-white">
+            <div className="p-2 border-b flex items-center gap-2 bg-white shrink-0">
               <input
                 ref={chatSearchRef}
                 value={chatSearch}
@@ -2002,7 +2137,7 @@ export default function InboxPage() {
           )}
 
           {sel && (
-            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b px-4 py-2">
+            <div className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b px-4 py-2 shrink-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs text-gray-500 mr-1">Tags do cliente:</span>
                 {tags.map((t) => {
@@ -2011,10 +2146,9 @@ export default function InboxPage() {
                     <button
                       key={t.id}
                       onClick={() => toggleClientTag(t.id)}
-                      className={`px-2 py-0.5 rounded text-xs border ${
-                        active ? 'bg-blue-100 border-blue-300 text-blue-800'
-                               : 'bg-gray-100 border-gray-300 text-gray-700'
-                      }`}
+                      className={`px-2 py-0.5 rounded text-xs border ${active ? 'bg-blue-100 border-blue-300 text-blue-800'
+                          : 'bg-gray-100 border-gray-300 text-gray-700'
+                        }`}
                       title={active ? 'Remover tag' : 'Adicionar tag'}
                     >
                       {t.name}
@@ -2025,96 +2159,95 @@ export default function InboxPage() {
             </div>
           )}
 
-          {/* Mensagens */}
+          {/* MENSAGENS */}
           <div
             ref={msgBoxRef}
             onScroll={handleScroll}
-            className="flex-1 overflow-y-auto p-4"
+            className="flex-1 overflow-y-auto p-4 min-h-0"
             data-testid="messages-container"
           >
-          <div ref={topTriggerRef} data-testid="infinite-trigger-top" />
-          <div style={{ height: virt.topSpacer }} />
-          {(loadingMoreMsgs || loadingMsgs) && (
-            <div className="text-sm text-gray-500">Carregando…</div>
-          )}
-          {msgs.slice(virt.start, virt.end).map((m, i) => {
-            const idx = virt.start + i;
-            return (
-            <React.Fragment key={m.id}>
-              {idx === separatorIdx && (
-                <hr data-testid="new-messages-separator" />
-              )}
-              <div
-                ref={(el) => {
-                  if (el) {
-                    msgRefs.current[m.id] = el;
-                    const h = el.offsetHeight;
-                    if (itemHeightsRef.current[idx] !== h) {
-                      itemHeightsRef.current[idx] = h;
-                      const box = msgBoxRef.current;
-                      if (box) {
-                        setVirt(
-                          computeWindow({
-                            scrollTop: box.scrollTop,
-                            viewportHeight: box.clientHeight,
-                            itemHeights: itemHeightsRef.current,
-                            overscan: 10,
-                          })
-                        );
+            <div ref={topTriggerRef} data-testid="infinite-trigger-top" />
+            <div style={{ height: virt.topSpacer }} />
+            {(loadingMoreMsgs || loadingMsgs) && (
+              <div className="text-sm text-gray-500">Carregando…</div>
+            )}
+            {msgs.slice(virt.start, virt.end).map((m, i) => {
+              const idx = virt.start + i;
+              const isAgent = m.is_outbound || m.from === 'agent' || m.author === 'agent';
+              return (
+                <React.Fragment key={m.id}>
+                  {idx === separatorIdx && (<hr data-testid="new-messages-separator" />)}
+                  <div
+                    ref={(el) => {
+                      if (el) {
+                        msgRefs.current[m.id] = el;
+                        const h = el.offsetHeight;
+                        if (itemHeightsRef.current[idx] !== h) {
+                          itemHeightsRef.current[idx] = h;
+                          const box = msgBoxRef.current;
+                          if (box) {
+                            setVirt(
+                              computeWindow({
+                                scrollTop: box.scrollTop,
+                                viewportHeight: box.clientHeight,
+                                itemHeights: itemHeightsRef.current,
+                                overscan: 10,
+                              })
+                            );
+                          }
+                        }
                       }
-                    }
-                  }
-                }}
-                data-message="true"
-                data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
-                data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
-                className={`mb-2 max-w-[70%] ${density === 'compact' ? 'p-1 text-sm' : 'p-2'} rounded ${m.from === 'customer' ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
-              >
-                {m.text && <div className="whitespace-pre-wrap">{highlight(m.text)}</div>}
+                    }}
+                    data-message="true"
+                    data-testid={m.failed ? 'msg-failed' : m.sending ? 'msg-sending' : undefined}
+                    data-status={m.failed ? 'failed' : m.sending ? 'sending' : 'sent'}
+                    className={`mb-2 max-w-[70%] ${density === 'compact' ? 'p-1 text-sm' : 'p-2'} rounded ${!isAgent ? 'bg-white self-start' : 'bg-blue-100 self-end ml-auto'}`}
+                  >
+                    {m.text && <div className="whitespace-pre-wrap">{highlight(m.text)}</div>}
 
-              {!!m.attachments?.length && (
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {m.attachments.map((a) => {
-                    const href = a.url || '#';
-                    const thumb = a.thumb_url || a.url;
-                    const isImg = isImage(thumb);
-                    const open = (e) => {
-                      if (isImg) {
-                        e.preventDefault();
-                        const imgs = m.attachments
-                          .filter((x) => isImage(x.url || x.thumb_url))
-                          .map((x) => ({ src: x.url || x.thumb_url }));
-                        const idx = imgs.findIndex((x) => x.src === (a.url || a.thumb_url));
-                        setLightbox({ open: true, items: imgs, index: idx >= 0 ? idx : 0, trigger: e.currentTarget });
-                      }
-                    };
-                    return (
-                      <a
-                        key={a.id || href}
-                        href={a.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={open}
-                        data-testid="attachment-thumb"
-                        download={isImg ? undefined : ''}
-                      >
-                        {isImg ? (
-                          <img src={thumb} alt="file" className="w-28 h-28 object-cover rounded" />
-                        ) : (
-                          <span className="flex items-center gap-1 underline text-sm">📄 {a.filename || a.name || 'arquivo'}</span>
-                        )}
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
+                    {!!m.attachments?.length && (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {m.attachments.map((a) => {
+                          const href = a.url || a.preview_url || '#';
+                          const thumb = a.thumb_url || a.preview_url || a.url;
+                          const img = isImage(thumb);
+                          const open = (e) => {
+                            if (img) {
+                              e.preventDefault();
+                              const imgs = m.attachments
+                                .filter((x) => isImage(x.url || x.thumb_url || x.preview_url))
+                                .map((x) => ({ src: x.url || x.thumb_url || x.preview_url }));
+                              const ix = imgs.findIndex((x) => x.src === (a.url || a.thumb_url || a.preview_url));
+                              setLightbox({ open: true, items: imgs, index: ix >= 0 ? ix : 0, trigger: e.currentTarget });
+                            }
+                          };
+                          return (
+                            <a
+                              key={a.id || href}
+                              href={href}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={open}
+                              data-testid="attachment-thumb"
+                              download={img ? undefined : ''}
+                            >
+                              {img ? (
+                                <img src={thumb} alt="file" className="w-28 h-28 object-cover rounded" />
+                              ) : (
+                                <span className="flex items-center gap-1 underline text-sm">📄 {a.filename || a.name || 'arquivo'}</span>
+                              )}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
 
-              {m.type === 'audio' && m.audio_url && (
-                <div className="mt-1">
-                  <audio controls src={m.audio_url} className="w-60" />
-                  <div className="text-xs text-gray-500 mt-1">{m.transcript_text ? m.transcript_text : 'Transcrevendo...'}</div>
-                </div>
-              )}
+                    {m.type === 'audio' && m.audio_url && (
+                      <div className="mt-1">
+                        <audio controls src={m.audio_url} className="w-60" />
+                        <div className="text-xs text-gray-500 mt-1">{m.transcript_text ? m.transcript_text : 'Transcrevendo...'}</div>
+                      </div>
+                    )}
 
                     <div className="mt-1 flex items-center justify-end gap-2">
                       {m.failed && (
@@ -2128,7 +2261,7 @@ export default function InboxPage() {
                         </button>
                       )}
                       {m.sending && !m.failed && <span className="text-[10px] text-gray-400">Enviando…</span>}
-                      {m.from === 'agent' && (m.sent_at || m.delivered_at || m.read_at) ? (
+                      {isAgent && (m.sent_at || m.delivered_at || m.read_at) ? (
                         <span
                           data-testid="msg-receipt"
                           className={`text-[10px] ${m.read_at ? 'text-blue-600' : 'text-gray-500'}`}
@@ -2142,156 +2275,160 @@ export default function InboxPage() {
                     </div>
                   </div>
                 </React.Fragment>
-            );
-          })}
-          <div style={{ height: virt.bottomSpacer }} />
+              );
+            })}
+            <div style={{ height: virt.bottomSpacer }} />
           </div>
-        {sel && typing && (
-          <div
-            data-testid="typing-indicator"
-            className="px-4 py-1 text-xs text-gray-500"
-            aria-label="Contato digitando"
-            title="Contato digitando"
-          >
-            digitando…
-          </div>
-        )}
 
-        {/* Composer */}
-        {sel && (
-          <div
-            className="bg-white border-t p-3"
-            ref={composerBoxRef}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
-            data-testid="composer-dropzone"
-          >
-            {/* Upload status removido */}
+          {sel && typing && (
+            <div
+              data-testid="typing-indicator"
+              className="px-4 py-1 text-xs text-gray-500"
+              aria-label="Contato digitando"
+              title="Contato digitando"
+            >
+              digitando…
+            </div>
+          )}
 
-            {!!attachments.length && (
-              <div className="mb-2 flex flex-wrap gap-2">
-                {attachments.map((a) => (
-                  <div key={a.id} className="relative" data-testid="pending-attachment">
-                    {a.thumb_url || a.url ? (
-                      <img
-                        src={a.thumb_url || a.url}
-                        alt="att"
-                        className={`w-14 h-14 object-cover rounded ${a.error ? 'border border-red-600' : ''}`}
-                      />
-                    ) : (
-                      <div
-                        className={`w-14 h-14 flex items-center justify-center bg-gray-200 rounded text-[10px] ${
-                          a.error ? 'border border-red-600' : ''
-                        }`}
-                      >
-                        {a.name || 'arquivo'}
+          {/* Composer */}
+          {sel && (
+            <div
+              className="bg-white border-t p-3 shrink-0"
+              ref={composerBoxRef}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleFiles(e.dataTransfer.files); }}
+              data-testid="composer-dropzone"
+            >
+              {!!attachments.length && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {attachments.map((a) => {
+                    const src = a.thumb_url || a.url || a.preview_url || a.localUrl;
+                    const isImg = a.isImage || isImage(src || '');
+                    return (
+                      <div key={a.id} className="relative" data-testid="pending-attachment">
+                        {src ? (
+                          isImg ? (
+                            <img
+                              src={src}
+                              alt="att"
+                              className={`w-14 h-14 object-cover rounded ${a.error ? 'border border-red-600' : ''}`}
+                            />
+                          ) : (
+                            <div
+                              className={`w-14 h-14 flex items-center justify-center bg-gray-200 rounded text-[10px] text-center px-1 ${a.error ? 'border border-red-600' : ''}`}
+                              title={a.name || a.filename}
+                            >
+                              {a.name || a.filename || 'arquivo'}
+                            </div>
+                          )
+                        ) : (
+                          <div className="w-14 h-14 flex items-center justify-center bg-gray-200 rounded text-[10px]">
+                            {a.name || 'arquivo'}
+                          </div>
+                        )}
+                        {a.error && <span className="absolute bottom-0 right-0 text-red-600">!</span>}
+                        <button
+                          type="button"
+                          onClick={() => removeAttachment(a.id)}
+                          className="absolute top-0 right-0 text-xs bg-white rounded-full px-1"
+                          data-testid="remove-pending-attachment"
+                        >
+                          ×
+                        </button>
                       </div>
-                    )}
-                    {a.error && <span className="absolute bottom-0 right-0 text-red-600">!</span>}
-                    <button
-                      type="button"
-                      onClick={() => removeAttachment(a.id)}
-                      className="absolute top-0 right-0 text-xs bg-white rounded-full px-1"
-                      data-testid="remove-pending-attachment"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {selectedTemplate && (
-              <div className="mb-2 space-y-1">
-                {selectedTemplate.variables?.map((v) => (
-                  <div key={v.key}>
-                    <input
-                      value={templateVars[v.key] || ''}
-                      onChange={(e) =>
-                        setTemplateVars((prev) => ({ ...prev, [v.key]: e.target.value }))
-                      }
-                      className={`border rounded px-2 py-1 text-sm w-full ${
-                        templateErrors[v.key] ? 'border-red-500' : ''
-                      }`}
-                      placeholder={v.key}
-                      aria-label={v.key}
-                      data-testid={`template-var-${v.key}`}
-                    />
-                    {templateErrors[v.key] && (
-                      <div className="text-[11px] text-red-600">{templateErrors[v.key]}</div>
-                    )}
-                  </div>
-                ))}
-                <div
-                  className="text-sm text-gray-700 whitespace-pre-wrap"
-                  data-testid="template-preview"
-                >
-                  {renderTemplatePreview(selectedTemplate, templateVars)}
+                    );
+                  })}
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="flex items-end gap-2">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setExpanded((e) => !e)}
-                  className="px-2"
-                  aria-label={expanded ? 'Recolher editor' : 'Expandir editor'}
-                >
-                  {expanded ? '↙' : '↗'}
-                </button>
-                <button
-                  data-testid="emoji-toggle"
-                  ref={emojiBtnRef}
-                  onClick={() => setShowEmoji((v) => !v)}
-                  className="px-2"
-                  disabled={sel?.is_group}
-                  aria-label="Alternar emojis"
-                  aria-expanded={!!showEmoji}
-                >
-                  😊
-                </button>
+              {selectedTemplate && (
+                <div className="mb-2 space-y-1">
+                  {selectedTemplate.variables?.map((v) => (
+                    <div key={v.key}>
+                      <input
+                        value={templateVars[v.key] || ''}
+                        onChange={(e) =>
+                          setTemplateVars((prev) => ({ ...prev, [v.key]: e.target.value }))
+                        }
+                        className={`border rounded px-2 py-1 text-sm w-full ${templateErrors[v.key] ? 'border-red-500' : ''}`}
+                        placeholder={v.key}
+                        aria-label={v.key}
+                        data-testid={`template-var-${v.key}`}
+                      />
+                      {templateErrors[v.key] && (
+                        <div className="text-[11px] text-red-600">{templateErrors[v.key]}</div>
+                      )}
+                    </div>
+                  ))}
+                  <div className="text-sm text-gray-700 whitespace-pre-wrap" data-testid="template-preview">
+                    {renderTemplatePreview(selectedTemplate, templateVars)}
+                  </div>
+                </div>
+              )}
 
-                <button
-                  data-testid="qr-toggle"
-                  aria-label="Respostas rápidas"
-                  onClick={() => {
-                    qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
-                    if (showQuick) closeQuick(); else openQuick();
-                  }}
-                  className="px-2 py-1 rounded hover:bg-gray-100"
-                  title="Respostas rápidas"
-                >
-                  ⚡
-                </button>
+              <div className="flex items-end gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setExpanded((e) => !e)}
+                    className="px-2"
+                    aria-label={expanded ? 'Recolher editor' : 'Expandir editor'}
+                  >
+                    {expanded ? '↙' : '↗'}
+                  </button>
 
-                <button
-                  data-testid="snippets-toggle"
-                  aria-label="Snippets"
-                  ref={snipBtnRef}
-                  onClick={() => setShowSnippets((v) => !v)}
-                  className="px-2 py-1 rounded hover:bg-gray-100"
-                  title="Snippets"
-                >
-                  📝
-                </button>
+                  <button
+                    data-testid="emoji-toggle"
+                    ref={emojiBtnRef}
+                    onClick={() => setShowEmoji((v) => !v)}
+                    className="px-2"
+                    disabled={sel?.is_group}
+                    aria-label="Alternar emojis"
+                    aria-expanded={!!showEmoji}
+                  >
+                    😊
+                  </button>
 
-                <label
-                  className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
-                  title="Anexar"
-                  aria-label="Anexar arquivos"
-                >
-                  📎
-                  <input
-                    type="file"
-                    className="hidden"
-                    multiple
-                    onChange={(e) => handleFiles(e.target.files)}
-                    data-testid="composer-file-input"
-                  />
-                </label>
+                  <button
+                    data-testid="qr-toggle"
+                    aria-label="Respostas rápidas"
+                    onClick={() => {
+                      qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
+                      if (showQuick) closeQuick(); else openQuick();
+                    }}
+                    className="px-2 py-1 rounded hover:bg-gray-100"
+                    title="Respostas rápidas"
+                  >
+                    ⚡
+                  </button>
 
-                  {!sel.is_group && !!templates.length && (
+                  <button
+                    data-testid="snippets-toggle"
+                    aria-label="Snippets"
+                    ref={snipBtnRef}
+                    onClick={() => setShowSnippets((v) => !v)}
+                    className="px-2 py-1 rounded hover:bg-gray-100"
+                    title="Snippets"
+                  >
+                    📝
+                  </button>
+
+                  <label
+                    className="px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
+                    title="Anexar"
+                    aria-label="Anexar arquivos"
+                  >
+                    📎
+                    <input
+                      type="file"
+                      className="hidden"
+                      multiple
+                      onChange={(e) => { handleFiles(e.target.files); e.target.value = ''; }}
+                      data-testid="composer-file-input"
+                    />
+                  </label>
+
+                  {!sel?.is_group && !!templates.length && (
                     <select
                       ref={templateSelectRef}
                       value={templateId}
@@ -2306,360 +2443,456 @@ export default function InboxPage() {
                       ))}
                     </select>
                   )}
-              </div>
+                </div>
 
-              <div className="relative flex-1">
-                {showEmoji && (
-                  <div
-                    ref={emojiRef}
-                    data-testid="emoji-popover"
-                    className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10"
-                  >
-                    {EmojiPicker ? (
-                      <EmojiPicker onSelect={(e) => { setText((t) => t + e); setShowEmoji(false); }} />
-                    ) : (
-                      <div className="flex gap-2 text-xl">
-                        {['😀','😅','😍','👍','🙏','🎉','🔥','🥳'].map((em) => (
-                          <button key={em} onClick={() => { setText((t) => t + em); setShowEmoji(false); }}>{em}</button>
+                <div className="relative flex-1">
+                  {showEmoji && (
+                    <div
+                      ref={emojiRef}
+                      data-testid="emoji-popover"
+                      className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10"
+                    >
+                      {EmojiPicker ? (
+                        <EmojiPicker onSelect={(e) => { setText((t) => t + e); setShowEmoji(false); }} />
+                      ) : (
+                        <div className="flex gap-2 text-xl">
+                          {['😀', '😅', '😍', '👍', '🙏', '🎉', '🔥', '🥳'].map((em) => (
+                            <button key={em} onClick={() => { setText((t) => t + em); setShowEmoji(false); }}>{em}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {showQuick && (
+                    <div
+                      ref={quickRef}
+                      data-testid="qr-palette"
+                      className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
+                      role="listbox"
+                    >
+                      <input
+                        data-testid="qr-search"
+                        value={qrQuery}
+                        onChange={(e) => { setQrQuery(e.target.value); setQrIdx(0); }}
+                        onKeyDown={(e) => {
+                          const results = searchQuickReplies(quickReplies, qrQuery);
+                          if (e.key === 'ArrowDown') { e.preventDefault(); setQrIdx((i) => Math.min(i + 1, results.length - 1)); }
+                          if (e.key === 'ArrowUp') { e.preventDefault(); setQrIdx((i) => Math.max(i - 1, 0)); }
+                          if (e.key === 'Enter') { e.preventDefault(); const it = results[qrIdx]; it && selectQRItem(it); }
+                          if (e.key === 'Escape') { e.preventDefault(); closeQuick(); }
+                        }}
+                        className="border rounded px-1 py-0.5 w-full mb-2"
+                      />
+                      <div className="max-h-64 overflow-y-auto">
+                        {searchQuickReplies(quickReplies, qrQuery).slice(0, 8).map((it, i) => (
+                          <div
+                            key={it.id}
+                            data-testid={`qr-item-${it.id}`}
+                            role="option"
+                            onMouseDown={(e) => { e.preventDefault(); selectQRItem(it); }}
+                            className={`px-2 py-1 cursor-pointer ${i === qrIdx ? 'bg-gray-100' : ''}`}
+                          >
+                            <div className="font-medium">{it.title}</div>
+                            <div className="text-xs text-gray-600 truncate">{it.content}</div>
+                            {it.scope === 'personal' && (
+                              <div className="flex gap-1 mt-1">
+                                <button
+                                  data-testid={`qr-edit-open-${it.id}`}
+                                  onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); openEditQR(it); }}
+                                  className="text-xs underline"
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  data-testid={`qr-delete-${it.id}`}
+                                  onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteQR(it.id); }}
+                                  className="text-xs underline text-red-600"
+                                >
+                                  Excluir
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
 
-                {showQuick && (
-                  <div
-                    ref={quickRef}
-                    data-testid="qr-palette"
-                    className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
-                    role="listbox"
-                  >
-                    <input
-                      data-testid="qr-search"
-                      value={qrQuery}
-                      onChange={(e) => { setQrQuery(e.target.value); setQrIdx(0); }}
-                      onKeyDown={(e) => {
-                        const results = searchQuickReplies(quickReplies, qrQuery);
-                        if (e.key === 'ArrowDown') { e.preventDefault(); setQrIdx((i) => Math.min(i + 1, results.length - 1)); }
-                        if (e.key === 'ArrowUp') { e.preventDefault(); setQrIdx((i) => Math.max(i - 1, 0)); }
-                        if (e.key === 'Enter') { e.preventDefault(); const it = results[qrIdx]; it && selectQRItem(it); }
-                        if (e.key === 'Escape') { e.preventDefault(); closeQuick(); }
-                      }}
-                      className="border rounded px-1 py-0.5 w-full mb-2"
-                    />
-                    <div className="max-h-64 overflow-y-auto">
-                      {searchQuickReplies(quickReplies, qrQuery).slice(0,8).map((it, i) => (
-                        <div
-                          key={it.id}
-                          data-testid={`qr-item-${it.id}`}
-                          role="option"
-                          onMouseDown={(e) => { e.preventDefault(); selectQRItem(it); }}
-                          className={`px-2 py-1 cursor-pointer ${i === qrIdx ? 'bg-gray-100' : ''}`}
-                        >
-                          <div className="font-medium">{it.title}</div>
-                          <div className="text-xs text-gray-600 truncate">{it.content}</div>
-                          {it.scope === 'personal' && (
+                  {showSnippets && (
+                    <div
+                      ref={snipRef}
+                      data-testid="snippets-palette"
+                      className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
+                      role="dialog"
+                    >
+                      <input
+                        data-testid="snippets-search"
+                        value={snipQuery}
+                        onChange={(e) => setSnipQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setShowSnippets(false);
+                            snipBtnRef.current?.focus();
+                          }
+                        }}
+                        className="border rounded px-1 py-0.5 w-full mb-2"
+                      />
+                      <div className="max-h-64 overflow-y-auto">
+                        {searchSnippets(snipState.items, snipQuery).map((it) => (
+                          <div
+                            key={it.id}
+                            data-testid={`snippet-item-${it.id}`}
+                            className="px-2 py-1 cursor-pointer hover:bg-gray-100"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              insertSnippet(it);
+                            }}
+                          >
+                            <div className="font-medium">{it.title}</div>
+                            {it.shortcut && (
+                              <div className="text-xs text-gray-600">{it.shortcut}</div>
+                            )}
                             <div className="flex gap-1 mt-1">
                               <button
-                                data-testid={`qr-edit-open-${it.id}`}
-                                onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); openEditQR(it); }}
+                                data-testid={`snippet-edit-${it.id}`}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  setSnipEdit(it);
+                                }}
                                 className="text-xs underline"
                               >
                                 Editar
                               </button>
                               <button
-                                data-testid={`qr-delete-${it.id}`}
-                                onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleDeleteQR(it.id); }}
+                                data-testid={`snippet-delete-${it.id}`}
+                                onMouseDown={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  handleSnippetDelete(it.id);
+                                }}
                                 className="text-xs underline text-red-600"
                               >
                                 Excluir
                               </button>
                             </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {showSnippets && (
-                  <div
-                    ref={snipRef}
-                    data-testid="snippets-palette"
-                    className="absolute bottom-full mb-2 left-0 bg-white border rounded shadow p-2 z-10 w-60"
-                    role="dialog"
-                  >
-                    <input
-                      data-testid="snippets-search"
-                      value={snipQuery}
-                      onChange={(e) => setSnipQuery(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          setShowSnippets(false);
-                          snipBtnRef.current?.focus();
-                        }
-                      }}
-                      className="border rounded px-1 py-0.5 w-full mb-2"
-                    />
-                    <div className="max-h-64 overflow-y-auto">
-                      {searchSnippets(snipState.items, snipQuery).map((it) => (
-                        <div
-                          key={it.id}
-                          data-testid={`snippet-item-${it.id}`}
-                          className="px-2 py-1 cursor-pointer hover:bg-gray-100"
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2 mt-2 text-xs">
+                        <button
+                          data-testid="snippet-new"
                           onMouseDown={(e) => {
                             e.preventDefault();
-                            insertSnippet(it);
+                            setSnipEdit({ title: '', content: '', shortcut: '' });
                           }}
+                          className="underline"
                         >
-                          <div className="font-medium">{it.title}</div>
-                          {it.shortcut && (
-                            <div className="text-xs text-gray-600">{it.shortcut}</div>
-                          )}
-                          <div className="flex gap-1 mt-1">
-                            <button
-                              data-testid={`snippet-edit-${it.id}`}
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                setSnipEdit(it);
-                              }}
-                              className="text-xs underline"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              data-testid={`snippet-delete-${it.id}`}
-                              onMouseDown={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                                handleSnippetDelete(it.id);
-                              }}
-                              className="text-xs underline text-red-600"
-                            >
-                              Excluir
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2 mt-2 text-xs">
-                      <button
-                        data-testid="snippet-new"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          setSnipEdit({ title: '', content: '', shortcut: '' });
-                        }}
-                        className="underline"
-                      >
-                        Novo
-                      </button>
-                      <label className="underline cursor-pointer">
-                        Importar
-                        <input
-                          type="file"
-                          data-testid="snippets-import-input"
-                          className="hidden"
-                          onChange={handleSnippetImport}
-                        />
-                      </label>
-                      <button
-                        data-testid="snippets-export-btn"
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSnippetExport();
-                        }}
-                        className="underline"
-                      >
-                        Exportar
-                      </button>
-                    </div>
-                    {snipMsg && (
-                      <div className="text-xs mt-1" aria-live="polite">
-                        {snipMsg}
+                          Novo
+                        </button>
+                        <label className="underline cursor-pointer">
+                          Importar
+                          <input
+                            type="file"
+                            data-testid="snippets-import-input"
+                            className="hidden"
+                            onChange={handleSnippetImport}
+                          />
+                        </label>
+                        <button
+                          data-testid="snippets-export-btn"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSnippetExport();
+                          }}
+                          className="underline"
+                        >
+                          Exportar
+                        </button>
                       </div>
-                    )}
+                      {snipMsg && (
+                        <div className="text-xs mt-1" aria-live="polite">
+                          {snipMsg}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <textarea
+                    ref={composerRef}
+                    data-testid="composer-text"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+                        e.preventDefault(); setShowSnippets((v) => !v); return;
+                      }
+                      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                        e.preventDefault();
+                        if (showQuick) closeQuick();
+                        else {
+                          qrStartRef.current = composerRef.current?.selectionStart ?? text.length;
+                          openQuick();
+                        }
+                        return;
+                      }
+                      if (e.key === '/' && !showQuick) {
+                        const pos = composerRef.current?.selectionStart ?? 0;
+                        const before = text.slice(0, pos);
+                        if (pos === 0 || /\s$/.test(before)) {
+                          qrStartRef.current = pos;
+                          openQuick();
+                        }
+                      }
+                      if (e.key === 'Escape' && showQuick) { e.preventDefault(); closeQuick(); }
+                      if (e.key === 'Escape' && showSnippets) {
+                        e.preventDefault(); setShowSnippets(false); snipBtnRef.current?.focus();
+                      }
+                      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+                    }}
+                    onPaste={(e) => {
+                      if (e.clipboardData?.files?.length) {
+                        handleFiles(e.clipboardData.files);
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder="Digite uma mensagem"
+                    className={`w-full border rounded px-3 py-2 resize-none ${expanded ? 'max-h-80' : 'max-h-40'}`}
+                    rows={1}
+                  />
+                </div>
+
+                <button
+                  data-testid="send-button"
+                  onClick={send}
+                  disabled={composerDisabled}
+                  className={`self-end px-4 py-2 rounded text-white ${composerDisabled ? 'bg-gray-400' : 'bg-blue-600'}`}
+                  aria-disabled={composerDisabled}
+                  aria-label="Enviar mensagem"
+                >
+                  Enviar
+                </button>
+              </div>
+
+              {(text.trim() || (composerRef.current && composerRef.current.selectionStart !== composerRef.current.selectionEnd)) && (
+                <div className="mt-2">
+                  <button data-testid="qr-save-open" className="text-sm text-blue-600 underline" onClick={openSaveQR}>
+                    Salvar como resposta rápida
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Coluna DIREITA */}
+        <div className={`border-l bg-white flex flex-col min-h-0 ${showInfo ? '' : 'hidden xl:block'}`}>
+          <div className="flex border-b text-sm shrink-0">
+            <button
+              onClick={() => setPanel('details')}
+              className={`px-4 py-2 ${panel === 'details' ? 'border-b-2 border-blue-600' : ''}`}
+              aria-label="Detalhes"
+            >
+              Detalhes
+            </button>
+            <button
+              onClick={() => setPanel('audit')}
+              className={`px-4 py-2 ${panel === 'audit' ? 'border-b-2 border-blue-600' : ''}`}
+              aria-label="Histórico"
+            >
+              Histórico
+            </button>
+          </div>
+
+          {sel && (
+            <div className="mb-3 p-4 border-b">
+              <button
+                className="text-xs px-2 py-1 rounded bg-blue-600 text-white"
+                onClick={async () => {
+                  try {
+                    const { data } = await inboxApi.post(`/conversations/${sel.id}/crm/enter-funnel`);
+                    addToast('Enviado para o funil', { variant: 'success' });
+                    if (!sel.status_id && statuses[0]?.id) changeStatus(asId(statuses[0].id));
+                  } catch {
+                    if (statuses[0]?.id) {
+                      await changeStatus(asId(statuses[0].id));
+                      addToast('Enviado para o funil (status inicial aplicado)', { variant: 'success' });
+                    } else {
+                      addToast('Não foi possível enviar para o funil (sem status configurado)', { variant: 'error' });
+                    }
+                  }
+                }}
+              >
+                Enviar para o funil
+              </button>
+            </div>
+          )}
+
+          <div className="p-4 flex-1 min-h-0 overflow-y-auto">
+            {panel === 'audit' ? (
+              sel ? <AuditPanel conversationId={sel.id} /> : <div className="text-gray-500">Selecione uma conversa</div>
+            ) : sel ? (
+              <div>
+                <div className="text-xs text-gray-500 mb-2">Detalhes do contato</div>
+                <div className="flex items-center gap-3 mb-3">
+                  <img
+                    src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/56'}
+                    alt="avatar"
+                    className="w-14 h-14 rounded-full"
+                  />
+                  <div>
+                    <div className="font-semibold">{sel?.contact?.name || 'Contato'}</div>
+                    <div className="text-sm text-gray-500">{sel?.contact?.phone_e164 || ''}</div>
+                    <div className="text-xs text-gray-500">Canal: {sel?.channel || '-'}</div>
+                  </div>
+                </div>
+
+                {!!statuses.length && (
+                  <div className="mb-3">
+                    <label className="block text-xs text-gray-500 mb-1">Status CRM</label>
+                    <select
+                      value={asId(sel?.status_id) || ''}
+                      onChange={(e) => changeStatus(e.target.value)}
+                      className="border rounded px-2 py-1 text-sm w-full"
+                      data-testid="crm-status-select"
+                    >
+                      <option value="">Sem status</option>
+                      {statuses.map((s) => (
+                        <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
+                      ))}
+                    </select>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        onClick={createOpportunity}
+                        className="text-xs px-2 py-1 rounded bg-blue-600 text-white"
+                        data-testid="crm-create-opportunity"
+                        title="Enviar para o funil do CRM"
+                      >
+                        Criar oportunidade no CRM
+                      </button>
+                      <a
+                        href="/crm/oportunidades"
+                        className="text-xs px-2 py-1 rounded border"
+                        title="Abrir funil"
+                      >
+                        Abrir funil
+                      </a>
+                    </div>
                   </div>
                 )}
 
-                <textarea
-                  ref={composerRef}
-                  data-testid="composer-text"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={handleComposerKeyDown}
-                  onPaste={(e) => { if (e.clipboardData?.files?.length) { handleFiles(e.clipboardData.files); e.preventDefault(); } }}
-                  placeholder="Digite uma mensagem"
-                  className={`w-full border rounded px-3 py-2 resize-none ${expanded ? 'max-h-80' : 'max-h-40'}`}
-                  rows={1}
-                />
-              </div>
+                <div className="mb-3">
+                  <div className="text-xs text-gray-500 mb-1">Etiquetas</div>
+                  <div className="flex flex-wrap gap-1">
+                    {tags.map((t) => {
+                      const on = (sel?.tags || []).map(asId).includes(asId(t.id));
+                      return (
+                        <button
+                          key={asId(t.id)}
+                          onClick={() => toggleTag(t.id)}
+                          aria-label={`Alternar tag ${t.name}`}
+                          className={`px-2 py-1 text-xs rounded ${on ? 'bg-blue-200' : 'bg-gray-200'}`}
+                          data-testid={`tag-chip-${asId(t.id)}`}
+                        >
+                          {t.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-              <button
-                data-testid="send-button"
-                onClick={send}
-                disabled={composerDisabled}
-                className={`self-end px-4 py-2 rounded text-white ${composerDisabled ? 'bg-gray-400' : 'bg-blue-600'}`}
-                aria-disabled={composerDisabled}
-                aria-label="Enviar mensagem"
-              >
-                Enviar
-              </button>
-            </div>
-            {(text.trim() || (composerRef.current && composerRef.current.selectionStart !== composerRef.current.selectionEnd)) && (
-              <div className="mt-2">
-                <button data-testid="qr-save-open" className="text-sm text-blue-600 underline" onClick={openSaveQR}>
-                  Salvar como resposta rápida
-                </button>
+                <div className="space-y-2">
+                  <label className="block text-xs text-gray-500">Nome</label>
+                  <input
+                    value={clientForm.name}
+                    onChange={(e) => handleClientChange('name', e.target.value)}
+                    disabled={sel.is_group}
+                    title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                    aria-invalid={!!clientErrors.name}
+                    className={`w-full border rounded px-2 py-1 ${clientErrors.name ? 'border-red-500' : ''}`}
+                    data-testid="contact-name"
+                  />
+                  {clientErrors.name && (
+                    <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.name}</div>
+                  )}
+
+                  <label className="block text-xs text-gray-500">Telefone (+5511999999999)</label>
+                  <input
+                    value={clientForm.phone_e164}
+                    onChange={(e) => handleClientChange('phone_e164', e.target.value)}
+                    disabled={sel.is_group}
+                    title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                    aria-invalid={!!clientErrors.phone_e164}
+                    className={`w-full border rounded px-2 py-1 ${clientErrors.phone_e164 ? 'border-red-500' : ''}`}
+                    data-testid="contact-phone"
+                  />
+                  {clientErrors.phone_e164 && (
+                    <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.phone_e164}</div>
+                  )}
+
+                  <label className="block text-xs text-gray-500">E-mail</label>
+                  <input
+                    value={clientForm.email}
+                    onChange={(e) => handleClientChange('email', e.target.value)}
+                    disabled={sel.is_group}
+                    title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
+                    aria-invalid={!!clientErrors.email}
+                    className={`w-full border rounded px-2 py-1 ${clientErrors.email ? 'border-red-500' : ''}`}
+                    data-testid="contact-email"
+                  />
+                  {clientErrors.email && (
+                    <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.email}</div>
+                  )}
+
+                  <label className="block text-xs text-gray-500">Data de nascimento</label>
+                  <input
+                    type="date"
+                    value={clientForm.birth_date}
+                    onChange={(e) => handleClientChange('birth_date', e.target.value)}
+                    disabled={sel.is_group}
+                    className="w-full border rounded px-2 py-1"
+                    data-testid="contact-birthdate"
+                  />
+
+                  <label className="block text-xs text-gray-500">Outras informações</label>
+                  <textarea
+                    value={clientForm.notes}
+                    onChange={(e) => handleClientChange('notes', e.target.value)}
+                    disabled={sel.is_group}
+                    className="w-full border rounded px-2 py-1 h-40 max-h-64 overflow-auto"
+                    data-testid="contact-notes"
+                  />
+
+                  {clientDirty && clientStatus !== 'saving' && (
+                    <button
+                      onClick={revertClient}
+                      className="text-xs underline"
+                      data-testid="contact-revert"
+                    >
+                      Reverter
+                    </button>
+                  )}
+                  <div data-testid="contact-save-status" aria-live="polite" className="text-xs">
+                    {clientStatus === 'saving'
+                      ? 'saving…'
+                      : clientStatus === 'saved'
+                        ? 'salvo ✓'
+                        : clientStatus === 'error'
+                          ? 'erro ✕'
+                          : ''}
+                  </div>
+                </div>
+
+                <div className="text-xs text-gray-500 mt-4">
+                  Última atividade: {sel?.updated_at ? new Date(sel.updated_at).toLocaleString() : '-'}
+                </div>
               </div>
+            ) : (
+              <div className="text-gray-500">Selecione uma conversa</div>
             )}
           </div>
-        )}
-      </div>
-
-      {/* Painel direito */}
-      <div className={`border-l bg-white flex flex-col overflow-y-auto ${showInfo ? '' : 'hidden xl:block'}`}>
-        <div className="flex border-b text-sm">
-          <button
-            onClick={() => setPanel('details')}
-            className={`px-4 py-2 ${panel === 'details' ? 'border-b-2 border-blue-600' : ''}`}
-            aria-label="Detalhes"
-          >
-            Detalhes
-          </button>
-          <button
-            onClick={() => setPanel('audit')}
-            className={`px-4 py-2 ${panel === 'audit' ? 'border-b-2 border-blue-600' : ''}`}
-            aria-label="Histórico"
-          >
-            Histórico
-          </button>
-        </div>
-        <div className="p-4 flex-1">
-          {panel === 'audit' ? (
-            sel ? <AuditPanel conversationId={sel.id} /> : <div className="text-gray-500">Selecione uma conversa</div>
-          ) : sel ? (
-            <div>
-              <div className="text-xs text-gray-500 mb-2">Detalhes do contato</div>
-              <div className="flex items-center gap-3 mb-3">
-                <img
-                  src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/56'}
-                  alt="avatar"
-                  className="w-14 h-14 rounded-full"
-                />
-                <div>
-                  <div className="font-semibold">{sel?.contact?.name || 'Contato'}</div>
-                  <div className="text-sm text-gray-500">{sel?.contact?.phone_e164 || ''}</div>
-                  <div className="text-xs text-gray-500">Canal: {sel?.channel || '-'}</div>
-                </div>
-              </div>
-
-              {!!statuses.length && (
-                <div className="mb-3">
-                  <label className="block text-xs text-gray-500 mb-1">Status CRM</label>
-                  <select
-                    value={asId(sel?.status_id) || ''}
-                    onChange={(e) => changeStatus(e.target.value)}
-                    className="border rounded px-2 py-1 text-sm w-full"
-                    data-testid="crm-status-select"
-                  >
-                    <option value="">Sem status</option>
-                    {statuses.map((s) => (
-                      <option key={asId(s.id)} value={asId(s.id)}>{s.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="mb-3">
-                <div className="text-xs text-gray-500 mb-1">Etiquetas</div>
-                <div className="flex flex-wrap gap-1">
-                  {tags.map((t) => {
-                    const on = (sel?.tags || []).map(asId).includes(asId(t.id));
-                    return (
-                      <button
-                        key={asId(t.id)}
-                        onClick={() => toggleTag(t.id)}
-                        aria-label={`Alternar tag ${t.name}`}
-                        className={`px-2 py-1 text-xs rounded ${on ? 'bg-blue-200' : 'bg-gray-200'}`}
-                        data-testid={`tag-chip-${asId(t.id)}`}
-                      >
-                        {t.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs text-gray-500">Nome</label>
-                <input
-                  value={clientForm.name}
-                  onChange={(e) => handleClientChange('name', e.target.value)}
-                  disabled={sel.is_group}
-                  title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
-                  aria-invalid={!!clientErrors.name}
-                  className={`w-full border rounded px-2 py-1 ${clientErrors.name ? 'border-red-500' : ''}`}
-                  data-testid="contact-name"
-                />
-                {clientErrors.name && (
-                  <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.name}</div>
-                )}
-
-                <label className="block text-xs text-gray-500">Telefone (+5511999999999)</label>
-                <input
-                  value={clientForm.phone_e164}
-                  onChange={(e) => handleClientChange('phone_e164', e.target.value)}
-                  disabled={sel.is_group}
-                  title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
-                  aria-invalid={!!clientErrors.phone_e164}
-                  className={`w-full border rounded px-2 py-1 ${clientErrors.phone_e164 ? 'border-red-500' : ''}`}
-                  data-testid="contact-phone"
-                />
-                {clientErrors.phone_e164 && (
-                  <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.phone_e164}</div>
-                )}
-
-                <label className="block text-xs text-gray-500">E-mail</label>
-                <input
-                  value={clientForm.email}
-                  onChange={(e) => handleClientChange('email', e.target.value)}
-                  disabled={sel.is_group}
-                  title={sel.is_group ? 'Indisponível em conversas de grupo' : undefined}
-                  aria-invalid={!!clientErrors.email}
-                  className={`w-full border rounded px-2 py-1 ${clientErrors.email ? 'border-red-500' : ''}`}
-                  data-testid="contact-email"
-                />
-                {clientErrors.email && (
-                  <div className="text-[11px] text-red-600" data-testid="contact-error" aria-live="assertive">{clientErrors.email}</div>
-                )}
-
-                {clientDirty && clientStatus !== 'saving' && (
-                  <button
-                    onClick={revertClient}
-                    className="text-xs underline"
-                    data-testid="contact-revert"
-                  >
-                    Reverter
-                  </button>
-                )}
-                <div data-testid="contact-save-status" aria-live="polite" className="text-xs">
-                  {clientStatus === 'saving'
-                    ? 'saving…'
-                    : clientStatus === 'saved'
-                    ? 'salvo ✓'
-                    : clientStatus === 'error'
-                    ? 'erro ✕'
-                    : ''}
-                </div>
-              </div>
-
-              <div className="text-xs text-gray-500 mt-4">Última atividade: {sel?.updated_at ? new Date(sel.updated_at).toLocaleString() : '-'}</div>
-            </div>
-          ) : (
-            <div className="text-gray-500">Selecione uma conversa</div>
-          )}
         </div>
       </div>
 
@@ -2668,10 +2901,16 @@ export default function InboxPage() {
         <Lightbox
           items={lightbox.items}
           startIndex={lightbox.index}
-          onClose={closeLightbox}
+          onClose={() => {
+            const trigger = lightbox.trigger;
+            setLightbox({ open: false, items: [], index: 0, trigger: null });
+            if (trigger && typeof trigger.focus === 'function') trigger.focus();
+          }}
         />
       )}
-      {qrVarItemRef.current && (
+
+      {/* Quick reply: variáveis */}
+      { (typeof window !== 'undefined') && ( (() => qrVarItemRef.current)() ) && (
         <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20">
           <div className="bg-white p-4 rounded shadow space-y-2">
             {parseVariables(qrVarItemRef.current.content || '').map((v) => (
@@ -2695,6 +2934,8 @@ export default function InboxPage() {
           </div>
         </div>
       )}
+
+      {/* Editor de snippet */}
       {snipEdit && (
         <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20">
           <div className="bg-white p-4 rounded shadow space-y-2 w-72" role="dialog">
@@ -2739,6 +2980,8 @@ export default function InboxPage() {
           </div>
         </div>
       )}
+
+      {/* Salvar resposta rápida */}
       {showSaveQR && (
         <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20">
           <div className="bg-white p-4 rounded shadow space-y-2 w-72">
@@ -2765,11 +3008,11 @@ export default function InboxPage() {
           </div>
         </div>
       )}
-    </div>
-    {cacheHit && <div data-testid="cache-hit" hidden />}
-    {cacheRefreshing && <div data-testid="cache-refreshing" hidden />}
-    <div data-testid="prefetch-log" hidden>{preloadLog}</div>
-    <ToastHost />
-  </>
+
+      {cacheHit && <div data-testid="cache-hit" hidden />}
+      {cacheRefreshing && <div data-testid="cache-refreshing" hidden />}
+      <div data-testid="prefetch-log" hidden>{preloadLog}</div>
+      <ToastHost />
+    </>
   );
 }

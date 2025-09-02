@@ -1,16 +1,37 @@
+// src/components/Sidebar.jsx
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 
-const roleOrder = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
+const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
 
-function hasRole(userRole, minRole) {
-  const u = roleOrder.indexOf(userRole);
-  const m = roleOrder.indexOf(minRole);
-  return u >= 0 && m >= 0 && u >= m;
-}
+const normalizeRole = (role) => {
+  if (!role) return null;
+  const k = String(role).trim().toLowerCase().replace(/[\s_-]/g, '');
+  const map = {
+    viewer: 'Viewer',
+    agente: 'Agent',
+    agent: 'Agent',
+    manager: 'Manager',
+    supervisor: 'Manager',
+    owner: 'OrgOwner',
+    orgowner: 'OrgOwner',
+    orgadmin: 'OrgOwner',
+    admin: 'OrgOwner',
+    superadmin: 'SuperAdmin',
+    superadministrator: 'SuperAdmin',
+  };
+  return map[k] || null;
+};
+
+const hasRole = (userRole, minRole) => {
+  const u = ROLE_ORDER.indexOf(normalizeRole(userRole));
+  const m = ROLE_ORDER.indexOf(minRole);
+  if (u === -1 || m === -1) return false;
+  return u >= m;
+};
 
 export default function Sidebar({ collapsed = false, onToggle }) {
   const { user, logout } = useAuth();

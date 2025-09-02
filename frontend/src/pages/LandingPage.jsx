@@ -1,5 +1,4 @@
 import inboxApi from "../api/inboxApi";
-// src/pages/LandingPage.jsx
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import TrialDaysLabel from "../components/TrialDaysLabel";
