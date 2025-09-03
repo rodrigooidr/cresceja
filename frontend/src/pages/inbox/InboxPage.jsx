@@ -8,8 +8,8 @@ import React, {
   useLayoutEffect,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import inboxApi from '../../api/inboxApi'; // <- só default
-import { makeSocket } from '../../sockets/socket';
+import { io } from 'socket.io-client';
+import inboxApi from '../../api/inboxApi';
 import normalizeMessage from '../../inbox/normalizeMessage';
 import channelIconBySlug from '../../inbox/channelIcons';
 import EmojiPicker from '../../components/inbox/EmojiPicker.jsx';
@@ -50,6 +50,15 @@ import { MAX_UPLOAD_MB, exceedsSize /* isAllowed, violationMessage */ } from '..
 import auditlog from '../../inbox/auditlog.js';
 
 // ------------------------------------------------------------- Utils
+const apiWsUrl = (path = '/') => {
+  const base = (inboxApi?.defaults?.baseURL || '').replace(/\/api\/?$/, '');
+  const u = new URL(base || window.location.origin);
+  u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${u.origin}${path}`;
+};
+
+// Fábrica de socket
+const createSocket = () => io(apiWsUrl('/socket.io'), { path: '/socket.io', withCredentials: true });
 
 // base para montar URLs absolutas a partir do baseURL do axios
 const __API_BASE = (() => {
@@ -58,7 +67,7 @@ const __API_BASE = (() => {
   return b.replace(/\/api\/?$/, '');
 })();
 
-const apiUrl = (u) => {
+const apiHttpUrl = (u) => {
   if (!u) return '';
   const s = String(u);
   if (/^https?:\/\//i.test(s)) return s;
@@ -67,7 +76,7 @@ const apiUrl = (u) => {
 };
 
 // URL que pode vir relativa do backend
-const safeApiUrl = (u) => (u ? apiUrl(u) : undefined);
+const safeApiUrl = (u) => (u ? apiHttpUrl(u) : undefined);
 
 const isImage = (u = '') => /\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(String(u || ''));
 const asId = (v) => (v === 0 ? '0' : v ? String(v) : '');
@@ -101,10 +110,17 @@ function formatRelative(date) {
 }
 
 async function firstOk(fns = []) {
+  let lastErr;
   for (const fn of fns) {
-    try { const r = await fn(); if (r?.data) return r; } catch (_) { }
+    try {
+      // axios lança exceção se NÃO for 2xx/3xx, então se chegou aqui está ok
+      const r = await fn();
+      return r; // não exija r.data — há endpoints 204 sem body
+    } catch (e) {
+      lastErr = e;
+    }
   }
-  throw new Error('Nenhum endpoint respondeu');
+  throw lastErr || new Error('Nenhum endpoint respondeu');
 }
 
 /**
@@ -134,8 +150,8 @@ function useOutsideClose(ref, onClose, deps = [], ignoreRefs = []) {
 // ------------------------------------------------------------- Conversation item
 function ConversationItem({ c, onOpen, active, idx, onHeight, onHover, selected, onToggle, density }) {
   const contact = c?.contact || {};
-  const icon = channelIconBySlug[c?.channel] || channelIconBySlug.default;
-  const photo = contact.photo_url ? apiUrl(contact.photo_url) : 'https://placehold.co/40';
+  const icon = channelIconBySlug[c?.channel || c?.channel_slug] || channelIconBySlug.default;
+  const photo = contact.photo_url ? apiHttpUrl(contact.photo_url) : 'https://placehold.co/40';
   const ref = useRef(null);
   const reportHeight = useCallback(() => {
     if (ref.current && onHeight) onHeight(idx, ref.current.offsetHeight);
@@ -231,11 +247,10 @@ export default function InboxPage() {
   const [toastError, setToastError] = useState('');
 
   // ---------- toasts (sempre função)
-  let addToast = () => {};
-  try {
-    const toastsCtx = useToasts ? useToasts() : null;
-    if (toastsCtx && typeof toastsCtx.add === 'function') addToast = toastsCtx.add;
-  } catch { /* noop */ }
+  const toastsCtx = useToasts?.();
+  const addToast = React.useCallback((msg, opts) => {
+    return toastsCtx?.add?.(msg, opts);
+  }, [toastsCtx]);
 
   const showError = useCallback((msg) => {
     setToastError(msg || 'Erro');
@@ -246,6 +261,9 @@ export default function InboxPage() {
   const [cacheHit, setCacheHit] = useState(false);
   const [cacheRefreshing, setCacheRefreshing] = useState(false);
   const [preloadLog, setPreloadLog] = useState('');
+  const logPreload = useCallback((id) => {
+    setPreloadLog((prev) => (prev ? `${prev},${id}` : String(id)));
+  }, []);
   const preloadingRef = useRef({});
   const hoverTimerRef = useRef(null);
   const selPreloadTimerRef = useRef(null);
@@ -265,7 +283,7 @@ export default function InboxPage() {
   const saveDraft = useCallback((convId, draft) => {
     if (!convId) return;
     draftsRef.current = { ...(draftsRef.current || {}), [convId]: draft || '' };
-    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(draftsRef.current)); } catch {}
+    try { localStorage.setItem(DRAFTS_KEY, JSON.stringify(draftsRef.current)); } catch { }
   }, []);
   const loadDraft = useCallback((convId) => (draftsRef.current?.[convId] || ''), []);
 
@@ -279,7 +297,10 @@ export default function InboxPage() {
     try { return JSON.parse(localStorage.getItem('user') || '{}'); }
     catch { return {}; }
   }, []);
+
   const role = user?.role || 'unknown';
+  const isAdminRole = ['super_admin', 'SuperAdmin', 'org_admin', 'OrgOwner'].includes(role);
+  const orgIdFromUrl = searchParams.get('org_id') || null;
   const unknownRole = !['agent', 'supervisor', 'org_admin', 'super_admin', 'manager', 'OrgOwner', 'SuperAdmin'].includes(role);
   const can = useCallback(
     (action) => {
@@ -291,25 +312,27 @@ export default function InboxPage() {
         spam: ['org_admin', 'super_admin', 'SuperAdmin'],
       };
       const allowed = map[action] ? map[action].includes(role) : true;
-      return unknownRole ? true : allowed;
+      return unknownRole ? false : allowed;
     },
     [role, unknownRole]
   );
 
-  const logPreload = useCallback((id) => {
-    setPreloadLog((s) => s + String(id));
-  }, []);
-
   async function markRead(conversationId) {
     if (!conversationId) return;
-    setItems((prev) =>
-      (prev || []).map((c) =>
+    setItems(prev =>
+      (prev || []).map(c =>
         String(c.id) === String(conversationId) ? { ...c, unread_count: 0 } : c
       )
     );
     try {
-      await inboxApi.post(`/conversations/${conversationId}/read`);
-    } catch { }
+      await firstOk([
+        () => inboxApi.post(`/inbox/conversations/${conversationId}/read`),
+        () => inboxApi.post(`/conversations/${conversationId}/read`),
+        () => inboxApi.put(`/conversations/${conversationId}/read`), // alguns backends usam PUT
+      ]);
+    } catch {
+      // silencioso — já otimizamos a UI
+    }
   }
 
   const preloadConv = useCallback(
@@ -477,6 +500,7 @@ export default function InboxPage() {
   const qrStartRef = useRef(null);
   const qrVarItemRef = useRef(null);
   const [qrVarValues, setQrVarValues] = useState({});
+  const [qrVarsOpen, setQrVarsOpen] = useState(false);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -590,6 +614,29 @@ export default function InboxPage() {
   const [clientDirty, setClientDirty] = useState(false);
   const clientTimerRef = useRef(null);
 
+  useEffect(() => {
+    const c = sel?.contact;
+    if (!c) {
+      const empty = { name: '', phone_e164: '', email: '', birth_date: '', notes: '' };
+      setClientForm(empty);
+      setClientSaved(empty);
+      setClientStatus('idle');
+      setClientDirty(false);
+      return;
+    }
+    const normalized = {
+      name: c.name || '',
+      phone_e164: c.phone_e164 || '',
+      email: c.email || '',
+      birth_date: toDateInput(c.date_of_birth || c.birth_date) || '',
+      notes: c.notes || c.other_info || '',
+    };
+    setClientForm(normalized);
+    setClientSaved(normalized);
+    setClientStatus('idle');
+    setClientDirty(false);
+  }, [sel?.contact]);
+
   // ------------------------------ Snippets
   const [snipState, setSnipState] = useState(() => loadSnippets());
   const [showSnippets, setShowSnippets] = useState(false);
@@ -606,6 +653,10 @@ export default function InboxPage() {
   const composerRef = useRef(null);
   const composerBoxRef = useRef(null);
   const emojiBtnRef = useRef(null);
+  // socket (único)
+  const socketRef = useRef(null);
+  const selIdRef = useRef(null);
+  useEffect(() => { selIdRef.current = sel?.id; }, [sel?.id]);
 
   // popovers estáveis
   useOutsideClose(emojiRef, () => setShowEmoji(false), [sel?.id, showEmoji], [emojiBtnRef]);
@@ -706,6 +757,8 @@ export default function InboxPage() {
         setShowQuick(false);
         setQrQuery('');
         setQrIdx(0);
+        setQrVarsOpen(true); // <- abre o modal
+
         setTimeout(() => {
           const el = document.querySelector(`[data-testid="qr-var-${vars[0]}"]`);
           el && el.focus();
@@ -730,7 +783,9 @@ export default function InboxPage() {
     insertText(content);
     qrVarItemRef.current = null;
     setQrVarValues({});
+    setQrVarsOpen(false); // <- fecha o modal
   }, [qrVarValues, insertText]);
+
 
   const [showSaveQR, setShowSaveQR] = useState(false);
   const [saveQRForm, setSaveQRForm] = useState({ title: '', content: '', id: null });
@@ -809,6 +864,27 @@ export default function InboxPage() {
   useEffect(() => {
     inboxApi.get('/crm/statuses').then(r => setStatuses(Array.isArray(r?.data?.items) ? r.data.items : [])).catch(() => { });
   }, []);
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const r = await firstOk([
+          () => inboxApi.get('/inbox/templates'),
+          () => inboxApi.get('/templates'),
+        ]);
+        const arr = Array.isArray(r?.data?.items)
+          ? r.data.items
+          : Array.isArray(r?.data)
+            ? r.data
+            : [];
+        if (!cancel) setTemplates(arr);
+      } catch {
+        /* silencioso */
+      }
+    })();
+    return () => { cancel = true; };
+  }, []);
+
 
   // ----------------------------------------------------------------- paginação da lista (lado esquerdo)
   const loadMoreConversations = useCallback(async () => {
@@ -820,6 +896,8 @@ export default function InboxPage() {
     if (tagFilters.length) params.tags = tagFilters.join(',');
     if (statusFilters.length) params.status = statusFilters.join(',');
     if (listCursor) params.cursor = listCursor; else params.page = listPage + 1;
+    if (isAdminRole) params.scope = params.scope || 'all';
+    if (isAdminRole && orgIdFromUrl) params.org_id = orgIdFromUrl;
     setLoadingMoreList(true);
     try {
       const r = await firstOk([
@@ -840,7 +918,7 @@ export default function InboxPage() {
     } finally {
       setLoadingMoreList(false);
     }
-  }, [loadingMoreList, listHasMore, search, channelFilters, tagFilters, statusFilters, listCursor, listPage, showError]);
+  }, [loadingMoreList, listHasMore, search, channelFilters, tagFilters, statusFilters, listCursor, listPage, showError, isAdminRole, orgIdFromUrl]);
 
   // ----------------------------------------------------------------- busca e sincroniza URL
   useEffect(() => {
@@ -850,6 +928,8 @@ export default function InboxPage() {
     if (channelFilters.length) params.channels = channelFilters.join(',');
     if (tagFilters.length) params.tags = tagFilters.join(',');
     if (statusFilters.length) params.status = statusFilters.join(',');
+    if (isAdminRole) params.scope = params.scope || 'all';
+    if (isAdminRole && orgIdFromUrl) params.org_id = orgIdFromUrl;
 
     setLoadingList(true);
     setListCursor(null);
@@ -879,7 +959,7 @@ export default function InboxPage() {
 
     setSearchParams(params, { replace: true });
     return () => clearTimeout(t);
-  }, [search, channelFilters, tagFilters, statusFilters, setSearchParams, reloadTick, showError]);
+  }, [search, channelFilters, tagFilters, statusFilters, setSearchParams, reloadTick, showError, isAdminRole, orgIdFromUrl]);
 
   // ----------------------------------------------------------------- filtro local (fallback)
   const filteredItems = useMemo(() => {
@@ -891,7 +971,7 @@ export default function InboxPage() {
     return (items || []).filter((c) => {
       const name = (c?.contact?.name || c?.contact?.phone_e164 || '').toLowerCase();
       const okQ = !q || name.includes(q) || String(c?.id).includes(q);
-      const okCh = !byCh.size || byCh.has(c?.channel);
+      const okCh = !byCh.size || byCh.has(c?.channel || c?.channel_slug);
       const okStatus = !byStatus.size || byStatus.has(asId(c?.status_id));
       const convTags = (c?.tags || []).map(asId);
       const okTags = !byTag.size || convTags.some((t) => byTag.has(t));
@@ -1112,14 +1192,25 @@ export default function InboxPage() {
 
   // ----------------------------------------------------------------- socket (inclui typing)
   useEffect(() => {
-    const s = makeSocket();
+    const s = createSocket(); // usa seu helper existente
+    socketRef.current = s;
 
-    const onConnect = () => mountedRef.current && setConnected(true);
-    const onDisconnect = () => mountedRef.current && setConnected(false);
+    const onConnect = () => {
+      setConnected(true);
+      setShowReconnected(true);
+      setTimeout(() => setShowReconnected(false), 1500);
+    };
+    const onDisconnect = () => setConnected(false);
 
     const startTyping = (payload) => {
-      const convId = payload?.conversationId || payload?.conversation_id || payload?.conversation?.id || payload?.id;
-      if (!sel?.id || String(sel.id) !== String(convId)) return;
+      const convId =
+        payload?.conversationId ||
+        payload?.conversation_id ||
+        payload?.conversation?.id ||
+        payload?.id;
+
+      if (!selIdRef.current || String(selIdRef.current) !== String(convId)) return;
+
       setTyping(true);
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => setTyping(false), 3000);
@@ -1131,16 +1222,15 @@ export default function InboxPage() {
         payload?.conversation_id ||
         payload?.conversation?.id;
 
-      const raw = payload?.message ?? payload?.data ?? payload;
-      const msg = normalizeMessage(raw);
+      const msg = normalizeMessage(payload?.message ?? payload?.data ?? payload);
       if (!msg) return;
 
-      if (sel?.id && String(sel.id) === String(convId)) {
-        setMsgs(prev => ([...(prev || []), msg]));
-        markRead(sel.id);
+      if (selIdRef.current && String(selIdRef.current) === String(convId)) {
+        setMsgs((prev) => ([...(prev || []), msg]));
+        markRead(selIdRef.current);
       } else {
-        setItems(prev =>
-          (prev || []).map(c =>
+        setItems((prev) =>
+          (prev || []).map((c) =>
             String(c.id) === String(convId)
               ? { ...c, unread_count: (c.unread_count || 0) + 1 }
               : c
@@ -1155,20 +1245,21 @@ export default function InboxPage() {
         payload?.conversation_id ||
         payload?.conversation?.id;
 
-      const raw = payload?.message ?? payload?.data ?? payload;
-      const msg = normalizeMessage(raw);
-      if (!msg) return;
+      const msg = normalizeMessage(payload?.message ?? payload?.data ?? payload);
+      if (!msg || !selIdRef.current || String(selIdRef.current) !== String(convId)) return;
 
-      if (sel?.id && String(sel.id) === String(convId)) {
-        setMsgs(prev => prev.map(m => (m.id === msg.id ? msg : m)));
-      }
+      setMsgs((prev) => prev.map((m) => (m.id === msg.id ? msg : m)));
     };
 
     const onConvUpdated = (payload) => {
       const conv = payload?.conversation;
       if (!conv?.id) return;
-      setItems(prev => (prev || []).map(c => (c.id === conv.id ? { ...c, ...conv } : c)));
-      if (sel?.id && sel.id === conv.id) setSel(prev => ({ ...prev, ...conv }));
+
+      setItems((prev) => (prev || []).map((c) => (c.id === conv.id ? { ...c, ...conv } : c)));
+
+      if (selIdRef.current && String(selIdRef.current) === String(conv.id)) {
+        setSel((prev) => ({ ...prev, ...conv }));
+      }
     };
 
     s.on('connect', onConnect);
@@ -1176,8 +1267,6 @@ export default function InboxPage() {
     s.on('message:new', onNew);
     s.on('message:updated', onUpdate);
     s.on('conversation:updated', onConvUpdated);
-
-    // eventos de digitação (nomes variam por integração)
     s.on('typing', startTyping);
     s.on('message:typing', startTyping);
 
@@ -1189,8 +1278,12 @@ export default function InboxPage() {
       s.off('conversation:updated', onConvUpdated);
       s.off('typing', startTyping);
       s.off('message:typing', startTyping);
+      s.disconnect();
+      socketRef.current = null;
+      clearTimeout(typingTimeoutRef.current);
     };
-  }, [sel?.id]);
+  }, []); // <- sem depender de sel?.id
+
 
   // ----------------------------------------------------------------- atalhos de teclado diversos
   useEffect(() => {
@@ -1320,17 +1413,24 @@ export default function InboxPage() {
 
   // sobe anexos locais e normaliza retorno
   const uploadLocalAttachments = useCallback(async (convId) => {
-    const locals = attachments.filter((a) => a.localFile && !a.error);
+    const locals = attachments.filter(a => a.localFile && !a.error);
     if (!locals.length) return [];
 
     const uploadedAssets = [];
+
     for (const a of locals) {
       const form = new FormData();
       form.append('files[]', a.localFile);
+
       try {
-        const { data } = await inboxApi.post(`/conversations/${convId}/attachments`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
+        const cfg = { headers: { 'Content-Type': 'multipart/form-data' } };
+
+        // tenta diferentes rotas até uma responder
+        const { data } = await firstOk([
+          () => inboxApi.post(`/inbox/conversations/${convId}/attachments`, form, cfg),
+          () => inboxApi.post(`/conversations/${convId}/attachments`, form, cfg),
+          () => inboxApi.post(`/inbox/attachments`, form, { ...cfg, params: { conversation_id: convId } }),
+        ]);
 
         let assetsRaw = [];
         if (Array.isArray(data?.assets)) assetsRaw = data.assets;
@@ -1339,37 +1439,37 @@ export default function InboxPage() {
         else if (data?.asset || data?.file) assetsRaw = [data.asset || data.file];
         else if (Array.isArray(data)) assetsRaw = data;
 
-        const normalized = assetsRaw.map((asset) => ({
+        const normalized = assetsRaw.map(asset => ({
           id: asset.id || asset.asset_id || asset.file_id || asset.url,
           url: safeApiUrl(asset.url || asset.preview_url || asset.thumb_url),
           thumb_url: safeApiUrl(asset.thumb_url || asset.preview_url),
           filename: asset.filename || asset.name || a.name,
-          mime: asset.mime_type || asset.content_type || asset.type || a.localFile?.type
+          mime: asset.mime_type || asset.content_type || asset.type || a.localFile?.type,
         }));
 
-        setAttachments((prev) =>
+        setAttachments(prev =>
           prev
-            .filter((x) => x.id !== a.id)
-            .concat(
-              normalized.map((na) => ({
-                id: na.id,
-                url: na.url,
-                thumb_url: na.thumb_url,
-                filename: na.filename,
-                mime: na.mime
-              }))
-            )
+            .filter(x => x.id !== a.id)
+            .concat(normalized.map(na => ({
+              id: na.id,
+              url: na.url,
+              thumb_url: na.thumb_url,
+              filename: na.filename,
+              mime: na.mime,
+            })))
         );
-        uploadedAssets.push(...normalized);
 
+        uploadedAssets.push(...normalized);
         if (a.localUrl) URL.revokeObjectURL(a.localUrl);
       } catch (err) {
-        setAttachments((prev) => prev.map((x) => (x.id === a.id ? { ...x, error: true } : x)));
+        setAttachments(prev => prev.map(x => (x.id === a.id ? { ...x, error: true } : x)));
         addToast(`Falha ao enviar arquivo ${a.name}`, { variant: 'error' });
       }
     }
+
     return uploadedAssets;
   }, [attachments]);
+
 
   // ----------------------------------------------------------------- helpers de envio com fallback
   function normalizeOutgoingPayload(payload) {
@@ -1424,14 +1524,19 @@ export default function InboxPage() {
   const markAllRead = async () => {
     if (!sel) return;
     try {
-      await inboxApi.put(`/conversations/${sel.id}/read`);
+      await firstOk([
+        () => inboxApi.post(`/inbox/conversations/${sel.id}/read`),
+        () => inboxApi.post(`/conversations/${sel.id}/read`),
+        () => inboxApi.put(`/conversations/${sel.id}/read`),
+      ]);
       const last = msgs[msgs.length - 1];
-      setSel((p) =>
-        p
-          ? { ...p, unread_count: 0, last_read_at: new Date().toISOString(), last_read_message_id: last?.id }
-          : p
-      );
-      setItems((prev) => (prev || []).map((c) => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
+      setSel(p => p ? {
+        ...p,
+        unread_count: 0,
+        last_read_at: new Date().toISOString(),
+        last_read_message_id: last?.id
+      } : p);
+      setItems(prev => (prev || []).map(c => (c.id === sel.id ? { ...c, unread_count: 0 } : c)));
     } catch (e) {
       console.error('Falha ao marcar como lido', e);
       showError('Erro ao marcar como lido');
@@ -1440,7 +1545,7 @@ export default function InboxPage() {
 
   const renderTemplatePreview = (tpl, vars = {}) => {
     const body = tpl?.body || tpl?.text || '';
-    return body.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] || '');
+    return body.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => vars[k] ?? '');
   };
 
   const send = async () => {
@@ -1487,12 +1592,12 @@ export default function InboxPage() {
       attachments:
         payload.type === 'file'
           ? allReady.map((a) => ({
-              id: a.id,
-              url: a.url,
-              thumb_url: a.thumb_url,
-              filename: a.filename || a.name,
-              mime: a.mime,
-            }))
+            id: a.id,
+            url: a.url,
+            thumb_url: a.thumb_url,
+            filename: a.filename || a.name,
+            mime: a.mime,
+          }))
           : [],
       created_at: new Date().toISOString(),
     });
@@ -2017,7 +2122,7 @@ export default function InboxPage() {
           <div className="h-14 bg-white border-b px-4 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3 min-w-0">
               <img
-                src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/40'}
+                src={sel?.contact?.photo_url ? apiHttpUrl(sel.contact.photo_url) : 'https://placehold.co/40'}
                 alt="avatar"
                 className="w-8 h-8 rounded-full"
               />
@@ -2147,7 +2252,7 @@ export default function InboxPage() {
                       key={t.id}
                       onClick={() => toggleClientTag(t.id)}
                       className={`px-2 py-0.5 rounded text-xs border ${active ? 'bg-blue-100 border-blue-300 text-blue-800'
-                          : 'bg-gray-100 border-gray-300 text-gray-700'
+                        : 'bg-gray-100 border-gray-300 text-gray-700'
                         }`}
                       title={active ? 'Remover tag' : 'Adicionar tag'}
                     >
@@ -2711,19 +2816,21 @@ export default function InboxPage() {
               <button
                 className="text-xs px-2 py-1 rounded bg-blue-600 text-white"
                 onClick={async () => {
+                  if (!sel) return;
                   try {
-                    const { data } = await inboxApi.post(`/conversations/${sel.id}/crm/enter-funnel`);
+                    await firstOk([
+                      () => inboxApi.post(`/inbox/conversations/${sel.id}/crm/enter-funnel`),
+                      () => inboxApi.post(`/conversations/${sel.id}/crm/enter-funnel`),
+                      // fallback absoluto: cria a oportunidade direto
+                      () => inboxApi.post('/crm/opportunities', { client_id: sel.contact?.id, conversation_id: sel.id }),
+                    ]);
                     addToast('Enviado para o funil', { variant: 'success' });
                     if (!sel.status_id && statuses[0]?.id) changeStatus(asId(statuses[0].id));
-                  } catch {
-                    if (statuses[0]?.id) {
-                      await changeStatus(asId(statuses[0].id));
-                      addToast('Enviado para o funil (status inicial aplicado)', { variant: 'success' });
-                    } else {
-                      addToast('Não foi possível enviar para o funil (sem status configurado)', { variant: 'error' });
-                    }
+                  } catch (e) {
+                    addToast('Não foi possível enviar para o funil', { variant: 'error' });
                   }
                 }}
+
               >
                 Enviar para o funil
               </button>
@@ -2738,7 +2845,7 @@ export default function InboxPage() {
                 <div className="text-xs text-gray-500 mb-2">Detalhes do contato</div>
                 <div className="flex items-center gap-3 mb-3">
                   <img
-                    src={sel?.contact?.photo_url ? apiUrl(sel.contact.photo_url) : 'https://placehold.co/56'}
+                    src={sel?.contact?.photo_url ? apiHttpUrl(sel.contact.photo_url) : 'https://placehold.co/56'}
                     alt="avatar"
                     className="w-14 h-14 rounded-full"
                   />
@@ -2910,8 +3017,13 @@ export default function InboxPage() {
       )}
 
       {/* Quick reply: variáveis */}
-      { (typeof window !== 'undefined') && ( (() => qrVarItemRef.current)() ) && (
-        <div className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20">
+      {/* Quick reply: variáveis (modal controlado por estado) */}
+      {qrVarsOpen && qrVarItemRef.current && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-20 flex items-center justify-center z-20"
+          onKeyDown={(e) => { if (e.key === 'Escape') setQrVarsOpen(false); }}
+          tabIndex={-1}
+        >
           <div className="bg-white p-4 rounded shadow space-y-2">
             {parseVariables(qrVarItemRef.current.content || '').map((v) => (
               <input
@@ -2923,17 +3035,26 @@ export default function InboxPage() {
                 placeholder={v}
               />
             ))}
-            <button
-              data-testid="qr-insert"
-              onClick={commitVars}
-              disabled={parseVariables(qrVarItemRef.current.content || '').some((v) => !qrVarValues[v])}
-              className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
-            >
-              Inserir
-            </button>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setQrVarsOpen(false)}
+                className="px-3 py-1 rounded border"
+              >
+                Cancelar
+              </button>
+              <button
+                data-testid="qr-insert"
+                onClick={commitVars}
+                disabled={parseVariables(qrVarItemRef.current.content || '').some((v) => !qrVarValues[v])}
+                className="px-3 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+              >
+                Inserir
+              </button>
+            </div>
           </div>
         </div>
       )}
+
 
       {/* Editor de snippet */}
       {snipEdit && (
