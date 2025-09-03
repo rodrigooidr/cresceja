@@ -1,9 +1,10 @@
 // src/pages/inbox/InboxPage.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import inboxApi from "../../api/inboxApi";
+import inboxApi, { apiUrl } from "../../api/inboxApi";
 import normalizeMessage from "../../inbox/normalizeMessage";
 import channelIconBySlug from "../../inbox/channelIcons";
+import { makeSocket } from "../../sockets/socket";
 
 // Componentes (serão enviados na sequência)
 import ConversationList from "./components/ConversationList.jsx";
@@ -44,6 +45,13 @@ function useToastFallback(externalToast) {
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
+  // ensure socket singleton is initialized
+  useEffect(() => {
+    const sock = makeSocket();
+    return () => {
+      try { sock.removeAllListeners(); sock.close?.(); sock.disconnect?.(); } catch {}
+    };
+  }, []);
 
   // ------------------------------------------------------------
   // Filtros de URL (status, canal, tags, busca)
@@ -110,6 +118,15 @@ export default function InboxPage({ addToast: addToastProp }) {
     setSearchParams(params, { replace: true });
   }, [selectedId, searchParams, setSearchParams]);
 
+  const markRead = useCallback(async (conversationId) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c))
+    );
+    try {
+      await inboxApi.post(`/conversations/${conversationId}/read`);
+    } catch {}
+  }, []);
+
   // ------------------------------------------------------------
   // Mensagens da conversa selecionada
   // ------------------------------------------------------------
@@ -131,6 +148,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         });
         const list = Array.isArray(data) ? data.map(normalizeMessage) : [];
         setMessages(list);
+        await markRead(convId);
       } catch (err) {
         addToast({
           title: "Falha ao carregar mensagens",
@@ -141,7 +159,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         setLoadingMsgs(false);
       }
     },
-    [addToast]
+    [addToast, markRead]
   );
 
   useEffect(() => {
@@ -149,22 +167,79 @@ export default function InboxPage({ addToast: addToastProp }) {
   }, [selectedId, fetchMessages]);
 
   // ------------------------------------------------------------
-  // Envio de mensagens (texto/anexo)
+  // Anexos
+  // ------------------------------------------------------------
+  const [attachments, setAttachments] = useState([]);
+
+  const handleFiles = useCallback(
+    async (fileList) => {
+      if (!selectedConversation) return;
+      const files = Array.from(fileList || []);
+      if (!files.length) return;
+
+      setAttachments((prev) => [
+        ...prev,
+        ...files.map((f) => ({
+          id: "local-" + crypto.randomUUID(),
+          name: f.name,
+          localFile: f,
+        })),
+      ]);
+
+      for (const f of files) {
+        const form = new FormData();
+        form.append("files[]", f);
+        try {
+          const { data } = await inboxApi.post(
+            `/conversations/${selectedConversation.id}/attachments`,
+            form,
+            { headers: { "Content-Type": "multipart/form-data" } }
+          );
+          const assets = Array.isArray(data?.assets) ? data.assets : [];
+          setAttachments((prev) =>
+            prev
+              .filter((a) => a.localFile !== f)
+              .concat(
+                assets.map((a) => ({
+                  id: a.id || a.asset_id || a.url,
+                  url: a.url ? apiUrl(a.url) : undefined,
+                  thumb_url: a.thumb_url ? apiUrl(a.thumb_url) : undefined,
+                  filename: a.filename || a.name || f.name,
+                  mime: a.mime_type || a.content_type,
+                }))
+              )
+          );
+        } catch (err) {
+          setAttachments((prev) => prev.filter((a) => a.localFile !== f));
+          console.error("Upload failed", err);
+        }
+      }
+    },
+    [selectedConversation]
+  );
+
+  const removeLocalAttachment = useCallback((file) => {
+    setAttachments((prev) => prev.filter((a) => a.localFile !== file));
+  }, []);
+
+  // ------------------------------------------------------------
+  // Envio de mensagens (texto + attachments já enviados)
   // ------------------------------------------------------------
   const sendMessage = useCallback(
-    async ({ text, files }) => {
+    async ({ text }) => {
       if (!selectedId) return;
+      if (!text && attachments.length === 0) return;
       try {
-        const form = new FormData();
-        if (text) form.append("text", text);
-        (files || []).forEach((f) => form.append("files", f));
+        const payload = { text };
+        if (attachments.length)
+          payload.attachments = attachments.map((a) => a.id);
         const { data } = await inboxApi.post(
           `/inbox/conversations/${selectedId}/messages`,
-          form,
-          { headers: { "Content-Type": "multipart/form-data" } }
+          payload
         );
         const newMsg = normalizeMessage(data);
         setMessages((prev) => [...prev, newMsg]);
+        setAttachments([]);
       } catch (err) {
         addToast({
           title: "Não foi possível enviar",
@@ -173,7 +248,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         });
       }
     },
-    [selectedId, addToast]
+    [selectedId, attachments, addToast]
   );
 
   // ------------------------------------------------------------
@@ -239,47 +314,47 @@ export default function InboxPage({ addToast: addToastProp }) {
   // Render
   // ------------------------------------------------------------
   return (
-    <div className="inbox grid grid-cols-12 gap-4 h-full p-4">
+    <div className="h-[calc(100vh-56px)] grid grid-cols-[320px_1fr_360px] overflow-hidden">
       {/* Coluna esquerda: filtros + lista */}
-      <aside className="col-span-3 flex flex-col min-w-[280px]">
+      <aside className="border-r overflow-y-auto flex flex-col">
         <SidebarFilters
           value={filters}
           onChange={setFilters}
           channelIconBySlug={channelIconBySlug}
         />
-        <div className="mt-3 flex-1 overflow-auto border rounded-xl">
-          <ConversationList
-            loading={loadingConvs}
-            items={conversations}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
-        </div>
+        <ConversationList
+          loading={loadingConvs}
+          items={conversations}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+        />
       </aside>
 
       {/* Coluna central: conversa */}
-      <main className="col-span-6 flex flex-col h-full">
+      <main className="overflow-y-auto flex flex-col">
         <ConversationHeader
           conversation={selectedConversation}
           onMoveToFunnel={moveToFunnel}
           onSetStatus={setStatus}
         />
-        <div className="flex-1 overflow-auto border rounded-xl">
+        <div className="flex-1 overflow-y-auto">
           <MessageList
             loading={loadingMsgs}
             messages={messages}
             conversation={selectedConversation}
           />
         </div>
-        <div className="mt-3">
-          <MessageComposer onSend={sendMessage} />
-          {/* Caso use previews locais antes do envio */}
-          <AttachmentPreview />
+        <div className="border-t p-2">
+          <MessageComposer sel={selectedConversation} onSend={sendMessage} onFiles={handleFiles} />
+          <AttachmentPreview
+            files={attachments.filter((a) => a.localFile).map((a) => a.localFile)}
+            onRemove={removeLocalAttachment}
+          />
         </div>
       </main>
 
       {/* Coluna direita: dados do cliente */}
-      <aside className="col-span-3">
+      <aside className="border-l overflow-y-auto">
         <ClientDetailsPanel
           conversation={selectedConversation}
           onApplyTags={applyTags}

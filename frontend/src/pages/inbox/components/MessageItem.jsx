@@ -22,6 +22,41 @@ export default function MessageItem({ msg, registerRef }) {
 }
 
 function renderMessageBody(m) {
+  if (Array.isArray(m.attachments) && m.attachments.length) {
+    return (
+      <div className="flex flex-col gap-2">
+        {m.attachments.map((att) =>
+          att.mime && att.mime.startsWith("image/") ? (
+            <a
+              key={att.id}
+              href={att.url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                src={att.thumb_url || att.url}
+                alt={att.filename || "imagem"}
+                className="rounded-md max-h-72 object-contain"
+              />
+            </a>
+          ) : (
+            <a
+              key={att.id}
+              href={att.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-white text-blue-700 border"
+              title="Abrir/baixar arquivo"
+            >
+              📎<span className="truncate max-w-[220px]">{att.filename || "arquivo"}</span>
+            </a>
+          )
+        )}
+        {m.text && <p>{m.text}</p>}
+      </div>
+    );
+  }
+
   if (m.type === "image" && m.media_url) {
     return (
       <a href={m.media_url} target="_blank" rel="noreferrer" className="block" title="Abrir imagem">
