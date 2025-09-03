@@ -34,6 +34,7 @@ import metaWebhookRouter from './routes/webhooks/meta.js';
 import inboxExtraRouter from './routes/inboxExtra.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
+import inboxRoutes from "./routes/inbox.js";
 
 // Services & middleware
 import { authRequired, impersonationGuard } from './middleware/auth.js';
@@ -52,6 +53,8 @@ const logger = pino({
 
 // ---------- Express ----------
 const app = express();
+
+app.use("/api/inbox", inboxRoutes);
 
 // desabilita ETag (evita 304 sem corpo em chamadas JSON)
 app.set('etag', false);

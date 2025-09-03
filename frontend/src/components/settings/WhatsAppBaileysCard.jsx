@@ -1,82 +1,86 @@
-import React, { useState, useEffect } from 'react';
-import inboxApi, { apiUrl } from '../../api/inboxApi';
-import ChannelCard from './ChannelCard';
-import Dialog from './ChannelWizard/Dialog';
+// src/components/settings/WhatsAppBaileysCard.jsx
+import React, { useEffect, useState } from "react";
+import inboxApi from "../../api/inboxApi"; // ajuste o caminho se necessário
 
-function WhatsAppBaileysCard({ data, refresh }) {
-  if (!data || !data.allowed) {
-    return null;
-  }
-  const items = data.items || [];
-  const canConnect = items.length < (data.max_slots || 1);
-
-  const [session, setSession] = useState(null); // {id}
+export default function WhatsAppBaileysCard({ enabled }) {
+  // ✅ Hooks SEMPRE no topo
+  const [status, setStatus] = useState("idle"); // idle|connecting|connected|error
   const [qr, setQr] = useState(null);
 
   useEffect(() => {
-    let timer;
-    async function poll() {
-      if (!session) return;
-      const { data: s } = await inboxApi.get(`/channels/whatsapp/baileys/sessions/${session.id}`);
-      if (s.status === 'connected') {
-        setSession(null);
-        setQr(null);
-        refresh();
-      } else if (s.status === 'error') {
-        setSession(null);
-      } else {
-        timer = setTimeout(poll, 500);
+    let alive = true;
+
+    // Se não estiver habilitado, apenas não faz nada (mas o hook é chamado!)
+    if (!enabled) return;
+
+    async function boot() {
+      try {
+        setStatus("connecting");
+        const { data } = await inboxApi.get("/settings/whatsapp/baileys/session");
+        if (!alive) return;
+
+        if (data?.qr) setQr(data.qr);
+        setStatus(data?.connected ? "connected" : "connecting");
+      } catch (err) {
+        if (!alive) return;
+        setStatus("error");
       }
     }
-    poll();
-    return () => clearTimeout(timer);
-  }, [session, refresh]);
 
-  async function startSession() {
-    const { data: s } = await inboxApi.post('/channels/whatsapp/baileys/sessions', {});
-    setSession(s);
-    const { data: q } = await inboxApi.get(`/channels/whatsapp/baileys/sessions/${s.id}/qr`);
-    const url = q.qr_data_url || apiUrl(q.asset_url);
-    setQr(url);
-  }
+    boot();
 
-  async function disconnect(id) {
-    await inboxApi.delete(`/channels/whatsapp/baileys/sessions/${id}`);
-    refresh();
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+
+  // ✅ O retorno condicional pode vir AQUI (depois dos hooks)
+  if (!enabled) {
+    return (
+      <div className="border rounded-xl p-4 bg-white">
+        <p className="text-sm text-gray-600">WhatsApp via Baileys está desativado.</p>
+      </div>
+    );
   }
 
   return (
-    <ChannelCard title="WhatsApp Baileys" testId="card-wa-baileys">
-      <ul>
-        {items.map((s) => (
-          <li key={s.id} className="mb-1">
-            {s.label || s.id} - {s.status}
-            <button
-              data-testid="baileys-disconnect"
-              className="ml-2 text-red-600"
-              onClick={() => disconnect(s.id)}
-            >
-              Desconectar
-            </button>
-          </li>
-        ))}
-      </ul>
-      <button
-        data-testid="baileys-connect-cta"
-        disabled={!canConnect}
-        className="mt-2 px-3 py-1 bg-green-600 text-white disabled:opacity-50"
-        onClick={startSession}
-      >
-        Conectar via QR
-      </button>
+    <div className="border rounded-xl p-4 bg-white">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-sm">WhatsApp (Baileys)</h3>
+        <StatusPill status={status} />
+      </div>
+
+      {status === "connecting" && (
+        <p className="mt-2 text-sm text-gray-600">Aguardando pareamento…</p>
+      )}
 
       {qr && (
-        <Dialog onClose={() => setSession(null)}>
-          <img data-testid="baileys-qr-img" src={qr} alt="qr" />
-        </Dialog>
+        <div className="mt-3">
+          <img
+            src={qr}
+            alt="QR Code"
+            className="w-48 h-48 object-contain border rounded"
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            Escaneie o QR Code no WhatsApp para conectar.
+          </p>
+        </div>
       )}
-    </ChannelCard>
+    </div>
   );
 }
 
-export default WhatsAppBaileysCard;
+function StatusPill({ status }) {
+  const map = {
+    idle: { label: "Inativo", cls: "bg-gray-100 text-gray-700" },
+    connecting: { label: "Conectando", cls: "bg-yellow-100 text-yellow-700" },
+    connected: { label: "Conectado", cls: "bg-green-100 text-green-700" },
+    error: { label: "Erro", cls: "bg-red-100 text-red-700" },
+  };
+  const s = map[status] || map.idle;
+  return (
+    <span className={`px-2 py-0.5 rounded text-xs border ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
