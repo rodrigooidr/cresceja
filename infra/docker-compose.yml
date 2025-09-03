@@ -91,12 +91,12 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  transcribe-worker:
-    container_name: cresceja-transcribe-worker
+  content-worker:
+    container_name: cresceja-content-worker
     build:
       context: ../backend
       dockerfile: Dockerfile
-    command: ["node", "queues/content.worker.js"]   # <-- ajustar para este nome/arquivo
+    command: ["node", "queues/content.worker.js"]
     env_file:
       - ../backend/.env.docker
     environment:
@@ -106,6 +106,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
     restart: unless-stopped
 
 volumes:

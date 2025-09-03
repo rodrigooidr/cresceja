@@ -162,6 +162,10 @@ export async function uploadAsset(req, res) {
 
 export async function transcribeMessage(req, res) {
   const { messageId } = req.params;
-  await enqueueTranscribe({ orgId: req.orgId, messageId });
+  await enqueueTranscribe({
+    conversationId: id,
+    messageId: newMsg.id,
+    text: newMsg.text,
+  });
   res.json({ ok: true });
 }

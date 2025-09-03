@@ -2,6 +2,37 @@
 import '@testing-library/jest-dom';
 import 'whatwg-fetch';
 
+/* =====================================================================
+   Cookie Store API polyfill (corrige erro: "Class extends value undefined…")
+   Alguns libs (ex.: msw@2) e SDKs assumem CookieStore no ambiente web.
+   O Jest/JSdom não fornece, então criamos um polyfill mínimo e assíncrono.
+===================================================================== */
+if (typeof globalThis.CookieStore === 'undefined') {
+  Object.defineProperty(globalThis, 'CookieStore', {
+    value: function CookieStore() {},
+    writable: true,
+    configurable: true,
+  });
+}
+if (typeof globalThis.cookieStore === 'undefined') {
+  const noopAsync = async () => undefined;
+  const asyncArray = async () => [];
+  const cookieStorePolyfill = {
+    get: noopAsync,
+    getAll: asyncArray,
+    set: noopAsync,
+    delete: noopAsync,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  };
+  Object.defineProperty(globalThis, 'cookieStore', {
+    value: cookieStorePolyfill,
+    writable: true,
+    configurable: true,
+  });
+}
+
 // 2) Polyfills centralizados
 import './test-shims/broadcast-channel';     // BroadcastChannel
 import './test-shims/intersection-observer'; // IntersectionObserver
@@ -52,12 +83,13 @@ if (!window.scrollTo) window.scrollTo = () => {};
 if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
-// 3) MSW – registra handlers globais
+// 3) MSW – registra handlers globais (opcional)
 const { setupServer } = require('msw/node');
 let channelHandlers = [];
 let resetChannelSummary;
 try {
-  ({ handlers: channelHandlers, resetSummary: resetChannelSummary } = require('./inbox/channels.summary.msw'));
+  ({ handlers: channelHandlers, resetSummary: resetChannelSummary } =
+    require('./inbox/channels.summary.msw'));
 } catch {}
 const server = setupServer(...(channelHandlers || []));
 
