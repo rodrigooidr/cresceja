@@ -1,57 +1,66 @@
 // src/pages/inbox/components/MessageComposer.jsx
-import React, { useCallback, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
+import QuickReplyModal from "./QuickReplyModal.jsx";
+import SnippetsPopover from "./SnippetsPopover.jsx";
 
-export default function MessageComposer({ onSend }) {
+function useOutsideClose(ref, onClose, deps = []) {
+  React.useEffect(() => {
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) onClose?.();
+    }
+    function onKey(ev) {
+      if (ev.key === "Escape") onClose?.();
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+}
+
+export default function MessageComposer({ onSend, sel, onFiles }) {
   const [text, setText] = useState("");
-  const [files, setFiles] = useState([]);
   const [isSending, setIsSending] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [showQuick, setShowQuick] = useState(false);
+  const [showSnippets, setShowSnippets] = useState(false);
+  const [quickReplies] = useState([]);
+  const [snippets] = useState([]);
 
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
+  const emojiRef = useRef(null);
+  const quickRef = useRef(null);
+  const snippetsRef = useRef(null);
 
-  // ---------------------------
-  // Util: adiciona arquivos
-  // ---------------------------
-  const addFiles = useCallback((fileList) => {
-    if (!fileList || !fileList.length) return;
-    const next = Array.from(fileList);
+  useOutsideClose(emojiRef, () => setShowEmoji(false), [sel?.id]);
+  useOutsideClose(quickRef, () => setShowQuick(false), [sel?.id]);
+  useOutsideClose(snippetsRef, () => setShowSnippets(false), [sel?.id]);
 
-    // Evita duplicados por nome+size (heurística simples)
-    setFiles((prev) => {
-      const map = new Map(prev.map((f) => [f.name + ":" + f.size, f]));
-      next.forEach((f) => {
-        const key = f.name + ":" + f.size;
-        if (!map.has(key)) map.set(key, f);
-      });
-      return Array.from(map.values());
-    });
-  }, []);
-
-  // ---------------------------
-  // Input de arquivos
-  // ---------------------------
-  const handleFileChange = (e) => addFiles(e.target.files);
-
-  // ---------------------------
-  // Paste de imagens/arquivos
-  // ---------------------------
-  const handlePaste = (e) => {
-    if (!e.clipboardData) return;
-    const items = e.clipboardData.items;
-    const pastedFiles = [];
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i];
-      if (it.kind === "file") {
-        const file = it.getAsFile();
-        if (file && file.size > 0) pastedFiles.push(file);
-      }
-    }
-    if (pastedFiles.length) addFiles(pastedFiles);
+  const onSelectQuick = (q) => {
+    const content = q?.content || q?.text || "";
+    setText((t) => (t ? `${t} ${content}` : content));
+    setShowQuick(false);
+  };
+  const onPickSnippet = (s) => {
+    const content = s?.content || "";
+    setText((t) => (t ? `${t} ${content}` : content));
+    setShowSnippets(false);
   };
 
-  // ---------------------------
-  // Drag & drop
-  // ---------------------------
+  const handleFileChange = (e) => {
+    onFiles?.(e.target.files);
+    e.target.value = "";
+  };
+
+  const handlePaste = (e) => {
+    const files = e.clipboardData?.files;
+    if (files?.length) onFiles?.(files);
+  };
+
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -66,14 +75,7 @@ export default function MessageComposer({ onSend }) {
     e.preventDefault();
     e.stopPropagation();
     if (dropRef.current) dropRef.current.classList.remove("ring-2", "ring-blue-400");
-    addFiles(e.dataTransfer.files);
-  };
-
-  // ---------------------------
-  // Remover um arquivo
-  // ---------------------------
-  const removeFile = (name, size) => {
-    setFiles((prev) => prev.filter((f) => !(f.name === name && f.size === size)));
+    onFiles?.(e.dataTransfer.files);
   };
 
   // ---------------------------
@@ -82,14 +84,10 @@ export default function MessageComposer({ onSend }) {
   const doSend = async () => {
     if (isSending) return;
     const trimmed = text.trim();
-    const hasFiles = files.length > 0;
-
-    if (!trimmed && !hasFiles) return;
     setIsSending(true);
     try {
-      await onSend?.({ text: trimmed, files });
+      await onSend?.({ text: trimmed });
       setText("");
-      setFiles([]);
     } finally {
       setIsSending(false);
     }
@@ -115,29 +113,6 @@ export default function MessageComposer({ onSend }) {
       onDrop={handleDrop}
       ref={dropRef}
     >
-      {/* Área de anexos selecionados */}
-      {files.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {files.map((f) => (
-            <div
-              key={f.name + ":" + f.size}
-              className="flex items-center gap-2 px-2 py-1 border rounded-lg text-xs bg-gray-50"
-              title={`${f.name} (${Math.round(f.size / 1024)} KB)`}
-            >
-              <span className="truncate max-w-[180px]">{f.name}</span>
-              <button
-                type="button"
-                className="px-1 py-0.5 border rounded hover:bg-gray-100"
-                onClick={() => removeFile(f.name, f.size)}
-                aria-label={`Remover ${f.name}`}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Editor + botões */}
       <div className="flex items-end gap-2">
         <textarea
@@ -149,27 +124,75 @@ export default function MessageComposer({ onSend }) {
         />
 
         {/* Botões de ação */}
-        <div className="flex items-center gap-2">
-          {/* Emoji simples (lista mínima para não depender de libs externas) */}
-          <details className="relative">
-            <summary className="list-none px-3 py-2 border rounded-lg bg-white cursor-pointer select-none">
-              😊
-            </summary>
-            <div className="absolute right-0 z-10 mt-2 w-44 border rounded-lg bg-white p-2 shadow">
+        <div className="flex items-center gap-2 relative">
+          <button
+            type="button"
+            className="px-3 py-2 border rounded-lg bg-white"
+            onClick={() => setShowEmoji((v) => !v)}
+            title="Emoji"
+          >
+            😊
+          </button>
+          {showEmoji && (
+            <div
+              ref={emojiRef}
+              className="absolute bottom-12 right-0 z-20 mt-2 w-44 border rounded-lg bg-white p-2 shadow"
+            >
               <div className="grid grid-cols-6 gap-1 text-lg">
                 {["😀","😁","😂","🤣","😊","😍","😘","😎","😅","🤔","🙌","👍","👏","🔥","✨","💬","📎","✅"].map((e) => (
                   <button
                     key={e}
                     type="button"
                     className="hover:bg-gray-100 rounded"
-                    onClick={() => setText((t) => t + e)}
+                    onClick={() => {
+                      setText((t) => t + e);
+                      setShowEmoji(false);
+                    }}
                   >
                     {e}
                   </button>
                 ))}
               </div>
             </div>
-          </details>
+          )}
+
+          <button
+            type="button"
+            className="px-3 py-2 border rounded-lg bg-white"
+            onClick={() => setShowQuick((v) => !v)}
+            title="Respostas rápidas"
+          >
+            ⚡
+          </button>
+          {showQuick && (
+            <div ref={quickRef} className="absolute bottom-12 right-12 z-20">
+              <QuickReplyModal
+                open
+                onClose={() => setShowQuick(false)}
+                quickReplies={quickReplies}
+                onSelect={onSelectQuick}
+              />
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="px-3 py-2 border rounded-lg bg-white"
+            onClick={() => setShowSnippets((v) => !v)}
+            title="Snippets"
+          >
+            📋
+          </button>
+          {showSnippets && (
+            <div ref={snippetsRef} className="absolute bottom-12 left-0 z-20">
+              <SnippetsPopover
+                open
+                onClose={() => setShowSnippets(false)}
+                items={snippets}
+                onPick={onPickSnippet}
+              />
+            </div>
+          )}
 
           {/* Anexos */}
           <button
@@ -186,16 +209,7 @@ export default function MessageComposer({ onSend }) {
             className="hidden"
             multiple
             onChange={handleFileChange}
-            // Ajuste os tipos conforme sua necessidade
-            accept="
-              image/*,
-              video/*,
-              application/pdf,
-              application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,
-              application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,
-              application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,
-              text/plain
-            "
+            accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
           />
 
           {/* Enviar */}
