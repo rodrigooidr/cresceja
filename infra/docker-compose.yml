@@ -1,3 +1,4 @@
+# docker-compose.yml
 name: cresceja
 
 services:
@@ -23,7 +24,10 @@ services:
     image: redis:7-alpine
     container_name: cresceja-redis
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"        # útil para debug local; remova se não quiser expor
     healthcheck:
+      # redis-cli já vem na imagem oficial redis:alpine
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
@@ -33,14 +37,15 @@ services:
   backend:
     container_name: cresceja-backend
     build:
-      context: ../backend           # usa o Dockerfile que você acabou de atualizar
+      context: ../backend              # partindo do diretório infra/
       dockerfile: Dockerfile
     env_file:
-      - ../backend/.env.docker      # certifique-se que tem DATABASE_URL e REDIS_URL aqui
+      - ../backend/.env.docker         # defina DATABASE_URL e REDIS_URL aqui
     environment:
-      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
       NODE_ENV: production
       PORT: "4000"
+      # Se o backend faz CORS, mantenha as origins separadas por vírgula
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,11 +60,11 @@ services:
   worker:
     container_name: cresceja-worker
     build:
-      context: ../backend           # reutiliza a mesma imagem do backend (mesmo Dockerfile)
+      context: ../backend
       dockerfile: Dockerfile
     command: ["node", "queues/repurpose.worker.js"]
     env_file:
-      - ../backend/.env.docker      # usa as mesmas variáveis (DATABASE_URL, REDIS_URL, etc.)
+      - ../backend/.env.docker
     environment:
       NODE_ENV: production
     depends_on:
@@ -91,7 +96,7 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    command: ["node", "queues/transcribe.worker.js"]
+    command: ["node", "queues/content.worker.js"]   # <-- ajustar para este nome/arquivo
     env_file:
       - ../backend/.env.docker
     environment:
