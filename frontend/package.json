@@ -42,7 +42,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "jest",
+    "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "guardrail:inbox": "node scripts/guardrail-inbox.js"
   },
