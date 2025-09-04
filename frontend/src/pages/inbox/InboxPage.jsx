@@ -1,12 +1,11 @@
 // src/pages/inbox/InboxPage.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import inboxApi, { apiUrl } from "../../api/inboxApi";
+import inboxApi from "../../api/inboxApi";
 import normalizeMessage from "../../inbox/normalizeMessage";
 import channelIconBySlug from "../../inbox/channelIcons";
 import { makeSocket } from "../../sockets/socket";
 
-// Componentes (serão enviados na sequência)
 import ConversationList from "./components/ConversationList.jsx";
 import ConversationHeader from "./components/ConversationHeader.jsx";
 import MessageList from "./components/MessageList.jsx";
@@ -15,23 +14,14 @@ import SidebarFilters from "./components/SidebarFilters.jsx";
 import ClientDetailsPanel from "./components/ClientDetailsPanel.jsx";
 import AttachmentPreview from "./components/AttachmentPreview.jsx";
 
-// ------------------------------------------------------------
-// Helper: fallback de toast para evitar "addToast is not a function"
-// ------------------------------------------------------------
+/** Fallback para exibir toasts mesmo sem lib externa injetada */
 function useToastFallback(externalToast) {
   return useCallback(
     (opts) => {
-      const payload =
-        typeof opts === "string" ? { title: opts } : { ...opts };
-      if (typeof externalToast === "function") {
-        externalToast(payload);
-        return;
-      }
-      if (window?.toast && typeof window.toast === "function") {
-        window.toast(payload);
-        return;
-      }
-      // Fallback simples
+      const payload = typeof opts === "string" ? { title: opts } : { ...opts };
+      if (typeof externalToast === "function") return externalToast(payload);
+      if (window?.toast && typeof window.toast === "function")
+        return window.toast(payload);
       const prefix = payload.variant === "destructive" ? "Erro" : "Info";
       // eslint-disable-next-line no-alert
       window.alert(`${prefix}: ${payload.title || "Operação concluída"}`);
@@ -42,28 +32,27 @@ function useToastFallback(externalToast) {
   );
 }
 
+/** Constrói URL absoluta para assets quando o backend retorna caminho relativo */
+function toApiUrl(path) {
+  if (!path) return path;
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = process.env.REACT_APP_API_BASE_URL || "http://localhost:4000/api";
+  const slash = path.startsWith("/") ? "" : "/";
+  return `${base}${slash}${path}`;
+}
+
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
-  // ensure socket singleton is initialized
-  useEffect(() => {
-    const sock = makeSocket();
-    return () => {
-      try { sock.removeAllListeners(); sock.close?.(); sock.disconnect?.(); } catch {}
-    };
-  }, []);
 
-  // ------------------------------------------------------------
-  // Filtros de URL (status, canal, tags, busca)
-  // ------------------------------------------------------------
+  // ===== FILTROS =====
   const [filters, setFilters] = useState(() => ({
     q: searchParams.get("q") || "",
-    status: searchParams.get("status") || "open", // open | pending | closed
-    channel: searchParams.get("channel") || "all", // all | whatsapp | instagram | facebook | ...
-    tags: searchParams.getAll("tag") || [], // ?tag=vip&tag=retornar
+    status: searchParams.get("status") || "open",
+    channel: searchParams.get("channel") || "all",
+    tags: searchParams.getAll("tag") || [],
   }));
 
-  // Sincroniza filtros -> URL
   useEffect(() => {
     const params = new URLSearchParams();
     if (filters.q) params.set("q", filters.q);
@@ -74,14 +63,11 @@ export default function InboxPage({ addToast: addToastProp }) {
     setSearchParams(params, { replace: true });
   }, [filters, setSearchParams]);
 
-  // ------------------------------------------------------------
-  // Conversas e seleção atual
-  // ------------------------------------------------------------
+  // ===== CONVERSAS =====
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(false);
   const [selectedId, setSelectedId] = useState(() => searchParams.get("c") || null);
 
-  // Carrega conversas conforme filtros
   const fetchConversations = useCallback(async () => {
     try {
       setLoadingConvs(true);
@@ -110,7 +96,6 @@ export default function InboxPage({ addToast: addToastProp }) {
     fetchConversations();
   }, [fetchConversations]);
 
-  // Mantém ?c=<id> na URL
   useEffect(() => {
     if (!selectedId) return;
     const params = new URLSearchParams(searchParams);
@@ -120,16 +105,18 @@ export default function InboxPage({ addToast: addToastProp }) {
 
   const markRead = useCallback(async (conversationId) => {
     setConversations((prev) =>
-      prev.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c))
+      prev.map((c) =>
+        String(c.id) === String(conversationId) ? { ...c, unread_count: 0 } : c
+      )
     );
     try {
-      await inboxApi.post(`/conversations/${conversationId}/read`);
-    } catch {}
+      await inboxApi.post(`/inbox/conversations/${conversationId}/read`);
+    } catch {
+      /* noop */
+    }
   }, []);
 
-  // ------------------------------------------------------------
-  // Mensagens da conversa selecionada
-  // ------------------------------------------------------------
+  // ===== MENSAGENS =====
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
@@ -143,9 +130,10 @@ export default function InboxPage({ addToast: addToastProp }) {
       if (!convId) return;
       try {
         setLoadingMsgs(true);
-        const { data } = await inboxApi.get(`/inbox/conversations/${convId}/messages`, {
-          params: { limit: 200 },
-        });
+        const { data } = await inboxApi.get(
+          `/inbox/conversations/${convId}/messages`,
+          { params: { limit: 200 } }
+        );
         const list = Array.isArray(data) ? data.map(normalizeMessage) : [];
         setMessages(list);
         await markRead(convId);
@@ -166,9 +154,62 @@ export default function InboxPage({ addToast: addToastProp }) {
     if (selectedId) fetchMessages(selectedId);
   }, [selectedId, fetchMessages]);
 
-  // ------------------------------------------------------------
-  // Anexos
-  // ------------------------------------------------------------
+  // ===== SOCKET =====
+  useEffect(() => {
+    const sock = makeSocket();
+
+    // novas mensagens: só entram se forem da conversa selecionada
+    const onNewMessage = (evt) => {
+      if (!evt?.message) return;
+      const convId = evt.conversation_id || evt.message.conversation_id;
+      if (String(convId) !== String(selectedId)) {
+        // opcional: incrementar unread na lista
+        setConversations((prev) =>
+          prev.map((c) =>
+            String(c.id) === String(convId)
+              ? { ...c, unread_count: Math.max(1, (c.unread_count || 0) + 1) }
+              : c
+          )
+        );
+        return;
+      }
+      setMessages((prev) => [...prev, normalizeMessage(evt.message)]);
+    };
+
+    const onConvUpdated = (conv) => {
+      if (!conv?.id) return;
+      setConversations((prev) =>
+        prev.map((c) => (String(c.id) === String(conv.id) ? { ...c, ...conv } : c))
+      );
+    };
+
+    const onConvCreated = (conv) => {
+      if (!conv?.id) return;
+      setConversations((prev) => {
+        const exists = prev.some((c) => String(c.id) === String(conv.id));
+        return exists ? prev : [conv, ...prev];
+      });
+    };
+
+    sock.on("inbox:message:new", onNewMessage);
+    sock.on("inbox:conversation:update", onConvUpdated);
+    sock.on("inbox:conversation:new", onConvCreated);
+
+    return () => {
+      try {
+        sock.off("inbox:message:new", onNewMessage);
+        sock.off("inbox:conversation:update", onConvUpdated);
+        sock.off("inbox:conversation:new", onConvCreated);
+        sock.removeAllListeners?.();
+        sock.close?.();
+        sock.disconnect?.();
+      } catch {
+        /* noop */
+      }
+    };
+  }, [selectedId]);
+
+  // ===== ANEXOS =====
   const [attachments, setAttachments] = useState([]);
 
   const handleFiles = useCallback(
@@ -177,66 +218,78 @@ export default function InboxPage({ addToast: addToastProp }) {
       const files = Array.from(fileList || []);
       if (!files.length) return;
 
+      // mostra pré-visualização local
       setAttachments((prev) => [
         ...prev,
         ...files.map((f) => ({
-          id: "local-" + crypto.randomUUID(),
+          id: "local-" + (crypto?.randomUUID?.() || Math.random().toString(36).slice(2)),
           name: f.name,
           localFile: f,
         })),
       ]);
 
+      // faz upload individualmente (mantém feedback responsivo)
       for (const f of files) {
         const form = new FormData();
         form.append("files[]", f);
         try {
           const { data } = await inboxApi.post(
-            `/conversations/${selectedConversation.id}/attachments`,
+            `/inbox/conversations/${selectedConversation.id}/attachments`,
             form,
             { headers: { "Content-Type": "multipart/form-data" } }
           );
+
           const assets = Array.isArray(data?.assets) ? data.assets : [];
           setAttachments((prev) =>
             prev
               .filter((a) => a.localFile !== f)
               .concat(
                 assets.map((a) => ({
-                  id: a.id || a.asset_id || a.url,
-                  url: a.url ? apiUrl(a.url) : undefined,
-                  thumb_url: a.thumb_url ? apiUrl(a.thumb_url) : undefined,
+                  id: a.asset_id || a.id || a.url || f.name,
+                  url: toApiUrl(a.url),
+                  thumb_url: toApiUrl(a.thumb_url),
                   filename: a.filename || a.name || f.name,
                   mime: a.mime_type || a.content_type,
                 }))
               )
           );
         } catch (err) {
+          // remove o preview local que falhou
           setAttachments((prev) => prev.filter((a) => a.localFile !== f));
+          // eslint-disable-next-line no-console
           console.error("Upload failed", err);
+          addToast({
+            title: "Falha no upload do arquivo",
+            description: err?.response?.data?.message || err.message,
+            variant: "destructive",
+          });
         }
       }
     },
-    [selectedConversation]
+    [selectedConversation, addToast]
   );
 
   const removeLocalAttachment = useCallback((file) => {
     setAttachments((prev) => prev.filter((a) => a.localFile !== file));
   }, []);
 
-  // ------------------------------------------------------------
-  // Envio de mensagens (texto + attachments já enviados)
-  // ------------------------------------------------------------
+  // ===== ENVIAR =====
   const sendMessage = useCallback(
     async ({ text }) => {
       if (!selectedId) return;
-      if (!text && attachments.length === 0) return;
+      const hasText = !!(text && String(text).trim());
+      if (!hasText && attachments.length === 0) return;
+
       try {
-        const payload = { text };
-        if (attachments.length)
-          payload.attachments = attachments.map((a) => a.id);
+        const payload = {};
+        if (hasText) payload.text = text.trim();
+        if (attachments.length) payload.attachments = attachments.map((a) => a.id);
+
         const { data } = await inboxApi.post(
           `/inbox/conversations/${selectedId}/messages`,
           payload
         );
+
         const newMsg = normalizeMessage(data);
         setMessages((prev) => [...prev, newMsg]);
         setAttachments([]);
@@ -251,15 +304,11 @@ export default function InboxPage({ addToast: addToastProp }) {
     [selectedId, attachments, addToast]
   );
 
-  // ------------------------------------------------------------
-  // Ações: enviar para o funil (CRM), mudar status, aplicar tag...
-  // ------------------------------------------------------------
+  // ===== AÇÕES =====
   const moveToFunnel = useCallback(async () => {
     if (!selectedId) return;
     try {
-      await inboxApi.post(`/crm/funnel/from-conversation`, {
-        conversation_id: selectedId,
-      });
+      await inboxApi.post(`/crm/funnel/from-conversation`, { conversation_id: selectedId });
       addToast({ title: "Enviado para o funil com sucesso 🎯" });
     } catch (err) {
       addToast({
@@ -310,12 +359,9 @@ export default function InboxPage({ addToast: addToastProp }) {
     [selectedId, addToast]
   );
 
-  // ------------------------------------------------------------
-  // Render
-  // ------------------------------------------------------------
+  // ===== UI =====
   return (
     <div className="h-[calc(100vh-56px)] grid grid-cols-[320px_1fr_360px] overflow-hidden">
-      {/* Coluna esquerda: filtros + lista */}
       <aside className="border-r overflow-y-auto flex flex-col">
         <SidebarFilters
           value={filters}
@@ -330,7 +376,6 @@ export default function InboxPage({ addToast: addToastProp }) {
         />
       </aside>
 
-      {/* Coluna central: conversa */}
       <main className="overflow-y-auto flex flex-col">
         <ConversationHeader
           conversation={selectedConversation}
@@ -345,6 +390,7 @@ export default function InboxPage({ addToast: addToastProp }) {
           />
         </div>
         <div className="border-t p-2">
+          {/* Se seu MessageComposer espera prop `conversation`, troque `sel` por `conversation` */}
           <MessageComposer sel={selectedConversation} onSend={sendMessage} onFiles={handleFiles} />
           <AttachmentPreview
             files={attachments.filter((a) => a.localFile).map((a) => a.localFile)}
@@ -353,7 +399,6 @@ export default function InboxPage({ addToast: addToastProp }) {
         </div>
       </main>
 
-      {/* Coluna direita: dados do cliente */}
       <aside className="border-l overflow-y-auto">
         <ClientDetailsPanel
           conversation={selectedConversation}
