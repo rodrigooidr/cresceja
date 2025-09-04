@@ -5,6 +5,7 @@ import inboxApi from "../../api/inboxApi";
 import normalizeMessage from "../../inbox/normalizeMessage";
 import channelIconBySlug from "../../inbox/channelIcons";
 import { makeSocket } from "../../sockets/socket";
+import { listConversations } from "../../inbox/inbox.service";
 
 import ConversationList from "./components/ConversationList.jsx";
 import ConversationHeader from "./components/ConversationHeader.jsx";
@@ -52,18 +53,17 @@ export default function InboxPage({ addToast: addToastProp }) {
   const [selectedId, setSelectedId] = useState(() => searchParams.get("c") || null);
 
   const fetchConversations = useCallback(async () => {
+    if (!localStorage.getItem("token")) return;
     try {
       setLoadingConvs(true);
-      const { data } = await inboxApi.get("/inbox/conversations", {
-        params: {
-          q: filters.q || undefined,
-          status: filters.status || undefined,
-          channel: filters.channel !== "all" ? filters.channel : undefined,
-          tag: filters.tags && filters.tags.length ? filters.tags : undefined,
-          limit: 50,
-        },
+      const data = await listConversations({
+        q: filters.q || undefined,
+        status: filters.status || undefined,
+        channel: filters.channel !== "all" ? filters.channel : undefined,
+        tags: filters.tags && filters.tags.length ? filters.tags : undefined,
+        limit: 50,
       });
-      setConversations(Array.isArray(data) ? data : []);
+      setConversations(Array.isArray(data?.items) ? data.items : []);
     } catch (err) {
       addToast({
         title: "Falha ao carregar conversas",
@@ -140,6 +140,7 @@ export default function InboxPage({ addToast: addToastProp }) {
   // ===== SOCKET =====
   useEffect(() => {
     const sock = makeSocket();
+    if (!sock) return;
 
     // novas mensagens: só entram se forem da conversa selecionada
     const onNewMessage = (evt) => {
