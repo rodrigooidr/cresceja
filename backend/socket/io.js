@@ -56,6 +56,11 @@ export function initIO(httpServer, opts = {}) {
     // console.log('🔌 connected', socket.id, 'user=', socket.user?.id);
 
     // ====== Convenções de sala ======
+    socket.on('inbox:join', (convId) => {
+      if (!convId) return;
+      socket.join(`conv:${convId}`);
+    });
+
     // recomenda-se o front emitir "inbox:subscribe" ao abrir uma conversa
     socket.on('inbox:subscribe', ({ conversationId }) => {
       if (!conversationId) return;

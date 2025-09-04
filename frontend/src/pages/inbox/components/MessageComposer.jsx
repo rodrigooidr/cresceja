@@ -1,7 +1,6 @@
 // src/pages/inbox/components/MessageComposer.jsx
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import QuickReplyModal from "./QuickReplyModal.jsx";
-import SnippetsPopover from "./SnippetsPopover.jsx";
 
 function useOutsideClose(ref, onClose, deps = []) {
   React.useEffect(() => {
@@ -26,29 +25,36 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
   const [isSending, setIsSending] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
-  const [showSnippets, setShowSnippets] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [quickReplies] = useState([]);
-  const [snippets] = useState([]);
+  const [templates, setTemplates] = useState([]);
 
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
   const emojiRef = useRef(null);
   const quickRef = useRef(null);
-  const snippetsRef = useRef(null);
+  const templatesRef = useRef(null);
 
   useOutsideClose(emojiRef, () => setShowEmoji(false), [sel?.id]);
   useOutsideClose(quickRef, () => setShowQuick(false), [sel?.id]);
-  useOutsideClose(snippetsRef, () => setShowSnippets(false), [sel?.id]);
+  useOutsideClose(templatesRef, () => setShowTemplates(false), [sel?.id]);
+
+  useEffect(() => {
+    fetch('/inbox/templates')
+      .then((r) => r.json())
+      .then((data) => Array.isArray(data) && setTemplates(data))
+      .catch(() => {});
+  }, []);
 
   const onSelectQuick = (q) => {
     const content = q?.content || q?.text || "";
     setText((t) => (t ? `${t} ${content}` : content));
     setShowQuick(false);
   };
-  const onPickSnippet = (s) => {
-    const content = s?.content || "";
-    setText((t) => (t ? `${t} ${content}` : content));
-    setShowSnippets(false);
+  const onPickTemplate = (t) => {
+    const content = t?.content || "";
+    setText((cur) => (cur ? `${cur} ${content}` : content));
+    setShowTemplates(false);
   };
 
   const handleFileChange = (e) => {
@@ -178,19 +184,29 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           <button
             type="button"
             className="px-3 py-2 border rounded-lg bg-white"
-            onClick={() => setShowSnippets((v) => !v)}
-            title="Snippets"
+            onClick={() => setShowTemplates((v) => !v)}
+            title="Templates"
           >
             📋
           </button>
-          {showSnippets && (
-            <div ref={snippetsRef} className="absolute bottom-12 left-0 z-20">
-              <SnippetsPopover
-                open
-                onClose={() => setShowSnippets(false)}
-                items={snippets}
-                onPick={onPickSnippet}
-              />
+          {showTemplates && (
+            <div
+              ref={templatesRef}
+              className="absolute bottom-12 left-0 z-20 bg-white border rounded-lg shadow w-52 p-2"
+            >
+              {templates.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100"
+                  onClick={() => onPickTemplate(t)}
+                >
+                  {t.title}
+                </button>
+              ))}
+              {!templates.length && (
+                <div className="text-sm text-gray-500 px-2 py-1">Sem templates.</div>
+              )}
             </div>
           )}
 

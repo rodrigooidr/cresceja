@@ -1,12 +1,11 @@
 // frontend/src/test/msw/server.js
-import { setupServer } from 'msw/node';
-import { makeHandlers, createInboxState } from './handlers';
+const { setupServer } = require('msw/node');
+const { makeHandlers, createInboxState } = require('./handlers');
 
 // Estado compartilhado entre testes (você pode recriar/limpar por teste)
 const state = createInboxState();
 
 // Server com todos os handlers
-export const server = setupServer(...makeHandlers(state));
+const server = setupServer(...makeHandlers(state));
 
-// Exponha o estado para customização dentro do teste, se precisar
-export { state };
+module.exports = { server, state };
