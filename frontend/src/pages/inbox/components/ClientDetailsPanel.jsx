@@ -3,25 +3,30 @@ import React, { useEffect, useMemo, useState } from "react";
 import inboxApi from "../../../api/inboxApi";
 
 export default function ClientDetailsPanel({ conversation, onApplyTags }) {
-  const client = conversation?.client || null;
-  const clientId = client?.id || null;
+  const [client, setClient] = useState(null);
 
   // Estados locais (editáveis)
-  const [birthDate, setBirthDate] = useState(client?.birth_date || "");
-  const [extraInfo, setExtraInfo] = useState(client?.extra_info || "");
+  const [birthDate, setBirthDate] = useState("");
+  const [extraInfo, setExtraInfo] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Tags
-  const [tags, setTags] = useState(conversation?.tags || []);
+  const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState("");
 
   useEffect(() => {
-    setBirthDate(client?.birth_date || "");
-    setExtraInfo(client?.extra_info || "");
-  }, [clientId]);
-
-  useEffect(() => {
-    setTags(conversation?.tags || []);
+    if (!conversation?.id) return;
+    (async () => {
+      try {
+        const { data } = await inboxApi.get(`/inbox/conversations/${conversation.id}/client`);
+        setClient(data);
+        setBirthDate(data.birthdate || "");
+        setExtraInfo(data.extra_info || "");
+        setTags(data.tags || []);
+      } catch {
+        setClient(null);
+      }
+    })();
   }, [conversation?.id]);
 
   const fullName = useMemo(() => {
@@ -35,14 +40,18 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
   }, [conversation]);
 
   const handleSave = async () => {
-    if (!clientId) return;
+    if (!conversation?.id) return;
     setSaving(true);
     try {
-      await inboxApi.put(`/clients/${clientId}`, {
-        birth_date: birthDate || null,
-        extra_info: extraInfo || "",
-      });
-      // opcional: feedback visual simples
+      const { data } = await inboxApi.put(
+        `/inbox/conversations/${conversation.id}/client`,
+        {
+          birthdate: birthDate || null,
+          extra_info: extraInfo || "",
+          tags,
+        }
+      );
+      setClient(data);
       // eslint-disable-next-line no-alert
       window.alert("Dados do cliente salvos com sucesso.");
     } catch (err) {
@@ -90,7 +99,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
         {/* Botão de enviar para funil poderia ficar no header da conversa; aqui mantemos foco nos dados do cliente */}
       </div>
 
-      {/* Informações básicas (somente leitura se não houver clientId) */}
+      {/* Informações básicas (somente leitura se não houver cliente) */}
       <div className="space-y-2 text-sm">
         {client?.phone && (
           <div className="flex items-center justify-between gap-2">
@@ -114,7 +123,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
           className="w-full px-3 py-2 border rounded-lg text-sm"
           value={birthDate || ""}
           onChange={(e) => setBirthDate(e.target.value)}
-          disabled={!clientId}
+          disabled={!conversation}
         />
       </div>
 
@@ -126,7 +135,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
           placeholder="Observações gerais, preferências, histórico…"
           value={extraInfo}
           onChange={(e) => setExtraInfo(e.target.value)}
-          disabled={!clientId}
+          disabled={!conversation}
         />
       </div>
 
@@ -178,7 +187,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
             saving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
           }`}
           onClick={handleSave}
-          disabled={!clientId || saving}
+          disabled={!conversation || saving}
         >
           {saving ? "Salvando..." : "Salvar alterações"}
         </button>

@@ -6,9 +6,11 @@ import React, { useMemo, useState } from "react";
  * - conversation: { id, client_name?, channel?, status? }
  * - onMoveToFunnel: () => Promise<void> | void
  * - onSetStatus: (status: "open"|"pending"|"closed") => Promise<void> | void
+ * - onToggleAI: (enabled: boolean) => Promise<void> | void
  */
-export default function ConversationHeader({ conversation, onMoveToFunnel, onSetStatus }) {
+export default function ConversationHeader({ conversation, onMoveToFunnel, onSetStatus, onToggleAI }) {
   const [changing, setChanging] = useState(false);
+  const [aiChanging, setAiChanging] = useState(false);
 
   const title = useMemo(() => {
     if (!conversation) return "Selecione uma conversa";
@@ -24,6 +26,17 @@ export default function ConversationHeader({ conversation, onMoveToFunnel, onSet
       await onSetStatus?.(next);
     } finally {
       setChanging(false);
+    }
+  };
+
+  const toggleAI = async (ev) => {
+    if (!conversation) return;
+    const enabled = ev.target.checked;
+    setAiChanging(true);
+    try {
+      await onToggleAI?.(enabled);
+    } finally {
+      setAiChanging(false);
     }
   };
 
@@ -53,6 +66,17 @@ export default function ConversationHeader({ conversation, onMoveToFunnel, onSet
             <option value="closed">Fechada</option>
           </select>
         </div>
+
+        {/* IA toggle */}
+        <label className="flex items-center gap-1 text-xs">
+          <span>IA</span>
+          <input
+            type="checkbox"
+            checked={!!conversation?.ai_enabled}
+            onChange={toggleAI}
+            disabled={!conversation || aiChanging}
+          />
+        </label>
 
         {/* Enviar para o Funil */}
         <button

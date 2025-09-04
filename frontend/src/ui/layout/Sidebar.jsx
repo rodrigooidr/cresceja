@@ -8,7 +8,7 @@ const NAV = [
   { to: '/app/inbox',               label: 'Inbox',         icon: MessageSquare },
   { to: '/app/marketing',           label: 'Marketing',     icon: Zap },
   { to: '/app/marketing/lists',     label: 'Listas',        icon: Users },
-  { to: '/app/marketing/templates', label: 'Snippets',      icon: FileText },
+  { to: '/app/marketing/templates', label: 'Templates',    icon: FileText },
   { to: '/app/calendars',           label: 'Calendários',   icon: Calendar },
   { to: '/app/settings/channels',   label: 'Configurações', icon: Settings },
   { to: '/app/ai',                  label: 'IA',            icon: Bot },

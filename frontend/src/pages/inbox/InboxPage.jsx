@@ -339,6 +339,28 @@ export default function InboxPage({ addToast: addToastProp }) {
     [selectedId, addToast]
   );
 
+  const toggleAi = useCallback(
+    async (enabled) => {
+      if (!selectedId) return;
+      try {
+        await inboxApi.put(`/inbox/conversations/${selectedId}/ai`, { enabled });
+        setConversations((prev) =>
+          prev.map((c) =>
+            String(c.id) === String(selectedId) ? { ...c, ai_enabled: enabled } : c
+          )
+        );
+        addToast({ title: 'IA atualizada' });
+      } catch (err) {
+        addToast({
+          title: 'Falha ao atualizar IA',
+          description: err?.response?.data?.message || err.message,
+          variant: 'destructive',
+        });
+      }
+    },
+    [selectedId, addToast]
+  );
+
   const applyTags = useCallback(
     async (tags) => {
       if (!selectedId) return;
@@ -381,6 +403,7 @@ export default function InboxPage({ addToast: addToastProp }) {
           conversation={selectedConversation}
           onMoveToFunnel={moveToFunnel}
           onSetStatus={setStatus}
+          onToggleAI={toggleAi}
         />
         <div className="flex-1 overflow-y-auto">
           <MessageList

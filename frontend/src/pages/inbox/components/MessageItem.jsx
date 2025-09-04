@@ -2,7 +2,7 @@
 import React from "react";
 
 export default function MessageItem({ msg, registerRef }) {
-  const isMine = msg.isMine ?? (msg.direction || "").toLowerCase().startsWith("out");
+  const isMine = !!msg.isMine;
   const align = isMine ? "items-end" : "items-start";
   const bubble =
     "max-w-[75%] px-3 py-2 rounded-2xl text-sm break-words " +
@@ -33,7 +33,7 @@ function renderMessageBody(m) {
               key={att.id}
               href={att.url}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener"
             >
               <img
                 src={att.thumb_url || att.url}
@@ -46,7 +46,7 @@ function renderMessageBody(m) {
               key={att.id}
               href={att.url}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener"
               className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-white text-blue-700 border"
               title="Abrir/baixar arquivo"
             >
@@ -61,7 +61,7 @@ function renderMessageBody(m) {
 
   if (m.type === "image" && m.media_url) {
     return (
-      <a href={m.media_url} target="_blank" rel="noreferrer" className="block" title="Abrir imagem">
+      <a href={m.media_url} target="_blank" rel="noopener" className="block" title="Abrir imagem">
         <img src={m.media_url} alt={m.file_name || "imagem"} className="rounded-md max-h-72 object-contain" />
         {m.text && <p className="mt-2">{m.text}</p>}
       </a>
@@ -76,7 +76,7 @@ function renderMessageBody(m) {
         <a
           href={m.media_url}
           target="_blank"
-          rel="noreferrer"
+          rel="noopener"
           className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-white text-blue-700 border"
           title="Abrir/baixar arquivo"
         >

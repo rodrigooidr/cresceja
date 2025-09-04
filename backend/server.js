@@ -9,6 +9,7 @@ import pinoHttp from 'pino-http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
+import db from './config/db.js';
 
 // Routers
 import authRouter from './routes/auth.js';
@@ -54,6 +55,7 @@ const logger = pino({
 
 // ---------- Express ----------
 const app = express();
+let io;
 
 // desabilita ETag (evita 304 sem corpo em chamadas JSON)
 app.set('etag', false);
@@ -98,6 +100,14 @@ app.use(express.json({ limit: '10mb' }));
 
 // Static (público)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/assets', express.static(path.resolve('uploads')));
+
+// Middleware para expor io e db
+app.use((req, _res, next) => {
+  req.io = io;
+  req.db = req.db || db;
+  next();
+});
 
 // ---------- Health & Ping (públicos) ----------
 app.get('/api/health', (_req, res) => {
@@ -160,7 +170,7 @@ app.use((err, req, res, _next) => {
 const httpServer = http.createServer(app);
 
 // Passe as mesmas origins para o Socket.io (evita erro de WS)
-initIO(httpServer, {
+io = initIO(httpServer, {
   cors: { origin: corsOrigins, credentials: true },
 });
 
