@@ -2,6 +2,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AppShell from './ui/layout/AppShell';
+import ToastHost, { useToasts } from './components/ToastHost.jsx';
 
 import InboxPage from './pages/inbox/InboxPage.jsx';
 import ChannelsPage from './pages/settings/ChannelsPage.jsx';
@@ -76,8 +77,10 @@ function Placeholder({ label }) {
 }
 
 export default function App() {
+  const { addToast } = useToasts();
   return (
     <Router>
+      <ToastHost />
       <Routes>
         {/* Público (sem Sidebar/AppShell) */}
         <Route path="/" element={<LandingPage />} />
@@ -99,7 +102,7 @@ export default function App() {
             path="inbox"
             element={
               <RequireRole minRole="Agent">
-                <InboxPage />
+                <InboxPage addToast={addToast} />
               </RequireRole>
             }
           />
