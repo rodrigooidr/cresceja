@@ -30,7 +30,7 @@ export default function MessageList({ loading, messages = [], conversation }) {
       const seenIn = new Set();
       const seenOut = new Set();
       for (const m of indexed) {
-        const dir = (m.direction || "").toLowerCase() === "out" ? "out" : "in";
+        const dir = (m.direction || "").toLowerCase().startsWith("out") ? "out" : "in";
         const id = m.id ?? `${m.created_at}-${m.__idx}`;
         if (dir === "in") seenIn.add(id);
         else seenOut.add(id);
@@ -43,7 +43,7 @@ export default function MessageList({ loading, messages = [], conversation }) {
   const firstUnseen = useMemo(() => {
     const res = { in: null, out: null };
     for (const m of indexed) {
-      const dir = (m.direction || "").toLowerCase() === "out" ? "out" : "in";
+      const dir = (m.direction || "").toLowerCase().startsWith("out") ? "out" : "in";
       const id = m.id ?? `${m.created_at}-${m.__idx}`;
       if (!seen[dir].has(id)) {
         if (res[dir] == null) res[dir] = m.__idx;
@@ -162,7 +162,7 @@ export default function MessageList({ loading, messages = [], conversation }) {
   const registerRef = (msg, el) => {
     const id = msg.id ?? `${msg.created_at}-${msg.__idx}`;
     if (!id) return;
-    const dir = (msg.direction || "").toLowerCase() === "out" ? "out" : "in";
+    const dir = (msg.direction || "").toLowerCase().startsWith("out") ? "out" : "in";
 
     if (el) {
       el.dataset.msgId = String(id);
@@ -191,7 +191,7 @@ export default function MessageList({ loading, messages = [], conversation }) {
           <div key={g.key} className="space-y-2">
             <DayDivider label={g.label} />
             {g.items.map((m) => {
-              const dir = (m.direction || "").toLowerCase() === "out" ? "out" : "in";
+              const dir = (m.direction || "").toLowerCase().startsWith("out") ? "out" : "in";
               const nodes = [];
 
               if (firstUnseen[dir] != null && m.__idx === firstUnseen[dir]) {

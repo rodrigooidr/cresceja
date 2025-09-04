@@ -2,19 +2,21 @@
 import React from "react";
 
 export default function MessageItem({ msg, registerRef }) {
-  const isOut = (msg.direction || "").toLowerCase() === "out";
-  const align = isOut ? "items-end" : "items-start";
+  const isMine = msg.isMine ?? (msg.direction || "").toLowerCase().startsWith("out");
+  const align = isMine ? "items-end" : "items-start";
   const bubble =
     "max-w-[75%] px-3 py-2 rounded-2xl text-sm break-words " +
-    (isOut ? "bg-blue-600 text-white rounded-tr-sm" : "bg-gray-100 text-gray-900 rounded-tl-sm");
+    (isMine
+      ? "bg-blue-600 text-white rounded-tr-sm"
+      : "bg-gray-100 text-gray-900 rounded-tl-sm");
 
   return (
     <div className={`w-full flex ${align}`} ref={registerRef}>
       <div className="flex flex-col gap-1">
         <div className={bubble}>{renderMessageBody(msg)}</div>
-        <div className={`text-[10px] text-gray-500 ${isOut ? "text-right" : "text-left"}`}>
+        <div className={`text-[10px] text-gray-500 ${isMine ? "text-right" : "text-left"}`}>
           <span>{formatTime(msg.created_at)}</span>
-          {isOut && msg.status && <span> • {statusLabel(msg.status)}</span>}
+          {isMine && msg.status && <span> • {statusLabel(msg.status)}</span>}
         </div>
       </div>
     </div>
