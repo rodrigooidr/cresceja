@@ -171,6 +171,7 @@ const httpServer = http.createServer(app);
 io = initIO(httpServer, {
   cors: { origin: corsOrigins, credentials: true },
 });
+app.set('io', io);
 
 // Raiz simples (pública)
 app.get('/', (_req, res) => {

@@ -11,3 +11,24 @@ export async function listConversations({ status, channel, tags, q, limit = 50, 
   const { data } = await inboxApi.get('/inbox/conversations', { params });
   return data; // { items, total, nextCursor? }
 }
+
+export async function getMessages(conversationId, { limit = 50 } = {}) {
+  const { data } = await inboxApi.get(`/inbox/conversations/${conversationId}/messages`, {
+    params: { limit },
+  });
+  return data; // { items, total }
+}
+
+export async function sendMessage({ conversationId, text, file }) {
+  if (file) {
+    const fd = new FormData();
+    fd.append('conversationId', conversationId);
+    if (text) fd.append('text', text);
+    fd.append('file', file);
+    const { data } = await inboxApi.post('/inbox/messages', fd);
+    return data;
+  } else {
+    const { data } = await inboxApi.post('/inbox/messages', { conversationId, text });
+    return data;
+  }
+}

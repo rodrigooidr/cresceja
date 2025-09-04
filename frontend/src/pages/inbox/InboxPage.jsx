@@ -5,7 +5,7 @@ import inboxApi from "../../api/inboxApi";
 import normalizeMessage from "../../inbox/normalizeMessage";
 import channelIconBySlug from "../../inbox/channelIcons";
 import { makeSocket } from "../../sockets/socket";
-import { listConversations } from "../../inbox/inbox.service";
+import { listConversations, getMessages, sendMessage as sendMessageApi } from "../../inbox/inbox.service";
 
 import ConversationList from "./components/ConversationList.jsx";
 import ConversationHeader from "./components/ConversationHeader.jsx";
@@ -13,17 +13,7 @@ import MessageList from "./components/MessageList.jsx";
 import MessageComposer from "./components/MessageComposer.jsx";
 import SidebarFilters from "./components/SidebarFilters.jsx";
 import ClientDetailsPanel from "./components/ClientDetailsPanel.jsx";
-import AttachmentPreview from "./components/AttachmentPreview.jsx";
 import useToastFallback from "../../hooks/useToastFallback";
-
-/** Constrói URL absoluta para assets quando o backend retorna caminho relativo */
-function toApiUrl(path) {
-  if (!path) return path;
-  if (/^https?:\/\//i.test(path)) return path;
-  const base = process.env.REACT_APP_API_BASE_URL || "http://localhost:4000/api";
-  const slash = path.startsWith("/") ? "" : "/";
-  return `${base}${slash}${path}`;
-}
 
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
@@ -108,18 +98,18 @@ export default function InboxPage({ addToast: addToastProp }) {
     [conversations, selectedId]
   );
 
-  const fetchMessages = useCallback(
-    async (convId) => {
-      if (!convId) return;
+  useEffect(() => {
+    async function load() {
+      if (!selectedId) {
+        setMessages([]);
+        return;
+      }
+      setLoadingMsgs(true);
       try {
-        setLoadingMsgs(true);
-        const { data } = await inboxApi.get(
-          `/inbox/conversations/${convId}/messages`,
-          { params: { limit: 200 } }
-        );
-        const list = Array.isArray(data) ? data.map(normalizeMessage) : [];
+        const { items } = await getMessages(selectedId, { limit: 100 });
+        const list = Array.isArray(items) ? items.map(normalizeMessage) : [];
         setMessages(list);
-        await markRead(convId);
+        await markRead(selectedId);
       } catch (err) {
         addToast({
           title: "Falha ao carregar mensagens",
@@ -129,163 +119,85 @@ export default function InboxPage({ addToast: addToastProp }) {
       } finally {
         setLoadingMsgs(false);
       }
-    },
-    [addToast, markRead]
-  );
-
-  useEffect(() => {
-    if (selectedId) fetchMessages(selectedId);
-  }, [selectedId, fetchMessages]);
+    }
+    load();
+  }, [selectedId, addToast, markRead]);
 
   // ===== SOCKET =====
+  const socket = useMemo(
+    () => (typeof makeSocket === 'function' ? makeSocket() : null),
+    []
+  );
   useEffect(() => {
-    const sock = makeSocket();
-    if (!sock) return;
-
-    // novas mensagens: só entram se forem da conversa selecionada
-    const onNewMessage = (evt) => {
-      if (!evt?.message) return;
-      const convId = evt.conversation_id || evt.message.conversation_id;
-      if (String(convId) !== String(selectedId)) {
-        // opcional: incrementar unread na lista
-        setConversations((prev) =>
-          prev.map((c) =>
-            String(c.id) === String(convId)
-              ? { ...c, unread_count: Math.max(1, (c.unread_count || 0) + 1) }
-              : c
-          )
-        );
-        return;
-      }
-      setMessages((prev) => [...prev, normalizeMessage(evt.message)]);
-    };
-
-    const onConvUpdated = (conv) => {
-      if (!conv?.id) return;
-      setConversations((prev) =>
-        prev.map((c) => (String(c.id) === String(conv.id) ? { ...c, ...conv } : c))
-      );
-    };
-
-    const onConvCreated = (conv) => {
-      if (!conv?.id) return;
-      setConversations((prev) => {
-        const exists = prev.some((c) => String(c.id) === String(conv.id));
-        return exists ? prev : [conv, ...prev];
-      });
-    };
-
-    sock.on("inbox:message:new", onNewMessage);
-    sock.on("inbox:conversation:update", onConvUpdated);
-    sock.on("inbox:conversation:new", onConvCreated);
-
     return () => {
       try {
-        sock.off("inbox:message:new", onNewMessage);
-        sock.off("inbox:conversation:update", onConvUpdated);
-        sock.off("inbox:conversation:new", onConvCreated);
-        sock.removeAllListeners?.();
-        sock.close?.();
-        sock.disconnect?.();
+        socket?.removeAllListeners?.();
+        socket?.close?.();
+        socket?.disconnect?.();
       } catch {
         /* noop */
       }
     };
-  }, [selectedId]);
+  }, [socket]);
 
-  // ===== ANEXOS =====
-  const [attachments, setAttachments] = useState([]);
+  useEffect(() => {
+    if (!socket || !selectedId) return;
+    socket.emit('inbox:join', { room: `conv:${selectedId}` });
+    const onNew = (msg) => {
+      if (String(msg.conversationId) === String(selectedId)) {
+        setMessages((prev) => [...prev, normalizeMessage(msg)]);
+      } else {
+        setConversations((prev) =>
+          prev.map((c) =>
+            String(c.id) === String(msg.conversationId)
+              ? { ...c, unread_count: Math.max(1, (c.unread_count || 0) + 1) }
+              : c
+          )
+        );
+      }
+    };
+    socket.on('inbox:message:new', onNew);
+    return () => {
+      socket.off('inbox:message:new', onNew);
+      socket.emit('inbox:leave', { room: `conv:${selectedId}` });
+    };
+  }, [socket, selectedId, setConversations]);
+
+  // ===== ENVIAR =====
+  const handleSend = useCallback(
+    async ({ text, file }) => {
+      if (!selectedId) return;
+      const optimistic = {
+        id: `temp-${Date.now()}`,
+        conversationId: selectedId,
+        text: text || (file ? file.name : ''),
+        direction: 'out',
+        authorId: 'me',
+        created_at: new Date().toISOString(),
+        _optimistic: true,
+      };
+      setMessages((prev) => [...prev, optimistic]);
+
+      try {
+        const saved = await sendMessageApi({ conversationId: selectedId, text, file });
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimistic.id ? normalizeMessage(saved) : m))
+        );
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+      }
+    },
+    [selectedId]
+  );
 
   const handleFiles = useCallback(
     async (fileList) => {
-      if (!selectedConversation) return;
       const files = Array.from(fileList || []);
-      if (!files.length) return;
-
-      // mostra pré-visualização local
-      setAttachments((prev) => [
-        ...prev,
-        ...files.map((f) => ({
-          id: "local-" + (crypto?.randomUUID?.() || Math.random().toString(36).slice(2)),
-          name: f.name,
-          localFile: f,
-        })),
-      ]);
-
-      // faz upload individualmente (mantém feedback responsivo)
       for (const f of files) {
-        const form = new FormData();
-        form.append("files[]", f);
-        try {
-          const { data } = await inboxApi.post(
-            `/inbox/conversations/${selectedConversation.id}/attachments`,
-            form,
-            { headers: { "Content-Type": "multipart/form-data" } }
-          );
-
-          const assets = Array.isArray(data?.assets) ? data.assets : [];
-          setAttachments((prev) =>
-            prev
-              .filter((a) => a.localFile !== f)
-              .concat(
-                assets.map((a) => ({
-                  id: a.asset_id || a.id || a.url || f.name,
-                  url: toApiUrl(a.url),
-                  thumb_url: toApiUrl(a.thumb_url),
-                  filename: a.filename || a.name || f.name,
-                  mime: a.mime_type || a.content_type,
-                }))
-              )
-          );
-        } catch (err) {
-          // remove o preview local que falhou
-          setAttachments((prev) => prev.filter((a) => a.localFile !== f));
-          // eslint-disable-next-line no-console
-          console.error("Upload failed", err);
-          addToast({
-            title: "Falha no upload do arquivo",
-            description: err?.response?.data?.message || err.message,
-            variant: "destructive",
-          });
-        }
+        await handleSend({ file: f });
       }
     },
-    [selectedConversation, addToast]
-  );
-
-  const removeLocalAttachment = useCallback((file) => {
-    setAttachments((prev) => prev.filter((a) => a.localFile !== file));
-  }, []);
-
-  // ===== ENVIAR =====
-  const sendMessage = useCallback(
-    async ({ text }) => {
-      if (!selectedId) return;
-      const hasText = !!(text && String(text).trim());
-      if (!hasText && attachments.length === 0) return;
-
-      try {
-        const payload = {};
-        if (hasText) payload.text = text.trim();
-        if (attachments.length) payload.attachments = attachments.map((a) => a.id);
-
-        const { data } = await inboxApi.post(
-          `/inbox/conversations/${selectedId}/messages`,
-          payload
-        );
-
-        const newMsg = normalizeMessage(data);
-        setMessages((prev) => [...prev, newMsg]);
-        setAttachments([]);
-      } catch (err) {
-        addToast({
-          title: "Não foi possível enviar",
-          description: err?.response?.data?.message || err.message,
-          variant: "destructive",
-        });
-      }
-    },
-    [selectedId, attachments, addToast]
+    [handleSend]
   );
 
   // ===== AÇÕES =====
@@ -398,11 +310,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         </div>
         <div className="border-t p-2">
           {/* Se seu MessageComposer espera prop `conversation`, troque `sel` por `conversation` */}
-          <MessageComposer sel={selectedConversation} onSend={sendMessage} onFiles={handleFiles} />
-          <AttachmentPreview
-            files={attachments.filter((a) => a.localFile).map((a) => a.localFile)}
-            onRemove={removeLocalAttachment}
-          />
+          <MessageComposer sel={selectedConversation} onSend={handleSend} onFiles={handleFiles} />
         </div>
       </main>
 
