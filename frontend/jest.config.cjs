@@ -3,10 +3,13 @@ module.exports = {
   testEnvironmentOptions: { url: 'http://localhost/' },
   setupFiles: ['<rootDir>/src/test/polyfills.js'],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
-  transform: { '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest' },
+  transform: {
+    '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
+  },
   moduleNameMapper: {
     '^socket\\.io-client$': '<rootDir>/src/test/mocks/socket.io-client.js',
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^\\.{1,2}/\\.{1,2}/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
     '\\.(css|less|scss|sass)$': '<rootDir>/src/test/__mocks__/fileMock.js',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/src/test/__mocks__/fileMock.js',
   },
