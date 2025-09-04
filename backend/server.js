@@ -34,7 +34,7 @@ import metaWebhookRouter from './routes/webhooks/meta.js';
 import inboxExtraRouter from './routes/inboxExtra.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
-import inboxRoutes from './routes/inbox.js';
+import inboxConversationsRouter from './routes/inbox.conversations.js';
 
 // Services & middleware
 import { authRequired, impersonationGuard } from './middleware/auth.js';
@@ -137,7 +137,7 @@ app.use('/api/integrations', integrationsRouter);
 app.use('/api/orgs', orgsRouter);
 
 // ⚠️ IMPORTANTE: /api/inbox DEPOIS de CORS/JSON/AUTH
-app.use('/api/inbox', inboxRoutes);
+app.use('/api', inboxConversationsRouter);
 app.use('/api/inbox', inboxExtraRouter);
 
 // 404 apenas para /api/*
