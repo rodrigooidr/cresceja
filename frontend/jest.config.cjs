@@ -8,16 +8,22 @@ module.exports = {
   },
   moduleNameMapper: {
     '^socket\\.io-client$': '<rootDir>/src/test/mocks/socket.io-client.js',
+    '^@/(.*)$': '<rootDir>/src/$1',
+    // Mapeamentos explícitos para variações de import do app
+    '^../../sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
+    '^../../../sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
+    '^../../../../sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
+    '^../sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
+    '^./sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
     '^@/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
     '^src/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
-    // mapeia QUALQUER caminho que termine com /sockets/socket(.js|.ts|...)
-    '.+/sockets/socket(\\.\\w+)?$': '<rootDir>/src/test/mocks/app-socket.js',
-    '^@/(.*)$': '<rootDir>/src/$1',
+    // Mock para axios e evitar parsing/ESM issues
+    '^axios$': '<rootDir>/src/test/mocks/axios.js',
     '\\.(css|less|scss|sass)$': '<rootDir>/src/test/__mocks__/fileMock.js',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/src/test/__mocks__/fileMock.js',
   },
   transformIgnorePatterns: [
-    '/node_modules/(?!(msw|@mswjs|whatwg-url|undici|web-streams-polyfill|@bundled-es-modules|statuses)/)',
+    '/node_modules/(?!(msw|@mswjs|whatwg-url|undici|web-streams-polyfill|@bundled-es-modules|statuses|axios)/)',
   ],
   resetMocks: true,
   clearMocks: true,

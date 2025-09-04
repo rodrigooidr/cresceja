@@ -18,8 +18,8 @@ const makeFakeSocket = () => {
   });
 
   const once = jest.fn((evt, cb) => {
-    const wrapper = (...args) => { cb(...args); off(evt, wrapper); };
-    on(evt, wrapper);
+    const wrap = (...args) => { cb(...args); off(evt, wrap); };
+    on(evt, wrap);
     return socket;
   });
 
