@@ -1,6 +1,9 @@
 // v2: use http/HttpResponse
 import { http, HttpResponse } from 'msw';
 
+// capture any host
+const any = (path) => `*${path}`;
+
 // helpers: parse URL de forma segura
 function q(request, key) {
   const url = new URL(request.url);
@@ -8,7 +11,7 @@ function q(request, key) {
 }
 
 export const handlers = [
-  http.get('/api/inbox/conversations', async ({ request }) => {
+  http.get(any('/api/inbox/conversations'), async ({ request }) => {
     const tags = q(request, 'tags'); // ok mesmo em Node
     const status = q(request, 'status');
     // ... gere um dataset simples em memória:
@@ -22,12 +25,12 @@ export const handlers = [
     return HttpResponse.json({ items: data, total: data.length });
   }),
 
-  http.put('/api/inbox/conversations/:id/read', async ({ params }) => {
+  http.put(any('/api/inbox/conversations/:id/read'), async ({ params }) => {
     // simule sucesso
     return HttpResponse.json({ ok: true, id: params.id });
   }),
 
-  http.put('/api/inbox/conversations/:id/client', async ({ request, params }) => {
+  http.put(any('/api/inbox/conversations/:id/client'), async ({ request, params }) => {
     // se for JSON:
     const body = await request.json().catch(() => ({}));
     // valide mínimas chaves esperadas:
@@ -41,7 +44,7 @@ export const handlers = [
     return HttpResponse.json({ id: params.id, client });
   }),
 
-  http.post('/api/crm/opportunities', async ({ request }) => {
+  http.post(any('/api/crm/opportunities'), async ({ request }) => {
     const body = await request.json();
     return HttpResponse.json(
       { id: 'opp-1', ...body, created_at: new Date().toISOString() },
@@ -49,7 +52,7 @@ export const handlers = [
     );
   }),
 
-  http.post('/api/inbox/messages', async ({ request }) => {
+  http.post(any('/api/inbox/messages'), async ({ request }) => {
     // aceite tanto JSON (texto) quanto multipart (anexos)
     let payload = {};
     const contentType = request.headers.get('content-type') || '';
