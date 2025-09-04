@@ -32,10 +32,9 @@ import integrationsRouter from './routes/integrations.js';
 import publicRouter from './routes/public.js';
 import orgsRouter from './routes/orgs.js';
 import metaWebhookRouter from './routes/webhooks/meta.js';
-import inboxExtraRouter from './routes/inboxExtra.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
-import inboxRouter from './routes/inbox.conversations.js';
+import inboxRoutes from './routes/inbox.js';
 import funnelRouter from './routes/crm.funnel.js';
 
 // Services & middleware
@@ -149,8 +148,7 @@ app.use('/api/orgs', orgsRouter);
 app.use('/api', funnelRouter);
 
 // ⚠️ IMPORTANTE: /api/inbox DEPOIS de CORS/JSON/AUTH
-app.use('/api', inboxRouter);
-app.use('/api/inbox', inboxExtraRouter);
+app.use('/api/inbox', inboxRoutes);
 
 // 404 apenas para /api/*
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
