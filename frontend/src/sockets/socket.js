@@ -19,6 +19,9 @@ export function makeSocket() {
   return socket;
 }
 
+// Também exporta como default para cobrir imports legacy
+export default makeSocket;
+
 export function getSocket() {
   return socket;
 }

@@ -1,46 +1,26 @@
-// Mock robusto: cobre import default e named, e implementa on/off/once/emit
+const handlers = {};
+
 const makeFakeSocket = () => {
-  const handlers = new Map();
-
-  const on = jest.fn((evt, cb) => {
-    const list = handlers.get(evt) || [];
-    list.push(cb);
-    handlers.set(evt, list);
-    return socket; // permite chaining
-  });
-
-  const off = jest.fn((evt, cb) => {
-    if (!handlers.has(evt)) return socket;
-    if (!cb) { handlers.delete(evt); return socket; }
-    const list = handlers.get(evt).filter(h => h !== cb);
-    if (list.length) handlers.set(evt, list); else handlers.delete(evt);
-    return socket;
-  });
-
-  const once = jest.fn((evt, cb) => {
-    const wrap = (...args) => { cb(...args); off(evt, wrap); };
-    on(evt, wrap);
-    return socket;
-  });
-
-  const emit = jest.fn((evt, payload) => {
-    const list = handlers.get(evt) || [];
-    list.forEach(h => h(payload));
-    return socket;
-  });
-
-  const connect = jest.fn(() => socket);
-  const close = jest.fn(() => socket);
-  const disconnect = jest.fn(() => socket);
-
-  const socket = { on, off, once, emit, connect, close, disconnect };
+  const socket = {
+    on: jest.fn((e, cb) => { handlers[e] = [...(handlers[e]||[]), cb]; return socket; }),
+    off: jest.fn((e, cb) => {
+      if (!handlers[e]) return socket;
+      if (!cb) { delete handlers[e]; return socket; }
+      handlers[e] = (handlers[e]||[]).filter(h => h !== cb);
+      if (!handlers[e].length) delete handlers[e];
+      return socket;
+    }),
+    once: jest.fn((e, cb) => { const wrap = (...a)=>{cb(...a); socket.off(e, wrap);}; socket.on(e, wrap); return socket; }),
+    emit: jest.fn((e, p) => { (handlers[e]||[]).forEach(h => h(p)); return socket; }),
+    connect: jest.fn(() => socket),
+    close: jest.fn(() => socket),
+    disconnect: jest.fn(() => socket),
+  };
   return socket;
 };
 
-// named export
 export const makeSocket = jest.fn(() => makeFakeSocket());
+export const getSocket = jest.fn(() => makeSocket());
+export const __handlers = handlers;
+export default function makeSocketDefault() { return makeSocket(); }
 
-// default export como função (para cobrir `import makeSocket from ...`)
-export default function makeSocketDefault() {
-  return makeSocket();
-}
