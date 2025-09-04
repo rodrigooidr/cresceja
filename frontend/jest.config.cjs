@@ -1,14 +1,14 @@
 module.exports = {
   testEnvironment: 'jsdom',
+  transform: { '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest' },
+  setupFiles: ['<rootDir>/src/test/polyfills.js'],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
-  transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
-  moduleFileExtensions: ['js', 'jsx', 'json'],
-  testPathIgnorePatterns: ['/node_modules/', '/backend/'],
   moduleNameMapper: {
-    '\\.(css|less|sass|scss)$': 'identity-obj-proxy',
+    '\\.(css|less|scss|sass)$': '<rootDir>/src/test/__mocks__/fileMock.js',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/src/test/__mocks__/fileMock.js',
   },
   transformIgnorePatterns: [
-    '/node_modules/(?!(lucide-react|msw|@mswjs|axios|nanoid|uuid|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)'
+    // garante que msw/whatwg não quebrem por ESM
+    '/node_modules/(?!(msw|@mswjs|whatwg-url|undici|web-streams-polyfill|@bundled-es-modules|statuses)/)',
   ],
 };

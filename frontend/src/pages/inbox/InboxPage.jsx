@@ -13,24 +13,7 @@ import MessageComposer from "./components/MessageComposer.jsx";
 import SidebarFilters from "./components/SidebarFilters.jsx";
 import ClientDetailsPanel from "./components/ClientDetailsPanel.jsx";
 import AttachmentPreview from "./components/AttachmentPreview.jsx";
-
-/** Fallback para exibir toasts mesmo sem lib externa injetada */
-function useToastFallback(externalToast) {
-  return useCallback(
-    (opts) => {
-      const payload = typeof opts === "string" ? { title: opts } : { ...opts };
-      if (typeof externalToast === "function") return externalToast(payload);
-      if (window?.toast && typeof window.toast === "function")
-        return window.toast(payload);
-      const prefix = payload.variant === "destructive" ? "Erro" : "Info";
-      // eslint-disable-next-line no-alert
-      window.alert(`${prefix}: ${payload.title || "Operação concluída"}`);
-      // eslint-disable-next-line no-console
-      console.log("[toast]", payload);
-    },
-    [externalToast]
-  );
-}
+import useToastFallback from "../../hooks/useToastFallback";
 
 /** Constrói URL absoluta para assets quando o backend retorna caminho relativo */
 function toApiUrl(path) {

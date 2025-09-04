@@ -227,4 +227,6 @@ function makeHandlers(state) {
   ];
 }
 
-module.exports = { makeHandlers, createInboxState, rest };
+const handlers = makeHandlers(createInboxState());
+
+module.exports = { handlers, makeHandlers, createInboxState, rest };
