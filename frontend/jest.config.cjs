@@ -8,8 +8,11 @@ module.exports = {
   },
   moduleNameMapper: {
     '^socket\\.io-client$': '<rootDir>/src/test/mocks/socket.io-client.js',
+    '^@/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
+    '^src/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
+    // mapeia QUALQUER caminho que termine com /sockets/socket(.js|.ts|...)
+    '.+/sockets/socket(\\.\\w+)?$': '<rootDir>/src/test/mocks/app-socket.js',
     '^@/(.*)$': '<rootDir>/src/$1',
-    '^\\.{1,2}/\\.{1,2}/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
     '\\.(css|less|scss|sass)$': '<rootDir>/src/test/__mocks__/fileMock.js',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/src/test/__mocks__/fileMock.js',
   },
