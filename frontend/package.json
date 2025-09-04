@@ -17,13 +17,17 @@
     "@testing-library/jest-dom": "^6.8.0",
     "@testing-library/react": "^14.3.1",
     "autoprefixer": "^10.4.21",
+    "babel-jest": "^29.7.0",
     "cross-env": "^10.0.0",
     "eslint-plugin-react-hooks": "^4.6.2",
     "identity-obj-proxy": "^3.0.0",
     "msw": "^2.10.5",
     "postcss": "^8.5.6",
     "react-scripts": "^5.0.1",
-    "tailwindcss": "^3.4.13"
+    "tailwindcss": "^3.4.13",
+    "whatwg-fetch": "^3.6.20",
+    "@babel/preset-env": "^7.24.7",
+    "@babel/preset-react": "^7.24.7"
   },
   "eslintConfig": {
     "extends": [
@@ -35,22 +39,9 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test --watchAll=false",
-    "test:watch": "react-scripts test",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "guardrail:inbox": "node scripts/guardrail-inbox.js"
-  },
-  "jest": {
-    "transformIgnorePatterns": [
-      "node_modules/(?!(lucide-react|msw|@mswjs|axios|nanoid|uuid|@bundled-es-modules|tough-cookie|whatwg-url|formdata-polyfill|fetch-blob|undici)/)"
-    ],
-    "moduleNameMapper": {
-      "^.+\\.(css|scss|sass|less)$": "identity-obj-proxy",
-      "^tough-cookie$": "<rootDir>/src/test-shims/tough-cookie.js",
-      "^@bundled-es-modules/tough-cookie.*$": "<rootDir>/src/test-shims/empty.js",
-      "^sockets\\/socket$": "<rootDir>/src/test-shims/socket.mock.js",
-      "^\\.\\.?\\/.*sockets\\/socket(\\.\\w+)?$": "<rootDir>/src/test-shims/socket.mock.js",
-      "^src\\/sockets\\/socket(\\.\\w+)?$": "<rootDir>/src/test-shims/socket.mock.js"
-    }
   },
   "browserslist": {
     "production": [

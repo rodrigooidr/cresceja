@@ -34,7 +34,8 @@ import metaWebhookRouter from './routes/webhooks/meta.js';
 import inboxExtraRouter from './routes/inboxExtra.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
-import inboxConversationsRouter from './routes/inbox.conversations.js';
+import inboxRouter from './routes/inbox.conversations.js';
+import funnelRouter from './routes/crm.funnel.js';
 
 // Services & middleware
 import { authRequired, impersonationGuard } from './middleware/auth.js';
@@ -135,9 +136,10 @@ app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
 app.use('/api/agenda', agendaRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/api/orgs', orgsRouter);
+app.use('/api', funnelRouter);
 
 // ⚠️ IMPORTANTE: /api/inbox DEPOIS de CORS/JSON/AUTH
-app.use('/api', inboxConversationsRouter);
+app.use('/api', inboxRouter);
 app.use('/api/inbox', inboxExtraRouter);
 
 // 404 apenas para /api/*
