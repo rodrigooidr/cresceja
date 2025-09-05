@@ -11,7 +11,7 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
     '^axios$': '<rootDir>/src/test/mocks/axios.js',
-    '\\.(css|less|scss|sass)$': '<rootDir>/src/test/__mocks__/fileMock.js',
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/src/test/__mocks__/fileMock.js',
   },
   transformIgnorePatterns: [

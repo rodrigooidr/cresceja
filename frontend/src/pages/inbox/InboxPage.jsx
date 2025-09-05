@@ -318,6 +318,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         <ClientDetailsPanel
           conversation={selectedConversation}
           onApplyTags={applyTags}
+          addToast={addToast}
         />
       </aside>
     </div>

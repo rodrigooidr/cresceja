@@ -90,14 +90,28 @@ r.put('/conversations/:id/client', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name, birthdate, notes, tags } = req.body || {};
-    const updated = await upsertClientRepo({
-      conversation_id: id,
-      name,
-      birthdate,
-      notes,
-      tags,
-    });
-    res.json({ id, client: updated });
+
+    const updates = {};
+    if (typeof name === 'string' && name.trim()) updates.name = name.trim();
+    if (typeof notes === 'string') updates.notes = notes;
+    if (typeof birthdate === 'string') {
+      const bd = birthdate.includes('/')
+        ? birthdate.split('/').reverse().join('-')
+        : birthdate;
+      if (!Number.isNaN(Date.parse(bd))) updates.birthdate = bd;
+    }
+    if (tags != null) {
+      const arr = Array.isArray(tags)
+        ? tags
+        : String(tags)
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+      if (arr.length) updates.tags = arr;
+    }
+
+    const updated = await upsertClientRepo({ conversation_id: id, updates });
+    res.json({ ok: true, client: updated });
   } catch (err) {
     next(err);
   }
@@ -115,15 +129,17 @@ r.post('/messages', async (req, res, next) => {
     if (!conversationId) {
       return res.status(400).json({ error: 'conversationId required' });
     }
+    const dir = (direction || 'out').toLowerCase();
+    const mapped = dir === 'out' ? 'outbound' : dir === 'in' ? 'inbound' : dir;
     const msg = await createMessageRepo({
       conversation_id: conversationId,
       text: text ?? '',
-      direction: direction || 'out',
+      direction: mapped,
+      sender: 'agent',
       // author_id vem do token no repo? lá usamos default 'me'; se quiser, passe req.user.sub:
       // author_id: req.user?.id || 'me'
     });
 
-    // emite em tempo real (se houver io configurado)
     const io = req.app.get('io');
     if (io) io.to(`conv:${conversationId}`).emit('inbox:message:new', msg);
 

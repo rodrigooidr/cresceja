@@ -1,8 +1,9 @@
 // src/pages/inbox/components/MessageItem.jsx
 import React from "react";
+import { isMineMessage } from "@/inbox/message.helpers";
 
 export default function MessageItem({ msg, registerRef }) {
-  const isMine = !!msg.isMine;
+  const isMine = isMineMessage(msg);
   const align = isMine ? "items-end" : "items-start";
   const bubble =
     "max-w-[75%] px-3 py-2 rounded-2xl text-sm break-words " +
