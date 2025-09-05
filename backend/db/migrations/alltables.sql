@@ -650,3 +650,111 @@ BEGIN
    WHERE id = v_conv_id;
 END
 $$;
+
+
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS notes     text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS birthdate date;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS tags      text[] DEFAULT '{}';
+
+CREATE TABLE IF NOT EXISTS public.conversations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  channel text NOT NULL DEFAULT 'whatsapp',
+  status  text NOT NULL DEFAULT 'open',
+  ai_enabled boolean NOT NULL DEFAULT false,
+  unread_count int NOT NULL DEFAULT 0,
+  last_message_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_conversations_org ON public.conversations(org_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_last ON public.conversations(org_id, last_message_at DESC);
+
+-- messages
+CREATE TABLE IF NOT EXISTS public.messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  conversation_id uuid NOT NULL REFERENCES public.conversations(id) ON DELETE CASCADE,
+  author_id text,
+  direction text NOT NULL, -- 'in' | 'out'
+  text text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conv ON public.messages(org_id, conversation_id, created_at);
+
+-- índice para busca por nome
+CREATE INDEX IF NOT EXISTS idx_clients_org_name ON public.clients(org_id, lower(name));
+
+-- ==== CLIENTS: colunas opcionais usadas pelo app ====
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS notes     text;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS birthdate date;
+ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS tags      text[] DEFAULT '{}';
+
+-- índice de busca por nome
+CREATE INDEX IF NOT EXISTS idx_clients_org_name ON public.clients(org_id, lower(name));
+
+-- ==== CONVERSATIONS: alinhar ao modelo atual ====
+-- cria tabela se não existir
+CREATE TABLE IF NOT EXISTS public.conversations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- acrescenta colunas que podem faltar
+ALTER TABLE public.conversations
+  ADD COLUMN IF NOT EXISTS client_id uuid,
+  ADD COLUMN IF NOT EXISTS channel text NOT NULL DEFAULT 'whatsapp',
+  ADD COLUMN IF NOT EXISTS status  text NOT NULL DEFAULT 'open',
+  ADD COLUMN IF NOT EXISTS ai_enabled boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS unread_count int NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_message_at timestamptz;
+
+-- FK para clients (se ainda não existir)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_conversations_client'
+  ) THEN
+    ALTER TABLE public.conversations
+      ADD CONSTRAINT fk_conversations_client
+      FOREIGN KEY (client_id)
+      REFERENCES public.clients(id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
+
+-- índices úteis
+CREATE INDEX IF NOT EXISTS idx_conversations_org       ON public.conversations(org_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_last_msg  ON public.conversations(org_id, last_message_at DESC);
+
+-- ==== MESSAGES: cria/ajusta ====
+CREATE TABLE IF NOT EXISTS public.messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL,
+  conversation_id uuid NOT NULL,
+  author_id text,
+  direction text NOT NULL, -- 'in' | 'out'
+  text text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- FK para conversations (se ainda não existir)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'fk_messages_conversation'
+  ) THEN
+    ALTER TABLE public.messages
+      ADD CONSTRAINT fk_messages_conversation
+      FOREIGN KEY (conversation_id)
+      REFERENCES public.conversations(id)
+      ON DELETE CASCADE;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_messages_conv ON public.messages(org_id, conversation_id, created_at);

@@ -1,4 +1,4 @@
-import inboxApi from '@/api/inboxApi';
+import inboxApi from 'api/inboxApi';
 
 export async function listConversations({ status, channel, tags, q, limit = 50, cursor } = {}) {
   const params = {};

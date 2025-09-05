@@ -1,5 +1,5 @@
 import { io } from 'socket.io-client';
-import { API_BASE_URL } from '@/api/inboxApi';
+import { API_BASE_URL } from 'api/inboxApi';
 
 let socket = null;
 
