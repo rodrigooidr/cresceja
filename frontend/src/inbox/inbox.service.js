@@ -1,4 +1,4 @@
-import inboxApi from 'api/inboxApi';
+import inboxApi from '@/api/inboxApi';
 
 export async function listConversations({ status, channel, tags, q, limit = 50, cursor } = {}) {
   const params = {};
@@ -9,7 +9,17 @@ export async function listConversations({ status, channel, tags, q, limit = 50, 
   if (limit) params.limit = limit;
   if (cursor) params.cursor = cursor;
   const { data } = await inboxApi.get('/inbox/conversations', { params });
-  return data; // { items, total, nextCursor? }
+  const items = Array.isArray(data?.items) ? [...data.items] : [];
+  items.sort((a, b) => {
+    const aLast = new Date(a?.last_message_at || 0).getTime();
+    const bLast = new Date(b?.last_message_at || 0).getTime();
+    if (bLast !== aLast) return bLast - aLast;
+    const aUpd = new Date(a?.updated_at || 0).getTime();
+    const bUpd = new Date(b?.updated_at || 0).getTime();
+    if (bUpd !== aUpd) return bUpd - aUpd;
+    return String(a?.id || '').localeCompare(String(b?.id || ''));
+  });
+  return { ...data, items };
 }
 
 export async function getMessages(conversationId, { limit = 50 } = {}) {

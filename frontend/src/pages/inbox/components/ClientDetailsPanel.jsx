@@ -1,14 +1,16 @@
 // src/pages/inbox/components/ClientDetailsPanel.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import inboxApi from "../../../api/inboxApi";
+import useToastFallback from "../../../hooks/useToastFallback";
 
-export default function ClientDetailsPanel({ conversation, onApplyTags }) {
+export default function ClientDetailsPanel({ conversation, onApplyTags, addToast: addToastProp }) {
+  const addToast = useToastFallback(addToastProp);
   const [client, setClient] = useState(null);
 
   // Estados locais (editáveis)
   const [birthDate, setBirthDate] = useState("");
-  const [extraInfo, setExtraInfo] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Tags
   const [tags, setTags] = useState([]);
@@ -21,7 +23,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
         const { data } = await inboxApi.get(`/inbox/conversations/${conversation.id}/client`);
         setClient(data);
         setBirthDate(data.birthdate || "");
-        setExtraInfo(data.extra_info || "");
+        setNotes(data.notes || "");
         setTags(data.tags || []);
       } catch {
         setClient(null);
@@ -41,24 +43,36 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
 
   const handleSave = async () => {
     if (!conversation?.id) return;
-    setSaving(true);
+    setIsSaving(true);
     try {
+      const payload = {};
+      if (birthDate && birthDate !== (client?.birthdate || "")) {
+        const iso = birthDate.includes("/")
+          ? birthDate.split("/").reverse().join("-")
+          : birthDate;
+        payload.birthdate = iso;
+      }
+      if (notes !== (client?.notes || "")) payload.notes = notes;
+      if (JSON.stringify(tags) !== JSON.stringify(client?.tags || [])) payload.tags = tags;
+
+      if (Object.keys(payload).length === 0) {
+        addToast({ kind: "info", text: "Nada para salvar" });
+        return;
+      }
+
       const { data } = await inboxApi.put(
         `/inbox/conversations/${conversation.id}/client`,
-        {
-          birthdate: birthDate || null,
-          extra_info: extraInfo || "",
-          tags,
-        }
+        payload
       );
-      setClient(data);
-      // eslint-disable-next-line no-alert
-      window.alert("Dados do cliente salvos com sucesso.");
+      setClient(data.client || data);
+      addToast({ kind: "success", text: "Dados do cliente salvos" });
     } catch (err) {
-      // eslint-disable-next-line no-alert
-      window.alert(`Erro ao salvar: ${err?.response?.data?.message || err.message}`);
+      addToast({
+        kind: "error",
+        text: `Erro ao salvar: ${err?.response?.data?.message || err.message}`,
+      });
     } finally {
-      setSaving(false);
+      setIsSaving(false);
     }
   };
 
@@ -133,8 +147,8 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
         <textarea
           className="w-full px-3 py-2 border rounded-lg text-sm min-h-[140px] max-h-[320px] overflow-auto"
           placeholder="Observações gerais, preferências, histórico…"
-          value={extraInfo}
-          onChange={(e) => setExtraInfo(e.target.value)}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
           disabled={!conversation}
         />
       </div>
@@ -184,12 +198,12 @@ export default function ClientDetailsPanel({ conversation, onApplyTags }) {
         <button
           type="button"
           className={`w-full px-4 py-2 rounded-lg text-white ${
-            saving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
+            isSaving ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
           }`}
           onClick={handleSave}
-          disabled={!conversation || saving}
+          disabled={!conversation || isSaving}
         >
-          {saving ? "Salvando..." : "Salvar alterações"}
+          {isSaving ? "Salvando..." : "Salvar alterações"}
         </button>
       </div>
     </div>

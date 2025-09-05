@@ -2,8 +2,8 @@ import normalizeMessage from './normalizeMessage';
 
 describe('normalizeMessage', () => {
   it('infers direction and author', () => {
-    const msg = normalizeMessage({ id: 1, text: 'hi', author: 'agent' });
-    expect(msg.direction).toBe('outbound');
+    const msg = normalizeMessage({ id: 1, text: 'hi', sender: 'agent' });
+    expect(msg.direction).toBe('out');
     expect(msg.author).toBe('agent');
     expect(msg.isMine).toBe(true);
   });

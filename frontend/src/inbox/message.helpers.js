@@ -8,8 +8,9 @@ export function normalizeDirection(d) {
 }
 
 export function isMineMessage(msg) {
-  const dir = normalizeDirection(msg.direction);
-  if (msg.sender === 'agent') return true;     // banco ajuda
-  if (msg.sender === 'contact') return false;
-  return dir === 'out'; // fallback
+  // prioriza sender quando existir
+  if (msg?.sender === 'agent')   return true;
+  if (msg?.sender === 'contact') return false;
+  // fallback por direction
+  return normalizeDirection(msg?.direction) === 'out';
 }
