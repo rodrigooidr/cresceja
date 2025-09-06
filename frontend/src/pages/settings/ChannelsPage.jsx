@@ -66,6 +66,15 @@ export default function ChannelsPage() {
         <button onClick={() => setTab('facebook')}>Facebook</button>
       </div>
 
+      <div className="mb-4 text-right">
+        <button
+          className="px-3 py-1 bg-blue-600 text-white"
+          onClick={load}
+        >
+          Verificar Conectividade
+        </button>
+      </div>
+
       {tab === 'whatsapp' && (
         <div>
           <WhatsAppOfficialCard data={summary.whatsapp_official} refresh={load} />
