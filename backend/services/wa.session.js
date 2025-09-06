@@ -2,7 +2,6 @@ import { randomBytes } from 'crypto';
 
 let impl = null;
 try {
-  // tenta usar serviço real se existir
   const mod = await import('./whatsappSession.js');
   impl = mod?.default || mod;
 } catch {
@@ -18,15 +17,19 @@ function fakeQr() {
 
 export async function start(orgId, io) {
   status = 'connecting';
+  let qr = null;
   if (impl && impl.createSession) {
     await impl.createSession(String(orgId));
-    const qr = impl.getQR ? impl.getQR() : null;
-    if (qr) io?.to(`org:${orgId}`).emit('wa:qrcode', qr);
-    return impl.getStatus ? impl.getStatus() : { status };
+    qr = impl.getQR ? impl.getQR() : null;
+    const st = impl.getStatus ? impl.getStatus() : { status };
+    io?.emit('wa:session:status', { status: st.status || status });
+    if (qr) io?.emit('wa:session:qr', { qr });
+    return st;
   }
-  const qr = fakeQr();
-  io?.to(`org:${orgId}`).emit('wa:qrcode', qr);
+  qr = fakeQr();
+  io?.emit('wa:session:qr', { qr });
   status = 'connected';
+  io?.emit('wa:session:status', { status });
   return { status };
 }
 
@@ -35,10 +38,15 @@ export function getStatus() {
   return { status };
 }
 
-export async function logout() {
+export async function logout(orgId, io) {
   if (impl && impl.logout) await impl.logout();
   status = 'disconnected';
+  io?.emit('wa:session:status', { status });
   return { ok: true };
 }
 
-export default { start, getStatus, logout };
+export function test() {
+  return { status, ws_ok: true, inbound_recent: true };
+}
+
+export default { start, getStatus, logout, test };

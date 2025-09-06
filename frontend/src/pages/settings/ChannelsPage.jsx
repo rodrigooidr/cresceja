@@ -5,6 +5,7 @@ import WhatsAppOfficialCard from '../../components/settings/WhatsAppOfficialCard
 import WhatsAppBaileysCard from '../../components/settings/WhatsAppBaileysCard';
 import InstagramCard from '../../components/settings/InstagramCard';
 import FacebookCard from '../../components/settings/FacebookCard';
+import GoogleCalendarCard from '../../components/settings/GoogleCalendarCard';
 
 export default function ChannelsPage() {
   const [tab, setTab] = useState('whatsapp');
@@ -91,6 +92,10 @@ export default function ChannelsPage() {
       {tab === 'facebook' && (
         <FacebookCard data={summary.facebook} refresh={load} />
       )}
+
+      <div className="mt-6">
+        <GoogleCalendarCard refresh={load} />
+      </div>
     </div>
   );
 }
