@@ -1,100 +1,112 @@
 import React, { useState } from 'react';
 import inboxApi from '../../api/inboxApi';
 import ChannelCard from './ChannelCard';
-import Dialog from './ChannelWizard/Dialog';
 
-function WhatsAppOfficialCard({ data, refresh }) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [showVerify, setShowVerify] = useState(null); // id
-  const max = data?.max_numbers || 0;
-  const items = data?.items || [];
+function Badge({ state }) {
+  const map = {
+    green: 'bg-green-600 text-white',
+    yellow: 'bg-amber-500 text-white',
+    red: 'bg-red-600 text-white',
+  };
+  const cls = map[state] || map.red;
+  const icon = state === 'green' ? '🟢' : state === 'yellow' ? '🟡' : '🔴';
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${cls}`}>
+      {icon}
+    </span>
+  );
+}
 
-  const canAdd = items.length < max;
+export default function WhatsAppOfficialCard({ data, refresh }) {
+  const [phone, setPhone] = useState('');
+  const [token, setToken] = useState('');
+  const [tests, setTests] = useState([]);
 
-  async function handleAdd(e) {
+  async function handleConnect(e) {
     e.preventDefault();
-    const form = e.target;
-    const body = {
-      label: form.label.value,
-      phone_e164: form.phone.value,
-    };
-    await inboxApi.post('/channels/whatsapp/official/numbers', body);
-    setShowAdd(false);
+    await inboxApi.post('/integrations/whatsapp/cloud/connect', {
+      phone_number_id: phone,
+      token,
+    });
+    setPhone('');
+    setToken('');
     refresh();
   }
 
-  async function handleVerify(e) {
-    e.preventDefault();
-    const code = e.target.code.value;
-    const id = showVerify;
-    await inboxApi.post(`/channels/whatsapp/official/numbers/${id}/verify`, { code });
-    setShowVerify(null);
+  async function handleDisconnect() {
+    await inboxApi.post('/integrations/whatsapp/cloud/disconnect');
     refresh();
   }
 
-  async function handleRemove(id) {
-    await inboxApi.delete(`/channels/whatsapp/official/numbers/${id}`);
-    refresh();
+  async function verify() {
+    const res = [];
+    try {
+      const { data: s } = await inboxApi.get('/integrations/whatsapp/cloud/status');
+      const st = s.status === 'connected' ? 'green' : s.status === 'connecting' ? 'yellow' : 'red';
+      res.push({ label: 'Token/ID', state: st });
+    } catch {
+      res.push({ label: 'Token/ID', state: 'red' });
+    }
+    try {
+      const { data: w } = await inboxApi.get('/integrations/whatsapp/cloud/webhook-check');
+      res.push({ label: 'Webhook', state: w.verified ? 'green' : 'yellow' });
+    } catch {
+      res.push({ label: 'Webhook', state: 'red' });
+    }
+    setTests(res);
   }
 
   return (
     <ChannelCard title="WhatsApp Oficial" testId="card-wa-official">
-      <ul>
-        {items.map((n) => (
-          <li key={n.id} className="mb-1">
-            {n.label} - {n.phone_e164} ({n.status})
-            {n.status !== 'connected' && (
-              <button
-                data-testid="waof-verify"
-                className="ml-2 text-blue-600"
-                onClick={() => setShowVerify(n.id)}
-              >
-                Verificar
-              </button>
-            )}
-            <button
-              data-testid="waof-remove"
-              className="ml-2 text-red-600"
-              onClick={() => handleRemove(n.id)}
-            >
-              Remover
-            </button>
-          </li>
-        ))}
-      </ul>
-      <button
-        data-testid="waof-add-number"
-        disabled={!canAdd}
-        className="mt-2 px-3 py-1 bg-blue-500 text-white disabled:opacity-50"
-        onClick={() => setShowAdd(true)}
-      >
-        Adicionar número
-      </button>
-
-      {showAdd && (
-        <Dialog onClose={() => setShowAdd(false)}>
-          <form onSubmit={handleAdd} className="space-y-2">
-            <input name="label" placeholder="Label" className="border p-1 w-full" />
-            <input name="phone" placeholder="Telefone" className="border p-1 w-full" />
-            <button data-testid="wizard-finish" type="submit" className="px-3 py-1 bg-blue-500 text-white">
-              Salvar
-            </button>
-          </form>
-        </Dialog>
+      {data.status === 'connected' ? (
+        <div className="flex items-center justify-between">
+          <div>Conectado{data.phone_number_id ? ` (${data.phone_number_id})` : ''}</div>
+          <button
+            className="px-3 py-1 bg-red-600 text-white"
+            onClick={handleDisconnect}
+          >
+            Desconectar
+          </button>
+        </div>
+      ) : (
+        <form onSubmit={handleConnect} className="space-y-2">
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Phone Number ID"
+            className="border p-1 w-full"
+          />
+          <input
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="Access Token"
+            className="border p-1 w-full"
+          />
+          <button type="submit" className="px-3 py-1 bg-blue-600 text-white">
+            Conectar
+          </button>
+        </form>
       )}
 
-      {showVerify && (
-        <Dialog onClose={() => setShowVerify(null)}>
-          <form onSubmit={handleVerify} className="space-y-2">
-            <input name="code" placeholder="Código" className="border p-1 w-full" />
-            <button data-testid="wizard-finish" type="submit" className="px-3 py-1 bg-blue-500 text-white">
-              Verificar
-            </button>
-          </form>
-        </Dialog>
+      <div className="mt-4">
+        <button
+          className="px-3 py-1 bg-gray-100"
+          onClick={verify}
+        >
+          Verificar Conectividade
+        </button>
+      </div>
+
+      {tests.length > 0 && (
+        <ul className="mt-2">
+          {tests.map((t) => (
+            <li key={t.label} className="flex items-center gap-2 text-sm mb-1">
+              <span>{t.label}</span>
+              <Badge state={t.state} />
+            </li>
+          ))}
+        </ul>
       )}
     </ChannelCard>
   );
 }
-
-export default WhatsAppOfficialCard;
