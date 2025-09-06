@@ -1,17 +1,23 @@
 // frontend/src/test/setupTests.ts
 import '@testing-library/jest-dom';
-import '@testing-library/jest-dom';
- 
- // Polyfills úteis no JSDOM
- if (!('createObjectURL' in URL)) {
-   // @ts-ignore
-@@ -12,6 +13,48 @@ if (!('scrollTo' in window)) {
-   window.scrollTo = jest.fn();
- }
 
-if (!Element.prototype.scrollIntoView) {
+// ---------------- Polyfills base ----------------
+// Polyfills úteis no JSDOM
+if (!('createObjectURL' in URL)) {
+  // @ts-ignore
+  URL.createObjectURL = jest.fn(() => 'blob://mock');
+}
+if (!('scrollTo' in window)) {
+  // @ts-ignore
+  window.scrollTo = jest.fn();
+}
+
+// Alguns componentes/libraries usam scrollIntoView/GBCR
+// Evita erros em testes que interagem com listas/menus
 // @ts-ignore
- Element.prototype.scrollIntoView = jest.fn();
+if (!Element.prototype.scrollIntoView) {
+  // @ts-ignore
+  Element.prototype.scrollIntoView = jest.fn();
 }
 if (!Element.prototype.getBoundingClientRect) {
   // @ts-ignore
@@ -52,14 +58,39 @@ if (typeof (global as any).ResizeObserver === 'undefined') {
   };
 }
 
-   // Polyfills úteis no JSDOM
-if (!('createObjectURL' in URL)) {
+// ---------------- matchMedia / fetch / WebSocket (comuns nas telas de integrações) ----------------
+// matchMedia para CSS queries e libs de UI
+// @ts-ignore
+if (typeof (window as any).matchMedia === 'undefined') {
   // @ts-ignore
-  URL.createObjectURL = jest.fn(() => 'blob://mock');
+  window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: jest.fn(), // deprecated
+    removeListener: jest.fn(), // deprecated
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  }));
 }
-if (!('scrollTo' in window)) {
+// fetch simples (evita falha caso algum trecho use fetch direto)
+// @ts-ignore
+if (typeof (global as any).fetch === 'undefined') {
   // @ts-ignore
-  window.scrollTo = jest.fn();
+  (global as any).fetch = jest.fn(async () => ({ ok: true, json: async () => ({}) }));
+}
+// WebSocket mock (algumas páginas podem tentar conectar sockets durante testes)
+// @ts-ignore
+if (typeof (global as any).WebSocket === 'undefined') {
+  // @ts-ignore
+  (global as any).WebSocket = class {
+    constructor() {}
+    close() {}
+    send() {}
+    addEventListener() {}
+    removeEventListener() {}
+  };
 }
 
 // Mock global do PopoverPortal (evita erro de portal/dom)
