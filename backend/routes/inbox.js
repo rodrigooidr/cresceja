@@ -3,9 +3,13 @@
 // Mantém:  GET /api/inbox/conversations  e POST /api/inbox/messages
 
 import { Router } from 'express';
+import multer from 'multer';
+import fs from 'fs/promises';
 import { query } from '../config/db.js';
+import { UPLOAD_DIR, saveBuffer } from '../services/storage.js';
 
 const r = Router();
+const upload = multer({ dest: UPLOAD_DIR });
 
 async function getResolvedSchema(table) {
   const q = await query(
@@ -124,14 +128,15 @@ r.get('/conversations/:id/messages', async (req, res) => {
 });
 
 // ---------- POST /api/inbox/messages
-r.post('/messages', async (req, res) => {
+r.post('/messages', upload.single('file'), async (req, res) => {
   try {
     const body = req.body || {};
     const conversationId = body.conversationId || body.conversation_id;
     const text = (body.message ?? body.text ?? '').toString().trim();
     const msgType = (body.type || 'text').toString();
+    const file = req.file;
     if (!conversationId) return res.status(400).json({ error: 'conversationId required' });
-    if (!text) return res.status(400).json({ error: 'message required' });
+    if (!text && !file) return res.status(400).json({ error: 'message required' });
 
     const orgId = req.user?.org_id || req.user?.orgId || null;
 
@@ -167,6 +172,24 @@ r.post('/messages', async (req, res) => {
     else if (MC.has('body')) push('body', text);
     else return res.status(500).json({ error: 'messages_schema_unsupported_no_text' });
 
+    const attachments = [];
+    if (file) {
+      try {
+        const buf = await fs.readFile(file.path);
+        const saved = await saveBuffer(buf, file.originalname || 'file.bin');
+        attachments.push({
+          id: saved.fileName,
+          url: saved.url,
+          filename: file.originalname,
+          mime: file.mimetype,
+        });
+        await fs.unlink(file.path).catch(() => {});
+      } catch (e) {
+        console.error('[inbox] attachment save failed:', e);
+      }
+    }
+    if (attachments.length && MC.has('attachments')) push('attachments', attachments);
+
     const sql = `INSERT INTO messages (${fields.join(', ')})
                  VALUES (${params.join(', ')})
                  RETURNING *`;
@@ -174,6 +197,7 @@ r.post('/messages', async (req, res) => {
     try {
       const { rows } = await query(sql, values);
       const inserted = rows[0];
+      if (attachments.length && !inserted.attachments) inserted.attachments = attachments;
       await touchConversation(conversationId);
 
       try {
@@ -199,7 +223,8 @@ r.post('/messages', async (req, res) => {
   }
 });
 
-// Evita 404 no carregamento de templates
+// Templates e respostas rápidas (placeholders)
 r.get('/templates', async (req, res) => res.status(200).json([]));
+r.get('/quick-replies', async (req, res) => res.status(200).json([]));
 
 export default r;

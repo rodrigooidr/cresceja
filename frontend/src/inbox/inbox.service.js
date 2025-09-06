@@ -1,5 +1,5 @@
 // src/inbox/inbox.service.js
-import inboxApi from 'api/inboxApi';
+import inboxApi from '../api/inboxApi';
 
 /**
  * Lista conversas: aceita resposta como array puro OU { items: [...] }.
@@ -88,25 +88,36 @@ export async function getMessages(conversationId, { limit = 50 } = {}) {
   }
   return { items, total: items.length };
 }
+
+/** Lista templates disponíveis. */
+export async function listTemplates() {
+  try {
+    const { data } = await inboxApi.get('/inbox/templates');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Lista respostas rápidas disponíveis. */
+export async function listQuickReplies() {
+  try {
+    const { data } = await inboxApi.get('/inbox/quick-replies');
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
 /**
  * Envia mensagem (texto ou arquivo) para a conversa.
  */
 export async function sendMessage({ conversationId, text, file }) {
   const trimmed = (text ?? '').trim();
   if (!trimmed && !file) return { skipped: true };
-
-  // Envio com arquivo (multipart)
-  if (file) {
-    const fd = new FormData();
-    fd.append('conversationId', conversationId);
-    fd.append('file', file);
-    if (trimmed) fd.append('message', trimmed); // só envia texto se houver
-    const { data } = await inboxApi.post('/inbox/messages', fd, { _skipRewrite: true });
-    return data;
-  }
-
-  // Envio de texto puro (JSON)
-  const payload = { conversationId, message: trimmed };
-  const { data } = await inboxApi.post('/inbox/messages', payload, { _skipRewrite: true });
+  const fd = new FormData();
+  fd.append('conversationId', conversationId);
+  if (trimmed) fd.append('message', trimmed);
+  if (file) fd.append('file', file);
+  const { data } = await inboxApi.post('/inbox/messages', fd, { _skipRewrite: true });
   return data;
 }

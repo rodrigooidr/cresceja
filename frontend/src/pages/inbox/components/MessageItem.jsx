@@ -15,8 +15,8 @@ export default function MessageItem({ msg, registerRef }) {
   const bubble =
     bubbleBase +
     (isMine
-      ? " bg-blue-600 text-white rounded-tr-sm self-end ml-auto"
-      : " bg-gray-100 text-gray-900 rounded-tl-sm self-start mr-auto");
+      ? " bg-blue-600 text-white rounded-tr-sm self-end ml-auto text-right"
+      : " bg-gray-100 text-gray-900 rounded-tl-sm self-start mr-auto text-left");
 
   return (
     <div className={`w-full flex ${rowJustify}`} ref={registerRef}>
@@ -53,7 +53,8 @@ function renderMessageBody(m) {
               className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-white text-blue-700 border"
               title="Abrir/baixar arquivo"
             >
-              📎<span className="truncate max-w-[220px]">{att.filename || "arquivo"}</span>
+              {mimeIcon(att.mime)}
+              <span className="truncate max-w-[220px]">{att.filename || "arquivo"}</span>
             </a>
           )
         )}
@@ -90,6 +91,18 @@ function renderMessageBody(m) {
   }
 
   return <span className="whitespace-pre-wrap break-words">{m.text || " "}</span>;
+}
+
+function mimeIcon(mime = "") {
+  if (!mime) return "📎";
+  if (mime.startsWith("image/")) return "🖼️";
+  if (mime.startsWith("video/")) return "🎞️";
+  if (mime.startsWith("audio/")) return "🎵";
+  if (mime.includes("pdf")) return "📄";
+  if (mime.includes("excel") || mime.includes("spreadsheet")) return "📊";
+  if (mime.includes("powerpoint") || mime.includes("presentation")) return "📈";
+  if (mime.includes("word")) return "📄";
+  return "📎";
 }
 
 // utils
