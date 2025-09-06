@@ -22,6 +22,7 @@ import metaWebhookRouter from './routes/webhooks/meta.js';
 import igRouter from './routes/webhooks/instagram.js';
 import fbRouter from './routes/webhooks/messenger.js';
 import waWebhookRouter from './routes/webhooks/whatsapp.js';
+import metaPagesWebhookRouter from './routes/webhooks/meta.pages.js';
 import uploadsRouter from './routes/uploads.js';
 import lgpdRouter from './routes/lgpd.js';
 import crmRouter from './routes/crm.js';
@@ -37,6 +38,9 @@ import whatsappRouter from './routes/whatsapp.js';
 import whatsappTemplatesRouter from './routes/whatsapp_templates.js';
 import agendaRouter from './routes/agenda_whatsapp.js';
 import integrationsRouter from './routes/integrations.js';
+import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
+import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
+import metaOauthIntegrationRouter from './routes/integrations/meta.oauth.js';
 import orgsRouter from './routes/orgs.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
@@ -107,6 +111,7 @@ async function init() {
   app.use('/api/webhooks/instagram', igRouter);
   app.use('/api/webhooks/messenger', fbRouter);
   app.use('/api/webhooks/whatsapp', waWebhookRouter);
+  app.use('/api/webhooks/meta-pages', metaPagesWebhookRouter);
 
   // Meta com validação X-Hub-Signature-256 (precisa raw body)
   app.use('/api/webhooks', express.raw({ type: 'application/json' }), metaWebhookRouter);
@@ -161,6 +166,9 @@ async function init() {
   app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
   app.use('/api/agenda', agendaRouter);
   app.use('/api/integrations', integrationsRouter);
+  app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);
+  app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter);
+  app.use('/api/integrations', metaOauthIntegrationRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
 

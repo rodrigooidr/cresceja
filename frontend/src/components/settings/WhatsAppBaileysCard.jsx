@@ -1,6 +1,11 @@
 // src/components/settings/WhatsAppBaileysCard.jsx
 import React, { useEffect, useState } from "react";
-import inboxApi from "../../api/inboxApi"; // ajuste o caminho se necessário
+import { makeSocket } from "../../sockets/socket";
+import {
+  startWaSession,
+  getWaSessionStatus,
+  logoutWaSession,
+} from "../../api/integrations.service";
 
 export default function WhatsAppBaileysCard({ enabled }) {
   // ✅ Hooks SEMPRE no topo
@@ -13,14 +18,17 @@ export default function WhatsAppBaileysCard({ enabled }) {
     // Se não estiver habilitado, apenas não faz nada (mas o hook é chamado!)
     if (!enabled) return;
 
+    const sock = makeSocket();
+    sock.on("wa:qrcode", (code) => { if (alive) setQr(code); });
+
     async function boot() {
       try {
-        setStatus("connecting");
-        const { data } = await inboxApi.get("/settings/whatsapp/baileys/session");
+        const { data } = await getWaSessionStatus();
         if (!alive) return;
-
-        if (data?.qr) setQr(data.qr);
-        setStatus(data?.connected ? "connected" : "connecting");
+        setStatus(data?.status || "disconnected");
+        if ((data?.status || "disconnected") === "disconnected") {
+          await startWaSession();
+        }
       } catch (err) {
         if (!alive) return;
         setStatus("error");
@@ -31,8 +39,16 @@ export default function WhatsAppBaileysCard({ enabled }) {
 
     return () => {
       alive = false;
+      sock.off("wa:qrcode");
+      sock.close();
     };
   }, [enabled]);
+
+  async function handleLogout() {
+    await logoutWaSession();
+    setStatus("disconnected");
+    setQr(null);
+  }
 
   // ✅ O retorno condicional pode vir AQUI (depois dos hooks)
   if (!enabled) {
@@ -65,6 +81,15 @@ export default function WhatsAppBaileysCard({ enabled }) {
             Escaneie o QR Code no WhatsApp para conectar.
           </p>
         </div>
+      )}
+
+      {status === "connected" && (
+        <button
+          className="mt-2 px-3 py-1 bg-red-600 text-white"
+          onClick={handleLogout}
+        >
+          Logout
+        </button>
       )}
     </div>
   );
