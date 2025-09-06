@@ -1,19 +1,26 @@
 // src/pages/inbox/components/MessageItem.jsx
 import React from "react";
-import { isMineMessage } from "@/inbox/message.helpers";
+import { isMineMessage } from "inbox/message.helpers";
 
 export default function MessageItem({ msg, registerRef }) {
   const isMine = isMineMessage(msg);
-  const align = isMine ? "items-end" : "items-start";
+
+  // alinhar no eixo principal (horizontal)
+  const rowJustify = isMine ? "justify-end" : "justify-start";
+
+  // bolha: sempre preserva quebras de linha e quebra palavras longas
+  const bubbleBase =
+    "max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words";
+
   const bubble =
-    "max-w-[75%] px-3 py-2 rounded-2xl text-sm break-words " +
+    bubbleBase +
     (isMine
-      ? "bg-blue-600 text-white rounded-tr-sm"
-      : "bg-gray-100 text-gray-900 rounded-tl-sm");
+      ? " bg-blue-600 text-white rounded-tr-sm self-end ml-auto"
+      : " bg-gray-100 text-gray-900 rounded-tl-sm self-start mr-auto");
 
   return (
-    <div className={`w-full flex ${align}`} ref={registerRef}>
-      <div className="flex flex-col gap-1">
+    <div className={`w-full flex ${rowJustify}`} ref={registerRef}>
+      <div className={`flex flex-col gap-1 ${isMine ? "items-end" : "items-start"}`}>
         <div className={bubble}>{renderMessageBody(msg)}</div>
         <div className={`text-[10px] text-gray-500 ${isMine ? "text-right" : "text-left"}`}>
           <span>{formatTime(msg.created_at)}</span>
@@ -30,12 +37,7 @@ function renderMessageBody(m) {
       <div className="flex flex-col gap-2">
         {m.attachments.map((att) =>
           att.mime && att.mime.startsWith("image/") ? (
-            <a
-              key={att.id}
-              href={att.url}
-              target="_blank"
-              rel="noopener"
-            >
+            <a key={att.id} href={att.url} target="_blank" rel="noopener noreferrer">
               <img
                 src={att.thumb_url || att.url}
                 alt={att.filename || "imagem"}
@@ -47,7 +49,7 @@ function renderMessageBody(m) {
               key={att.id}
               href={att.url}
               target="_blank"
-              rel="noopener"
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-white text-blue-700 border"
               title="Abrir/baixar arquivo"
             >
@@ -62,7 +64,7 @@ function renderMessageBody(m) {
 
   if (m.type === "image" && m.media_url) {
     return (
-      <a href={m.media_url} target="_blank" rel="noopener" className="block" title="Abrir imagem">
+      <a href={m.media_url} target="_blank" rel="noopener noreferrer" className="block" title="Abrir imagem">
         <img src={m.media_url} alt={m.file_name || "imagem"} className="rounded-md max-h-72 object-contain" />
         {m.text && <p className="mt-2">{m.text}</p>}
       </a>
@@ -77,7 +79,7 @@ function renderMessageBody(m) {
         <a
           href={m.media_url}
           target="_blank"
-          rel="noopener"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-white text-blue-700 border"
           title="Abrir/baixar arquivo"
         >
@@ -87,7 +89,7 @@ function renderMessageBody(m) {
     );
   }
 
-  return <span style={{ whiteSpace: "pre-wrap" }}>{m.text || " "}</span>;
+  return <span className="whitespace-pre-wrap break-words">{m.text || " "}</span>;
 }
 
 // utils

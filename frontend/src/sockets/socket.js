@@ -1,36 +1,23 @@
-import { io } from 'socket.io-client';
-import { API_BASE_URL } from 'api/inboxApi';
+// src/sockets/socket.js
+import { io } from "socket.io-client";
+import { API_BASE_URL } from "../api/inboxApi";
 
-let socket = null;
+function pickOriginFromApi(base) {
+  try { return base.replace(/\/api\/?$/, ""); } catch { return base; }
+}
 
 export function makeSocket() {
-  const token = localStorage.getItem('token');
-  if (!token) return null;
-
-  const apiOrigin = API_BASE_URL.replace(/\/api$/, '');
-  socket = io(apiOrigin, {
-    path: '/socket.io',
-    transports: ['websocket'],
-    auth: { token },
-    // Se servidor exigir header:
-    extraHeaders: { Authorization: `Bearer ${token}` },
+  const origin = pickOriginFromApi(API_BASE_URL);
+  const socket = io(origin, {
+    path: "/socket.io",
+    transports: ["websocket", "polling"],
+    withCredentials: true,
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 500,
+    timeout: 10000,
+    autoConnect: true,
   });
-
   return socket;
 }
-
-// Também exporta como default para cobrir imports legacy
 export default makeSocket;
-
-export function getSocket() {
-  return socket;
-}
-
-export function __resetSocketForTests() {
-  try {
-    socket?.close?.();
-    socket?.disconnect?.();
-  } finally {
-    socket = null;
-  }
-}

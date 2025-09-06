@@ -1,9 +1,12 @@
 // src/pages/inbox/components/MessageComposer.jsx
 import React, { useEffect, useRef, useState } from "react";
+import PopoverPortal from "ui/PopoverPortal";
 import QuickReplyModal from "./QuickReplyModal.jsx";
+import inboxApi from "../../../api/inboxApi"; // usa axios com Authorization
+import { getDraft, setDraft, clearDraft } from "../../../inbox/drafts.store";
 
 function useOutsideClose(ref, onClose, deps = []) {
-  React.useEffect(() => {
+  useEffect(() => {
     function onDoc(e) {
       if (ref.current && !ref.current.contains(e.target)) onClose?.();
     }
@@ -21,85 +24,116 @@ function useOutsideClose(ref, onClose, deps = []) {
 }
 
 export default function MessageComposer({ onSend, sel, onFiles }) {
+  const convId = sel?.id || sel?.conversation_id || null;
+
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
+
   const [showEmoji, setShowEmoji] = useState(false);
   const [showQuick, setShowQuick] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+
   const [quickReplies] = useState([]);
   const [templates, setTemplates] = useState([]);
 
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
+
+  // âncoras dos popovers
+  const emojiBtnRef = useRef(null);
+  const quickBtnRef = useRef(null);
+  const templatesBtnRef = useRef(null);
+
+  // nós internos (para outside click)
   const emojiRef = useRef(null);
   const quickRef = useRef(null);
   const templatesRef = useRef(null);
 
-  useOutsideClose(emojiRef, () => setShowEmoji(false), [sel?.id]);
-  useOutsideClose(quickRef, () => setShowQuick(false), [sel?.id]);
-  useOutsideClose(templatesRef, () => setShowTemplates(false), [sel?.id]);
+  useOutsideClose(emojiRef, () => setShowEmoji(false), [convId, showEmoji]);
+  useOutsideClose(quickRef, () => setShowQuick(false), [convId, showQuick]);
+  useOutsideClose(templatesRef, () => setShowTemplates(false), [convId, showTemplates]);
 
+  // ---------- Helpers de rascunho ----------
+  const setTextAndDraft = (valueOrUpdater) => {
+    setText((prev) => {
+      const next =
+        typeof valueOrUpdater === "function" ? valueOrUpdater(prev) : valueOrUpdater;
+      if (convId) setDraft(convId, next);
+      return next;
+    });
+  };
+
+  // Ao trocar de conversa: fecha popovers e carrega rascunho dessa conversa
   useEffect(() => {
-    fetch('/inbox/templates')
-      .then((r) => r.json())
-      .then((data) => Array.isArray(data) && setTemplates(data))
+    setShowEmoji(false);
+    setShowQuick(false);
+    setShowTemplates(false);
+    setText(getDraft(convId) || "");
+  }, [convId]);
+
+  // Buscar templates com Authorization
+  useEffect(() => {
+    inboxApi
+      .get("/inbox/templates")
+      .then(({ data }) => {
+        if (Array.isArray(data)) setTemplates(data);
+      })
       .catch(() => {});
   }, []);
 
+  // ---------- Quick replies / Templates / Emojis ----------
   const onSelectQuick = (q) => {
     const content = q?.content || q?.text || "";
-    setText((t) => (t ? `${t} ${content}` : content));
+    setTextAndDraft((t) => (t ? `${t} ${content}` : content));
     setShowQuick(false);
   };
   const onPickTemplate = (t) => {
-    const content = t?.content || "";
-    setText((cur) => (cur ? `${cur} ${content}` : content));
+    const content = t?.content || t?.text || "";
+    setTextAndDraft((cur) => (cur ? `${cur} ${content}` : content));
     setShowTemplates(false);
   };
 
+  // ---------- Arquivos, paste e drag ----------
   const handleFileChange = (e) => {
     onFiles?.(e.target.files);
     e.target.value = "";
   };
-
   const handlePaste = (e) => {
     const files = e.clipboardData?.files;
     if (files?.length) onFiles?.(files);
   };
-
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (dropRef.current) dropRef.current.classList.add("ring-2", "ring-blue-400");
+    dropRef.current?.classList.add("ring-2", "ring-blue-400");
   };
   const handleDragLeave = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (dropRef.current) dropRef.current.classList.remove("ring-2", "ring-blue-400");
+    dropRef.current?.classList.remove("ring-2", "ring-blue-400");
   };
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (dropRef.current) dropRef.current.classList.remove("ring-2", "ring-blue-400");
+    dropRef.current?.classList.remove("ring-2", "ring-blue-400");
     onFiles?.(e.dataTransfer.files);
   };
 
-  // ---------------------------
-  // Enviar
-  // ---------------------------
+  // ---------- Envio ----------
   const doSend = async () => {
     if (isSending) return;
     const trimmed = text.trim();
+    if (!trimmed) return;
     setIsSending(true);
     try {
       await onSend?.({ text: trimmed });
+      if (convId) clearDraft(convId);
       setText("");
     } finally {
       setIsSending(false);
     }
   };
 
-  // Enter envia; Shift+Enter quebra linha
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -107,9 +141,8 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
     }
   };
 
-  // ---------------------------
-  // UI
-  // ---------------------------
+  const disabled = isSending || !text.trim();
+
   return (
     <div
       className="message-composer w-full border rounded-xl bg-white shadow-sm p-2"
@@ -119,31 +152,28 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
       onDrop={handleDrop}
       ref={dropRef}
     >
-      {/* Editor + botões */}
       <div className="flex items-end gap-2">
         <textarea
           className="flex-1 resize-none px-3 py-2 border rounded-lg text-sm min-h-[44px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-400"
           placeholder="Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => setTextAndDraft(e.target.value)}
           onKeyDown={handleKeyDown}
         />
 
-        {/* Botões de ação */}
-        <div className="flex items-center gap-2 relative">
+        <div className="flex items-center gap-2">
+          {/* Emoji */}
           <button
+            ref={emojiBtnRef}
             type="button"
-            className="px-3 py-2 border rounded-lg bg-white"
+            className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
             onClick={() => setShowEmoji((v) => !v)}
             title="Emoji"
           >
             😊
           </button>
-          {showEmoji && (
-            <div
-              ref={emojiRef}
-              className="absolute bottom-12 right-0 z-20 mt-2 w-44 border rounded-lg bg-white p-2 shadow"
-            >
+          <PopoverPortal anchorEl={emojiBtnRef.current} open={showEmoji} onClose={() => setShowEmoji(false)}>
+            <div ref={emojiRef}>
               <div className="grid grid-cols-6 gap-1 text-lg">
                 {["😀","😁","😂","🤣","😊","😍","😘","😎","😅","🤔","🙌","👍","👏","🔥","✨","💬","📎","✅"].map((e) => (
                   <button
@@ -151,7 +181,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
                     type="button"
                     className="hover:bg-gray-100 rounded"
                     onClick={() => {
-                      setText((t) => t + e);
+                      setTextAndDraft((t) => t + e);
                       setShowEmoji(false);
                     }}
                   >
@@ -160,18 +190,20 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
                 ))}
               </div>
             </div>
-          )}
+          </PopoverPortal>
 
+          {/* Respostas rápidas */}
           <button
+            ref={quickBtnRef}
             type="button"
-            className="px-3 py-2 border rounded-lg bg-white"
+            className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
             onClick={() => setShowQuick((v) => !v)}
             title="Respostas rápidas"
           >
             ⚡
           </button>
-          {showQuick && (
-            <div ref={quickRef} className="absolute bottom-12 right-12 z-20">
+          <PopoverPortal anchorEl={quickBtnRef.current} open={showQuick} onClose={() => setShowQuick(false)}>
+            <div ref={quickRef} className="max-h-72 overflow-auto">
               <QuickReplyModal
                 open
                 onClose={() => setShowQuick(false)}
@@ -179,41 +211,45 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
                 onSelect={onSelectQuick}
               />
             </div>
-          )}
+          </PopoverPortal>
 
+          {/* Templates */}
           <button
+            ref={templatesBtnRef}
             type="button"
-            className="px-3 py-2 border rounded-lg bg-white"
+            className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
             onClick={() => setShowTemplates((v) => !v)}
             title="Templates"
           >
             📋
           </button>
-          {showTemplates && (
-            <div
-              ref={templatesRef}
-              className="absolute bottom-12 left-0 z-20 bg-white border rounded-lg shadow w-52 p-2"
-            >
+          <PopoverPortal
+            anchorEl={templatesBtnRef.current}
+            open={showTemplates}
+            onClose={() => setShowTemplates(false)}
+          >
+            <div ref={templatesRef} className="w-64 max-h-72 overflow-auto p-2">
               {templates.map((t) => (
                 <button
                   key={t.id}
                   type="button"
-                  className="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100"
+                  className="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100 rounded-md"
                   onClick={() => onPickTemplate(t)}
                 >
-                  {t.title}
+                  <div className="font-medium truncate">{t.title}</div>
+                  {t.text ? <div className="text-xs text-gray-500 truncate">{t.text}</div> : null}
                 </button>
               ))}
               {!templates.length && (
                 <div className="text-sm text-gray-500 px-2 py-1">Sem templates.</div>
               )}
             </div>
-          )}
+          </PopoverPortal>
 
           {/* Anexos */}
           <button
             type="button"
-            className="px-3 py-2 border rounded-lg bg-white"
+            className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
             onClick={() => fileInputRef.current?.click()}
             title="Anexar arquivo"
           >
@@ -231,11 +267,9 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           {/* Enviar */}
           <button
             type="button"
-            className={`px-4 py-2 rounded-lg text-white ${
-              isSending ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
-            }`}
+            className={`px-4 py-2 rounded-lg text-white ${disabled ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}
             onClick={doSend}
-            disabled={isSending}
+            disabled={disabled}
           >
             {isSending ? "Enviando..." : "Enviar"}
           </button>

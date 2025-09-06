@@ -1,13 +1,12 @@
 // src/pages/inbox/components/MessageList.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import inboxApi from "../../../api/inboxApi";
+import inboxApi from "api/inboxApi";
 import MessageItem from "./MessageItem";
-import { normalizeDirection } from "@/inbox/message.helpers";
+import { normalizeDirection } from "inbox/message.helpers";
 
 export default function MessageList({ loading, messages = [], conversation }) {
   const scrollRef = useRef(null);
 
-  // ---- Ordena e indexa (ASC) ----
   const indexed = useMemo(() => {
     const arr = (Array.isArray(messages) ? [...messages] : []).sort((a, b) => {
       const ta = new Date(a.created_at).getTime() || 0;
@@ -17,11 +16,9 @@ export default function MessageList({ loading, messages = [], conversation }) {
     return arr.map((m, i) => ({ ...m, __idx: i }));
   }, [messages]);
 
-  // ---- Estado de "visto" por direção (para marcadores) ----
   const [seen, setSeen] = useState({ in: new Set(), out: new Set() });
   const prevConvIdRef = useRef(null);
 
-  // Ao trocar de conversa, considera tudo atual como "visto"
   useEffect(() => {
     const cid = conversation?.id ?? null;
     const changed = prevConvIdRef.current !== cid;
@@ -40,7 +37,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
     }
   }, [conversation?.id, indexed]);
 
-  // ---- Primeiro índice NÃO visto por direção (marca “Novas …”) ----
   const firstUnseen = useMemo(() => {
     const res = { in: null, out: null };
     for (const m of indexed) {
@@ -53,7 +49,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
     return res;
   }, [indexed, seen]);
 
-  // ---- Group por dia (label Hoje/Ontem/data) ----
   const groups = useMemo(() => {
     const map = new Map();
     for (const m of indexed) {
@@ -67,21 +62,17 @@ export default function MessageList({ loading, messages = [], conversation }) {
     return Array.from(map.entries()).map(([key, value]) => ({ key, ...value }));
   }, [indexed]);
 
-  // ---- IntersectionObserver: marca vistos + agenda leitura inbound ao estilo WhatsApp ----
   const ioRef = useRef(null);
-  const nodeMapRef = useRef(new Map()); // id -> element
+  const nodeMapRef = useRef(new Map());
 
-  // Buffer para leitura WhatsApp-like
   const pendingInboundRef = useRef(new Set());
   const debounceTimerRef = useRef(null);
 
-  // Dispara PUT /read com up_to_id (fallback: message_ids)
   const flushRead = async () => {
     if (!conversation?.id) return;
     const ids = Array.from(pendingInboundRef.current);
     if (!ids.length) return;
 
-    // Estratégia WhatsApp: up_to_id = última inbound visível (maior __idx/mais recente)
     const inboundMsgs = ids
       .map((id) => indexed.find((m) => (m.id ?? `${m.created_at}-${m.__idx}`) === id))
       .filter(Boolean)
@@ -95,13 +86,11 @@ export default function MessageList({ loading, messages = [], conversation }) {
         up_to_id: last.id ?? `${last.created_at}-${last.__idx}`,
       });
     } catch {
-      // Fallback para APIs que exigem lista de ids
       try {
         await inboxApi.put(`/inbox/conversations/${conversation.id}/read`, {
           message_ids: inboundMsgs.map((m) => m.id ?? `${m.created_at}-${m.__idx}`),
         });
       } catch (err2) {
-        // eslint-disable-next-line no-console
         console.warn("Falha ao marcar como lidas (fallback ids):", err2);
       }
     } finally {
@@ -130,7 +119,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
               if (!updates[dir]) updates[dir] = new Set(seen[dir]);
               updates[dir].add(msgId);
 
-              // WhatsApp-like: só envia leitura para mensagens recebidas
               if (dir === "in") {
                 pendingInboundRef.current.add(msgId);
                 touchedInbound = true;
@@ -151,7 +139,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
     );
     ioRef.current = io;
 
-    // observar nós atuais
     for (const [, el] of nodeMapRef.current) {
       if (el) io.observe(el);
     }
@@ -159,7 +146,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seen, conversation?.id, indexed.length]);
 
-  // registra/refresca o nó do MessageItem
   const registerRef = (msg, el) => {
     const id = msg.id ?? `${msg.created_at}-${msg.__idx}`;
     if (!id) return;
@@ -180,7 +166,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
     }
   };
 
-  // ---- Conteúdo (com divisores e marcadores) ----
   const content = useMemo(() => {
     if (loading) return <Skeleton />;
     if (!conversation) return <EmptyState kind="no-conv" />;
@@ -222,7 +207,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
     );
   }, [loading, conversation, groups, firstUnseen]);
 
-  // ---- Auto-scroll ao fim ----
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -237,8 +221,6 @@ export default function MessageList({ loading, messages = [], conversation }) {
     </div>
   );
 }
-
-/* ---------- UI Auxiliares ---------- */
 
 function DayDivider({ label }) {
   return (
@@ -303,8 +285,6 @@ function EmptyState({ kind }) {
     </div>
   );
 }
-
-/* ---------- helpers de data (pt-BR) ---------- */
 
 function toLocalDate(input) {
   const d = input instanceof Date ? input : new Date(input);
