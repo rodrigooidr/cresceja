@@ -1,5 +1,6 @@
 // frontend/src/test/setupTests.ts
 import '@testing-library/jest-dom';
+jest.mock('api/inboxApi');
 
 // ---------------- Polyfills base ----------------
 // Polyfills úteis no JSDOM
@@ -95,33 +96,40 @@ if (typeof (global as any).WebSocket === 'undefined') {
 
 // Mock global do PopoverPortal (evita erro de portal/dom)
 // Sem JSX e sem anotação de tipos para reduzir atritos de build
-jest.mock('ui/PopoverPortal', () => ({
-  __esModule: true,
-  default: (props: any) => (props?.open ? props.children : null),
-}));
-
-// Mock global do inboxApi — se algum teste precisar sobrescrever,
-// use mockResolvedValueOnce nele (ex.: inboxApi.get.mockResolvedValueOnce(...))
-jest.mock('api/inboxApi', () => {
-  const makeResp = (over: any = {}) => ({ data: { items: [], ...over } });
-  const api: any = {
-    get: jest.fn(async () => makeResp()),
-    post: jest.fn(async () => makeResp()),
-    put: jest.fn(async () => makeResp()),
-    delete: jest.fn(async () => makeResp()),
-    request: jest.fn(async () => makeResp()),
-    // axios-like compat
-    interceptors: { request: { use: jest.fn(), eject: jest.fn() }, response: { use: jest.fn(), eject: jest.fn() } },
-    defaults: { headers: { common: {} as any } },
-    create: jest.fn(() => api),
+jest.mock('ui/PopoverPortal', () => {
+  const React = require('react');
+  return {
+    __esModule: true,
+    default: ({ open, children }: any) => (open ? React.createElement('div', { 'data-testid': 'popover-portal' }, children) : null),
   };
-  const helpers = {
-    setAuthToken: jest.fn(),
-    clearAuthToken: jest.fn(),
-    apiUrl: 'http://localhost:4000/api',
-  };
-  return { __esModule: true, default: api, ...helpers };
 });
+
+// socket.io-client mock (QR/status/ping-pong)
+jest.mock('socket.io-client', () => {
+  const handlers: Record<string, Function[]> = {};
+  const socket = {
+    on: (evt: string, cb: Function) => { (handlers[evt] ||= []).push(cb); return socket; },
+    off: (evt: string, cb?: Function) => {
+      if (!handlers[evt]) return socket;
+      handlers[evt] = cb ? handlers[evt].filter(h => h !== cb) : [];
+      return socket;
+    },
+    emit: (evt: string, payload?: any) => {
+      if (evt === 'wa:session:ping') {
+        (handlers['wa:session:pong'] || []).forEach(fn => fn({ ok: true }));
+      }
+    },
+    connect: () => socket,
+    disconnect: () => socket,
+    io: { opts: {} },
+  };
+  // @ts-ignore
+  global.__SOCKET_PUSH__ = (evt: string, payload: any) => {
+    (handlers[evt] || []).forEach(fn => fn(payload));
+  };
+  return { __esModule: true, io: () => socket, default: () => socket };
+});
+
 
 // Fixar Date em alguns testes (opcional, ajuda com snapshots/ordenação por data)
 const RealDate = Date;

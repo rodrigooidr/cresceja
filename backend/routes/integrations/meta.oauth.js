@@ -29,6 +29,11 @@ router.get('/ig-accounts', (_req, res) => {
   res.json({ items: [] });
 });
 
+// --- Webhook check ---
+router.get('/webhook-check', (_req, res) => {
+  res.json({ verified: false });
+});
+
 // --- Conexão Facebook ---
 router.post('/facebook/connect', async (req, res, next) => {
   try {
@@ -49,6 +54,18 @@ router.post('/facebook/connect', async (req, res, next) => {
   }
 });
 
+router.get('/facebook/status', async (req, res) => {
+  const ch = await channels.getChannel(req.orgId, 'facebook');
+  if (!ch) return res.json({ status: 'disconnected' });
+  res.json({ status: ch.status || 'connected', page_id: ch.credentials?.page_id });
+});
+
+router.get('/facebook/test', async (req, res) => {
+  const ch = await channels.getChannel(req.orgId, 'facebook');
+  const status = ch ? (ch.status || 'connected') : 'disconnected';
+  res.json({ status, webhook: false });
+});
+
 // --- Conexão Instagram ---
 router.post('/instagram/connect', async (req, res, next) => {
   try {
@@ -67,6 +84,18 @@ router.post('/instagram/connect', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+router.get('/instagram/status', async (req, res) => {
+  const ch = await channels.getChannel(req.orgId, 'instagram');
+  if (!ch) return res.json({ status: 'disconnected' });
+  res.json({ status: ch.status || 'connected', ig_id: ch.credentials?.ig_id });
+});
+
+router.get('/instagram/test', async (req, res) => {
+  const ch = await channels.getChannel(req.orgId, 'instagram');
+  const status = ch ? (ch.status || 'connected') : 'disconnected';
+  res.json({ status, webhook: false });
 });
 
 export default router;

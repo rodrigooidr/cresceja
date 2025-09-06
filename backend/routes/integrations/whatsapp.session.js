@@ -1,42 +1,28 @@
 import { Router } from 'express';
 import { authRequired, orgScope } from '../../middleware/auth.js';
-import channels from '../../services/channels.service.js';
 import waSession from '../../services/wa.session.js';
 
 const router = Router();
 router.use(authRequired, orgScope);
 
-// POST /api/integrations/whatsapp/session/start
 router.post('/start', async (req, res) => {
-  await channels.upsertChannel({
-    org_id: req.orgId,
-    type: 'whatsapp',
-    mode: 'session',
-    status: 'connecting',
-  });
-  const io = req.app.get('io');
-  await waSession.start(req.orgId, io);
-  res.json({ status: 'connecting' });
-});
-
-// GET /api/integrations/whatsapp/session/status
-router.get('/status', async (req, res) => {
-  const ch = await channels.getChannel(req.orgId, 'whatsapp');
-  if (!ch || ch.mode !== 'session') return res.json({ status: 'disconnected' });
-  res.json({ status: ch.status });
-});
-
-// POST /api/integrations/whatsapp/session/logout
-router.post('/logout', async (req, res) => {
-  await waSession.logout();
-  await channels.upsertChannel({
-    org_id: req.orgId,
-    type: 'whatsapp',
-    mode: 'session',
-    credentials: null,
-    status: 'disconnected',
-  });
+  await waSession.start(req.orgId, req.app.get('io'));
   res.json({ ok: true });
+});
+
+router.get('/status', async (_req, res) => {
+  const { status } = await waSession.getStatus();
+  res.json({ status });
+});
+
+router.post('/logout', async (req, res) => {
+  await waSession.logout(req.orgId, req.app.get('io'));
+  res.json({ ok: true });
+});
+
+router.get('/test', async (req, res) => {
+  const data = await waSession.test();
+  res.json(data);
 });
 
 export default router;

@@ -1,111 +1,61 @@
-// src/components/settings/WhatsAppBaileysCard.jsx
-import React, { useEffect, useState } from "react";
-import { makeSocket } from "../../sockets/socket";
-import {
-  startWaSession,
-  getWaSessionStatus,
-  logoutWaSession,
-} from "../../api/integrations.service";
+import React, { useEffect, useRef, useState } from 'react';
+import { waSession } from 'api/integrations.service';
+import { io } from 'socket.io-client';
+import PopoverPortal from 'ui/PopoverPortal';
 
-export default function WhatsAppBaileysCard({ enabled }) {
-  // ✅ Hooks SEMPRE no topo
-  const [status, setStatus] = useState("idle"); // idle|connecting|connected|error
-  const [qr, setQr] = useState(null);
+export default function WhatsAppBaileysCard({ data, refresh }) {
+  const [status, setStatus] = useState(data?.status || 'disconnected');
+  const [testing, setTesting] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qr, setQr] = useState('');
+  const qrBtnRef = useRef(null);
+
+  useEffect(() => { setStatus(data?.status || 'disconnected'); }, [data?.status]);
 
   useEffect(() => {
-    let alive = true;
+    const s = io('/', { path: '/socket.io', withCredentials: true, auth: {} });
+    s.on('wa:session:qr', ({ qr }) => setQr(qr));
+    s.on('wa:session:status', ({ status }) => setStatus(status));
+    return () => { s.off('wa:session:qr'); s.off('wa:session:status'); s.disconnect(); };
+  }, []);
 
-    // Se não estiver habilitado, apenas não faz nada (mas o hook é chamado!)
-    if (!enabled) return;
-
-    const sock = makeSocket();
-    sock.on("wa:qrcode", (code) => { if (alive) setQr(code); });
-
-    async function boot() {
-      try {
-        const { data } = await getWaSessionStatus();
-        if (!alive) return;
-        setStatus(data?.status || "disconnected");
-        if ((data?.status || "disconnected") === "disconnected") {
-          await startWaSession();
-        }
-      } catch (err) {
-        if (!alive) return;
-        setStatus("error");
-      }
+  const start = async () => {
+    await waSession.start();
+    setQrOpen(true);
+  };
+  const logout = async () => {
+    await waSession.logout();
+    refresh?.();
+  };
+  const test = async () => {
+    setTesting(true);
+    try {
+      const { data } = await waSession.test();
+      setStatus(data?.status || status);
+    } finally {
+      setTesting(false);
     }
-
-    boot();
-
-    return () => {
-      alive = false;
-      sock.off("wa:qrcode");
-      sock.close();
-    };
-  }, [enabled]);
-
-  async function handleLogout() {
-    await logoutWaSession();
-    setStatus("disconnected");
-    setQr(null);
-  }
-
-  // ✅ O retorno condicional pode vir AQUI (depois dos hooks)
-  if (!enabled) {
-    return (
-      <div className="border rounded-xl p-4 bg-white">
-        <p className="text-sm text-gray-600">WhatsApp via Baileys está desativado.</p>
-      </div>
-    );
-  }
+  };
 
   return (
     <div className="border rounded-xl p-4 bg-white">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm">WhatsApp (Baileys)</h3>
-        <StatusPill status={status} />
+        <span className={`inline-flex px-2 py-0.5 rounded-md ${status === 'connected' ? 'bg-green-600 text-white' : status === 'connecting' ? 'bg-amber-500 text-white' : status === 'error' ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-800'}`}>{status}</span>
       </div>
 
-      {status === "connecting" && (
-        <p className="mt-2 text-sm text-gray-600">Aguardando pareamento…</p>
-      )}
+      <div className="mt-2 flex gap-2">
+        <button className="btn btn-primary" onClick={start}>Iniciar sessão</button>
+        <button className="btn" ref={qrBtnRef} onClick={() => setQrOpen(v => !v)}>Mostrar QR</button>
+        <button className="btn btn-danger" onClick={logout}>Desconectar</button>
+        <button className="btn" disabled={testing} onClick={test}>Testar</button>
+      </div>
 
-      {qr && (
-        <div className="mt-3">
-          <img
-            src={qr}
-            alt="QR Code"
-            className="w-48 h-48 object-contain border rounded"
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            Escaneie o QR Code no WhatsApp para conectar.
-          </p>
+      <PopoverPortal anchorEl={qrBtnRef.current} open={qrOpen} onClose={() => setQrOpen(false)}>
+        <div className="p-3">
+          {qr ? <img alt="QR" src={qr} className="w-56 h-56" /> : <div className="text-sm">Aguardando QR…</div>}
         </div>
-      )}
-
-      {status === "connected" && (
-        <button
-          className="mt-2 px-3 py-1 bg-red-600 text-white"
-          onClick={handleLogout}
-        >
-          Logout
-        </button>
-      )}
+      </PopoverPortal>
     </div>
-  );
-}
-
-function StatusPill({ status }) {
-  const map = {
-    idle: { label: "Inativo", cls: "bg-gray-100 text-gray-700" },
-    connecting: { label: "Conectando", cls: "bg-yellow-100 text-yellow-700" },
-    connected: { label: "Conectado", cls: "bg-green-100 text-green-700" },
-    error: { label: "Erro", cls: "bg-red-100 text-red-700" },
-  };
-  const s = map[status] || map.idle;
-  return (
-    <span className={`px-2 py-0.5 rounded text-xs border ${s.cls}`}>
-      {s.label}
-    </span>
   );
 }

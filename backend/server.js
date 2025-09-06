@@ -41,6 +41,7 @@ import integrationsRouter from './routes/integrations.js';
 import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
 import metaOauthIntegrationRouter from './routes/integrations/meta.oauth.js';
+import gcalRouter from './routes/integrations/google.calendar.js';
 import orgsRouter from './routes/orgs.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
@@ -170,6 +171,7 @@ async function init() {
   app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);     // ex.: /api/integrations/whatsapp/cloud/status
   app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter); // ex.: /api/integrations/whatsapp/session/status
   app.use('/api/integrations/meta', metaOauthIntegrationRouter);             // ex.: /api/integrations/meta/pages
+  app.use('/api/integrations/google/calendar', gcalRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
 
@@ -222,6 +224,7 @@ async function init() {
   io.on('connection', (socket) => {
     socket.on('inbox:join', ({ room }) => socket.join(room));
     socket.on('inbox:leave', ({ room }) => socket.leave(room));
+    socket.on('wa:session:ping', () => socket.emit('wa:session:pong', { ok: true }));
     socket.on('disconnect', () => {});
   });
 
