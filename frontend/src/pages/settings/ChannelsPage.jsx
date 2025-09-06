@@ -1,3 +1,4 @@
+// frontend/src/pages/settings/ChannelsPage.jsx
 import React, { useEffect, useState } from 'react';
 import inboxApi from '../../api/inboxApi';
 import WhatsAppOfficialCard from '../../components/settings/WhatsAppOfficialCard';
@@ -8,17 +9,54 @@ import FacebookCard from '../../components/settings/FacebookCard';
 export default function ChannelsPage() {
   const [tab, setTab] = useState('whatsapp');
   const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const safe = (r, fallback) =>
+    r?.status === 'fulfilled' && r.value?.data ? r.value.data : fallback;
 
   async function load() {
-    const { data } = await inboxApi.get('/channels/summary');
-    setSummary(data);
+    setLoading(true);
+    try {
+      const results = await Promise.allSettled([
+        // WhatsApp Cloud (oficial)
+        inboxApi.get('/integrations/whatsapp/cloud/status'),
+        // WhatsApp Session (Baileys)
+        inboxApi.get('/integrations/whatsapp/session/status'),
+        // Facebook pages (Meta)
+        inboxApi.get('/integrations/meta/pages'),
+        // Instagram accounts (Meta)
+        inboxApi.get('/integrations/meta/ig-accounts'),
+      ]);
+
+      const [waCloudRes, waSessRes, fbPagesRes, igAccRes] = results;
+
+      const waCloud = safe(waCloudRes, { status: 'disconnected' });
+      const waSess  = safe(waSessRes,  null); // mantém null para respeitar o render condicional
+      const fbPages = safe(fbPagesRes,  { items: [] });
+      const igAcc   = safe(igAccRes,    { items: [] });
+
+      setSummary({
+        whatsapp_official: waCloud,          // esperado pelo WhatsAppOfficialCard
+        whatsapp_baileys: waSess,            // renderiza BaileysCard só se houver dados
+        facebook: { status: 'disconnected', pages: fbPages.items || [] },
+        instagram: { status: 'disconnected', accounts: igAcc.items || [] },
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
-    load();
+    let alive = true;
+    (async () => {
+      await load();
+      if (!alive) return;
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!summary) return <div>Loading...</div>;
+  if (loading || !summary) return <div>Loading...</div>;
 
   return (
     <div className="p-4">

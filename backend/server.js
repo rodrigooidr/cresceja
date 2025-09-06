@@ -90,7 +90,16 @@ async function init() {
   app.set('etag', false);
   app.set('trust proxy', 1);
 
-  // Segurança e CORS (sempre antes das rotas)
+  // --------- Webhooks (os que exigem RAW vêm antes do express.json) ----------
+  // Meta (Facebook/Instagram) com assinatura X-Hub-Signature-256 precisa de raw body
+  app.use('/api/webhooks', express.raw({ type: 'application/json' }), metaWebhookRouter);
+  // Demais webhooks (sem necessidade de raw body)
+  app.use('/api/webhooks/instagram', igRouter);
+  app.use('/api/webhooks/messenger', fbRouter);
+  app.use('/api/webhooks/whatsapp', waWebhookRouter);
+  app.use('/api/webhooks/meta-pages', metaPagesWebhookRouter);
+
+  // ---------- Segurança e CORS (sempre antes das rotas com JSON) ----------
   app.use(helmet());
   app.use(
     cors({
@@ -105,16 +114,6 @@ async function init() {
 
   // Rate limit básico em toda a API
   app.use(rateLimit({ windowMs: 60_000, max: 300 }));
-
-  // --------- Webhooks (precisam de RAW antes do express.json) ----------
-  // Instagram / Messenger podem receber payloads sem verificação especial
-  app.use('/api/webhooks/instagram', igRouter);
-  app.use('/api/webhooks/messenger', fbRouter);
-  app.use('/api/webhooks/whatsapp', waWebhookRouter);
-  app.use('/api/webhooks/meta-pages', metaPagesWebhookRouter);
-
-  // Meta com validação X-Hub-Signature-256 (precisa raw body)
-  app.use('/api/webhooks', express.raw({ type: 'application/json' }), metaWebhookRouter);
 
   // --------- Demais rotas com JSON padrão ----------
   app.use(express.json({ limit: '10mb' }));
@@ -165,10 +164,12 @@ async function init() {
   app.use('/api/whatsapp', whatsappRouter);
   app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
   app.use('/api/agenda', agendaRouter);
-  app.use('/api/integrations', integrationsRouter);
-  app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);
-  app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter);
-  app.use('/api/integrations', metaOauthIntegrationRouter);
+
+  // Integrações (rotas base + sub-rotas específicas)
+  app.use('/api/integrations', integrationsRouter);                          // ex.: /api/integrations/status
+  app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);     // ex.: /api/integrations/whatsapp/cloud/status
+  app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter); // ex.: /api/integrations/whatsapp/session/status
+  app.use('/api/integrations/meta', metaOauthIntegrationRouter);             // ex.: /api/integrations/meta/pages
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
 
@@ -202,7 +203,7 @@ async function init() {
   // Disponibiliza io para rotas (req.app.get('io'))
   app.set('io', io);
 
-  // Autenticação no handshake do WS (opcional/ajuste se usar JWT no auth.token)
+  // Autenticação no handshake do WS (ajuste se usar outro segredo/claim)
   io.use((socket, next) => {
     try {
       const token =
