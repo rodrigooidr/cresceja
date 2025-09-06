@@ -11,6 +11,8 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@/sockets/socket$': '<rootDir>/src/test/mocks/app-socket.js',
     '^axios$': '<rootDir>/src/test/mocks/axios.js',
+    '^api/(.*)$': '<rootDir>/src/api/$1',
+    '^inbox/(.*)$': '<rootDir>/src/inbox/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/src/test/__mocks__/fileMock.js',
   },
