@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import PopoverPortal from "ui/PopoverPortal";
 import QuickReplyModal from "./QuickReplyModal.jsx";
-import inboxApi from "../../../api/inboxApi"; // usa axios com Authorization
+import { listTemplates, listQuickReplies } from "../../../inbox/inbox.service";
 import { getDraft, setDraft, clearDraft } from "../../../inbox/drafts.store";
 
 function useOutsideClose(ref, onClose, deps = []) {
@@ -33,8 +33,10 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
   const [showQuick, setShowQuick] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
-  const [quickReplies] = useState([]);
+  const [quickReplies, setQuickReplies] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [loadingQuick, setLoadingQuick] = useState(false);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
 
   const fileInputRef = useRef(null);
   const dropRef = useRef(null);
@@ -71,14 +73,23 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
     setText(getDraft(convId) || "");
   }, [convId]);
 
-  // Buscar templates com Authorization
+  // Carregar templates e quick replies
   useEffect(() => {
-    inboxApi
-      .get("/inbox/templates")
-      .then(({ data }) => {
+    setLoadingTemplates(true);
+    listTemplates()
+      .then((data) => {
         if (Array.isArray(data)) setTemplates(data);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoadingTemplates(false));
+
+    setLoadingQuick(true);
+    listQuickReplies()
+      .then((data) => {
+        if (Array.isArray(data)) setQuickReplies(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingQuick(false));
   }, []);
 
   // ---------- Quick replies / Templates / Emojis ----------
@@ -94,13 +105,18 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
   };
 
   // ---------- Arquivos, paste e drag ----------
+  const handleFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (onFiles) onFiles(fileList);
+    files.forEach((f) => onSend?.({ file: f }));
+  };
   const handleFileChange = (e) => {
-    onFiles?.(e.target.files);
+    handleFiles(e.target.files);
     e.target.value = "";
   };
   const handlePaste = (e) => {
     const files = e.clipboardData?.files;
-    if (files?.length) onFiles?.(files);
+    if (files?.length) handleFiles(files);
   };
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -116,7 +132,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
     e.preventDefault();
     e.stopPropagation();
     dropRef.current?.classList.remove("ring-2", "ring-blue-400");
-    onFiles?.(e.dataTransfer.files);
+    handleFiles(e.dataTransfer.files);
   };
 
   // ---------- Envio ----------
@@ -204,12 +220,16 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           </button>
           <PopoverPortal anchorEl={quickBtnRef.current} open={showQuick} onClose={() => setShowQuick(false)}>
             <div ref={quickRef} className="max-h-72 overflow-auto">
-              <QuickReplyModal
-                open
-                onClose={() => setShowQuick(false)}
-                quickReplies={quickReplies}
-                onSelect={onSelectQuick}
-              />
+              {loadingQuick ? (
+                <div className="p-2 text-sm text-gray-500">Carregando...</div>
+              ) : (
+                <QuickReplyModal
+                  open
+                  onClose={() => setShowQuick(false)}
+                  quickReplies={quickReplies}
+                  onSelect={onSelectQuick}
+                />
+              )}
             </div>
           </PopoverPortal>
 
@@ -229,18 +249,21 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
             onClose={() => setShowTemplates(false)}
           >
             <div ref={templatesRef} className="w-64 max-h-72 overflow-auto p-2">
-              {templates.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100 rounded-md"
-                  onClick={() => onPickTemplate(t)}
-                >
-                  <div className="font-medium truncate">{t.title}</div>
-                  {t.text ? <div className="text-xs text-gray-500 truncate">{t.text}</div> : null}
-                </button>
-              ))}
-              {!templates.length && (
+              {loadingTemplates ? (
+                <div className="text-sm text-gray-500 px-2 py-1">Carregando...</div>
+              ) : templates.length ? (
+                templates.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="block w-full text-left px-2 py-1 text-sm hover:bg-gray-100 rounded-md"
+                    onClick={() => onPickTemplate(t)}
+                  >
+                    <div className="font-medium truncate">{t.title}</div>
+                    {t.text ? <div className="text-xs text-gray-500 truncate">{t.text}</div> : null}
+                  </button>
+                ))
+              ) : (
                 <div className="text-sm text-gray-500 px-2 py-1">Sem templates.</div>
               )}
             </div>
