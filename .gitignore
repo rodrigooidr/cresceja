@@ -90,3 +90,6 @@ $RECYCLE.BIN/
 # Linux
 *~
 .nfs*
+
+# Backup files
+*.bak

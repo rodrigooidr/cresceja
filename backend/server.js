@@ -10,9 +10,11 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
 import { Server as IOServer } from 'socket.io';
+import jwt from 'jsonwebtoken';
 
 // DB (pool + healthcheck)
 import { pool, healthcheck } from './config/db.js';
+import { UPLOAD_DIR } from './services/storage.js';
 
 // Routers públicos e protegidos
 import authRouter from './routes/auth.js';
@@ -20,6 +22,7 @@ import publicRouter from './routes/public.js';
 import metaWebhookRouter from './routes/webhooks/meta.js';
 import igRouter from './routes/webhooks/instagram.js';
 import fbRouter from './routes/webhooks/messenger.js';
+import waWebhookRouter from './routes/webhooks/whatsapp.js';
 import uploadsRouter from './routes/uploads.js';
 import lgpdRouter from './routes/lgpd.js';
 import crmRouter from './routes/crm.js';
@@ -104,6 +107,7 @@ async function init() {
   // Instagram / Messenger podem receber payloads sem verificação especial
   app.use('/api/webhooks/instagram', igRouter);
   app.use('/api/webhooks/messenger', fbRouter);
+  app.use('/api/webhooks/whatsapp', waWebhookRouter);
 
   // Meta com validação X-Hub-Signature-256 (precisa raw body)
   app.use('/api/webhooks', express.raw({ type: 'application/json' }), metaWebhookRouter);
@@ -112,7 +116,7 @@ async function init() {
   app.use(express.json({ limit: '10mb' }));
 
   // Static público
-  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+  app.use('/uploads', express.static(UPLOAD_DIR));
   app.use('/assets', express.static(path.resolve('uploads')));
 
   // Injeta utilidades por request
@@ -193,11 +197,20 @@ async function init() {
 
   // Autenticação no handshake do WS (opcional/ajuste se usar JWT no auth.token)
   io.use((socket, next) => {
-    const authToken = socket.handshake.auth?.token;
-    const bearer = socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '');
-    // TODO: validar token e, se quiser, injetar org_id na sessão WS
-    if (!authToken && !bearer) return next(new Error('no token'));
-    return next();
+    const raw =
+      socket.handshake?.auth?.token ||
+      socket.handshake?.headers?.authorization ||
+      '';
+    const token = raw.replace(/^Bearer\s+/i, '');
+    if (!token) return next(new Error('no token'));
+    try {
+      const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-change-me');
+      socket.user = payload;
+      if (payload?.org_id) socket.join(`org:${payload.org_id}`);
+      return next();
+    } catch {
+      return next(new Error('unauthorized'));
+    }
   });
 
   io.on('connection', (socket) => {

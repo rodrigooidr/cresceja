@@ -4,12 +4,11 @@
 
 import { Router } from 'express';
 import multer from 'multer';
-import fs from 'fs/promises';
 import { query } from '../config/db.js';
-import { UPLOAD_DIR, saveBuffer } from '../services/storage.js';
+import { saveUpload } from '../services/storage.js';
 
 const r = Router();
-const upload = multer({ dest: UPLOAD_DIR });
+const upload = multer({ storage: multer.memoryStorage() });
 
 async function getResolvedSchema(table) {
   const q = await query(
@@ -175,15 +174,13 @@ r.post('/messages', upload.single('file'), async (req, res) => {
     const attachments = [];
     if (file) {
       try {
-        const buf = await fs.readFile(file.path);
-        const saved = await saveBuffer(buf, file.originalname || 'file.bin');
+        const saved = await saveUpload(file);
         attachments.push({
           id: saved.fileName,
           url: saved.url,
           filename: file.originalname,
           mime: file.mimetype,
         });
-        await fs.unlink(file.path).catch(() => {});
       } catch (e) {
         console.error('[inbox] attachment save failed:', e);
       }
