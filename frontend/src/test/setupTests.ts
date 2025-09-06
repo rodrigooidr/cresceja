@@ -1,7 +1,58 @@
 // frontend/src/test/setupTests.ts
 import '@testing-library/jest-dom';
+import '@testing-library/jest-dom';
+ 
+ // Polyfills úteis no JSDOM
+ if (!('createObjectURL' in URL)) {
+   // @ts-ignore
+@@ -12,6 +13,48 @@ if (!('scrollTo' in window)) {
+   window.scrollTo = jest.fn();
+ }
 
-// Polyfills úteis no JSDOM
+if (!Element.prototype.scrollIntoView) {
+// @ts-ignore
+ Element.prototype.scrollIntoView = jest.fn();
+}
+if (!Element.prototype.getBoundingClientRect) {
+  // @ts-ignore
+  Element.prototype.getBoundingClientRect = () => ({
+    x: 0, y: 0, width: 100, height: 20,
+    top: 0, left: 0, bottom: 20, right: 100,
+    toJSON: () => {}
+  });
+}
+
+// ---------------- Observers (mocks) ----------------
+// IntersectionObserver não existe no JSDOM
+// Mock simples que satisfaz bibliotecas de virtual list / lazy load
+// @ts-ignore
+if (typeof (global as any).IntersectionObserver === 'undefined') {
+  class MockIntersectionObserver {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    constructor(callback?: any, options?: any) {}
+    observe = jest.fn();
+    unobserve = jest.fn();
+    disconnect = jest.fn();
+    takeRecords = jest.fn(() => []);
+    root: any = null;
+    rootMargin = '0px';
+    thresholds = [0];
+  }
+  // @ts-ignore
+  (global as any).IntersectionObserver = MockIntersectionObserver as any;
+  // @ts-ignore
+  (global as any).IntersectionObserverEntry = class {};
+}
+
+// ResizeObserver também costuma faltar
+// @ts-ignore
+if (typeof (global as any).ResizeObserver === 'undefined') {
+  (global as any).ResizeObserver = class {
+    observe = jest.fn(); unobserve = jest.fn(); disconnect = jest.fn();
+  };
+}
+
+   // Polyfills úteis no JSDOM
 if (!('createObjectURL' in URL)) {
   // @ts-ignore
   URL.createObjectURL = jest.fn(() => 'blob://mock');
