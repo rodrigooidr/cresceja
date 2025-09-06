@@ -2,7 +2,7 @@ module.exports = {
   testEnvironment: 'jsdom',
   testEnvironmentOptions: { url: 'http://localhost/' },
   setupFiles: ['<rootDir>/src/test/polyfills.js'],
-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
+  setupFilesAfterEnv: ['<rootDir>/src/test/setupTests.ts'],
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
@@ -13,6 +13,7 @@ module.exports = {
     '^axios$': '<rootDir>/src/test/mocks/axios.js',
     '^api/(.*)$': '<rootDir>/src/api/$1',
     '^inbox/(.*)$': '<rootDir>/src/inbox/$1',
+    '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/src/test/__mocks__/fileMock.js',
   },

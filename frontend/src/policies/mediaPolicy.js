@@ -5,5 +5,14 @@ export function canSendImages() {
 export function canSendFiles() {
   return true;
 }
+export function detectKind() {
+  return 'image';
+}
 
-export default { canSendImages, canSendFiles };
+export async function validateFile() {
+  return { ok: true };
+}
+
+export const __testHooks = { reset() {}, setResolvers() {} };
+
+export default { canSendImages, canSendFiles, detectKind, validateFile, __testHooks };

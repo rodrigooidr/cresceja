@@ -8,7 +8,7 @@ import { query } from '../config/db.js';
 import { saveUpload } from '../services/storage.js';
 
 const r = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 async function getResolvedSchema(table) {
   const q = await query(
@@ -133,9 +133,7 @@ r.post('/messages', upload.single('file'), async (req, res) => {
     const conversationId = body.conversationId || body.conversation_id;
     const text = (body.message ?? body.text ?? '').toString().trim();
     const msgType = (body.type || 'text').toString();
-    const file = req.file;
-    if (!conversationId) return res.status(400).json({ error: 'conversationId required' });
-    if (!text && !file) return res.status(400).json({ error: 'message required' });
+    if (!conversationId && !text && !req.file) return res.status(400).json({ error: 'empty_payload' });
 
     const orgId = req.user?.org_id || req.user?.orgId || null;
 
@@ -172,20 +170,24 @@ r.post('/messages', upload.single('file'), async (req, res) => {
     else return res.status(500).json({ error: 'messages_schema_unsupported_no_text' });
 
     const attachments = [];
-    if (file) {
+    if (req.file) {
       try {
-        const saved = await saveUpload(file);
+        const meta = await saveUpload({
+          buffer: req.file.buffer,
+          mime: req.file.mimetype,
+          filename: req.file.originalname,
+        });
         attachments.push({
-          id: saved.fileName,
-          url: saved.url,
-          filename: file.originalname,
-          mime: file.mimetype,
+          id: meta.key,
+          url: meta.url,
+          filename: meta.filename,
+          mime: meta.mime,
         });
       } catch (e) {
         console.error('[inbox] attachment save failed:', e);
       }
     }
-    if (attachments.length && MC.has('attachments')) push('attachments', attachments);
+    if (attachments.length && MC.has('attachments')) push('attachments', JSON.stringify(attachments));
 
     const sql = `INSERT INTO messages (${fields.join(', ')})
                  VALUES (${params.join(', ')})

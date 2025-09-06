@@ -1,85 +1,46 @@
-import fs from 'fs';
-import fsp from 'fs/promises';
+import crypto from 'crypto';
 import path from 'path';
-import { randomUUID } from 'crypto';
-// optional S3/MinIO client loaded lazily
-let s3 = null;
-let S3Client;
-let PutObjectCommand;
+import fs from 'fs/promises';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
-export const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
-await fsp.mkdir(UPLOAD_DIR, { recursive: true });
+export const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
-export async function saveBuffer(buffer, originalName = 'file.bin') {
-  const ext = path.extname(originalName) || '';
-  const name = `${Date.now()}-${randomUUID()}${ext}`;
-  const full = path.join(UPLOAD_DIR, name);
-  await fsp.writeFile(full, buffer);
-  return { fileName: name, path: full, url: `/uploads/${name}` };
-}
+const useS3 = !!process.env.S3_BUCKET;
+const s3 = useS3
+  ? new S3Client({
+      region: process.env.S3_REGION || 'us-east-1',
+      forcePathStyle: !!process.env.S3_FORCE_PATH_STYLE,
+      endpoint: process.env.S3_ENDPOINT || undefined,
+      credentials: process.env.S3_ACCESS_KEY_ID
+        ? {
+            accessKeyId: process.env.S3_ACCESS_KEY_ID,
+            secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
+          }
+        : undefined,
+    })
+  : null;
 
-export async function saveStream(readable, originalName = 'file.bin') {
-  const ext = path.extname(originalName) || '';
-  const name = `${Date.now()}-${randomUUID()}${ext}`;
-  const full = path.join(UPLOAD_DIR, name);
-  await new Promise((resolve, reject) => {
-    const ws = fs.createWriteStream(full);
-    readable.pipe(ws);
-    ws.on('finish', resolve);
-    ws.on('error', reject);
-  });
-  return { fileName: name, path: full, url: `/uploads/${name}` };
-}
-
-/**
- * Salva arquivo recebido do multer (memoryStorage)
- *  - se variáveis S3_* estiverem definidas, tenta salvar no S3/MinIO
- *  - caso contrário, persiste no disco local
- */
-export async function saveUpload(file) {
-  if (!file) throw new Error('file required');
-  const ext = path.extname(file.originalname || '') || '';
-  const name = `${Date.now()}-${randomUUID()}${ext}`;
-
-  // ====== S3 / MinIO ======
-  if (process.env.S3_BUCKET && process.env.S3_ENDPOINT) {
-    try {
-      if (!s3) {
-        const mod = await import('@aws-sdk/client-s3').catch(() => null);
-        if (mod) {
-          ({ S3Client, PutObjectCommand } = mod);
-          s3 = new S3Client({
-            endpoint: process.env.S3_ENDPOINT,
-            region: process.env.S3_REGION || 'us-east-1',
-            credentials: {
-              accessKeyId: process.env.S3_KEY,
-              secretAccessKey: process.env.S3_SECRET,
-            },
-            forcePathStyle: true,
-          });
-        }
-      }
-      if (s3 && PutObjectCommand) {
-        await s3.send(
-          new PutObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: name,
-            Body: file.buffer,
-            ContentType: file.mimetype,
-          })
-        );
-        const base = process.env.S3_PUBLIC_URL || `${process.env.S3_ENDPOINT}/${process.env.S3_BUCKET}`;
-        return { fileName: name, url: `${base}/${name}` };
-      }
-    } catch (e) {
-      console.error('[storage] S3 upload failed, falling back to disk:', e);
-    }
+export async function saveUpload({ buffer, mime, filename }) {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `${day}/${crypto.randomBytes(16).toString('hex')}-${filename}`;
+  if (useS3) {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: process.env.S3_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: mime,
+      })
+    );
+    const base =
+      process.env.S3_PUBLIC_URL || `https://${process.env.S3_BUCKET}.s3.amazonaws.com`;
+    return { key, url: `${base}/${key}`, mime, filename };
   }
-
-  // ====== Local disk ======
-  const full = path.join(UPLOAD_DIR, name);
-  await fsp.writeFile(full, file.buffer);
-  return { fileName: name, path: full, url: `/uploads/${name}` };
+  const dir = path.join(UPLOAD_DIR, day);
+  await fs.mkdir(dir, { recursive: true });
+  const dest = path.join(dir, key.split('/').pop());
+  await fs.writeFile(dest, buffer);
+  return { key, url: `/uploads/${key.split('/').pop()}`, mime, filename };
 }
 
-export default { UPLOAD_DIR, saveBuffer, saveStream, saveUpload };
+export default { saveUpload, UPLOAD_DIR };
