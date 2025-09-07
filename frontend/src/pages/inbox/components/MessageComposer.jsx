@@ -170,7 +170,8 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
     >
       <div className="flex items-end gap-2">
         <textarea
-          data-testid="composer-textarea"
+          data-testid="composer-text"
+          data-testid-alt="composer-textarea"
           className="flex-1 resize-none px-3 py-2 border rounded-lg text-sm min-h-[44px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-400"
           placeholder="Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
           value={text}
@@ -286,7 +287,8 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
             ref={fileInputRef}
             type="file"
             className="hidden"
-            data-testid="file-input"
+            data-testid="composer-file-input"
+            data-testid-alt="file-input"
             multiple
             onChange={handleFileChange}
             accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
