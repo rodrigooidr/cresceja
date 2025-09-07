@@ -52,6 +52,18 @@ function ensureAuthHeader(config) {
   } catch {}
   return config;
 }
+function ensureImpersonateHeader(config) {
+  try {
+    const id = getImpersonateOrgId();
+    if (id) {
+      if (!config.headers) config.headers = {};
+      config.headers["X-Impersonate-Org-Id"] = id;
+    }
+    if (!config.headers) config.headers = {};
+    config.headers["Cache-Control"] = "no-store";
+  } catch {}
+  return config;
+}
 function markRetry(config) {
   const c = { ...config };
   c._retryChain = (config._retryChain || 0) + 1;
@@ -84,6 +96,7 @@ try {
 // ===== REQUEST interceptor =====
 inboxApi.interceptors.request.use((config) => {
   config = ensureAuthHeader(config);
+  config = ensureImpersonateHeader(config);
 
   if (config._skipRewrite) {
     log(`bypass rewrite for ${config.method?.toUpperCase() || "GET"} ${config.url}`);
@@ -212,6 +225,20 @@ export function setActiveOrg(id) {
     } else {
       localStorage.removeItem("active_org_id");
       delete inboxApi.defaults.headers.common["X-Org-Id"];
+    }
+  } catch {}
+}
+
+export function getImpersonateOrgId() {
+  try { return localStorage.getItem("impersonate.orgId") || ""; } catch { return ""; }
+}
+
+export function setImpersonateOrgId(orgId) {
+  try {
+    if (orgId) {
+      localStorage.setItem("impersonate.orgId", orgId);
+    } else {
+      localStorage.removeItem("impersonate.orgId");
     }
   } catch {}
 }
