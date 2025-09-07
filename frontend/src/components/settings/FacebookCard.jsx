@@ -1,28 +1,37 @@
 import React, { useEffect, useState } from 'react';
 import { meta } from 'api/integrations.service';
 
-export default function FacebookCard({ data, refresh }) {
-  const [status, setStatus] = useState(data?.status || 'disconnected');
+export default function FacebookCard({ orgId, currentOrg }) {
+  const [status, setStatus] = useState('disconnected');
   const [pageId, setPageId] = useState('');
   const [token, setToken] = useState('');
   const [webhookOk, setWebhookOk] = useState(false);
   const [testing, setTesting] = useState(false);
 
-  useEffect(() => { setStatus(data?.status || 'disconnected'); }, [data?.status]);
+  const refresh = async () => {
+    try {
+      const [{ data: st }, { data: wh }] = await Promise.all([
+        meta.fb.status({ orgId }),
+        meta.webhookCheck({ orgId })
+      ]);
+      setStatus(st?.status || 'disconnected');
+      setWebhookOk(!!wh?.verified);
+    } catch {
+      setStatus('disconnected');
+      setWebhookOk(false);
+    }
+  };
+
+  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orgId]);
 
   const connect = async () => {
-    await meta.fb.connect({ page_id: pageId, access_token: token });
-    await refresh?.();
+    await meta.fb.connect({ orgId, page_id: pageId, access_token: token });
+    await refresh();
   };
   const test = async () => {
     setTesting(true);
     try {
-      const [{ data: st }, { data: wh }] = await Promise.all([
-        meta.fb.status(),
-        meta.webhookCheck()
-      ]);
-      setStatus(st?.status || 'disconnected');
-      setWebhookOk(!!wh?.verified);
+      await refresh();
     } finally { setTesting(false); }
   };
 

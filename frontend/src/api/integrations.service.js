@@ -1,40 +1,42 @@
 import inboxApi from 'api/inboxApi';
 
+const cfg = (orgId) => (orgId ? { headers: { 'X-Org-Id': orgId } } : {});
+
 export const waCloud = {
-  status: () => inboxApi.get('/integrations/whatsapp/cloud/status'),
-  connect: (body) => inboxApi.post('/integrations/whatsapp/cloud/connect', body),
-  disconnect: () => inboxApi.post('/integrations/whatsapp/cloud/disconnect'),
-  webhookCheck: () => inboxApi.get('/integrations/whatsapp/cloud/webhook-check'),
-  sendTest: (to) => inboxApi.post('/integrations/whatsapp/cloud/send-test', { to }),
+  status: ({ orgId } = {}) => inboxApi.get('/integrations/whatsapp/cloud/status', cfg(orgId)),
+  connect: ({ orgId, ...body }) => inboxApi.post('/integrations/whatsapp/cloud/connect', body, cfg(orgId)),
+  disconnect: ({ orgId } = {}) => inboxApi.post('/integrations/whatsapp/cloud/disconnect', {}, cfg(orgId)),
+  webhookCheck: ({ orgId } = {}) => inboxApi.get('/integrations/whatsapp/cloud/webhook-check', cfg(orgId)),
+  sendTest: ({ to, orgId }) => inboxApi.post('/integrations/whatsapp/cloud/send-test', { to }, cfg(orgId)),
 };
 
 export const waSession = {
-  status: () => inboxApi.get('/integrations/whatsapp/session/status'),
-  start: () => inboxApi.post('/integrations/whatsapp/session/start'),
-  logout: () => inboxApi.post('/integrations/whatsapp/session/logout'),
-  test: () => inboxApi.get('/integrations/whatsapp/session/test'),
+  status: ({ orgId } = {}) => inboxApi.get('/integrations/whatsapp/session/status', cfg(orgId)),
+  start: ({ orgId } = {}) => inboxApi.post('/integrations/whatsapp/session/start', {}, cfg(orgId)),
+  logout: ({ orgId } = {}) => inboxApi.post('/integrations/whatsapp/session/logout', {}, cfg(orgId)),
+  test: ({ orgId } = {}) => inboxApi.get('/integrations/whatsapp/session/test', cfg(orgId)),
 };
 
 export const meta = {
-  webhookCheck: () => inboxApi.get('/integrations/meta/webhook-check'),
+  webhookCheck: ({ orgId } = {}) => inboxApi.get('/integrations/meta/webhook-check', cfg(orgId)),
   fb: {
-    connect: (body) => inboxApi.post('/integrations/meta/facebook/connect', body),
-    status: () => inboxApi.get('/integrations/meta/facebook/status'),
-    pages: () => inboxApi.get('/integrations/meta/pages'),
-    test: () => inboxApi.get('/integrations/meta/facebook/test'),
+    connect: ({ orgId, ...body }) => inboxApi.post('/integrations/meta/facebook/connect', body, cfg(orgId)),
+    status: ({ orgId } = {}) => inboxApi.get('/integrations/meta/facebook/status', cfg(orgId)),
+    pages: ({ orgId } = {}) => inboxApi.get('/integrations/meta/pages', cfg(orgId)),
+    test: ({ orgId } = {}) => inboxApi.get('/integrations/meta/facebook/test', cfg(orgId)),
   },
   ig: {
-    connect: (body) => inboxApi.post('/integrations/meta/instagram/connect', body),
-    status: () => inboxApi.get('/integrations/meta/instagram/status'),
-    accounts: () => inboxApi.get('/integrations/meta/ig-accounts'),
-    test: () => inboxApi.get('/integrations/meta/instagram/test'),
+    connect: ({ orgId, ...body }) => inboxApi.post('/integrations/meta/instagram/connect', body, cfg(orgId)),
+    status: ({ orgId } = {}) => inboxApi.get('/integrations/meta/instagram/status', cfg(orgId)),
+    accounts: ({ orgId } = {}) => inboxApi.get('/integrations/meta/ig-accounts', cfg(orgId)),
+    test: ({ orgId } = {}) => inboxApi.get('/integrations/meta/instagram/test', cfg(orgId)),
   },
 };
 
 export const gcal = {
-  oauthStart: () => inboxApi.get('/integrations/google/calendar/oauth/start'),
-  status: () => inboxApi.get('/integrations/google/calendar/status'),
-  calendars: () => inboxApi.get('/integrations/google/calendar/calendars'),
-  events: (body) => inboxApi.post('/integrations/google/calendar/events', body),
-  disconnect: () => inboxApi.post('/integrations/google/calendar/disconnect'),
+  oauthStart: ({ orgId } = {}) => inboxApi.get('/integrations/google/calendar/oauth/start', cfg(orgId)),
+  status: ({ orgId } = {}) => inboxApi.get('/integrations/google/calendar/status', cfg(orgId)),
+  calendars: ({ orgId } = {}) => inboxApi.get('/integrations/google/calendar/calendars', cfg(orgId)),
+  events: ({ orgId, ...body }) => inboxApi.post('/integrations/google/calendar/events', body, cfg(orgId)),
+  disconnect: ({ orgId } = {}) => inboxApi.post('/integrations/google/calendar/disconnect', {}, cfg(orgId)),
 };
