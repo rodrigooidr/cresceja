@@ -68,26 +68,29 @@ jest.mock('ui/PopoverPortal', () => {
   };
 });
 
-// socket.io-client stub (cobre QR/status)
+// socket.io-client stub
 jest.mock('socket.io-client', () => {
-  const handlers: Record<string, Function[]> = {};
+  const handlers: Record<string, Function> = {};
   const sock = {
-    on: (evt: string, cb: Function) => { (handlers[evt] ||= []).push(cb); return sock; },
-    off: (evt: string, cb?: Function) => {
-      if (!handlers[evt]) return sock;
-      handlers[evt] = cb ? handlers[evt].filter(h => h !== cb) : [];
+    __handlers: handlers,
+    on: (evt: string, cb: Function) => {
+      handlers[evt] = cb;
       return sock;
     },
-    emit: (evt: string, payload?: any) => {
-      if (evt === 'wa:session:ping') (handlers['wa:session:pong']||[]).forEach(fn => fn({ ok: true }));
+    off: (evt: string) => {
+      delete handlers[evt];
+      return sock;
     },
+    emit: (_evt: string, _payload?: any) => sock,
     connect: () => sock,
     disconnect: () => sock,
     io: { opts: {} },
   };
-  // helper para simular eventos em testes (ex: QR)
+  // helper para os testes dispararem eventos:
   // @ts-ignore
-  global.__SOCKET_PUSH__ = (evt: string, payload: any) => (handlers[evt]||[]).forEach(fn => fn(payload));
+  global.__SOCKET_PUSH__ = (evt: string, payload: any) => {
+    if (handlers[evt]) handlers[evt](payload);
+  };
   return { __esModule: true, io: () => sock, default: () => sock };
 });
 
@@ -114,8 +117,9 @@ jest.mock('api/inboxApi', () => {
         return {
           data: {
             items: [
-              { id: 'm1', conversation_id: id, text: 'Olá',        direction: 'in',  sender: 'contact', created_at: now },
-              { id: 'm2', conversation_id: id, text: 'Tudo bem?',  direction: 'out', sender: 'agent',   created_at: now, status: 'sent' },
+              // mensagem que os testes procuram
+              { id: 'm1', conversation_id: id, text: 'hi',        direction: 'in',  sender: 'contact', created_at: now },
+              { id: 'm2', conversation_id: id, text: 'reply',     direction: 'out', sender: 'agent',   created_at: now, status: 'sent' },
             ],
             total: 2,
           },
@@ -124,7 +128,7 @@ jest.mock('api/inboxApi', () => {
       if (url.includes('/inbox/templates')) {
         return { data: [{ id: 't1', title: 'Boas-vindas', text: 'Bem-vindo(a)!' }] };
       }
-      if (url.includes('/inbox/quick-replies') || url.includes('/inbox/quick_replies')) {
+      if (url.includes('/inbox/quick') || url.includes('/quick-repl')) {
         return { data: [{ id: 'q1', title: 'Olá!', content: 'Olá, como posso ajudar?' }] };
       }
       if (url.includes('/channels/summary')) {
