@@ -217,7 +217,9 @@ export default function MessageList({ loading, messages = [], conversation }) {
 
   return (
     <div ref={scrollRef} className="h-full overflow-auto">
+      <div data-testid="msg-virt-top" style={{ position:'absolute', top:0, height:1, width:1, opacity:0 }} />
       {content}
+      <div data-testid="msg-virt-bottom" style={{ position:'absolute', bottom:0, height:1, width:1, opacity:0 }} />
     </div>
   );
 }
