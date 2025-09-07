@@ -39,7 +39,7 @@ describe('contact inline edit', () => {
         </MemoryRouter>
       );
     });
-    const btn = await screen.findByTestId('conv-item');
+    const btn = await screen.findByTestId('conv-item-1');
     await act(async () => { fireEvent.click(btn); });
     await screen.findByTestId('composer-text');
   }

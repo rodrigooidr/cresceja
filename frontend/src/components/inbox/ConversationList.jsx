@@ -95,11 +95,18 @@ export default function ConversationList({ onSelect, selectedId }) {
         {ChannelFilter}
       </div>
 
-      <ul className="flex-1 overflow-y-auto">
+        <ul className="flex-1 overflow-y-auto" data-testid="conv-list">
         {(convs || []).map((c) => {
           const photo =
             c.photo_asset_id ? assetUrl(`assets/${c.photo_asset_id}`) : null;
           const isSel = String(selectedId) === String(c.id);
+          const title =
+            c.name ||
+            c.contact_name ||
+            c.display_name ||
+            c?.contact?.name ||
+            c.phone ||
+            "";
           return (
             <li
               key={c.id}
@@ -116,13 +123,13 @@ export default function ConversationList({ onSelect, selectedId }) {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span>{c.display_name?.[0] || c.phone?.[0] || "?"}</span>
+                  <span>{title?.[0] || "?"}</span>
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">
-                  {c.display_name || c.phone}
+                  {title}
                 </div>
                 <div className="text-xs text-gray-500 truncate">
                   {c.status || "-"}

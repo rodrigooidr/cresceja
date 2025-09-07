@@ -71,7 +71,7 @@ test('janela limitada', async () => {
   Object.defineProperty(list, 'scrollHeight', { value: 64 * 500, configurable: true });
   act(() => fireEvent.scroll(list));
   await waitFor(() => {
-    expect(list.querySelectorAll('[data-testid="conv-item"]').length).toBeLessThanOrEqual(50);
+    expect(list.querySelectorAll('[data-testid^="conv-item-"]').length).toBeLessThanOrEqual(50);
   });
 });
 
@@ -95,7 +95,7 @@ test('scroll atualiza janela', async () => {
     fireEvent.scroll(list);
   });
   expect(screen.queryByText('C1')).not.toBeInTheDocument();
-  expect(screen.getAllByTestId('conv-item').length).toBeLessThanOrEqual(50);
+  expect(screen.getAllByTestId(/conv-item-/).length).toBeLessThanOrEqual(50);
 });
 
 test('socket adiciona conversa sem pular', async () => {
@@ -116,7 +116,7 @@ test('socket adiciona conversa sem pular', async () => {
     fireEvent.scroll(list);
   });
   await waitFor(() => {
-    expect(list.querySelectorAll('[data-testid="conv-item"]').length).toBeLessThanOrEqual(50);
+    expect(list.querySelectorAll('[data-testid^="conv-item-"]').length).toBeLessThanOrEqual(50);
   });
   const prevTop = list.scrollTop;
   await act(async () => {
@@ -145,7 +145,7 @@ test('filtros resetam scroll', async () => {
     fireEvent.scroll(list);
   });
   await waitFor(() => {
-    expect(list.querySelectorAll('[data-testid="conv-item"]').length).toBeLessThanOrEqual(50);
+    expect(list.querySelectorAll('[data-testid^="conv-item-"]').length).toBeLessThanOrEqual(50);
   });
   expect(list.scrollTop).toBe(64 * 100);
   const input = screen.getByTestId('filter-search-input');

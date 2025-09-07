@@ -88,7 +88,7 @@ describe('quick replies palette', () => {
     fireEvent.change(ta, { target: { value: '' } });
     fireEvent.keyDown(ta, { key: '/', code: 'Slash' });
     expect(await screen.findByTestId('qr-palette')).toBeInTheDocument();
-    const conv2 = screen.getAllByTestId('conv-item')[1];
+    const conv2 = screen.getAllByTestId(/conv-item-/)[1];
     await act(async () => { fireEvent.click(conv2); });
     await waitFor(() => expect(screen.queryByTestId('qr-palette')).toBeNull());
   });

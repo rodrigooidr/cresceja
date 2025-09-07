@@ -43,7 +43,6 @@ export default function InboxPage({ addToast: addToastProp }) {
   const [selectedId, setSelectedId] = useState(() => searchParams.get("c") || null);
 
   const fetchConversations = useCallback(async () => {
-    if (!localStorage.getItem("token")) return;
     try {
       setLoadingConvs(true);
       const data = await listConversations({
@@ -288,7 +287,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         />
         <ConversationList
           loading={loadingConvs}
-          items={conversations}
+          items={conversations || []}
           selectedId={selectedId}
           onSelect={setSelectedId}
         />
