@@ -3,7 +3,7 @@ import { waSession } from 'api/integrations.service';
 import { io } from 'socket.io-client';
 import PopoverPortal from 'ui/PopoverPortal';
 
-export default function WhatsAppBaileysCard({ data, refresh }) {
+export default function WhatsAppBaileysCard({ data, refresh, disabled }) {
   const [status, setStatus] = useState(data?.status || 'disconnected');
   const [testing, setTesting] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -44,18 +44,25 @@ export default function WhatsAppBaileysCard({ data, refresh }) {
         <span className={`inline-flex px-2 py-0.5 rounded-md ${status === 'connected' ? 'bg-green-600 text-white' : status === 'connecting' ? 'bg-amber-500 text-white' : status === 'error' ? 'bg-red-600 text-white' : 'bg-gray-300 text-gray-800'}`}>{status}</span>
       </div>
 
-      <div className="mt-2 flex gap-2">
-        <button className="btn btn-primary" onClick={start}>Iniciar sessão</button>
-        <button className="btn" ref={qrBtnRef} onClick={() => setQrOpen(v => !v)}>Mostrar QR</button>
-        <button className="btn btn-danger" onClick={logout}>Desconectar</button>
-        <button className="btn" disabled={testing} onClick={test}>Testar</button>
-      </div>
-
-      <PopoverPortal anchorEl={qrBtnRef.current} open={qrOpen} onClose={() => setQrOpen(false)}>
-        <div className="p-3">
-          {qr ? <img alt="QR" src={qr} className="w-56 h-56" /> : <div className="text-sm">Aguardando QR…</div>}
+      {disabled ? (
+        <div className="mt-2 text-sm text-yellow-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+          O modo sessão (QR) está desabilitado para este ambiente.
         </div>
-      </PopoverPortal>
+      ) : (
+        <>
+          <div className="mt-2 flex gap-2">
+            <button className="btn btn-primary" onClick={start}>Iniciar sessão</button>
+            <button className="btn" ref={qrBtnRef} onClick={() => setQrOpen(v => !v)}>Mostrar QR</button>
+            <button className="btn btn-danger" onClick={logout}>Desconectar</button>
+            <button className="btn" disabled={testing} onClick={test}>Testar</button>
+          </div>
+          <PopoverPortal anchorEl={qrBtnRef.current} open={qrOpen} onClose={() => setQrOpen(false)}>
+            <div className="p-3">
+              {qr ? <img alt="QR" src={qr} className="w-56 h-56" /> : <div className="text-sm">Aguardando QR…</div>}
+            </div>
+          </PopoverPortal>
+        </>
+      )}
     </div>
   );
 }

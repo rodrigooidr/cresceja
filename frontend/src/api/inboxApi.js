@@ -73,6 +73,14 @@ try {
   }
 } catch {}
 
+// Boot org
+try {
+  const savedOrg = typeof window !== "undefined" ? localStorage.getItem("active_org_id") : null;
+  if (savedOrg) {
+    inboxApi.defaults.headers.common["X-Org-Id"] = savedOrg;
+  }
+} catch {}
+
 // ===== REQUEST interceptor =====
 inboxApi.interceptors.request.use((config) => {
   config = ensureAuthHeader(config);
@@ -195,5 +203,17 @@ export function setAuthToken(token) {
 }
 export function clearAuthToken() { setAuthToken(null); }
 export function getAuthToken() { try { return localStorage.getItem("token"); } catch { return null; } }
+
+export function setActiveOrg(id) {
+  try {
+    if (id) {
+      localStorage.setItem("active_org_id", id);
+      inboxApi.defaults.headers.common["X-Org-Id"] = id;
+    } else {
+      localStorage.removeItem("active_org_id");
+      delete inboxApi.defaults.headers.common["X-Org-Id"];
+    }
+  } catch {}
+}
 
 export default inboxApi;
