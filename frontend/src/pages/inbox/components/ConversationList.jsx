@@ -17,7 +17,7 @@ import React, { useMemo } from "react";
  * - selectedId: string|number|null
  * - onSelect: (id) => void
  */
-export default function ConversationList({ loading, items = [], selectedId, onSelect }) {
+export default function ConversationList({ loading = false, items = [], selectedId, onSelect }) {
   const content = useMemo(() => {
     if (loading) return <SkeletonList />;
     if (!items.length) return <EmptyState />;
@@ -36,13 +36,22 @@ export default function ConversationList({ loading, items = [], selectedId, onSe
     );
   }, [loading, items, selectedId, onSelect]);
 
-  return <div className="h-full overflow-auto">{content}</div>;
+  return (
+    <div className="h-full overflow-auto" data-testid="conv-list" aria-label="Conversations">
+      {content}
+    </div>
+  );
 }
 
 function Row({ item, selected, onClick }) {
   const name =
+    item.name ||
+    item.contact?.name ||
+    item.contact_name ||
+    item.display_name ||
     item.client_name ||
     item.client?.name ||
+    item.phone ||
     "Cliente";
 
   const lastText = item.last_message_text || "—";
@@ -53,6 +62,7 @@ function Row({ item, selected, onClick }) {
 
   return (
     <li
+      data-testid={`conv-item-${item.id}`}
       className={`p-3 cursor-pointer hover:bg-gray-50 ${
         selected ? "bg-blue-50" : "bg-white"
       }`}
@@ -126,7 +136,7 @@ function ChannelPill({ channel = "" }) {
 
 function SkeletonList() {
   return (
-    <ul className="divide-y animate-pulse">
+    <ul className="divide-y animate-pulse" data-testid="conv-skeleton">
       {Array.from({ length: 8 }).map((_, i) => (
         <li key={i} className="p-3">
           <div className="flex items-start gap-3">
@@ -146,7 +156,7 @@ function SkeletonList() {
 
 function EmptyState() {
   return (
-    <div className="h-full flex items-center justify-center p-6 text-center">
+    <div className="h-full flex items-center justify-center p-6 text-center" data-testid="conv-empty">
       <div>
         <div className="text-3xl mb-2">💬</div>
         <p className="text-sm text-gray-600">

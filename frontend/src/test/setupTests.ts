@@ -1,6 +1,5 @@
 // frontend/src/test/setupTests.ts
 import '@testing-library/jest-dom';
-jest.mock('api/inboxApi');
 
 // ---------------- Polyfills base ----------------
 // Polyfills úteis no JSDOM
@@ -102,6 +101,55 @@ jest.mock('ui/PopoverPortal', () => {
     __esModule: true,
     default: ({ open, children }: any) => (open ? React.createElement('div', { 'data-testid': 'popover-portal' }, children) : null),
   };
+});
+
+// Mock global do inboxApi — inclui conversa "Alice" por padrão
+jest.mock('api/inboxApi', () => {
+  const makeResp = (over: any = {}) => ({ data: { items: [], ...over } });
+  const api = {
+    get: jest.fn(async (url: string) => {
+      if (url.includes('/conversations')) {
+        return {
+          data: {
+            items: [
+              {
+                id: 'c1',
+                name: 'Alice',
+                contact_name: 'Alice',
+                display_name: 'Alice',
+                last_message_at: '2024-01-01T12:00:00Z',
+                updated_at: '2024-01-01T12:00:00Z',
+              },
+              {
+                id: 'c2',
+                name: 'Bob',
+                contact_name: 'Bob',
+                display_name: 'Bob',
+                last_message_at: '2024-01-01T11:00:00Z',
+                updated_at: '2024-01-01T11:00:00Z',
+              },
+            ],
+            total: 2,
+          },
+        };
+      }
+      return makeResp();
+    }),
+    post: jest.fn(async () => makeResp()),
+    put: jest.fn(async () => makeResp()),
+    delete: jest.fn(async () => makeResp()),
+    request: jest.fn(async () => makeResp()),
+    // axios-like compat
+    interceptors: { request: { use: jest.fn(), eject: jest.fn() }, response: { use: jest.fn(), eject: jest.fn() } },
+    defaults: { headers: { common: {} as any } },
+    create: jest.fn(() => api),
+  };
+  const helpers = {
+    setAuthToken: jest.fn(),
+    clearAuthToken: jest.fn(),
+    apiUrl: 'http://localhost:4000/api',
+  };
+  return { __esModule: true, default: api, ...helpers };
 });
 
 // socket.io-client mock (QR/status/ping-pong)
