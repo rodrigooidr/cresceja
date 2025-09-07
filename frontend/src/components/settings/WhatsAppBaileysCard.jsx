@@ -3,14 +3,23 @@ import { waSession } from 'api/integrations.service';
 import { io } from 'socket.io-client';
 import PopoverPortal from 'ui/PopoverPortal';
 
-export default function WhatsAppBaileysCard({ data, refresh, disabled }) {
-  const [status, setStatus] = useState(data?.status || 'disconnected');
+export default function WhatsAppBaileysCard({ orgId, currentOrg, disabled }) {
+  const [status, setStatus] = useState('disconnected');
   const [testing, setTesting] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [qr, setQr] = useState('');
   const qrBtnRef = useRef(null);
 
-  useEffect(() => { setStatus(data?.status || 'disconnected'); }, [data?.status]);
+  const refresh = async () => {
+    try {
+      const { data } = await waSession.status({ orgId });
+      setStatus(data?.status || 'disconnected');
+    } catch {
+      setStatus('disconnected');
+    }
+  };
+
+  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orgId]);
 
   useEffect(() => {
     const s = io('/', { path: '/socket.io', withCredentials: true, auth: {} });
@@ -20,17 +29,17 @@ export default function WhatsAppBaileysCard({ data, refresh, disabled }) {
   }, []);
 
   const start = async () => {
-    await waSession.start();
+    await waSession.start({ orgId });
     setQrOpen(true);
   };
   const logout = async () => {
-    await waSession.logout();
-    refresh?.();
+    await waSession.logout({ orgId });
+    refresh();
   };
   const test = async () => {
     setTesting(true);
     try {
-      const { data } = await waSession.test();
+      const { data } = await waSession.test({ orgId });
       setStatus(data?.status || status);
     } finally {
       setTesting(false);

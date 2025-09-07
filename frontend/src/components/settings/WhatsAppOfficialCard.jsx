@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import inboxApi from '../../api/inboxApi';
+import React, { useEffect, useState } from 'react';
 import ChannelCard from './ChannelCard';
+import { waCloud } from 'api/integrations.service';
 
 function Badge({ state }) {
   const map = {
@@ -17,38 +17,47 @@ function Badge({ state }) {
   );
 }
 
-export default function WhatsAppOfficialCard({ data, refresh }) {
+export default function WhatsAppOfficialCard({ orgId, currentOrg }) {
+  const [status, setStatus] = useState('disconnected');
   const [phone, setPhone] = useState('');
   const [token, setToken] = useState('');
   const [tests, setTests] = useState([]);
 
+  const refresh = async () => {
+    try {
+      const { data } = await waCloud.status({ orgId });
+      setStatus(data?.status || 'disconnected');
+    } catch {
+      setStatus('disconnected');
+    }
+  };
+
+  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orgId]);
+
   async function handleConnect(e) {
     e.preventDefault();
-    await inboxApi.post('/integrations/whatsapp/cloud/connect', {
-      phone_number_id: phone,
-      token,
-    });
+    await waCloud.connect({ orgId, phone_number_id: phone, token });
     setPhone('');
     setToken('');
     refresh();
   }
 
   async function handleDisconnect() {
-    await inboxApi.post('/integrations/whatsapp/cloud/disconnect');
+    await waCloud.disconnect({ orgId });
     refresh();
   }
 
   async function verify() {
     const res = [];
     try {
-      const { data: s } = await inboxApi.get('/integrations/whatsapp/cloud/status');
+      const { data: s } = await waCloud.status({ orgId });
       const st = s.status === 'connected' ? 'green' : s.status === 'connecting' ? 'yellow' : 'red';
       res.push({ label: 'Token/ID', state: st });
     } catch {
       res.push({ label: 'Token/ID', state: 'red' });
     }
     try {
-      const { data: w } = await inboxApi.get('/integrations/whatsapp/cloud/webhook-check');
+      const { data: w } = await waCloud.webhookCheck({ orgId });
       res.push({ label: 'Webhook', state: w.verified ? 'green' : 'yellow' });
     } catch {
       res.push({ label: 'Webhook', state: 'red' });
@@ -58,9 +67,9 @@ export default function WhatsAppOfficialCard({ data, refresh }) {
 
   return (
     <ChannelCard title="WhatsApp Oficial" testId="card-wa-official">
-      {data.status === 'connected' ? (
+      {status === 'connected' ? (
         <div className="flex items-center justify-between">
-          <div>Conectado{data.phone_number_id ? ` (${data.phone_number_id})` : ''}</div>
+          <div>Conectado</div>
           <button
             className="px-3 py-1 bg-red-600 text-white"
             onClick={handleDisconnect}

@@ -4,11 +4,11 @@ import { randomUUID } from 'crypto';
 export async function getMe(req, res, next) {
   try {
     const { rows } = await req.db.query(
-      'SELECT id, name, plan_id FROM orgs WHERE id = $1',
+      'SELECT id, name FROM orgs WHERE id = $1',
       [req.orgId]
     );
     const org = rows[0] || null;
-    res.json({ data: org, role: req.orgRole });
+    res.json({ user: req.user, org });
   } catch (err) {
     next(err);
   }
@@ -17,9 +17,9 @@ export async function getMe(req, res, next) {
 export async function adminList(req, res, next) {
   try {
     const { rows } = await query(
-      'SELECT id, name, plan_id, created_at FROM orgs ORDER BY created_at DESC'
+      'SELECT id, name FROM orgs ORDER BY created_at DESC'
     );
-    res.json({ data: rows });
+    res.json({ items: rows });
   } catch (err) {
     next(err);
   }

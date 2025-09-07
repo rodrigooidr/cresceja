@@ -11,7 +11,8 @@ const requireSuperAdmin = (req, res, next) => {
   return res.status(403).json({ error: 'forbidden' });
 };
 
-router.get('/orgs/me', authRequired, withOrg, requireRole('Viewer'), getMe);
+// GET /api/orgs/me -> retorna a org vinculada ao token
+router.get('/me', authRequired, withOrg, requireRole('Viewer'), getMe);
 router.get('/admin/orgs', authRequired, requireSuperAdmin, adminList);
 router.post('/admin/orgs', authRequired, requireSuperAdmin, adminCreate);
 
