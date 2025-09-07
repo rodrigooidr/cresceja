@@ -1,121 +1,76 @@
 import React, { useEffect, useState } from 'react';
-import ChannelCard from './ChannelCard';
 import { waCloud } from 'api/integrations.service';
 
-function Badge({ state }) {
-  const map = {
-    green: 'bg-green-600 text-white',
-    yellow: 'bg-amber-500 text-white',
-    red: 'bg-red-600 text-white',
-  };
-  const cls = map[state] || map.red;
-  const icon = state === 'green' ? '🟢' : state === 'yellow' ? '🟡' : '🔴';
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${cls}`}>
-      {icon}
-    </span>
-  );
-}
-
-export default function WhatsAppOfficialCard({ orgId, currentOrg }) {
-  const [status, setStatus] = useState('disconnected');
-  const [phone, setPhone] = useState('');
+export default function WhatsAppOfficialCard({ data = {}, refresh }) {
+  const [phoneId, setPhoneId] = useState('');
   const [token, setToken] = useState('');
-  const [tests, setTests] = useState([]);
+  const [status, setStatus] = useState(data?.status || 'disconnected');
+  const [checking, setChecking] = useState(false);
 
-  const refresh = async () => {
+  useEffect(() => { refresh?.(); }, [refresh]);
+
+  useEffect(() => {
+    setStatus(data?.status || 'disconnected');
+  }, [data]);
+
+  const disabledConnect = !phoneId.trim() || !token.trim();
+
+  async function connect() {
     try {
-      const { data } = await waCloud.status({ orgId });
-      setStatus(data?.status || 'disconnected');
-    } catch {
-      setStatus('disconnected');
+      await waCloud.connect({ phone_number_id: phoneId, token });
+      await refresh?.();
+    } catch (e) {
+      console.error(e);
     }
-  };
-
-  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [orgId]);
-
-  async function handleConnect(e) {
-    e.preventDefault();
-    await waCloud.connect({ orgId, phone_number_id: phone, token });
-    setPhone('');
-    setToken('');
-    refresh();
   }
 
-  async function handleDisconnect() {
-    await waCloud.disconnect({ orgId });
-    refresh();
-  }
-
-  async function verify() {
-    const res = [];
+  async function checkConnectivity() {
+    setChecking(true);
     try {
-      const { data: s } = await waCloud.status({ orgId });
-      const st = s.status === 'connected' ? 'green' : s.status === 'connecting' ? 'yellow' : 'red';
-      res.push({ label: 'Token/ID', state: st });
-    } catch {
-      res.push({ label: 'Token/ID', state: 'red' });
+      await waCloud.webhookCheck();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setChecking(false);
     }
-    try {
-      const { data: w } = await waCloud.webhookCheck({ orgId });
-      res.push({ label: 'Webhook', state: w.verified ? 'green' : 'yellow' });
-    } catch {
-      res.push({ label: 'Webhook', state: 'red' });
-    }
-    setTests(res);
   }
 
   return (
-    <ChannelCard title="WhatsApp Oficial" testId="card-wa-official">
-      {status === 'connected' ? (
-        <div className="flex items-center justify-between">
-          <div>Conectado</div>
-          <button
-            className="px-3 py-1 bg-red-600 text-white"
-            onClick={handleDisconnect}
-          >
-            Desconectar
-          </button>
-        </div>
-      ) : (
-        <form onSubmit={handleConnect} className="space-y-2">
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="Phone Number ID"
-            className="border p-1 w-full"
-          />
-          <input
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder="Access Token"
-            className="border p-1 w-full"
-          />
-          <button type="submit" className="px-3 py-1 bg-blue-600 text-white">
-            Conectar
-          </button>
-        </form>
-      )}
-
-      <div className="mt-4">
+    <div className="mb-6 border rounded p-4 bg-white">
+      <div className="font-medium mb-2">WhatsApp Oficial</div>
+      <input
+        className="w-full border rounded px-3 py-2 mb-2"
+        placeholder="Phone Number ID"
+        value={phoneId}
+        onChange={(e) => setPhoneId(e.target.value)}
+      />
+      <input
+        className="w-full border rounded px-3 py-2 mb-3"
+        placeholder="Access Token"
+        value={token}
+        onChange={(e) => setToken(e.target.value)}
+      />
+      <div className="flex items-center gap-2">
         <button
-          className="px-3 py-1 bg-gray-100"
-          onClick={verify}
+          className={`px-3 py-2 rounded text-white ${disabledConnect ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}
+          onClick={connect}
+          disabled={disabledConnect}
+        >
+          Conectar
+        </button>
+        <button
+          className={`px-3 py-2 rounded border ${checking ? 'opacity-60 cursor-not-allowed' : ''}`}
+          onClick={checkConnectivity}
+          disabled={checking || disabledConnect}
+          title={disabledConnect ? 'Preencha Phone Number ID e Access Token' : ''}
         >
           Verificar Conectividade
         </button>
+        <span className={`ml-auto text-xs px-2 py-1 rounded ${status === 'connected' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+          {status}
+        </span>
       </div>
-
-      {tests.length > 0 && (
-        <ul className="mt-2">
-          {tests.map((t) => (
-            <li key={t.label} className="flex items-center gap-2 text-sm mb-1">
-              <span>{t.label}</span>
-              <Badge state={t.state} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </ChannelCard>
+    </div>
   );
 }
+
