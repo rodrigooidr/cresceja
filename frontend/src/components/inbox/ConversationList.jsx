@@ -95,7 +95,9 @@ export default function ConversationList({ onSelect, selectedId }) {
         {ChannelFilter}
       </div>
 
-        <ul className="flex-1 overflow-y-auto" data-testid="conv-list">
+        <div className="flex-1 overflow-y-auto" data-testid="conv-list">
+      <div data-testid="virt-top-sentinel" style={{ position:'absolute', top:0, height:1, width:1, opacity:0 }} />
+        <ul>
         {(convs || []).map((c) => {
           const photo =
             c.photo_asset_id ? assetUrl(`assets/${c.photo_asset_id}`) : null;
@@ -140,8 +142,10 @@ export default function ConversationList({ onSelect, selectedId }) {
             </li>
           );
         })}
-      </ul>
+        </ul>
+      <div data-testid="virt-bottom-sentinel" style={{ position:'absolute', bottom:0, height:1, width:1, opacity:0 }} />
     </div>
+  </div>
   );
 }
 

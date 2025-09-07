@@ -170,6 +170,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
     >
       <div className="flex items-end gap-2">
         <textarea
+          data-testid="composer-textarea"
           className="flex-1 resize-none px-3 py-2 border rounded-lg text-sm min-h-[44px] max-h-[200px] focus:outline-none focus:ring-2 focus:ring-blue-400"
           placeholder="Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
           value={text}
@@ -212,6 +213,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           <button
             ref={quickBtnRef}
             type="button"
+            data-testid="btn-quick-replies"
             className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
             onClick={() => setShowQuick((v) => !v)}
             title="Respostas rápidas"
@@ -219,7 +221,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
             ⚡
           </button>
           <PopoverPortal anchorEl={quickBtnRef.current} open={showQuick} onClose={() => setShowQuick(false)}>
-            <div ref={quickRef} className="max-h-72 overflow-auto">
+            <div ref={quickRef} className="max-h-72 overflow-auto" data-testid="quick-replies-portal">
               {loadingQuick ? (
                 <div className="p-2 text-sm text-gray-500">Carregando...</div>
               ) : (
@@ -237,6 +239,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           <button
             ref={templatesBtnRef}
             type="button"
+            data-testid="btn-templates"
             className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
             onClick={() => setShowTemplates((v) => !v)}
             title="Templates"
@@ -248,7 +251,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
             open={showTemplates}
             onClose={() => setShowTemplates(false)}
           >
-            <div ref={templatesRef} className="w-64 max-h-72 overflow-auto p-2">
+            <div ref={templatesRef} className="w-64 max-h-72 overflow-auto p-2" data-testid="templates-portal">
               {loadingTemplates ? (
                 <div className="text-sm text-gray-500 px-2 py-1">Carregando...</div>
               ) : templates.length ? (
@@ -272,6 +275,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           {/* Anexos */}
           <button
             type="button"
+            data-testid="btn-attach"
             className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
             onClick={() => fileInputRef.current?.click()}
             title="Anexar arquivo"
@@ -282,6 +286,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
             ref={fileInputRef}
             type="file"
             className="hidden"
+            data-testid="file-input"
             multiple
             onChange={handleFileChange}
             accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
@@ -290,6 +295,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           {/* Enviar */}
           <button
             type="button"
+            data-testid="btn-send"
             className={`px-4 py-2 rounded-lg text-white ${disabled ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}
             onClick={doSend}
             disabled={disabled}

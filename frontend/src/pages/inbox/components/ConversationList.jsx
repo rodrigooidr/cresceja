@@ -38,7 +38,9 @@ export default function ConversationList({ loading = false, items = [], selected
 
   return (
     <div className="h-full overflow-auto" data-testid="conv-list" aria-label="Conversations">
+      <div data-testid="virt-top-sentinel" style={{ position:'absolute', top:0, height:1, width:1, opacity:0 }} />
       {content}
+      <div data-testid="virt-bottom-sentinel" style={{ position:'absolute', bottom:0, height:1, width:1, opacity:0 }} />
     </div>
   );
 }
