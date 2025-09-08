@@ -1,6 +1,5 @@
 import express from 'express';
 const router = express.Router();
-import { pool } from "../config/db.js";
 
 // Cria lead + oportunidade CRM, registrando canal de origem
 router.post('/', async (req, res) => {
@@ -11,8 +10,9 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    const db = req.db;
     // Garante tabelas simples
-    await pool.query(`
+    await db.query(`
       CREATE TABLE IF NOT EXISTS public.leads (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -22,7 +22,7 @@ router.post('/', async (req, res) => {
         created_at TIMESTAMP NOT NULL DEFAULT now()
       );
     `);
-    await pool.query(`
+    await db.query(`
       CREATE TABLE IF NOT EXISTS public.crm_opportunities (
         id SERIAL PRIMARY KEY,
         lead_id INTEGER REFERENCES public.leads(id) ON DELETE CASCADE,
@@ -34,13 +34,13 @@ router.post('/', async (req, res) => {
       );
     `);
 
-    const leadResult = await pool.query(
+    const leadResult = await db.query(
       'INSERT INTO public.leads (name, email, whatsapp, source) VALUES ($1, $2, $3, $4) RETURNING id',
       [name, email, whatsapp, channel]
     );
     const leadId = leadResult.rows[0].id;
 
-    await pool.query(
+    await db.query(
       'INSERT INTO public.crm_opportunities (lead_id, name, email, whatsapp) VALUES ($1, $2, $3, $4)',
       [leadId, name, email, whatsapp]
     );

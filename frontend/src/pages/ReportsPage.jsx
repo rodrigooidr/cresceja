@@ -1,17 +1,21 @@
-import inboxApi from "../../api/inboxApi";
+import React, { useCallback, useState } from 'react';
+import inboxApi from '../api/inboxApi.js';
+import useOrgRefetch from '../hooks/useOrgRefetch';
 
-import React, { useEffect, useState } from 'react';
- 
 export default function ReportsPage(){
   const [costs, setCosts] = useState(null);
   const [credits, setCredits] = useState(null);
-  useEffect(()=>{
-    (async()=>{
-      const [c, k] = await Promise.all([ inboxApi.get('/reports/costs'), inboxApi.get('/reports/credits') ]);
-      setCosts(c.data);
-      setCredits(k.data);
-    })();
-  },[]);
+
+  const load = useCallback(async () => {
+    const [c, k] = await Promise.all([
+      inboxApi.get('/reports/costs'),
+      inboxApi.get('/reports/credits')
+    ]);
+    setCosts(c.data);
+    setCredits(k.data);
+  }, []);
+
+  useOrgRefetch(load, [load]);
   return (
     <div style={{maxWidth:900, margin:'0 auto'}}>
       <h2>Relatórios</h2>

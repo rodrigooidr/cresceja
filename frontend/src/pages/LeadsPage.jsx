@@ -1,6 +1,6 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useState, useEffect } from 'react';
-import inboxApi from '../api/inboxApi.js'; 
+import React, { useCallback, useState } from 'react';
+import inboxApi from '../api/inboxApi.js';
+import useOrgRefetch from '../hooks/useOrgRefetch';
 import LeadModal from '../components/LeadModal';
 
 export default function LeadsPage() {
@@ -10,15 +10,13 @@ export default function LeadsPage() {
   const [total, setTotal] = useState(0);
   const [showModal, setShowModal] = useState(false);
 
-  const loadLeads = async () => {
-    const res = await inboxApei.get('/leads', { params: { page, limit } });
-    setLeads(res.data.data);
-    setTotal(res.data.meta.total);
-  };
-
-  useEffect(() => {
-    loadLeads();
+  const loadLeads = useCallback(async () => {
+    const { data } = await inboxApi.get('/leads', { params: { page, limit } });
+    setLeads(data?.data ?? []);
+    setTotal(data?.meta?.total ?? 0);
   }, [page]);
+
+  useOrgRefetch(loadLeads, [loadLeads]);
 
   const handleSaved = () => {
     loadLeads();
