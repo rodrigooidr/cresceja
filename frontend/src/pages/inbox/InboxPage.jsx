@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import inboxApi from "../../api/inboxApi";
 import normalizeMessage from "../../inbox/normalizeMessage";
 import channelIconBySlug from "../../inbox/channelIcons";
-import { makeSocket } from "../../sockets/socket";
+import * as socketMod from "../../sockets/socket";
 import { listConversations, getMessages, sendMessage as sendMessageApi } from "../../inbox/inbox.service";
 import { useOrg } from "../../contexts/OrgContext";
 import useOrgRefetch from "../../hooks/useOrgRefetch";
@@ -125,10 +125,7 @@ export default function InboxPage({ addToast: addToastProp }) {
   }, [selectedId, addToast, markRead]);
 
   // ===== SOCKET =====
-  const socket = useMemo(
-    () => (typeof makeSocket === 'function' ? makeSocket() : null),
-    []
-  );
+  const socket = socketMod.useSocket ? socketMod.useSocket() : socketMod.makeSocket?.();
   useEffect(() => {
     return () => {
       try {

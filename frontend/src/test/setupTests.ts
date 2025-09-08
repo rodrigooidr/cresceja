@@ -271,6 +271,23 @@ jest.mock('api/inboxApi', () => {
   return { __esModule: true, default: api, ...helpers };
 });
 
+// Mock do AuthContext para evitar null em logout/user
+jest.mock('../contexts/AuthContext', () => {
+  const React = require('react');
+  const ctx = {
+    user: { id: 'u1', role: 'OrgAdmin', org_id: '00000000-0000-0000-0000-000000000001', name: 'Test User' },
+    login: jest.fn(),
+    logout: jest.fn(),
+    loading: false,
+  };
+  return {
+    __esModule: true,
+    AuthContext: React.createContext(ctx),
+    AuthProvider: ({ children }: any) => React.createElement(React.Fragment, null, children),
+    useAuth: () => ctx,
+  };
+});
+
 // 🔁 Mock do OrgContext (duplo mapeamento para cobrir imports relativos e por alias)
 const makeOrgCtxMock = () => {
   const React = require('react');
@@ -301,6 +318,17 @@ jest.mock('../contexts/OrgContext', () => makeOrgCtxMock());
  * ========================= */
 const RealDate = Date;
 beforeAll(() => {
+  const store: Record<string, string> = {};
+  Object.defineProperty(window, 'localStorage', {
+    value: {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => { store[k] = String(v); },
+      removeItem: (k: string) => { delete store[k]; },
+      clear: () => { for (const k of Object.keys(store)) delete store[k]; },
+    },
+    writable: false,
+  });
+
   // JWT e Org fixos para os testes
   try {
     localStorage.setItem('token', 'test.jwt.token');

@@ -1,19 +1,18 @@
 import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
-import { useApi } from '../../contexts/useApi';
+import React, { useCallback, useState } from 'react';
+import useOrgRefetch from '../../hooks/useOrgRefetch';
 
 function ApprovalPage() {
-  const api = useApi();
   const [posts, setPosts] = useState([]);
 
-  const carregarPendentes = async () => {
+  const carregarPendentes = useCallback(async () => {
     try {
       const res = await inboxApi.get('/posts?status=pendente');
       setPosts(res.data);
     } catch (err) {
       console.error('Erro ao buscar posts pendentes', err);
     }
-  };
+  }, []);
 
   const atualizarStatus = async (id, status) => {
     try {
@@ -24,9 +23,7 @@ function ApprovalPage() {
     }
   };
 
-  useEffect(() => {
-    carregarPendentes();
-  }, []);
+  useOrgRefetch(carregarPendentes, [carregarPendentes]);
 
   return (
     <div className="p-4 max-w-4xl mx-auto">

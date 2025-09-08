@@ -74,6 +74,10 @@ function makeSocket() {
   return __socketSingleton;
 }
 
+function useSocket() {
+  return makeSocket();
+}
+
 function __resetSocketForTests() {
   if (__socketSingleton) {
     try { __socketSingleton.removeAllListeners(); } catch {}
@@ -82,6 +86,6 @@ function __resetSocketForTests() {
 }
 
 // Exportações compatíveis com ESM e CJS
-const api = { makeSocket, __resetSocketForTests };
+const api = { makeSocket, useSocket, __resetSocketForTests };
 module.exports = api;
 module.exports.default = api;
