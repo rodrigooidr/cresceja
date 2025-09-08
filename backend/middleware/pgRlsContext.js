@@ -1,36 +1,22 @@
-// Garante RLS por transação com SET LOCAL (GUCs) usando ALS.
-// Use após auth: app.use('/api', authRequired, impersonationGuard, pgRlsContext)
-
+// backend/middleware/pgRlsContext.js
 import { pool, als } from '../config/db.js';
-
-function isGlobalAllowed(pathname) {
-  // Rotas que NÃO devem exigir X-Org-Id para funcionarem (seletor de orgs, etc.)
-  return (
-    /^\/orgs\b/.test(pathname) // /api/orgs...
-  );
-}
 
 export async function pgRlsContext(req, res, next) {
   try {
-    const path = req.path || '';
-    const user = req.user || {};
+    const role   = req.user?.role || 'user';
+    const userId = req.user?.id   || null;
 
-    const headerOrg = req.get('X-Org-Id') || null;
-    const tokenOrg  = user.org_id || null;
+    // 1) Header SEMPRE prevalece (permite trocar org sem renovar token)
+    const hdrOrg =
+      req.get('X-Impersonate-Org-Id') ||
+      req.get('X-Org-Id') ||
+      null;
 
-    const routeIsGlobal = isGlobalAllowed(path);
+    const tokenOrg = req.user?.org_id || null;
+    const orgId = hdrOrg || tokenOrg || null;
 
-    // Fallback padrão: header > token
-    const orgId = headerOrg || tokenOrg || null;
-    const role  = user.role || 'user';
-    const userId = user.id || null;
-
-    if (!orgId && !routeIsGlobal) {
-      return res.status(400).json({
-        error: 'org_required',
-        message: 'X-Org-Id ausente e token sem org_id',
-      });
-    }
+    if (!userId) return res.status(401).json({ error: 'unauthorized', message: 'missing user id' });
+    if (!orgId)   return res.status(401).json({ error: 'org_required',  message: 'missing organization id' });
 
     const client = await pool.connect();
     let finished = false;
@@ -39,57 +25,45 @@ export async function pgRlsContext(req, res, next) {
       try {
         await client.query('BEGIN');
 
-        // Seta variáveis de sessão usadas pelas policies de RLS
-        // MUITO IMPORTANTE: agora setamos também app.user_id
-        if (orgId) {
-          await client.query(
-            `SELECT
-               set_config('app.org_id',  $1, true),
-               set_config('app.user_id', $2, true),
-               set_config('app.role',    $3, true),
-               set_config('TimeZone',    'UTC', true)`,
-            [orgId, userId || '', role]
+        // 2) Membership check (exceto SuperAdmin/Support)
+        if (!['SuperAdmin', 'Support'].includes(role)) {
+          const { rows } = await client.query(
+            `SELECT 1 FROM public.org_users WHERE org_id = $1 AND user_id = $2 LIMIT 1`,
+            [orgId, userId]
           );
-        } else {
-          // Rotas "globais" (ex.: /orgs): sem org_id, mas ainda informamos user/role
-          await client.query(
-            `SELECT
-               set_config('app.user_id', $1, true),
-               set_config('app.role',    'global', true),
-               set_config('TimeZone',    'UTC', true)`,
-            [userId || '']
-          );
+          if (rows.length === 0) {
+            await client.query('ROLLBACK');
+            client.release();
+            return res.status(403).json({ error: 'forbidden_org', message: 'user not member of organization' });
+          }
         }
 
-        // (Opcional) timeout de instrução
+        // 3) Parâmetros de sessão da transação (GUCs)
+        await client.query(
+          `SELECT
+             set_config('app.org_id',  $1, true),
+             set_config('app.user_id', $2, true),
+             set_config('app.role',    $3, true),
+             set_config('TimeZone',    'UTC', true)`,
+          [orgId, userId, role]
+        );
+
         if (process.env.PG_STATEMENT_TIMEOUT_MS) {
-          await client.query(
-            `SET LOCAL statement_timeout = $1`,
-            [Number(process.env.PG_STATEMENT_TIMEOUT_MS)]
-          );
+          await client.query(`SET LOCAL statement_timeout = $1`, [Number(process.env.PG_STATEMENT_TIMEOUT_MS)]);
         }
 
-        // compat: algumas rotas usam req.db/req.client
+        // Para as rotas usarem este MESMO client (mesma transação)
         req.db = client;
-        req.orgId = orgId || null;
 
         const cleanup = async (commit) => {
           if (finished) return;
           finished = true;
-          try {
-            if (commit) await client.query('COMMIT');
-            else        await client.query('ROLLBACK');
-          } catch { /* noop */ }
+          try { if (commit) await client.query('COMMIT'); else await client.query('ROLLBACK'); } catch {}
           client.release();
         };
 
-        res.on('finish', async () => {
-          const ok = res.statusCode < 400;
-          await cleanup(ok);
-        });
-        res.on('close', async () => {
-          await cleanup(false);
-        });
+        res.on('finish', async () => { await cleanup(res.statusCode < 400); });
+        res.on('close',  async () => { await cleanup(false); });
 
         next();
       } catch (err) {

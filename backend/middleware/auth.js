@@ -24,29 +24,42 @@ export function auth(req, res, next) {
 
 /**
  * Guard de impersonação de organização.
- * Permite a usuários com papel elevado (SuperAdmin ou is_support)
- * "assumirem" uma organização via header X-Org-Id (ou X-Impersonate-Org).
- * Coloque este middleware **depois** do auth e **antes** do orgScope.
+ *
+ * ✅ NÃO trata X-Org-Id como impersonação (é só seleção da org ativa).
+ *    O pgRlsContext valida membership e prioriza o header sobre o token.
+ *
+ * ⛔️ Só bloqueia quando há impersonação explícita via:
+ *    - X-Impersonate-Org-Id (preferencial)
+ *    - X-Impersonate-Org (retrocompat)
+ *
+ * Somente SuperAdmin/Support (ou is_support) podem impersonar.
+ * Coloque este middleware **depois** do auth e **antes** do pgRlsContext.
  */
 export function impersonationGuard(req, res, next) {
-  // aceita cabeçalho em diferentes formas
-  const headerOrg =
-    req.headers["x-org-id"] ||
+  // Headers de impersonação explícita (aceita variações)
+  const hdrImpersonate =
+    req.get("X-Impersonate-Org-Id") ||
+    req.get("X-Impersonate-Org") ||
+    req.headers["x-impersonate-org-id"] ||
     req.headers["x-impersonate-org"] ||
-    req.headers["x_org_id"] ||
+    req.headers["x_impersonate_org_id"] ||
+    req.headers["x_impersonate_org"] ||
     null;
 
-  if (!headerOrg) return next(); // nada a fazer
-
-  const elevated = req.user?.role === "SuperAdmin" || !!req.user?.is_support;
-  if (!elevated) {
-    return res.status(403).json({ message: "impersonation not allowed" });
+  if (hdrImpersonate) {
+    const role = req.user?.role || "user";
+    const isSupport = !!req.user?.is_support;
+    const canImpersonate = isSupport || ["SuperAdmin", "Support"].includes(role);
+    if (!canImpersonate) {
+      return res.status(403).json({ message: "impersonation not allowed" });
+    }
+    // deixa anotado para middlewares/rotas posteriores, sem sobrescrever o token
+    req.impersonatedOrgId = String(hdrImpersonate);
   }
 
-  // aplica impersonação
-  req.user.org_id = String(headerOrg);
-  req.user.impersonated_org_id = String(headerOrg);
-  next();
+  // IMPORTANTe: X-Org-Id NÃO é impersonação; deixe seguir.
+  // O pgRlsContext fará o membership check e aplicará o org_id da sessão.
+  return next();
 }
 
 /**
@@ -66,8 +79,8 @@ export function requireRole(...allowed) {
 }
 
 /**
- * orgScope (se você quiser centralizar aqui)
- * Falha com 401 se não houver org_id (após possível impersonação).
+ * orgScope (se você quiser centralizar aqui).
+ * Mantido para compat; no projeto atual o pgRlsContext já cuida do org_id.
  */
 export function orgScope(req, res, next) {
   const orgId = req.user?.org_id;

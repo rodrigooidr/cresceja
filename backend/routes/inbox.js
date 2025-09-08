@@ -1,17 +1,35 @@
-// routes/inbox.js  (PATCH v6)
-// Adiciona: GET /api/inbox/conversations/:id/messages  (filtra por conversa)
-// Mantém:  GET /api/inbox/conversations  e POST /api/inbox/messages
+// routes/inbox.js  (RLS-aware)
+// Mantém:
+//   GET  /api/inbox/conversations
+//   GET  /api/inbox/conversations/:id/messages
+//   POST /api/inbox/messages
+//
+// Correções:
+// - usa req.db (transação do pgRlsContext) em vez de pool.query
+// - org atual vem de current_setting('app.org_id', true)
+// - evita usar org_id do token; RLS decide o escopo
+// - filtros por org_id são opcionais e só com o org da sessão
 
 import { Router } from 'express';
 import multer from 'multer';
-import { query } from '../config/db.js';
 import { saveUpload } from '../services/storage.js';
 
 const r = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
 
-async function getResolvedSchema(table) {
-  const q = await query(
+// Helpers que usam o client da transação (req.db)
+async function currentOrgId(db) {
+  const { rows } = await db.query(
+    `SELECT current_setting('app.org_id', true) AS org_id`
+  );
+  return rows?.[0]?.org_id || null;
+}
+
+async function getResolvedSchema(db, table) {
+  const q = await db.query(
     `SELECT n.nspname AS schema
        FROM pg_class c
        JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -23,98 +41,128 @@ async function getResolvedSchema(table) {
   return q.rowCount ? q.rows[0].schema : 'public';
 }
 
-async function listColumns(table) {
-  const schema = await getResolvedSchema(table);
-  const cols = await query(
+async function listColumns(db, table) {
+  const schema = await getResolvedSchema(db, table);
+  const cols = await db.query(
     `SELECT column_name
        FROM information_schema.columns
       WHERE table_name = $1 AND table_schema = $2`,
     [table, schema]
   );
-  return new Set(cols.rows.map(r => r.column_name));
+  return new Set(cols.rows.map((r) => r.column_name));
 }
 
-async function touchConversation(conversationId) {
-  const CC = await listColumns('conversations');
+async function touchConversation(db, conversationId) {
+  const CC = await listColumns(db, 'conversations');
   const ups = [];
   if (CC.has('last_message_at')) ups.push('last_message_at = now()');
   if (CC.has('updated_at')) ups.push('updated_at = now()');
   if (!ups.length) return;
-  await query(`UPDATE conversations SET ${ups.join(', ')} WHERE id = $1`, [conversationId]);
+  await db.query(`UPDATE conversations SET ${ups.join(', ')} WHERE id = $1`, [
+    conversationId,
+  ]);
 }
 
 // ---------- GET /api/inbox/conversations
 r.get('/conversations', async (req, res) => {
+  const db = req.db;
   try {
-    const qStatus = (req.query.status || 'open').toString().toLowerCase();
+    const qStatus = String(req.query.status || 'open').toLowerCase();
     const limitReq = parseInt(req.query.limit, 10);
-    const limit = Number.isFinite(limitReq) ? Math.max(1, Math.min(200, limitReq)) : 50;
+    const limit = Number.isFinite(limitReq)
+      ? Math.max(1, Math.min(200, limitReq))
+      : 50;
 
-    const orgId = req.user?.org_id || req.user?.orgId || null;
+    const orgId = await currentOrgId(db); // org da sessão RLS
+    const CC = await listColumns(db, 'conversations');
 
-    const CC = await listColumns('conversations');
     const conds = [];
     const params = [];
     let i = 1;
 
-    if (CC.has('org_id') && orgId) { conds.push(`org_id = $${i++}`); params.push(orgId); }
+    // filtro por org_id só se a coluna existir (otimiza índice), usando o org do RLS
+    if (CC.has('org_id') && orgId) {
+      conds.push(`org_id = $${i++}`);
+      params.push(orgId);
+    }
+
     if (CC.has('status')) {
-      if (['open','opened','aberta','abertas'].includes(qStatus)) conds.push(`status = 'open'`);
-      else if (['closed','fechada','fechadas'].includes(qStatus)) conds.push(`status = 'closed'`);
+      if (['open', 'opened', 'aberta', 'abertas'].includes(qStatus))
+        conds.push(`status = 'open'`);
+      else if (['closed', 'fechada', 'fechadas'].includes(qStatus))
+        conds.push(`status = 'closed'`);
     }
 
     const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
-    const orderCol = CC.has('updated_at') ? 'updated_at' : (CC.has('created_at') ? 'created_at' : 'id');
+    const orderCol = CC.has('updated_at')
+      ? 'updated_at'
+      : CC.has('created_at')
+      ? 'created_at'
+      : 'id';
     const sql = `SELECT * FROM conversations ${where} ORDER BY ${orderCol} DESC LIMIT ${limit}`;
 
-    const { rows } = await query(sql, params);
+    const { rows } = await db.query(sql, params);
     return res.status(200).json(rows || []);
   } catch (err) {
     console.error('GET /api/inbox/conversations failed:', err);
-    return res.status(500).json({ error: 'internal_error', detail: err?.message, code: err?.code });
+    return res
+      .status(500)
+      .json({ error: 'internal_error', detail: err?.message, code: err?.code });
   }
 });
 
 // ---------- GET /api/inbox/conversations/:id/messages
 r.get('/conversations/:id/messages', async (req, res) => {
+  const db = req.db;
   try {
     const conversationId = req.params.id;
     const limitReq = parseInt(req.query.limit, 10);
-    const limit = Number.isFinite(limitReq) ? Math.max(1, Math.min(500, limitReq)) : 50;
-    const orgId = req.user?.org_id || req.user?.orgId || null;
+    const limit = Number.isFinite(limitReq)
+      ? Math.max(1, Math.min(500, limitReq))
+      : 50;
 
-    // valida conversa da org (quando org_id existir)
-    const conv = await query(
+    // valida/obtém conversa sob RLS (se for de outra org, RLS oculta e rowCount=0)
+    const conv = await db.query(
       `SELECT id, org_id FROM conversations
-       WHERE id = $1 AND ($2::uuid IS NULL OR org_id = $2::uuid)
+       WHERE id = $1
        LIMIT 1`,
-      [conversationId, orgId]
+      [conversationId]
     );
-    if (!conv.rowCount) return res.status(404).json({ error: 'conversation_not_found' });
+    if (!conv.rowCount)
+      return res.status(404).json({ error: 'conversation_not_found' });
 
-    const MC = await listColumns('messages');
+    const convOrgId = conv.rows[0].org_id;
+
+    const MC = await listColumns(db, 'messages');
     const conds = ['conversation_id = $1'];
     const params = [conversationId];
     let i = 2;
 
-    if (MC.has('org_id') && orgId) { conds.push(`org_id = $${i++}`); params.push(orgId); }
+    // filtro extra por org_id se existir a coluna (usa org da conversa)
+    if (MC.has('org_id') && convOrgId) {
+      conds.push(`org_id = $${i++}`);
+      params.push(convOrgId);
+    }
 
-    const orderCol = MC.has('created_at') ? 'created_at'
-                     : MC.has('updated_at') ? 'updated_at'
-                     : 'id';
+    const orderCol = MC.has('created_at')
+      ? 'created_at'
+      : MC.has('updated_at')
+      ? 'updated_at'
+      : 'id';
 
     const sql = `SELECT * FROM messages WHERE ${conds.join(' AND ')}
                  ORDER BY ${orderCol} ASC
                  LIMIT ${limit}`;
-    const { rows } = await query(sql, params);
+    const { rows } = await db.query(sql, params);
 
-    // complementa campos para alinhamento, sem alterar o BD
-    const mapped = rows.map(m => {
+    // normaliza alguns campos para o frontend
+    const mapped = rows.map((m) => {
       const out = { ...m };
       if (out.from == null && out.sender != null) out.from = out.sender;
       if (out.sender == null && out.from != null) out.sender = out.from;
       if (out.direction == null) {
-        out.direction = (out.from === 'agent' || out.sender === 'agent') ? 'outbound' : 'inbound';
+        out.direction =
+          out.from === 'agent' || out.sender === 'agent' ? 'outbound' : 'inbound';
       }
       return out;
     });
@@ -122,39 +170,48 @@ r.get('/conversations/:id/messages', async (req, res) => {
     return res.status(200).json({ items: mapped, total: mapped.length });
   } catch (err) {
     console.error('GET /api/inbox/conversations/:id/messages failed:', err);
-    return res.status(500).json({ error: 'internal_error', detail: err?.message, code: err?.code });
+    return res
+      .status(500)
+      .json({ error: 'internal_error', detail: err?.message, code: err?.code });
   }
 });
 
 // ---------- POST /api/inbox/messages
 r.post('/messages', upload.single('file'), async (req, res) => {
+  const db = req.db;
   try {
     const body = req.body || {};
     const conversationId = body.conversationId || body.conversation_id;
-    const text = (body.message ?? body.text ?? '').toString().trim();
-    const msgType = (body.type || 'text').toString();
-    if (!conversationId && !text && !req.file) return res.status(400).json({ error: 'empty_payload' });
+    const text = String(body.message ?? body.text ?? '').trim();
+    const msgType = String(body.type || 'text');
 
-    const orgId = req.user?.org_id || req.user?.orgId || null;
+    if (!conversationId && !text && !req.file)
+      return res.status(400).json({ error: 'empty_payload' });
 
-    const conv = await query(
+    // pega a conversa sob RLS (garante que pertence à org ativa)
+    const conv = await db.query(
       `SELECT id, org_id FROM conversations
-       WHERE id = $1 AND ($2::uuid IS NULL OR org_id = $2::uuid)
+       WHERE id = $1
        LIMIT 1`,
-      [conversationId, orgId]
+      [conversationId]
     );
-    if (!conv.rowCount) return res.status(404).json({ error: 'conversation_not_found' });
+    if (!conv.rowCount)
+      return res.status(404).json({ error: 'conversation_not_found' });
     const convOrgId = conv.rows[0].org_id;
 
-    const MC = await listColumns('messages');
+    const MC = await listColumns(db, 'messages');
 
     const fields = [];
     const params = [];
     const values = [];
     let i = 1;
-    const push = (col, val) => { fields.push(col); params.push(`$${i++}`); values.push(val); };
+    const push = (col, val) => {
+      fields.push(col);
+      params.push(`$${i++}`);
+      values.push(val);
+    };
 
-    if (MC.has('org_id')) push('org_id', orgId || convOrgId);
+    if (MC.has('org_id')) push('org_id', convOrgId);
     push('conversation_id', conversationId);
 
     if (MC.has('provider')) push('provider', 'wa');
@@ -167,7 +224,10 @@ r.post('/messages', upload.single('file'), async (req, res) => {
 
     if (MC.has('text')) push('text', text);
     else if (MC.has('body')) push('body', text);
-    else return res.status(500).json({ error: 'messages_schema_unsupported_no_text' });
+    else
+      return res
+        .status(500)
+        .json({ error: 'messages_schema_unsupported_no_text' });
 
     const attachments = [];
     if (req.file) {
@@ -187,17 +247,20 @@ r.post('/messages', upload.single('file'), async (req, res) => {
         console.error('[inbox] attachment save failed:', e);
       }
     }
-    if (attachments.length && MC.has('attachments')) push('attachments', JSON.stringify(attachments));
+    if (attachments.length && MC.has('attachments'))
+      push('attachments', JSON.stringify(attachments));
 
     const sql = `INSERT INTO messages (${fields.join(', ')})
                  VALUES (${params.join(', ')})
                  RETURNING *`;
 
     try {
-      const { rows } = await query(sql, values);
+      const { rows } = await db.query(sql, values);
       const inserted = rows[0];
-      if (attachments.length && !inserted.attachments) inserted.attachments = attachments;
-      await touchConversation(conversationId);
+      if (attachments.length && !inserted.attachments)
+        inserted.attachments = attachments;
+
+      await touchConversation(db, conversationId);
 
       try {
         const io = req.app?.get?.('io');
@@ -208,7 +271,9 @@ r.post('/messages', upload.single('file'), async (req, res) => {
     } catch (e) {
       console.error('[inbox] INSERT messages failed:', {
         sql,
-        valuesPreview: values.map(v => (typeof v === 'string' && v.length > 120 ? v.slice(0, 117) + '...' : v))
+        valuesPreview: values.map((v) =>
+          typeof v === 'string' && v.length > 120 ? v.slice(0, 117) + '...' : v
+        ),
       });
       throw e;
     }
@@ -217,13 +282,13 @@ r.post('/messages', upload.single('file'), async (req, res) => {
     return res.status(500).json({
       error: 'internal_error',
       detail: err?.detail || err?.message,
-      code: err?.code
+      code: err?.code,
     });
   }
 });
 
 // Templates e respostas rápidas (placeholders)
-r.get('/templates', async (req, res) => res.status(200).json([]));
-r.get('/quick-replies', async (req, res) => res.status(200).json([]));
+r.get('/templates', async (_req, res) => res.status(200).json([]));
+r.get('/quick-replies', async (_req, res) => res.status(200).json([]));
 
 export default r;

@@ -1,11 +1,18 @@
 // backend/services/conversationsService.js
 import { query as rootQuery } from '../config/db.js';
 
-// escolhe a função de query: client transacional (req.db) ou pool global
+/**
+ * IMPORTANTE:
+ * Sempre que possível, passe o `db` transacional (req.db) vindo do pgRlsContext.
+ * Se cair no fallback (rootQuery/pool), você perde as GUCs (app.org_id etc.)
+ * e, portanto, o comportamento RLS/escopo por organização.
+ */
 function q(db) {
-  return db && typeof db.query === 'function'
-    ? (text, params) => db.query(text, params)
-    : rootQuery;
+  if (db && typeof db.query === 'function') {
+    return (text, params) => db.query(text, params);
+  }
+  // Fallback: funciona, mas sem RLS. Use apenas para scripts utilitários.
+  return (text, params) => rootQuery(text, params);
 }
 
 const PROVIDER_CASE_SQL = `
@@ -17,17 +24,34 @@ const PROVIDER_CASE_SQL = `
   END
 `;
 
+/**
+ * Lista conversas da organização.
+ * Respeita RLS quando `db` é o client da transação (req.db).
+ */
 export async function listConversations(db, orgId, { q: search, status, tags, limit = 30 } = {}) {
   const run = q(db);
   const params = [orgId];
   let where = 'c.org_id = $1';
 
-  if (status) { params.push(status); where += ` AND c.status = $${params.length}`; }
+  if (status) {
+    params.push(status);
+    where += ` AND c.status = $${params.length}`;
+  }
+
   if (search) {
     params.push(`%${search}%`);
-    where += ` AND (COALESCE(ct.name,'') ILIKE $${params.length} OR COALESCE(ct.phone_e164,'') ILIKE $${params.length})`;
+    // usa o MESMO placeholder para name e phone (mesmo valor)
+    where += ` AND (
+      COALESCE(ct.name,'') ILIKE $${params.length}
+      OR COALESCE(ct.phone_e164,'') ILIKE $${params.length}
+    )`;
   }
-  if (tags && tags.length) { params.push(tags); where += ` AND COALESCE(ct.tags, '{}') && $${params.length}`; }
+
+  if (tags && tags.length) {
+    // cast explícito para evitar "operator does not exist: text[] && unknown"
+    params.push(tags);
+    where += ` AND COALESCE(ct.tags, '{}'::text[]) && $${params.length}::text[]`;
+  }
 
   const sql = `
     SELECT
@@ -46,7 +70,7 @@ export async function listConversations(db, orgId, { q: search, status, tags, li
         'tags',       COALESCE(ct.tags, '{}'::text[])
       ) AS contact
     FROM conversations c
-    LEFT JOIN contacts   ct ON ct.id = c.contact_id             -- <<< LEFT JOIN
+    LEFT JOIN contacts   ct ON ct.id = c.contact_id
     LEFT JOIN channels   ch ON ch.id = c.channel_id
     LEFT JOIN LATERAL (
       SELECT COUNT(*) AS unread_count
@@ -57,12 +81,17 @@ export async function listConversations(db, orgId, { q: search, status, tags, li
     ) mu ON TRUE
     WHERE ${where}
     ORDER BY COALESCE(c.last_message_at, c.created_at) DESC
-    LIMIT ${limit}
+    LIMIT ${Math.max(1, Math.min(100, Number(limit) || 30))}
   `;
+
   const { rows } = await run(sql, params);
   return rows;
 }
 
+/**
+ * Obtém uma conversa específica (da org informada).
+ * LEFT JOIN em contacts para não perder conversa caso o contato esteja ausente.
+ */
 export async function getConversation(db, orgId, id) {
   const run = q(db);
   const { rows } = await run(
@@ -73,14 +102,14 @@ export async function getConversation(db, orgId, id) {
       COALESCE(ch.name, 'other') AS channel,
       jsonb_build_object(
         'id',         ct.id,
-        'name',       ct.name,
+        'name',       COALESCE(ct.name, 'Sem nome'),
         'photo_url',  ct.photo_url,
         'phone_e164', ct.phone_e164,
-        'tags',       ct.tags
+        'tags',       COALESCE(ct.tags, '{}'::text[])
       ) AS contact
     FROM conversations c
-    JOIN contacts   ct ON ct.id = c.contact_id
-    LEFT JOIN channels ch ON ch.id = c.channel_id
+    LEFT JOIN contacts   ct ON ct.id = c.contact_id
+    LEFT JOIN channels   ch ON ch.id = c.channel_id
     WHERE c.org_id = $1 AND c.id = $2
     `,
     [orgId, id]
@@ -88,11 +117,19 @@ export async function getConversation(db, orgId, id) {
   return rows[0];
 }
 
+/**
+ * Lista mensagens de uma conversa da org informada.
+ * Por padrão DESC (mais novas primeiro). Ajuste se preferir ASC.
+ */
 export async function listMessages(db, orgId, conversationId, { limit = 50, before } = {}) {
   const run = q(db);
   const params = [orgId, conversationId];
   let where = 'm.org_id = $1 AND m.conversation_id = $2';
-  if (before) { params.push(before); where += ` AND m.created_at < $${params.length}`; }
+
+  if (before) {
+    params.push(before);
+    where += ` AND m.created_at < $${params.length}`;
+  }
 
   const { rows } = await run(
     `
@@ -100,18 +137,22 @@ export async function listMessages(db, orgId, conversationId, { limit = 50, befo
     FROM messages m
     WHERE ${where}
     ORDER BY created_at DESC
-    LIMIT ${limit}
+    LIMIT ${Math.max(1, Math.min(200, Number(limit) || 50))}
     `,
     params
   );
   return rows;
 }
 
+/**
+ * Acrescenta mensagem a uma conversa da org informada.
+ * Respeita colunas opcionais (sender/direction) quando existem.
+ */
 export async function appendMessage(db, orgId, conversationId, from, payload) {
   const run = q(db);
-  const { type, text, attachments = null, status = 'sent', meta = null } = payload;
+  const { type, text, attachments = null, status = 'sent', meta = null } = payload || {};
 
-  // provider curto
+  // provider curto com base no canal da conversa
   const { rows: prov } = await run(
     `
     SELECT ${PROVIDER_CASE_SQL} AS provider
@@ -123,7 +164,7 @@ export async function appendMessage(db, orgId, conversationId, from, payload) {
   );
   const provider = prov[0]?.provider || 'wa';
 
-  // colunas opcionais
+  // checagens de colunas opcionais
   const hasSender = (await run(
     `SELECT EXISTS (
        SELECT 1 FROM information_schema.columns
@@ -138,16 +179,24 @@ export async function appendMessage(db, orgId, conversationId, from, payload) {
      ) AS ok`
   )).rows[0]?.ok;
 
-  // valores exigidos pelo CHECK
+  // mapear from -> sender/direction
   let sender = null;
   let direction = null;
   if (hasSender || hasDirection) {
-    if (from === 'customer') { sender = 'contact'; direction = 'inbound'; }
-    else if (from === 'agent') { sender = 'agent'; direction = 'outbound'; }
-    else { sender = hasSender ? 'agent' : null; direction = 'outbound'; } // ajuste p/ 'ai' se seu CHECK aceitar
+    if (from === 'customer') {
+      sender = 'contact';
+      direction = 'inbound';
+    } else if (from === 'agent') {
+      sender = 'agent';
+      direction = 'outbound';
+    } else {
+      // fallback
+      sender = hasSender ? 'agent' : null;
+      direction = 'outbound';
+    }
   }
 
-  // INSERT com timestamps fixados no SQL (sem placeholders extras)
+  // Monta INSERT
   let rows;
   if (hasSender || hasDirection) {
     const cols = ['org_id','conversation_id','"from"','provider','type','text','attachments','status','meta'];
@@ -156,7 +205,7 @@ export async function appendMessage(db, orgId, conversationId, from, payload) {
     if (hasSender)    { cols.splice(3, 0, 'sender');    vals.splice(3, 0, sender); }
     if (hasDirection) { cols.splice(4, 0, 'direction'); vals.splice(4, 0, direction); }
 
-    const placeholders = cols.map((_, i) => `$${i+1}`).join(',');
+    const placeholders = cols.map((_, i) => `$${i + 1}`).join(',');
     const sql = `
       INSERT INTO messages (${cols.join(',')}, created_at, updated_at)
       VALUES (${placeholders}, now(), now())
@@ -174,9 +223,11 @@ export async function appendMessage(db, orgId, conversationId, from, payload) {
     ));
   }
 
+  // atualiza last_message_at
   await run(
     'UPDATE conversations SET last_message_at = now() WHERE id = $1 AND org_id = $2',
     [conversationId, orgId]
   );
+
   return rows[0];
 }
