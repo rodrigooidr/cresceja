@@ -1,5 +1,7 @@
 import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../api/inboxApi';
+import useOrgRefetch from '../hooks/useOrgRefetch';
  
 
 export default function DashboardPage() {
@@ -10,25 +12,24 @@ export default function DashboardPage() {
   const [sla, setSla] = useState(null);
   const [nps, setNps] = useState(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const [p, c, a, n] = await Promise.all([
-          inboxApi.get('/reports/pipeline', { params: { channel } }),
-          inboxApi.get('/reports/conversion', { params: { channel } }),
-          inboxApi.get('/reports/atendimento', { params: { channel } }),
-          inboxApi.get(`/reports/nps?days=${period}${channel ? `&channel=${channel}` : ''}`)
-        ]);
-        setPipeline(p.data);
-        setConversion(c.data);
-        setSla(a.data);
-        setNps(n.data);
-      } catch (err) {
-        console.error('Erro ao carregar dashboard', err);
-      }
+  const load = useCallback(async () => {
+    try {
+      const [p, c, a, n] = await Promise.all([
+        inboxApi.get('/reports/pipeline', { params: { channel } }),
+        inboxApi.get('/reports/conversion', { params: { channel } }),
+        inboxApi.get('/reports/atendimento', { params: { channel } }),
+        inboxApi.get(`/reports/nps?days=${period}${channel ? `&channel=${channel}` : ''}`),
+      ]);
+      setPipeline(p.data);
+      setConversion(c.data);
+      setSla(a.data);
+      setNps(n.data);
+    } catch (err) {
+      console.error('Erro ao carregar dashboard', err);
     }
-    fetchData();
   }, [period, channel]);
+
+  useOrgRefetch(load, [load]);
 
   return (
     <div className="p-4">

@@ -1,6 +1,7 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
+import inboxApi from '../../api/inboxApi';
 import { useApi } from '../../contexts/useApi';
+import useOrgRefetch from '../../hooks/useOrgRefetch';
 
 function ProgressBar({ percent = 0 }) {
   const p = Math.max(0, Math.min(100, Math.round(percent)));
@@ -71,7 +72,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState('');
 
-  const carregarEtapas = async () => {
+  const carregarEtapas = useCallback(async () => {
     setLoading(true);
     setErro('');
     try {
@@ -90,9 +91,9 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { carregarEtapas(); }, [api]);
+  useOrgRefetch(carregarEtapas, [carregarEtapas]);
 
   const total = etapas.length;
   const concluidas = useMemo(() => etapas.filter(e => e.concluido).length, [etapas]);

@@ -1,6 +1,7 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../../api/inboxApi';
 import { useApi } from '../../contexts/useApi';
+import useOrgRefetch from '../../hooks/useOrgRefetch';
 
 const canais = ['instagram', 'facebook', 'linkedin'];
 
@@ -12,14 +13,14 @@ function MarketingPage() {
   const [data, setData] = useState('');
   const [imagem, setImagem] = useState('');
 
-  const carregarPosts = async () => {
+  const carregarPosts = useCallback(async () => {
     try {
       const res = await inboxApi.get('/posts');
-      setPosts(res.data);
+      setPosts(res.data?.items ?? res.data ?? []);
     } catch (err) {
       console.error('Erro ao carregar posts', err);
     }
-  };
+  }, []);
 
   const criarPost = async () => {
     if (!texto || !canal) return;
@@ -39,9 +40,7 @@ function MarketingPage() {
     }
   };
 
-  useEffect(() => {
-    carregarPosts();
-  }, []);
+  useOrgRefetch(carregarPosts, [carregarPosts]);
 
   return (
     <div className="p-4 max-w-5xl mx-auto">

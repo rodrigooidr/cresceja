@@ -1,8 +1,7 @@
+import React, { useState, useCallback } from "react";
 import inboxApi from "../../api/inboxApi";
-// src/pages/Credits/CreditsPage.jsx
-import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
-import inboxApi from "../../api/inboxApi";
+import useOrgRefetch from "../../hooks/useOrgRefetch";
 import TrialDaysLabel from "../../components/TrialDaysLabel";
 
 export default function CreditsPage() {
@@ -29,9 +28,7 @@ export default function CreditsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+  useOrgRefetch(fetchAll, [fetchAll]);
 
   const startTrial = async () => {
     try {

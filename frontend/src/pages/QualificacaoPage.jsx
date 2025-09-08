@@ -1,6 +1,6 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
-import inboxApi from '../api/inboxApi.js'; 
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../api/inboxApi';
+import useOrgRefetch from '../hooks/useOrgRefetch';
 import LeadQualifyModal from '../components/LeadQualifyModal';
 
 export default function QualificacaoPage() {
@@ -11,17 +11,15 @@ export default function QualificacaoPage() {
   const [status, setStatus] = useState('todos');
   const [currentLead, setCurrentLead] = useState(null);
 
-  const loadLeads = async () => {
+  const loadLeads = useCallback(async () => {
     const params = { page, limit };
     if (status !== 'todos') params.status = status;
-    const res = await inboxApi.get('/leads', { params });
-    setLeads(res.data.data);
-    setTotal(res.data.meta.total);
-  };
-
-  useEffect(() => {
-    loadLeads();
+    const { data } = await inboxApi.get('/leads', { params });
+    setLeads(data?.data || data?.items || []);
+    setTotal(data?.meta?.total || 0);
   }, [page, status]);
+
+  useOrgRefetch(loadLeads, [loadLeads]);
 
   const openModal = (lead) => setCurrentLead(lead);
   const closeModal = () => setCurrentLead(null);

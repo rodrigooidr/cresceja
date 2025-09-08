@@ -1,30 +1,28 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import inboxApi from 'api/inboxApi';
 import WhatsAppOfficialCard from 'components/settings/WhatsAppOfficialCard';
 import WhatsAppBaileysCard from 'components/settings/WhatsAppBaileysCard';
 import InstagramCard from 'components/settings/InstagramCard';
 import FacebookCard from 'components/settings/FacebookCard';
 import OrgSelector from 'components/settings/OrgSelector';
+import useOrgRefetch from '../../hooks/useOrgRefetch';
 
 export default function ChannelsPage() {
   const [tab, setTab] = useState('whatsapp');
   const [summary, setSummary] = useState(null);
-  const [orgChanged, setOrgChanged] = useState(0);
 
   const load = useCallback(async () => {
     const { data } = await inboxApi.get('/channels/summary');
     setSummary(data);
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load, orgChanged]);
+  useOrgRefetch(load, [load]);
 
   if (!summary) return <div>Loading...</div>;
 
   return (
     <div className="p-4">
-      <OrgSelector onChanged={() => setOrgChanged(x => x + 1)} />
+      <OrgSelector />
 
       <div className="flex gap-4 mb-4 border-b">
         <button

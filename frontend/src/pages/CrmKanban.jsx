@@ -1,6 +1,7 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
+import inboxApi from '../api/inboxApi';
 import { useApi } from '../contexts/useApi';
+import useOrgRefetch from '../hooks/useOrgRefetch';
 
 /**
  * Kanban de Oportunidades do CRM com agendamento
@@ -63,11 +64,11 @@ function CrmKanban() {
   const [agendarDe, setAgendarDe] = useState(null); // card selecionado para agendar
   const [form, setForm] = useState({ title: '', date: '', channel: 'whatsapp' });
 
-  const carregar = async () => {
+  const carregar = useCallback(async () => {
     try {
       setCarregando(true);
       const res = await inboxApi.get('/crm/oportunidades');
-      setItens(res.data);
+      setItens(res.data?.items ?? res.data ?? []);
       setErro('');
     } catch (e) {
       console.error(e);
@@ -75,9 +76,9 @@ function CrmKanban() {
     } finally {
       setCarregando(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { carregar(); }, []);
+  useOrgRefetch(carregar, [carregar]);
 
   const porColuna = useMemo(() => {
     const map = { novo: [], em_andamento: [], ganho: [], perdido: [] };

@@ -1,13 +1,13 @@
+import React, { useState, useCallback } from "react";
 import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from "react";
-import inboxApi from "../../api/inboxApi";
+import useOrgRefetch from "../../hooks/useOrgRefetch";
 
 export default function SubscriptionStatus() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -25,9 +25,9 @@ export default function SubscriptionStatus() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useOrgRefetch(load, [load]);
 
   if (loading) return <div className="p-6">Carregando...</div>;
   if (error) return <div className="p-6 text-red-600">{error}</div>;

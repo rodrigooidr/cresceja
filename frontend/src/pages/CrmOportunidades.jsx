@@ -1,6 +1,7 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../api/inboxApi';
 import { useApi } from '../contexts/useApi';
+import useOrgRefetch from '../hooks/useOrgRefetch';
 
 const STATUS = [
   { value: '', label: 'Todos' },
@@ -16,15 +17,15 @@ function CrmOportunidades() {
   const [filtro, setFiltro] = useState('novo');
   const [salvando, setSalvando] = useState(null);
 
-  const fetchOportunidades = async () => {
+  const fetchOportunidades = useCallback(async () => {
     try {
       const qs = filtro ? `?status=${encodeURIComponent(filtro)}` : '';
       const res = await inboxApi.get(`/crm/oportunidades${qs}`);
-      setOportunidades(res.data);
+      setOportunidades(res.data?.items ?? res.data ?? []);
     } catch (err) {
       console.error('Erro ao buscar oportunidades', err);
     }
-  };
+  }, [filtro]);
 
   const atualizarStatus = async (id, status) => {
     try {
@@ -41,9 +42,7 @@ function CrmOportunidades() {
     }
   };
 
-  useEffect(() => {
-    fetchOportunidades();
-  }, [filtro]);
+  useOrgRefetch(fetchOportunidades, [fetchOportunidades]);
 
   return (
     <div className="p-6">

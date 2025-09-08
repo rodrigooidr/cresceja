@@ -1,17 +1,17 @@
-import inboxApi from "../../api/inboxApi";
-
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../api/inboxApi';
+import useOrgRefetch from '../hooks/useOrgRefetch';
  
 export default function SegmentsPage(){
   const [segments, setSegments] = useState([]);
   const [name, setName] = useState('Leads quentes');
   const [minScore, setMinScore] = useState(60);
   const [channel, setChannel] = useState('');
-  const load = async () => {
+  const load = useCallback(async () => {
     const r = await inboxApi.get('/crm/segments');
-    setSegments(r.data);
-  };
-  useEffect(()=>{ load(); },[]);
+    setSegments(r.data?.items ?? r.data ?? []);
+  }, []);
+  useOrgRefetch(load, [load]);
   const create = async () => {
     const filter = { min_score: Number(minScore), channel: channel || undefined };
     await inboxApi.post('/crm/segments', { name, filter });

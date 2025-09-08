@@ -1,6 +1,7 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../../api/inboxApi';
 import { useApi } from '../../contexts/useApi';
+import useOrgRefetch from '../../hooks/useOrgRefetch';
 
 const stages = ['Novo', 'Contato', 'Qualificado', 'Proposta', 'Fechado'];
 
@@ -9,14 +10,14 @@ function CRMPage() {
   const [leads, setLeads] = useState([]);
   const [nome, setNome] = useState('');
 
-  const carregarLeads = async () => {
+  const carregarLeads = useCallback(async () => {
     try {
       const res = await inboxApi.get('/leads');
-      setLeads(res.data);
+      setLeads(res.data?.items ?? res.data ?? []);
     } catch (err) {
       console.error('Erro ao carregar leads', err);
     }
-  };
+  }, []);
 
   const criarLead = async () => {
     if (!nome.trim()) return;
@@ -38,9 +39,7 @@ function CRMPage() {
     }
   };
 
-  useEffect(() => {
-    carregarLeads();
-  }, []);
+  useOrgRefetch(carregarLeads, [carregarLeads]);
 
   return (
     <div className="p-4">

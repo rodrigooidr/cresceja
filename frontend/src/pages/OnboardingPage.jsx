@@ -1,13 +1,14 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../api/inboxApi';
 import { useApi } from '../contexts/useApi';
+import useOrgRefetch from '../hooks/useOrgRefetch';
 
 export default function OnboardingPage() {
   const api = useApi();
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const carregar = async () => {
+  const carregar = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await inboxApi.get('/api/onboarding');
@@ -17,9 +18,9 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { carregar(); }, []);
+  useOrgRefetch(carregar, [carregar]);
 
   const atualizar = async (id, campo, valor) => {
     try {

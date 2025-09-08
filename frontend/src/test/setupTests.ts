@@ -257,8 +257,9 @@ jest.mock('api/inboxApi', () => {
     getAuthToken: jest.fn(() => 'test-token'),
     setActiveOrg: jest.fn((id?: string) => {
       try {
-        if (id) localStorage.setItem('active_org_id', id);
-        else localStorage.removeItem('active_org_id');
+        const ls = globalThis.localStorage;
+        if (id) ls.setItem('active_org_id', id);
+        else ls.removeItem('active_org_id');
       } catch {}
     }),
     getImpersonateOrgId: jest.fn(() => ''),
@@ -293,19 +294,43 @@ const makeOrgCtxMock = () => {
   };
 };
 
-jest.mock('../contexts/OrgContext', makeOrgCtxMock);
-jest.mock('contexts/OrgContext', makeOrgCtxMock); // caso exista alias em moduleNameMapper
+jest.mock('../contexts/OrgContext', () => makeOrgCtxMock());
+
+// Mock do AuthContext para evitar null em logout/user
+jest.mock('../contexts/AuthContext', () => {
+  const React = require('react');
+  const ctx = {
+    user: { id: 'u1', role: 'OrgAdmin', org_id: '00000000-0000-0000-0000-000000000001', name: 'Test User' },
+    login: jest.fn(),
+    logout: jest.fn(),
+    loading: false,
+  };
+  return {
+    __esModule: true,
+    AuthContext: React.createContext(ctx),
+    AuthProvider: ({ children }: any) => React.createElement(React.Fragment, null, children),
+    useAuth: () => ctx,
+  };
+});
 
 /* =========================
  * Ambiente estável (token, org, clock)
  * ========================= */
 const RealDate = Date;
 beforeAll(() => {
+  const store: Record<string,string> = {};
+  Object.defineProperty(window, 'localStorage', {
+    value: {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => { store[k] = String(v); },
+      removeItem: (k: string) => { delete store[k]; },
+      clear: () => { for (const k of Object.keys(store)) delete store[k]; }
+    },
+    writable: false,
+  });
   // JWT e Org fixos para os testes
-  try {
-    localStorage.setItem('token', 'test.jwt.token');
-    localStorage.setItem('active_org_id', '00000000-0000-0000-0000-000000000001');
-  } catch {}
+  localStorage.setItem('token', 'test.jwt.token');
+  localStorage.setItem('active_org_id', '00000000-0000-0000-0000-000000000001');
 
   const fixed = new Date('2024-01-01T12:00:00.000Z');
   // @ts-ignore

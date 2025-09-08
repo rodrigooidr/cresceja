@@ -1,10 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import escalationSound from '../assets/sounds/escalation.mp3';
+import { useOrg } from '../contexts/OrgContext';
 
 export function useRealtimeInbox({ conversationId, onMessage, onConversation, onEscalation }) {
   const socketRef = useRef(null);
   const handlersRef = useRef({ onMessage, onConversation, onEscalation });
+  const { selected } = useOrg();
 
   useEffect(() => {
     handlersRef.current = { onMessage, onConversation, onEscalation };
@@ -37,11 +39,8 @@ export function useRealtimeInbox({ conversationId, onMessage, onConversation, on
   // entrar nas salas quando a conversa mudar
   useEffect(() => {
     const socket = socketRef.current;
-    if (!socket) return;
-    const orgId = localStorage.getItem('org_id');
-    if (!orgId) return;
-
-    socket.emit('join', { orgId });
-    if (conversationId) socket.emit('join', { orgId, conversationId });
-  }, [conversationId]);
+    if (!socket || !selected) return;
+    socket.emit('org:switch', { orgId: selected });
+    if (conversationId) socket.emit('join', { orgId: selected, conversationId });
+  }, [conversationId, selected]);
 }

@@ -1,6 +1,7 @@
-import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import inboxApi from '../../api/inboxApi';
 import { useApi } from '../../contexts/useApi';
+import useOrgRefetch from '../../hooks/useOrgRefetch';
 
 const canais = ['whatsapp', 'instagram', 'facebook'];
 
@@ -11,14 +12,14 @@ function AgendaPage() {
   const [data, setData] = useState('');
   const [canal, setCanal] = useState('whatsapp');
 
-  const carregarEventos = async () => {
+  const carregarEventos = useCallback(async () => {
     try {
       const res = await inboxApi.get('/agenda');
-      setEventos(res.data);
+      setEventos(res.data ?? res.data?.items ?? []);
     } catch (err) {
       console.error('Erro ao carregar agenda', err);
     }
-  };
+  }, []);
 
   const adicionarEvento = async () => {
     if (!titulo || !data || !canal) return;
@@ -32,9 +33,7 @@ function AgendaPage() {
     }
   };
 
-  useEffect(() => {
-    carregarEventos();
-  }, []);
+  useOrgRefetch(carregarEventos, [carregarEventos]);
 
   return (
     <div className="p-4 max-w-4xl mx-auto">
