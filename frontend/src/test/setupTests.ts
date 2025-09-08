@@ -1,6 +1,14 @@
 import '@testing-library/jest-dom';
 import 'whatwg-fetch';
 
+// força axios a usar o adapter http no ambiente de testes, se necessário
+try {
+  // @ts-ignore
+  const httpAdapter = require('axios/lib/adapters/http');
+  // @ts-ignore
+  require('axios').defaults.adapter = httpAdapter;
+} catch {}
+
 // Polyfills
 if (!global.requestAnimationFrame) {
   // @ts-ignore
