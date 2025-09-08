@@ -1,25 +1,24 @@
 import inboxApi from "../../api/inboxApi";
-import React, { useEffect, useState } from 'react';
-import { useApi } from '../../contexts/useApi';
+import React, { useState, useCallback } from 'react';
 import { useOrg } from '../../contexts/OrgContext';
+import useOrgRefetch from '../../hooks/useOrgRefetch';
 
 export default function TemplatesPage() {
-  const api = useApi();
   const [templates, setTemplates] = useState([]);
   const [form, setForm] = useState({ name: '', subject: '', body: '' });
-  const { selected: orgId, orgChangeTick } = useOrg();
+  const { selected: orgId } = useOrg();
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!orgId) return;
-    (async () => {
-      try {
-        const res = await inboxApi.get('/marketing/templates');
-        setTemplates(res.data.data || []);
-      } catch (err) {
-        console.error('load templates', err);
-      }
-    })();
-  }, [orgId, orgChangeTick]);
+    try {
+      const res = await inboxApi.get('/marketing/templates');
+      setTemplates(res.data.data || []);
+    } catch (err) {
+      console.error('load templates', err);
+    }
+  }, [orgId]);
+
+  useOrgRefetch(load, [load]);
 
   const create = async () => {
     try {

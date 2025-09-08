@@ -257,8 +257,9 @@ jest.mock('api/inboxApi', () => {
     getAuthToken: jest.fn(() => 'test-token'),
     setActiveOrg: jest.fn((id?: string) => {
       try {
-        if (id) localStorage.setItem('active_org_id', id);
-        else localStorage.removeItem('active_org_id');
+        const ls = globalThis.localStorage;
+        if (id) ls.setItem('active_org_id', id);
+        else ls.removeItem('active_org_id');
       } catch {}
     }),
     getImpersonateOrgId: jest.fn(() => ''),
@@ -293,8 +294,7 @@ const makeOrgCtxMock = () => {
   };
 };
 
-jest.mock('../contexts/OrgContext', makeOrgCtxMock);
-jest.mock('contexts/OrgContext', makeOrgCtxMock); // caso exista alias em moduleNameMapper
+jest.mock('../contexts/OrgContext', () => makeOrgCtxMock());
 
 /* =========================
  * Ambiente estável (token, org, clock)
