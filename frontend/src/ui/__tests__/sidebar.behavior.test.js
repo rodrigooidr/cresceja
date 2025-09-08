@@ -1,9 +1,9 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { screen, fireEvent } from '@testing-library/react';
+import { renderWithProviders } from '../../test/utils/renderWithProviders';
 import Sidebar from '../../ui/layout/Sidebar';
 
 test('sidebar inicia colapsada e expande no hover', () => {
-  render(<MemoryRouter><Sidebar/></MemoryRouter>);
+  renderWithProviders(<Sidebar />);
   const sb = screen.getByTestId('sidebar');
   // colapsado: não deve renderizar labels de texto
   expect(sb).toBeInTheDocument();
