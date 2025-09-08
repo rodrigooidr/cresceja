@@ -8,7 +8,7 @@ export async function sendMessage({ orgId, conversationId, text }) {
   return { ok: true };
 }
 
-export async function handleWebhook(provider, payload) {
+export async function handleWebhook(db, provider, payload) {
   // parse básico de IG/FB Messaging -> normalizar e chamar saveInboundMessage
   // (implementar mapeamento conforme Graph API)
   for (const entry of payload.entry || []) {
@@ -16,6 +16,7 @@ export async function handleWebhook(provider, payload) {
       const messaging = change.value?.messages || [];
       for (const m of messaging) {
         await saveInboundMessage({
+          db,
           provider,
           providerMessage: m,
           orgHint: null,

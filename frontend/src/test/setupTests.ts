@@ -142,66 +142,48 @@ jest.mock('socket.io-client', () => {
   return { __esModule: true, io: () => sock, default: () => sock };
 });
 
-/* ---- inboxApi mock ----
- * Simula as rotas usadas nos testes, incluindo /orgs para o OrgContext.
- */
+// inboxApi mock – cobre /inbox/* e /conversations/* e outros usados nos testes
 jest.mock('api/inboxApi', () => {
   const now = '2024-01-01T12:00:00Z';
-  const makeResp = (over: any = {}) => ({ data: { items: [], ...over } });
+  const make = (over: any = {}) => ({ data: { items: [], ...over } });
 
-  const api: any = {
-    get: jest.fn(async (url: string, cfg?: any) => {
-      // lista de organizações para o seletor
-      if (url === '/orgs' || url.endsWith('/orgs')) {
-        return {
-          data: {
-            items: [
-              { id: '00000000-0000-0000-0000-000000000001', name: 'CresceJá',       status: 'active', created_at: now },
-              { id: '11111111-1111-1111-1111-111111111111', name: 'CresceJá Demo',  status: 'active', created_at: now },
-            ],
-            total: 2,
-            page: 1,
-            pageSize: 50,
-          }
-        };
-      }
+  const makeConvos = () => ({
+    data: {
+        items: [
+          { id: '1', name: 'Alice', contact_name: 'Alice', last_message_at: now, updated_at: now, status: 'open' },
+          { id: '2', name: 'Bob',   contact_name: 'Bob',   last_message_at: now, updated_at: now, status: 'open' },
+        ],
+      total: 2,
+    },
+  });
 
-      // inbox: conversas
-      if (url.includes('/inbox/conversations') && !/\/messages\b/.test(url)) {
-        return {
-          data: {
-            items: [
-              { id: 'c1', name: 'Alice', contact_name: 'Alice', last_message_at: now, updated_at: now, status: 'open' },
-              { id: 'c2', name: 'Bob',   contact_name: 'Bob',   last_message_at: now, updated_at: now, status: 'open' },
-            ],
-            total: 2,
-          }
-        };
-      }
+  const makeMsgs = (id: string) => ({
+    data: {
+      items: [
+        { id: 'm1', conversation_id: id, text: 'hi',    direction: 'in',  sender: 'contact', created_at: now },
+        { id: 'm2', conversation_id: id, text: 'reply', direction: 'out', sender: 'agent',   created_at: now, status: 'sent' },
+      ],
+      total: 2,
+    },
+  });
 
-      // mensagens da conversa
-      if (/\/inbox\/conversations\/([^/]+)\/messages/.test(url)) {
-        const [, id] = url.match(/\/inbox\/conversations\/([^/]+)\/messages/) || [];
-        return {
-          data: {
-            items: [
-              { id: 'm1', conversation_id: id, text: 'hi',    direction: 'in',  sender: 'contact', created_at: now },
-              { id: 'm2', conversation_id: id, text: 'reply', direction: 'out', sender: 'agent',   created_at: now, status: 'sent' },
-            ],
-            total: 2,
-          }
-        };
-      }
+  const api = {
+    get: jest.fn(async (url: string) => {
+      // Conversas (ambas as famílias)
+      if (/\/inbox\/conversations(\?.*)?$/.test(url) || /\/conversations(\?.*)?$/.test(url)) return makeConvos();
 
-      // templates / quick replies
-      if (url.includes('/inbox/templates')) {
-        return { data: [{ id: 't1', title: 'Boas-vindas', text: 'Bem-vindo(a)!' }] };
-      }
+      // Mensagens por conversa (ambas as famílias)
+      const m1 = url.match(/\/inbox\/conversations\/([^/]+)\/messages/);
+      const m2 = url.match(/\/conversations\/([^/]+)\/messages/);
+      if (m1 || m2) return makeMsgs((m1 || m2)![1]);
+
+      // Templates / quick replies
+      if (url.includes('/inbox/templates'))      return { data: [{ id: 't1', title: 'Boas-vindas', text: 'Bem-vindo(a)!' }] };
       if (url.includes('/inbox/quick') || url.includes('/quick-repl')) {
         return { data: [{ id: 'q1', title: 'Olá!', content: 'Olá, como posso ajudar?' }] };
       }
 
-      // canais / integrações
+      // Channels summary
       if (url.includes('/channels/summary')) {
         return { data: {
           whatsapp_official: { status: 'disconnected' },
@@ -209,43 +191,33 @@ jest.mock('api/inboxApi', () => {
           instagram:         { status: 'disconnected' },
           facebook:          { status: 'disconnected' },
           google_calendar:   { status: 'disconnected' },
-        } };
-      }
-      if (url.includes('/integrations/whatsapp/session/status')) {
-        return { data: { status: 'disconnected' } };
-      }
-      if (url.includes('/integrations/whatsapp/cloud/status')) {
-        return { data: { phone_number_id: '123', webhook_ok: true } };
-      }
-      if (url.includes('/integrations/google/calendar/status')) {
-        return { data: { connected: false } };
+        }};
       }
 
-      return makeResp();
+      // Integrations checkers
+      if (url.includes('/integrations/whatsapp/session/status')) return { data: { status: 'disconnected' } };
+      if (url.includes('/integrations/whatsapp/cloud/status'))   return { data: { phone_number_id: '123', webhook_ok: true } };
+      if (url.includes('/integrations/google/calendar/status'))  return { data: { connected: false } };
+
+      return make();
     }),
 
     post: jest.fn(async (url: string, body?: any) => {
       if (url.includes('/inbox/messages')) {
-        return {
-          data: {
-            id: 'mX',
-            conversation_id: body?.conversationId || body?.conversation_id || 'c1',
-            text: body?.message || body?.text || '',
-            sender: 'agent',
-            direction: 'out',
-            created_at: now,
-            status: 'sent'
-          }
-        };
+        return { data: { id: 'mX', conversation_id: body?.conversationId ?? '1', text: body?.message ?? '', sender: 'agent', direction: 'out', created_at: now, status: 'sent' } };
       }
-      return makeResp();
+      if (/\/conversations\/([^/]+)\/messages/.test(url)) {
+        const id = url.match(/\/conversations\/([^/]+)\/messages/)![1];
+        return { data: { id: 'mX', conversation_id: id, text: body?.text ?? body?.message ?? '', sender: 'agent', direction: 'out', created_at: now, status: 'sent' } };
+      }
+      return make();
     }),
 
-    put: jest.fn(async () => makeResp()),
-    delete: jest.fn(async () => makeResp()),
-    request: jest.fn(async () => makeResp()),
+    put:     jest.fn(async () => make()),
+    delete:  jest.fn(async () => make()),
+    request: jest.fn(async () => make()),
 
-    // axios-like
+    // axios compat
     interceptors: { request: { use: jest.fn(), eject: jest.fn() }, response: { use: jest.fn(), eject: jest.fn() } },
     defaults: { headers: { common: {} as any } },
     create: jest.fn(() => api),
@@ -255,13 +227,7 @@ jest.mock('api/inboxApi', () => {
     setAuthToken: jest.fn(),
     clearAuthToken: jest.fn(),
     getAuthToken: jest.fn(() => 'test-token'),
-    setActiveOrg: jest.fn((id?: string) => {
-      try {
-        const ls = globalThis.localStorage;
-        if (id) ls.setItem('active_org_id', id);
-        else ls.removeItem('active_org_id');
-      } catch {}
-    }),
+    setActiveOrg: jest.fn(),
     getImpersonateOrgId: jest.fn(() => ''),
     setImpersonateOrgId: jest.fn(),
     API_BASE_URL: 'http://localhost:4000/api',
@@ -271,14 +237,14 @@ jest.mock('api/inboxApi', () => {
   return { __esModule: true, default: api, ...helpers };
 });
 
-// Mock do AuthContext para evitar null em logout/user
+// AuthContext mock (evita logout null)
 jest.mock('../contexts/AuthContext', () => {
   const React = require('react');
   const ctx = {
-    user: { id: 'u1', role: 'OrgAdmin', org_id: '00000000-0000-0000-0000-000000000001', name: 'Test User' },
-    login: jest.fn(),
+    user:   { id:'u1', role:'OrgAdmin', org_id:'00000000-0000-0000-0000-000000000001', name:'Test User' },
+    login:  jest.fn(),
     logout: jest.fn(),
-    loading: false,
+    loading:false,
   };
   return {
     __esModule: true,
@@ -288,20 +254,20 @@ jest.mock('../contexts/AuthContext', () => {
   };
 });
 
-// 🔁 Mock do OrgContext (duplo mapeamento para cobrir imports relativos e por alias)
-const makeOrgCtxMock = () => {
+// OrgContext mock
+jest.mock('../contexts/OrgContext', () => {
   const React = require('react');
-  const selected = '00000000-0000-0000-0000-000000000001'; // org fixa para os testes
   const ctx = {
-    orgs: [
-      { id: selected, name: 'CresceJá' },
-      { id: '11111111-1111-1111-1111-111111111111', name: 'CresceJá Demo' },
-    ],
+    orgs: [{ id:'00000000-0000-0000-0000-000000000001', name:'Default Org' }],
     loading: false,
-    selected,
-    setSelected: jest.fn(),      // não troca de org durante os testes por padrão
+    selected: '00000000-0000-0000-0000-000000000001',
+    setSelected: jest.fn(),
     canSeeSelector: true,
     orgChangeTick: 0,
+    searchOrgs: jest.fn(),
+    loadMoreOrgs: jest.fn(),
+    hasMore: false,
+    q: '',
   };
   return {
     __esModule: true,
@@ -309,9 +275,7 @@ const makeOrgCtxMock = () => {
     OrgProvider: ({ children }: any) => React.createElement(React.Fragment, null, children),
     useOrg: () => ctx,
   };
-};
-
-jest.mock('../contexts/OrgContext', () => makeOrgCtxMock());
+});
 
 /* =========================
  * Ambiente estável (token, org, clock)

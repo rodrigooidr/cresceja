@@ -1,9 +1,11 @@
 // backend/services/socialHelpers.js
-import { pool } from '../config/db.js';
+import { query as rootQuery } from '../config/db.js';
 import { v4 as uuidv4 } from 'uuid';
 
-export async function upsertContactAndConversation(provider, providerMessage, orgHint) {
-  const client = await pool.connect();
+const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
+
+export async function upsertContactAndConversation(db, provider, providerMessage, orgHint) {
+  const client = db;
   try {
     await client.query('BEGIN');
 
@@ -66,8 +68,6 @@ export async function upsertContactAndConversation(provider, providerMessage, or
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
-  } finally {
-    client.release();
   }
 }
 
@@ -80,7 +80,7 @@ export async function downloadMediaToAsset({ orgId, url, kind, filename }) {
   return id; // asset_id
 }
 
-export async function persistInboundMessage({ orgId, conversationId, provider, providerMessage, mediaDownloader }) {
+export async function persistInboundMessage({ db, orgId, conversationId, provider, providerMessage, mediaDownloader }) {
   // Normalizar texto e anexos (image/file/audio), baixar mídia quando necessário e salvar em message_attachments
   // Inserir em messages (direction='in', status='delivered' por ex.)
   // Se áudio: enfileirar transcrição (content:transcribe)

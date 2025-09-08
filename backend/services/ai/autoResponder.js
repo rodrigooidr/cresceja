@@ -1,8 +1,10 @@
 // backend/services/ai/autoResponder.js
-import { pool } from '../../config/db.js';
+import { query as rootQuery } from '../../config/db.js';
 import pkg from 'bullmq';
 const { Queue } = pkg;
 import IORedis from 'ioredis';
+
+const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
 
 function getRedis() {
   return new IORedis(process.env.REDIS_URL, {
@@ -11,8 +13,8 @@ function getRedis() {
   });
 }
 
-export async function autoReplyIfEnabled({ orgId, conversationId, contactId, text }) {
-  const { rows } = await pool.query(
+export async function autoReplyIfEnabled({ db, orgId, conversationId, contactId, text }) {
+  const { rows } = await q(db)(
     'SELECT enabled, handoff_keywords FROM org_ai_settings WHERE org_id = $1',
     [orgId]
   );
@@ -23,7 +25,7 @@ export async function autoReplyIfEnabled({ orgId, conversationId, contactId, tex
   const lower = (text || '').toLowerCase();
 
   if (kws.some(k => lower.includes(k))) {
-    await pool.query(
+    await q(db)(
       `UPDATE conversations
           SET ai_status = 'handed_off',
               is_ai_active = FALSE,
@@ -38,7 +40,7 @@ export async function autoReplyIfEnabled({ orgId, conversationId, contactId, tex
   if (!text) return;
   const reply = `🤖 ${text}`;
 
-  const ins = await pool.query(
+  const ins = await q(db)(
     `INSERT INTO messages (org_id, conversation_id, sender, direction, type, text, provider, status, created_at)
        VALUES ($1, $2, 'agent', 'outbound', 'text', $3, 'whatsapp_cloud', 'queued', NOW())
      RETURNING id`,

@@ -13,9 +13,9 @@ export async function receive(req, res) {
   const { provider } = req.params;
   try {
     if (provider === 'whatsapp') {
-      await wa.handleWebhook(req.body);
+      await wa.handleWebhook(req.db, req.body);
     } else if (provider === 'instagram' || provider === 'facebook') {
-      await igfb.handleWebhook(provider, req.body);
+      await igfb.handleWebhook(req.db, provider, req.body);
     }
     res.sendStatus(200);
   } catch (e) {

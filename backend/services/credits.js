@@ -1,5 +1,5 @@
 
-import { query } from '../config/db.js';
+import { query as rootQuery } from '../config/db.js';
 
 const DEFAULTS = {
   free:   { attend: 0, content: 0 },
@@ -15,15 +15,17 @@ function currentPeriod(){
   return { start, end };
 }
 
-async function getPlan(userId){
-  const r = await query('SELECT plan FROM subscriptions WHERE user_id=$1', [userId]);
+const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
+
+async function getPlan(db, userId){
+  const r = await q(db)('SELECT plan FROM subscriptions WHERE user_id=$1', [userId]);
   return (r.rows[0]?.plan || 'free').toLowerCase();
 }
 
-export async function getCreditStatus(userId){
-  const plan = await getPlan(userId);
+export async function getCreditStatus(db, userId){
+  const plan = await getPlan(db, userId);
   const { start, end } = currentPeriod();
-  const r = await query(
+  const r = await q(db)(
     `SELECT category, used FROM ai_credit_usage WHERE user_id=$1 AND period_start=$2 AND period_end=$3`,
     [userId, start.toISOString(), end.toISOString()]
   );
@@ -32,23 +34,23 @@ export async function getCreditStatus(userId){
   return { plan, period_start: start, period_end: end, limits, used };
 }
 
-export async function consumeCredit(userId, category, amount){
-  const plan = await getPlan(userId);
+export async function consumeCredit(db, userId, category, amount){
+  const plan = await getPlan(db, userId);
   const limits = DEFAULTS[plan] || DEFAULTS.free;
   const limit = limits[category] ?? 0;
   const { start, end } = currentPeriod();
-  const r = await query(
+  const r = await q(db)(
     `INSERT INTO ai_credit_usage (user_id, category, period_start, period_end, used)
      VALUES ($1,$2,$3,$4,0)
      ON CONFLICT (user_id, category, period_start, period_end) DO NOTHING
      RETURNING used`,
     [userId, category, start.toISOString(), end.toISOString()]
   );
-  await query(
+  await q(db)(
     `UPDATE ai_credit_usage SET used = used + $1 WHERE user_id=$2 AND category=$3 AND period_start=$4 AND period_end=$5`,
     [amount, userId, category, start.toISOString(), end.toISOString()]
   );
-  const status = await getCreditStatus(userId);
+  const status = await getCreditStatus(db, userId);
   const used = Number(status.used[category] || 0);
   return used <= limit;
 }

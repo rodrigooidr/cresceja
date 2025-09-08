@@ -1,12 +1,13 @@
 // backend/services/social/waCloud.js
-import { pool } from '../../config/db.js';
+import { query as rootQuery } from '../../config/db.js';
 import { saveInboundMessage } from './shared.js';
 
 // Use Node 18+ global fetch (no node-fetch import needed)
+const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
 const GRAPH = 'https://graph.facebook.com/v20.0';
 
-export async function sendMessage({ orgId, conversationId, text, attachments = [] }) {
-  const q = `
+export async function sendMessage(db, { orgId, conversationId, text, attachments = [] }) {
+  const sql = `
     SELECT ch.config->>'phone_number_id' AS phone_id,
            ch.secrets->>'token' AS token,
            ct.phone AS to_phone
@@ -16,7 +17,7 @@ export async function sendMessage({ orgId, conversationId, text, attachments = [
     WHERE c.id = $1 AND c.org_id = $2
     LIMIT 1
   `;
-  const { rows } = await pool.query(q, [conversationId, orgId]);
+  const { rows } = await q(db)(sql, [conversationId, orgId]);
   if (!rows[0]) throw new Error('wa_channel_or_contact_not_found');
   const { phone_id, token, to_phone } = rows[0];
   if (!to_phone) throw new Error('contact_phone_missing');
@@ -36,7 +37,7 @@ export async function sendMessage({ orgId, conversationId, text, attachments = [
   return json;
 }
 
-export async function handleWebhook(payload) {
+export async function handleWebhook(db, payload) {
   for (const entry of payload?.entry ?? []) {
     for (const change of entry?.changes ?? []) {
       const v = change?.value || {};
@@ -44,6 +45,7 @@ export async function handleWebhook(payload) {
 
       for (const m of v?.messages ?? []) {
         await saveInboundMessage({
+          db,
           provider: 'whatsapp_cloud',
           providerMessage: m,
           orgHint

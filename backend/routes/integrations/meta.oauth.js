@@ -40,7 +40,7 @@ router.post('/facebook/connect', async (req, res, next) => {
     const { page_id, access_token } = req.body || {};
     if (!page_id) return res.status(400).json({ error: 'page_id_required' });
 
-    const channel = await channels.upsertChannel({
+    const channel = await channels.upsertChannel(req.db, {
       org_id: req.orgId,
       type: 'facebook',
       mode: 'cloud',
@@ -55,13 +55,13 @@ router.post('/facebook/connect', async (req, res, next) => {
 });
 
 router.get('/facebook/status', async (req, res) => {
-  const ch = await channels.getChannel(req.orgId, 'facebook');
+  const ch = await channels.getChannel(req.db, req.orgId, 'facebook');
   if (!ch) return res.json({ status: 'disconnected' });
   res.json({ status: ch.status || 'connected', page_id: ch.credentials?.page_id });
 });
 
 router.get('/facebook/test', async (req, res) => {
-  const ch = await channels.getChannel(req.orgId, 'facebook');
+  const ch = await channels.getChannel(req.db, req.orgId, 'facebook');
   const status = ch ? (ch.status || 'connected') : 'disconnected';
   res.json({ status, webhook: false });
 });
@@ -72,7 +72,7 @@ router.post('/instagram/connect', async (req, res, next) => {
     const { ig_id, page_id, access_token } = req.body || {};
     if (!ig_id) return res.status(400).json({ error: 'ig_id_required' });
 
-    const channel = await channels.upsertChannel({
+    const channel = await channels.upsertChannel(req.db, {
       org_id: req.orgId,
       type: 'instagram',
       mode: 'cloud',
@@ -87,13 +87,13 @@ router.post('/instagram/connect', async (req, res, next) => {
 });
 
 router.get('/instagram/status', async (req, res) => {
-  const ch = await channels.getChannel(req.orgId, 'instagram');
+  const ch = await channels.getChannel(req.db, req.orgId, 'instagram');
   if (!ch) return res.json({ status: 'disconnected' });
   res.json({ status: ch.status || 'connected', ig_id: ch.credentials?.ig_id });
 });
 
 router.get('/instagram/test', async (req, res) => {
-  const ch = await channels.getChannel(req.orgId, 'instagram');
+  const ch = await channels.getChannel(req.db, req.orgId, 'instagram');
   const status = ch ? (ch.status || 'connected') : 'disconnected';
   res.json({ status, webhook: false });
 });

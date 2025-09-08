@@ -1,7 +1,9 @@
-import { query } from '../config/db.js';
+import { query as rootQuery } from '../config/db.js';
 import { encrypt, decrypt } from './crypto.js';
 
-export async function upsertChannel({ org_id, type, mode, credentials = null, status = 'disconnected', webhook_secret = null }) {
+const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
+
+export async function upsertChannel(db, { org_id, type, mode, credentials = null, status = 'disconnected', webhook_secret = null }) {
   const enc = credentials ? encrypt(credentials) : null;
   const sql = `
     INSERT INTO channels (id, org_id, type, mode, status, credentials_json, webhook_secret, created_at, updated_at)
@@ -11,7 +13,7 @@ export async function upsertChannel({ org_id, type, mode, credentials = null, st
     RETURNING *
   `;
   const params = [org_id, type, mode, status, enc, webhook_secret];
-  const { rows } = await query(sql, params);
+  const { rows } = await q(db)(sql, params);
   const row = rows[0];
   if (row && row.credentials_json) {
     row.credentials = decrypt(row.credentials_json);
@@ -20,8 +22,8 @@ export async function upsertChannel({ org_id, type, mode, credentials = null, st
   return row;
 }
 
-export async function getChannel(org_id, type) {
-  const { rows } = await query('SELECT * FROM channels WHERE org_id = $1 AND type = $2', [org_id, type]);
+export async function getChannel(db, org_id, type) {
+  const { rows } = await q(db)('SELECT * FROM channels WHERE org_id = $1 AND type = $2', [org_id, type]);
   const row = rows[0];
   if (!row) return null;
   if (row.credentials_json) {
@@ -31,8 +33,8 @@ export async function getChannel(org_id, type) {
   return row;
 }
 
-export async function setStatus(org_id, type, status) {
-  const { rows } = await query(
+export async function setStatus(db, org_id, type, status) {
+  const { rows } = await q(db)(
     'UPDATE channels SET status = $3, updated_at = now() WHERE org_id = $1 AND type = $2 RETURNING *',
     [org_id, type, status]
   );

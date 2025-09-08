@@ -3,7 +3,7 @@ import 'dotenv/config';
 import pkg from 'bullmq';
 const { Worker } = pkg;
 import IORedis from 'ioredis';
-import { pool } from '../config/db.js';
+import { query as rootQuery } from '../config/db.js';
 import * as wa from '../services/social/waCloud.js';
 import * as igfb from '../services/social/igfb.js';
 
@@ -15,7 +15,7 @@ const connection = new IORedis(process.env.REDIS_URL, {
 async function processor(job) {
   const { orgId, conversationId, messageId } = job.data;
 
-  const { rows } = await pool.query(
+  const { rows } = await rootQuery(
     `SELECT ch.type AS provider
        FROM conversations c
        JOIN channels ch ON ch.id = c.channel_id AND ch.org_id = c.org_id
@@ -26,7 +26,7 @@ async function processor(job) {
   const provider = rows[0]?.provider;
   if (!provider) throw new Error('provider_not_found');
 
-  const m = await pool.query(
+  const m = await rootQuery(
     `SELECT text FROM messages WHERE id = $1 AND org_id = $2`,
     [messageId, orgId]
   );
@@ -34,17 +34,17 @@ async function processor(job) {
 
   try {
     if (provider === 'whatsapp_cloud') {
-      await wa.sendMessage({ orgId, conversationId, text });
+      await wa.sendMessage(null, { orgId, conversationId, text });
     } else if (provider === 'instagram' || provider === 'facebook') {
       await igfb.sendMessage({ orgId, conversationId, text });
     }
-    await pool.query(
+    await rootQuery(
       `UPDATE messages SET status = 'sent', provider = $1
         WHERE id = $2 AND org_id = $3`,
       [provider, messageId, orgId]
     );
   } catch (e) {
-    await pool.query(
+    await rootQuery(
       `UPDATE messages SET status = 'failed'
         WHERE id = $1 AND org_id = $2`,
       [messageId, orgId]
