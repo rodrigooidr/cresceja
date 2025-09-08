@@ -1,16 +1,35 @@
-// Garante RLS por transação com SET LOCAL, usando ALS.
+// Garante RLS por transação com SET LOCAL (GUCs) usando ALS.
 // Use após auth: app.use('/api', authRequired, impersonationGuard, pgRlsContext)
 
 import { pool, als } from '../config/db.js';
 
+function isGlobalAllowed(pathname) {
+  // Rotas que NÃO devem exigir X-Org-Id para funcionarem (seletor de orgs, etc.)
+  return (
+    /^\/orgs\b/.test(pathname) // /api/orgs...
+  );
+}
+
 export async function pgRlsContext(req, res, next) {
   try {
-    // org_id do JWT; como fallback, aceite X-Org-Id (útil p/ jobs/admin)
-    const orgId = req.user?.org_id || req.headers['x-org-id'] || null;
-    const role  = req.user?.role   || null;
+    const path = req.path || '';
+    const user = req.user || {};
 
-    if (!orgId) {
-      return res.status(401).json({ message: 'org_id missing in token' });
+    const headerOrg = req.get('X-Org-Id') || null;
+    const tokenOrg  = user.org_id || null;
+
+    const routeIsGlobal = isGlobalAllowed(path);
+
+    // Fallback padrão: header > token
+    const orgId = headerOrg || tokenOrg || null;
+    const role  = user.role || 'user';
+    const userId = user.id || null;
+
+    if (!orgId && !routeIsGlobal) {
+      return res.status(400).json({
+        error: 'org_required',
+        message: 'X-Org-Id ausente e token sem org_id',
+      });
     }
 
     const client = await pool.connect();
@@ -20,20 +39,39 @@ export async function pgRlsContext(req, res, next) {
       try {
         await client.query('BEGIN');
 
-        // parâmetros de sessão da transação
-        await client.query(`SELECT
-          set_config('app.org_id', $1, true),
-          set_config('app.role',   $2, true),
-          set_config('TimeZone',   'UTC', true)`,
-          [orgId, role || 'user']
-        );
-        // opcional: evite queries presas
+        // Seta variáveis de sessão usadas pelas policies de RLS
+        // MUITO IMPORTANTE: agora setamos também app.user_id
+        if (orgId) {
+          await client.query(
+            `SELECT
+               set_config('app.org_id',  $1, true),
+               set_config('app.user_id', $2, true),
+               set_config('app.role',    $3, true),
+               set_config('TimeZone',    'UTC', true)`,
+            [orgId, userId || '', role]
+          );
+        } else {
+          // Rotas "globais" (ex.: /orgs): sem org_id, mas ainda informamos user/role
+          await client.query(
+            `SELECT
+               set_config('app.user_id', $1, true),
+               set_config('app.role',    'global', true),
+               set_config('TimeZone',    'UTC', true)`,
+            [userId || '']
+          );
+        }
+
+        // (Opcional) timeout de instrução
         if (process.env.PG_STATEMENT_TIMEOUT_MS) {
-          await client.query(`SET LOCAL statement_timeout = $1`, [Number(process.env.PG_STATEMENT_TIMEOUT_MS)]);
+          await client.query(
+            `SET LOCAL statement_timeout = $1`,
+            [Number(process.env.PG_STATEMENT_TIMEOUT_MS)]
+          );
         }
 
         // compat: algumas rotas usam req.db/req.client
         req.db = client;
+        req.orgId = orgId || null;
 
         const cleanup = async (commit) => {
           if (finished) return;
@@ -45,13 +83,10 @@ export async function pgRlsContext(req, res, next) {
           client.release();
         };
 
-        // commit só em 2xx/3xx; erro => rollback
         res.on('finish', async () => {
           const ok = res.statusCode < 400;
           await cleanup(ok);
         });
-
-        // conexões abortadas: rollback
         res.on('close', async () => {
           await cleanup(false);
         });

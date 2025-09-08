@@ -4,6 +4,17 @@ import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
 
+function readTokenOrgId() {
+  try {
+    const t = localStorage.getItem("token");
+    if (!t) return null;
+    const payload = JSON.parse(atob(t.split(".")[1] || ""));
+    return payload?.org_id || null;
+  } catch {
+    return null;
+  }
+}
+
 export function OrgProvider({ children }) {
   const { user } = useAuth();
   const [orgs, setOrgs] = useState([]);
@@ -16,11 +27,11 @@ export function OrgProvider({ children }) {
     }
   });
 
+  // SuperAdmin/Support sempre; OrgOwner/OrgAdmin podem ver seletor (condicional ao número de empresas)
   const canSeeSelector = useMemo(() => {
     if (!user) return false;
-    if (user.role === "SuperAdmin" || user.role === "Support") return true;
-    if (user.role === "OrgAdmin") return true; // condicional pelo count
-    return false;
+    const r = user.role;
+    return ["SuperAdmin", "Support", "OrgOwner", "OrgAdmin"].includes(r);
   }, [user]);
 
   const visibility = useMemo(() => {
@@ -32,10 +43,12 @@ export function OrgProvider({ children }) {
     async (q = "", page = 1) => {
       setLoading(true);
       try {
+        // meta.scope='global' => NÃO enviar X-Org-Id nesta chamada
         const { data } = await inboxApi.get("/orgs", {
           params: { visibility, q, page, pageSize: 50 },
+          meta: { scope: "global" },
         });
-        setOrgs(data.items || data);
+        setOrgs(data.items || data || []);
       } catch {
         setOrgs([]);
       } finally {
@@ -51,30 +64,38 @@ export function OrgProvider({ children }) {
     })();
   }, [refreshOrgs]);
 
+  // Autocorreção da seleção
   useEffect(() => {
-    if (!loading) {
-      if (user?.role === "OrgAdmin" && orgs.length === 1) {
-        const only = orgs[0]?.id || null;
-        if (only && selected !== only) {
-          setSelected(only);
-          setActiveOrg(only);
-        }
-      }
-      if (canSeeSelector && orgs.length > 0) {
-        const exists = orgs.some((o) => o.id === selected);
-        if (!exists) {
-          const next = orgs[0].id;
-          setSelected(next);
-          setActiveOrg(next);
-        }
+    if (loading) return;
+
+    // 1) OrgOwner/OrgAdmin com 1 empresa: fixa e oculta seletor
+    if (["OrgOwner", "OrgAdmin"].includes(user?.role) && orgs.length === 1) {
+      const only = orgs[0]?.id || null;
+      if (only && selected !== only) {
+        setSelected(only);
+        setActiveOrg(only);
+        return;
       }
     }
-  }, [loading, orgs, selected, canSeeSelector, user?.role]);
+
+    // 2) Se não há seleção ou perdeu acesso, escolher uma válida
+    const exists = selected && orgs.some((o) => o.id === selected);
+    if (!exists) {
+      const fromToken = readTokenOrgId();
+      const tokenIsValid = fromToken && orgs.some((o) => o.id === fromToken);
+      const next = tokenIsValid ? fromToken : (orgs[0]?.id || null);
+      if (next) {
+        setSelected(next);
+        setActiveOrg(next); // atualiza axios + localStorage
+      }
+    }
+  }, [loading, orgs, selected, user?.role]);
 
   const choose = useCallback(async (orgId) => {
     setSelected(orgId);
     setActiveOrg(orgId);
-    // opcional: await inboxApi.post('/session/org', { org_id: orgId });
+    // opcional: auditar a troca
+    // await inboxApi.post('/session/org', { org_id: orgId }, { meta: { scope: 'global' } });
   }, []);
 
   const value = useMemo(
@@ -90,4 +111,3 @@ export function useOrg() {
   if (!ctx) throw new Error("useOrg must be used within OrgProvider");
   return ctx;
 }
-

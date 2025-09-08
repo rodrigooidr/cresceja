@@ -758,3 +758,160 @@ BEGIN
 END $$;
 
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON public.messages(org_id, conversation_id, created_at);
+
+-- ===== Extensions =====
+CREATE EXTENSION IF NOT EXISTS pgcrypto;  -- gen_random_uuid()
+
+-- ===== Schema utilitário para GUC helpers =====
+CREATE SCHEMA IF NOT EXISTS app;
+
+-- Retorna current_setting('app.user_id', true)::uuid com NULL seguro
+CREATE OR REPLACE FUNCTION app.current_user_id() RETURNS uuid
+LANGUAGE sql STABLE AS $$
+  SELECT CASE
+    WHEN current_setting('app.user_id', true) IS NULL
+         OR current_setting('app.user_id', true) = '' THEN NULL
+    ELSE current_setting('app.user_id', true)::uuid
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION app.current_org_id() RETURNS uuid
+LANGUAGE sql STABLE AS $$
+  SELECT CASE
+    WHEN current_setting('app.org_id', true) IS NULL
+         OR current_setting('app.org_id', true) = '' THEN NULL
+    ELSE current_setting('app.org_id', true)::uuid
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION app.current_role() RETURNS text
+LANGUAGE sql STABLE AS $$
+  SELECT COALESCE(NULLIF(current_setting('app.role', true), ''), 'user');
+$$;
+
+-- ===== Tabelas =====
+CREATE TABLE IF NOT EXISTS organizations (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name       text NOT NULL,
+  slug       text UNIQUE,
+  status     text NOT NULL DEFAULT 'active', -- active | suspended | archived
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS org_memberships (
+  org_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role text NOT NULL DEFAULT 'Viewer',  -- OrgOwner | OrgAdmin | Manager | Agent | Viewer
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (org_id, user_id),
+  CONSTRAINT org_memberships_org_fk
+    FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
+
+-- Adiciona FK para users(id) se a tabela existir
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'users'
+  ) THEN
+    PERFORM 1
+    FROM pg_constraint c
+    WHERE c.conname = 'org_memberships_user_fk';
+
+    IF NOT FOUND THEN
+      ALTER TABLE org_memberships
+        ADD CONSTRAINT org_memberships_user_fk
+        FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+    END IF;
+  END IF;
+END$$;
+
+-- ===== Índices =====
+CREATE INDEX IF NOT EXISTS idx_orgs_name ON organizations (name);
+CREATE INDEX IF NOT EXISTS idx_memberships_user ON org_memberships (user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_org ON org_memberships (org_id);
+
+-- ===== RLS =====
+ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org_memberships ENABLE ROW LEVEL SECURITY;
+
+-- Policies: membros veem suas orgs
+DROP POLICY IF EXISTS orgs_member_sel ON organizations;
+CREATE POLICY orgs_member_sel ON organizations
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1
+    FROM org_memberships m
+    WHERE m.org_id = organizations.id
+      AND app.current_user_id() IS NOT NULL
+      AND m.user_id = app.current_user_id()
+  )
+);
+
+-- Policies: SuperAdmin/Support veem todas
+DROP POLICY IF EXISTS orgs_super_sel ON organizations;
+CREATE POLICY orgs_super_sel ON organizations
+FOR SELECT
+USING ( app.current_role() IN ('SuperAdmin','Support') );
+
+-- Memberships: o próprio usuário enxerga seus vínculos; superusers veem tudo
+DROP POLICY IF EXISTS mem_self_sel ON org_memberships;
+CREATE POLICY mem_self_sel ON org_memberships
+FOR SELECT
+USING (
+  app.current_role() IN ('SuperAdmin','Support')
+  OR (app.current_user_id() IS NOT NULL AND user_id = app.current_user_id())
+);
+
+-- (Opcional) você pode criar policies de INSERT/UPDATE/DELETE depois
+
+-- ===== Seed da organização padrão (id já usado no seu token) =====
+INSERT INTO organizations (id, name, slug, status)
+VALUES ('00000000-0000-0000-0000-000000000001', 'Default Org', 'default', 'active')
+ON CONFLICT (id) DO NOTHING;
+
+-- ===== Seed do membership do Rodrigo como OrgOwner (se o usuário existir) =====
+DO $$
+DECLARE
+  v_user_id uuid;
+BEGIN
+  -- ajuste o email se necessário
+  SELECT id INTO v_user_id FROM public.users WHERE email = 'rodrigooidr@hotmail.com' LIMIT 1;
+
+  IF v_user_id IS NOT NULL THEN
+    INSERT INTO org_memberships (org_id, user_id, role)
+    VALUES ('00000000-0000-0000-0000-000000000001', v_user_id, 'OrgOwner')
+    ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role;
+  END IF;
+END$$;
+
+-- ===== Gatilho simples de updated_at =====
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_proc WHERE proname = 'touch_updated_at'
+  ) THEN
+    CREATE OR REPLACE FUNCTION touch_updated_at() RETURNS trigger AS $f$
+    BEGIN
+      NEW.updated_at := now();
+      RETURN NEW;
+    END;
+    $f$ LANGUAGE plpgsql;
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger
+    WHERE tgname = 'trg_orgs_touch_updated_at'
+  ) THEN
+    CREATE TRIGGER trg_orgs_touch_updated_at
+    BEFORE UPDATE ON organizations
+    FOR EACH ROW EXECUTE PROCEDURE touch_updated_at();
+  END IF;
+END$$;

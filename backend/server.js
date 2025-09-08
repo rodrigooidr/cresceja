@@ -87,11 +87,62 @@ async function init() {
 
   const app = express();
 
-  // Desabilita ETag (evita 304 em JSON)
+  // Configs base
   app.set('etag', false);
   app.set('trust proxy', 1);
+  app.disable('x-powered-by');
 
-  // --------- Webhooks (os que exigem RAW vêm antes do express.json) ----------
+  // ---------- CORS (sempre antes de qualquer rota/middleware que lide com body) ----------
+  const ALLOWED_ORIGINS = corsOrigins;
+  const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+  const ALLOWED_HEADERS = [
+    'Authorization',
+    'Content-Type',
+    'X-Org-Id',
+    'Cache-Control',     // <- necessário para seu caso
+    'Pragma',
+    'Expires',
+    'Accept',
+    'X-Requested-With',
+  ];
+
+  const corsOptions = {
+    origin: (origin, cb) => {
+      // permite ferramentas como curl/postman (sem origin)
+      if (!origin) return cb(null, true);
+      return cb(null, ALLOWED_ORIGINS.includes(origin));
+    },
+    methods: ALLOWED_METHODS,
+    allowedHeaders: ALLOWED_HEADERS,
+    exposedHeaders: ['Content-Disposition'],
+    credentials: false,
+    maxAge: 86400,
+    optionsSuccessStatus: 204,
+  };
+
+  app.use(cors(corsOptions));
+  // responde preflight para QUALQUER rota
+  app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '');
+    res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Methods', ALLOWED_METHODS.join(','));
+    res.header('Access-Control-Allow-Headers', ALLOWED_HEADERS.join(','));
+    res.sendStatus(204);
+  });
+
+  // Helmet após CORS para evitar conflitos
+  app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
+  }));
+
+  // Logger HTTP
+  app.use(pinoHttp({ logger }));
+
+  // Rate limit básico em toda a API
+  app.use(rateLimit({ windowMs: 60_000, max: 300 }));
+
+  // ---------- Webhooks (os que exigem RAW vêm antes do express.json) ----------
   // Meta (Facebook/Instagram) com assinatura X-Hub-Signature-256 precisa de raw body
   app.use('/api/webhooks', express.raw({ type: 'application/json' }), metaWebhookRouter);
   // Demais webhooks (sem necessidade de raw body)
@@ -100,23 +151,7 @@ async function init() {
   app.use('/api/webhooks/whatsapp', waWebhookRouter);
   app.use('/api/webhooks/meta-pages', metaPagesWebhookRouter);
 
-  // ---------- Segurança e CORS (sempre antes das rotas com JSON) ----------
-  app.use(helmet());
-  app.use(
-    cors({
-      origin: corsOrigins,
-      credentials: true,
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id', 'X-Requested-With'],
-      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    })
-  );
-  app.options('*', cors({ origin: corsOrigins, credentials: true }));
-  app.use(pinoHttp({ logger }));
-
-  // Rate limit básico em toda a API
-  app.use(rateLimit({ windowMs: 60_000, max: 300 }));
-
-  // --------- Demais rotas com JSON padrão ----------
+  // ---------- Demais rotas com JSON padrão ----------
   app.use(express.json({ limit: '10mb' }));
 
   // Static público
@@ -199,7 +234,7 @@ async function init() {
 
   const io = new IOServer(httpServer, {
     path: '/socket.io',
-    cors: { origin: corsOrigins, credentials: true },
+    cors: { origin: ALLOWED_ORIGINS, credentials: true },
   });
 
   // Disponibiliza io para rotas (req.app.get('io'))
