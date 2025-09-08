@@ -5,8 +5,10 @@ import WhatsAppBaileysCard from 'components/settings/WhatsAppBaileysCard';
 import InstagramCard from 'components/settings/InstagramCard';
 import FacebookCard from 'components/settings/FacebookCard';
 import useOrgRefetch from '../../hooks/useOrgRefetch';
+import useActiveOrgGate from '../../hooks/useActiveOrgGate';
 
 export default function ChannelsPage() {
+  const { loading, ready, error } = useActiveOrgGate();
   const [tab, setTab] = useState('whatsapp');
   const [summary, setSummary] = useState(null);
 
@@ -17,7 +19,9 @@ export default function ChannelsPage() {
 
   useOrgRefetch(load, [load]);
 
-  if (!summary) return <div>Loading...</div>;
+  if (loading) return <div>Carregando…</div>;
+  if (!ready) return <div>{error}</div>;
+  if (!summary) return <div>Carregando…</div>;
 
   return (
     <div className="p-4">

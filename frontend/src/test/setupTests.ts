@@ -4,6 +4,18 @@ import '@testing-library/jest-dom';
 /* =========================
  * Polyfills / DOM shims
  * ========================= */
+if (!global.requestAnimationFrame) {
+  // @ts-ignore
+  global.requestAnimationFrame = (cb: any) => setTimeout(cb, 0);
+}
+if (!window.getComputedStyle) {
+  // @ts-ignore
+  window.getComputedStyle = () => ({ getPropertyValue: () => '' });
+}
+if (!Element.prototype.closest) {
+  // @ts-ignore
+  Element.prototype.closest = function () { return null; };
+}
 if (!('createObjectURL' in URL)) {
   // @ts-ignore
   URL.createObjectURL = jest.fn(() => 'blob://mock');

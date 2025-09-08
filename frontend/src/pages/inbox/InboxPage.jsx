@@ -8,6 +8,7 @@ import * as socketMod from "../../sockets/socket";
 import { listConversations, getMessages, sendMessage as sendMessageApi } from "../../inbox/inbox.service";
 import { useOrg } from "../../contexts/OrgContext";
 import useOrgRefetch from "../../hooks/useOrgRefetch";
+import useActiveOrgGate from "../../hooks/useActiveOrgGate";
 
 import ConversationList from "./components/ConversationList.jsx";
 import ConversationHeader from "./components/ConversationHeader.jsx";
@@ -20,6 +21,7 @@ import useToastFallback from "../../hooks/useToastFallback";
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
+  const { loading, ready, error } = useActiveOrgGate();
   const { selected: orgId } = useOrg();
 
   // ===== FILTROS =====
@@ -280,6 +282,9 @@ export default function InboxPage({ addToast: addToastProp }) {
     },
     [selectedId, addToast]
   );
+
+  if (loading) return <div>Carregando…</div>;
+  if (!ready) return <div>{error}</div>;
 
   // ===== UI =====
   return (
