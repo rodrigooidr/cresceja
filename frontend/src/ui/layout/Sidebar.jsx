@@ -1,5 +1,5 @@
 // src/ui/layout/Sidebar.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { MessageSquare, Users, BarChart3, Settings, Bot, Calendar, FileText, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -15,19 +15,23 @@ const NAV = [
   { to: '/app/ai',                  label: 'IA',            icon: Bot },
 ];
 
-export default function Sidebar({ expanded, setExpanded }) {
-  const width = expanded ? 220 : 64;
+export default function Sidebar({ expanded, setExpanded } = {}) {
+  const [inner, setInner] = useState(false);
+  const isExpanded = typeof expanded === 'boolean' ? expanded : inner;
+  const setExp = setExpanded || setInner;
+
+  const width = isExpanded ? 220 : 64;
   const { logout } = useAuth();
 
   return (
     <aside
-      onMouseEnter={() => setExpanded(true)}
-      onMouseLeave={() => setExpanded(false)}
+      onMouseEnter={() => setExp(true)}
+      onMouseLeave={() => setExp(false)}
       className="fixed inset-y-0 left-0 border-r bg-white overflow-hidden transition-[width] duration-200 z-30 flex flex-col"
       style={{ width }}
       data-testid="sidebar"
     >
-      {expanded && (
+      {isExpanded && (
         <div className="p-2 border-b">
           <OrgSwitcher />
         </div>
@@ -45,7 +49,7 @@ export default function Sidebar({ expanded, setExpanded }) {
             aria-label={label}
           >
             <Icon size={20} className="shrink-0" />
-            {expanded && <span className="truncate">{label}</span>}
+            {isExpanded && <span className="truncate">{label}</span>}
           </NavLink>
         ))}
       </nav>
@@ -57,7 +61,7 @@ export default function Sidebar({ expanded, setExpanded }) {
           onClick={logout}
           className="w-full text-left text-sm text-red-600 hover:underline"
         >
-          {expanded ? 'Sair' : '⎋'}
+          {isExpanded ? 'Sair' : '⎋'}
         </button>
       </div>
     </aside>

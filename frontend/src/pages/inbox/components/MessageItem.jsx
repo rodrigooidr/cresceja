@@ -32,6 +32,13 @@ export default function MessageItem({ msg, registerRef }) {
 }
 
 function renderMessageBody(m) {
+  const text =
+    m?.text ??
+    m?.body ??
+    m?.content ??
+    (typeof m?.transcript === 'string' ? m.transcript : '') ??
+    '';
+
   if (Array.isArray(m.attachments) && m.attachments.length) {
     return (
       <div className="flex flex-col gap-2">
@@ -58,7 +65,7 @@ function renderMessageBody(m) {
             </a>
           )
         )}
-        {m.text && <p>{m.text}</p>}
+        {text && <p>{text}</p>}
       </div>
     );
   }
@@ -67,7 +74,7 @@ function renderMessageBody(m) {
     return (
       <a href={m.media_url} target="_blank" rel="noopener noreferrer" className="block" title="Abrir imagem">
         <img src={m.media_url} alt={m.file_name || "imagem"} className="rounded-md max-h-72 object-contain" />
-        {m.text && <p className="mt-2">{m.text}</p>}
+        {text && <p className="mt-2">{text}</p>}
       </a>
     );
   }
@@ -76,7 +83,7 @@ function renderMessageBody(m) {
     const label = m.file_name || "arquivo";
     return (
       <div>
-        <p className="mb-2">{m.text || "Arquivo:"}</p>
+        <p className="mb-2">{text || "Arquivo:"}</p>
         <a
           href={m.media_url}
           target="_blank"
@@ -90,7 +97,7 @@ function renderMessageBody(m) {
     );
   }
 
-  return <span className="whitespace-pre-wrap break-words">{m.text || " "}</span>;
+  return <span className="whitespace-pre-wrap break-words">{text}</span>;
 }
 
 function mimeIcon(mime = "") {
