@@ -98,6 +98,18 @@ inboxApi.interceptors.request.use((config) => {
   config = ensureAuthHeader(config);
   config = ensureImpersonateHeader(config);
 
+  // aplica X-Org-Id em todas as chamadas, exceto quando marcado como global
+  try {
+    const isGlobal = config.meta?.scope === "global";
+    const orgId = localStorage.getItem("active_org_id");
+    if (isGlobal) {
+      if (config.headers) delete config.headers["X-Org-Id"];
+    } else if (orgId) {
+      if (!config.headers) config.headers = {};
+      config.headers["X-Org-Id"] = orgId;
+    }
+  } catch {}
+
   if (config._skipRewrite) {
     log(`bypass rewrite for ${config.method?.toUpperCase() || "GET"} ${config.url}`);
     return config;
