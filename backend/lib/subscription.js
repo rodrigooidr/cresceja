@@ -1,8 +1,10 @@
 // backend/lib/subscription.js
-import { query } from "../config/db.js";
+import { query as rootQuery } from "../config/db.js";
 
-export async function getClientByUserId(userId) {
-  const { rows } = await query(
+const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
+
+export async function getClientByUserId(db, userId) {
+  const { rows } = await q(db)(
     `SELECT c.*, p.name AS plan_name, p.modules, p.is_free, p.trial_days, p.billing_period_months
        FROM clients c
        LEFT JOIN plans p ON p.id = c.plan_id

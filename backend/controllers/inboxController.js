@@ -76,7 +76,7 @@ export async function sendMessage(req, res) {
 
   let finalText = text;
   if (template_id) {
-    const t = await compileTemplate(req.orgId, template_id, vars);
+    const t = await compileTemplate(req.db, template_id, vars);
     finalText = t.body;
   }
 

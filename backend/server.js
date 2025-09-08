@@ -47,6 +47,7 @@ import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
 import funnelRouter from './routes/crm.funnel.js';
+import debugRouter from './routes/debug.js';
 
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
@@ -209,6 +210,7 @@ async function init() {
   app.use('/api/integrations/google/calendar', gcalRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
+  app.use('/api/debug', debugRouter);
 
   // Inbox (após auth/pgRlsContext)
   app.use('/api/inbox', inboxRoutes);

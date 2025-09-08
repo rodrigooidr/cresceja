@@ -7,7 +7,7 @@ export function auditMiddleware(req, res, next) {
   res.end = function (...args) {
     const entity = req.path.split('/')[1] || req.path;
     const entityId = req.params?.id ? Number(req.params.id) : null;
-    auditLog({
+    auditLog(req.db, {
       user_email: req.user?.email || null,
       action: req.method,
       entity,

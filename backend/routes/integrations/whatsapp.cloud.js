@@ -12,7 +12,7 @@ router.post('/connect', async (req, res) => {
     return res.status(400).json({ error: 'missing_fields' });
   }
   try {
-    await channels.upsertChannel({
+    await channels.upsertChannel(req.db, {
       org_id: req.orgId,
       type: 'whatsapp',
       mode: 'cloud',
@@ -28,7 +28,7 @@ router.post('/connect', async (req, res) => {
 
 // GET /api/integrations/whatsapp/cloud/status
 router.get('/status', async (req, res) => {
-  const ch = await channels.getChannel(req.orgId, 'whatsapp');
+  const ch = await channels.getChannel(req.db, req.orgId, 'whatsapp');
   if (!ch || ch.mode !== 'cloud') {
     return res.json({ status: 'disconnected' });
   }
@@ -46,7 +46,7 @@ router.get('/status', async (req, res) => {
 // DELETE /api/integrations/whatsapp/cloud/disconnect
 router.delete('/disconnect', async (req, res) => {
   try {
-    await channels.upsertChannel({
+    await channels.upsertChannel(req.db, {
       org_id: req.orgId,
       type: 'whatsapp',
       mode: 'cloud',

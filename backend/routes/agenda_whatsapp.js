@@ -1,16 +1,16 @@
-import express from 'express';
-const router = express.Router();
-import { query, pool } from "../config/db.js";
+import { Router } from 'express';
 import { sendWhatsApp } from '../services/whatsapp.js'; // importar serviço
+const router = Router();
 
 // POST /api/agenda
 // body: { title, date, channel, contact: { name, whatsapp }, opportunity_id }
-router.post('/', async (req, res) => {
+router.post('/', async (req, res, next) => {
+  const db = req.db;
   const { title, date, channel, contact, opportunity_id } = req.body;
   if (!title || !date) return res.status(400).json({ error: 'title e date são obrigatórios' });
 
   try {
-    await pool.query(`
+    await db.query(`
       CREATE TABLE IF NOT EXISTS public.appointments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         title TEXT NOT NULL,
@@ -23,7 +23,7 @@ router.post('/', async (req, res) => {
       );
     `);
 
-    await pool.query(
+    await db.query(
       `INSERT INTO public.appointments (title, start_time, channel, contact_name, contact_whatsapp, opportunity_id)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [title, date, channel || null, contact?.name || null, contact?.whatsapp || null, opportunity_id || null]

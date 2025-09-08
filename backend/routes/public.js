@@ -1,6 +1,6 @@
 // backend/routes/public.js
 import express from 'express';
-import { query } from '../config/db.js';
+import { query as rootQuery } from '../config/db.js';
 
 const router = express.Router();
 
@@ -27,7 +27,7 @@ router.get('/plans', async (_req, res) => {
 
     let rows = [];
     try {
-      const r = await query(sql);
+      const r = await rootQuery(sql);
       rows = r.rows ?? [];
     } catch {
       // Fallback seguro para não quebrar o frontend se a tabela ainda não existir

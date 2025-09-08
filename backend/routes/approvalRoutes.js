@@ -1,17 +1,17 @@
 // backend/routes/approvalRoutes.js
-import express from 'express';
+import { Router } from 'express';
 import { authRequired } from '../middleware/auth.js';
-import { query } from '../config/db.js';
 
-const router = express.Router();
+const router = Router();
 
 // Protege todas as rotas abaixo com JWT
 router.use(authRequired);
 
 // Lista aprovações pendentes (se a tabela existir)
-router.get('/pending', async (_req, res) => {
+router.get('/pending', async (req, res) => {
+  const db = req.db;
   try {
-    const { rows } = await query(`
+    const { rows } = await db.query(`
       SELECT id, post_id, reviewer_id, status, created_at
         FROM public.post_approvals
        WHERE COALESCE(status,'pending') IN ('pending','aguardando','em_analise')
@@ -28,9 +28,10 @@ router.get('/pending', async (_req, res) => {
 
 // Aprovar
 router.post('/:id/approve', async (req, res) => {
+  const db = req.db;
   try {
     const id = req.params.id;
-    await query(
+    await db.query(
       `UPDATE public.post_approvals
           SET status='approved',
               approved_by=$1,
@@ -47,10 +48,11 @@ router.post('/:id/approve', async (req, res) => {
 
 // Rejeitar
 router.post('/:id/reject', async (req, res) => {
+  const db = req.db;
   try {
     const id = req.params.id;
     const reason = req.body?.reason ?? null;
-    await query(
+    await db.query(
       `UPDATE public.post_approvals
           SET status='rejected',
               rejected_by=$1,

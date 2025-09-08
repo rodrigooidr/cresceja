@@ -1,7 +1,6 @@
 // backend/routes/subscription.js
 import express from "express";
 import jwt from "jsonwebtoken";
-import { query, pool } from "../config/db.js";
 import { getClientByUserId, computeDaysRemaining, isExpired } from "../lib/subscription.js";
 // Importa de forma genérica: aceita named export `auth` OU default export
 import * as Auth from "../middleware/auth.js";
@@ -34,7 +33,7 @@ const authMW = Auth.auth || Auth.default || fallbackAuth;
  */
 router.get("/status", authMW, async (req, res) => {
   try {
-    const client = await getClientByUserId(req.user.id);
+    const client = await getClientByUserId(req.db, req.user.id);
     if (!client) {
       return res.json({ active: false, status: "no_subscription" });
     }
@@ -70,12 +69,13 @@ router.get("/status", authMW, async (req, res) => {
  * (Opcional) Inicia/renova o trial do plano FREE com base no `trial_days` do plano.
  */
 router.post("/start-trial", authMW, async (req, res) => {
+  const db = req.db;
   let client;
   try {
     // Lê trial_days do plano FREE (fallback 14)
     let trialDays = 14;
     try {
-      const planRes = await pool.query(
+      const planRes = await db.query(
         `SELECT trial_days FROM public.plans WHERE id = 'free' LIMIT 1`
       );
       if (planRes.rows[0]?.trial_days != null) {
@@ -106,7 +106,7 @@ router.post("/start-trial", authMW, async (req, res) => {
         updated_at = now()
       RETURNING id, user_id, plan_id, start_date, end_date, is_free
     `;
-    const { rows } = await pool.query(upsertSql, [req.user.id, String(trialDays)]);
+    const { rows } = await db.query(upsertSql, [req.user.id, String(trialDays)]);
     client = rows[0];
 
     const daysRemaining = computeDaysRemaining(client.start_date, client.end_date);

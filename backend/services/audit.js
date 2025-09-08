@@ -1,4 +1,4 @@
-import { query } from '../config/db.js';
+import { query as rootQuery } from '../config/db.js';
 
 export const HEADERS = ['id', 'user', 'action', 'created_at'];
 
@@ -14,8 +14,10 @@ export function toCsv(rows = []) {
   return [head, ...lines].join('\n');
 }
 
-export async function auditLog({ user_email, action, entity, entity_id, payload }) {
-  await query(
+const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
+
+export async function auditLog(db, { user_email, action, entity, entity_id, payload }) {
+  await q(db)(
     `INSERT INTO audit_logs (user_email, action, entity, entity_id, payload)
      VALUES ($1,$2,$3,$4,$5)` ,
     [user_email, action, entity, entity_id || null, payload ? JSON.stringify(payload) : null]
