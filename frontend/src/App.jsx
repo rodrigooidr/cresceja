@@ -3,6 +3,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AppShell from './ui/layout/AppShell';
 import ToastHost, { useToasts } from './components/ToastHost.jsx';
+import { RequireOrg, RequireGlobal } from './routes/guards.jsx';
 
 import InboxPage from './pages/inbox/InboxPage.jsx';
 import ChannelsPage from './pages/settings/ChannelsPage.jsx';
@@ -92,7 +93,9 @@ export default function App() {
           path="/app"
           element={
             <RequireAuth>
-              <AppShell />
+              <RequireOrg>
+                <AppShell />
+              </RequireOrg>
             </RequireAuth>
           }
         >
@@ -128,7 +131,9 @@ export default function App() {
           path="/admin"
           element={
             <RequireAuth>
-              <AppShell />
+              <RequireGlobal>
+                <AppShell />
+              </RequireGlobal>
             </RequireAuth>
           }
         >

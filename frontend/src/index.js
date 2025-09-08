@@ -9,6 +9,7 @@ import inboxApi from "./api/inboxApi";
 import { TrialProvider } from "./contexts/TrialContext";
 import { PricingProvider } from "./contexts/PricingContext";   // se existir
 import { AuthProvider } from "./contexts/AuthContext";         // se existir
+import { OrgProvider } from "./contexts/OrgContext";
 import ErrorBoundary from "./components/ErrorBoundary";         // se criou
 
 if (process.env.NODE_ENV !== "production") {
@@ -23,11 +24,13 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <AuthProvider>        {/* remova se não existir */}
-        <TrialProvider>     {/* mantenha se usa Trial */}
-          <PricingProvider> {/* remova se não existir */}
-            <App />
-          </PricingProvider>
-        </TrialProvider>
+        <OrgProvider>
+          <TrialProvider>     {/* mantenha se usa Trial */}
+            <PricingProvider> {/* remova se não existir */}
+              <App />
+            </PricingProvider>
+          </TrialProvider>
+        </OrgProvider>
       </AuthProvider>
     </ErrorBoundary>
   </React.StrictMode>

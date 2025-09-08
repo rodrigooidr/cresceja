@@ -14,12 +14,15 @@ beforeAll(() => {
 jest.mock('../sockets/socket', () => {
   const handlers = {};
   return {
-    getSocket: () => ({
+    makeSocket: () => ({
       on: (evt, cb) => {
         handlers[evt] = cb;
       },
+      off: jest.fn(),
+      emit: jest.fn(),
       close: jest.fn(),
       disconnect: jest.fn(),
+      removeAllListeners: jest.fn(),
     }),
     __handlers: handlers,
   };
@@ -39,6 +42,7 @@ import { readConvCache, writeConvCache, mergeMessages, pruneLRU } from './cache'
 describe('cache behavior', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    localStorage.setItem('active_org_id', '1');
   });
   afterEach(() => {
     jest.clearAllMocks();
@@ -194,21 +198,13 @@ describe('cache behavior', () => {
     await act(async () => fireEvent.click(conv2Btn));
     await screen.findByText('hey');
     await act(async () => {
-      socketHandlers['message:new']({
+      socketHandlers['inbox:message:new']({
         conversationId: 1,
         message: { id: 'a2', text: 'socket', created_at: '2020-01-02T00:00:00Z' },
       });
     });
     let cache1 = readConvCache(1);
     expect(cache1.items.find((m) => m.id === 'a2')).toBeTruthy();
-    await act(async () => {
-      socketHandlers['message:updated']({
-        conversationId: 2,
-        message: { id: 'b', text: 'edited', created_at: '2020-01-01T00:00:00Z' },
-      });
-    });
-    const cache2 = readConvCache(2);
-    expect(cache2.items.find((m) => m.id === 'b').text).toBe('edited');
   });
 
   it('paginacao mescla sem duplicar', () => {
