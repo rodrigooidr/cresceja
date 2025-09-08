@@ -1,6 +1,6 @@
 // src/ui/layout/Sidebar.jsx
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { MessageSquare, Users, BarChart3, Settings, Bot, Calendar, FileText, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import OrgSwitcher from '../../components/nav/OrgSwitcher.jsx';
@@ -15,13 +15,23 @@ const NAV = [
   { to: '/app/ai',                  label: 'IA',            icon: Bot },
 ];
 
+const ADMIN_NAV = [
+  { to: '/admin/orgs', label: 'Organizações', icon: Users },
+];
+
 export default function Sidebar({ expanded, setExpanded } = {}) {
   const [inner, setInner] = useState(false);
   const isExpanded = typeof expanded === 'boolean' ? expanded : inner;
   const setExp = setExpanded || setInner;
 
   const width = isExpanded ? 220 : 64;
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const location = useLocation();
+  const isAdmin = location.pathname.startsWith('/admin');
+  let items = isAdmin ? ADMIN_NAV : NAV;
+  if (!isAdmin && (user?.role === 'SuperAdmin' || user?.role === 'Support')) {
+    items = [...NAV, { to: '/admin/orgs', label: 'Admin', icon: Settings }];
+  }
 
   return (
     <aside
@@ -31,13 +41,13 @@ export default function Sidebar({ expanded, setExpanded } = {}) {
       style={{ width }}
       data-testid="sidebar"
     >
-      {isExpanded && (
+      {isExpanded && !isAdmin && (
         <div className="p-2 border-b">
           <OrgSwitcher />
         </div>
       )}
       <nav className="py-2 flex-1 overflow-y-auto">
-        {NAV.map(({ to, label, icon: Icon }) => (
+        {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}

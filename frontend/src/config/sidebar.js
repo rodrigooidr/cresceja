@@ -55,7 +55,7 @@ const sidebar = [
   {
     section: 'Admin',
     items: [
-      { label: 'Orgs', to: '/admin/orgs', minRole: 'SuperAdmin' },
+      { label: 'Orgs', to: '/admin/orgs', minRole: 'Support' },
       { label: 'Billing', to: '/admin/billing', minRole: 'SuperAdmin' },
       { label: 'Support', to: '/admin/support', minRole: 'SuperAdmin' }
     ]

@@ -3,7 +3,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import AppShell from './ui/layout/AppShell';
 import ToastHost, { useToasts } from './components/ToastHost.jsx';
-import { RequireOrg, RequireGlobal } from './routes/guards.jsx';
+import { RequireOrg, AdminRoute } from './routes/guards.jsx';
 
 import InboxPage from './pages/inbox/InboxPage.jsx';
 import ChannelsPage from './pages/settings/ChannelsPage.jsx';
@@ -18,9 +18,11 @@ import TemplatesPage from './pages/marketing/TemplatesPage.jsx';
 import CampaignsPage from './pages/marketing/CampaignsPage.jsx';
 import AutomationsPage from './pages/marketing/AutomationsPage.jsx';
 import BillingPage from './pages/admin/BillingPage.jsx';
+import AdminOrgsList from './pages/admin/AdminOrgsList.jsx';
+import AdminOrgDetails from './pages/admin/AdminOrgDetails.jsx';
 import LandingPage from './pages/LandingPage.jsx';
 
-const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
+const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
 
 const normalizeRole = (role) => {
   if (!role) return null;
@@ -37,6 +39,7 @@ const normalizeRole = (role) => {
     admin: 'OrgOwner',
     superadmin: 'SuperAdmin',
     superadministrator: 'SuperAdmin',
+    support: 'Support',
   };
   return map[k] || null;
 };
@@ -131,14 +134,15 @@ export default function App() {
           path="/admin"
           element={
             <RequireAuth>
-              <RequireGlobal>
+              <AdminRoute>
                 <AppShell />
-              </RequireGlobal>
+              </AdminRoute>
             </RequireAuth>
           }
         >
           <Route index element={<Navigate to="orgs" replace />} />
-          <Route path="orgs"    element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Orgs" /></RequireRole>} />
+          <Route path="orgs" element={<RequireRole minRole="Support"><AdminOrgsList /></RequireRole>} />
+          <Route path="orgs/:id" element={<RequireRole minRole="Support"><AdminOrgDetails /></RequireRole>} />
           <Route path="billing" element={<RequireRole minRole="SuperAdmin"><BillingPage /></RequireRole>} />
           <Route path="support" element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Support" /></RequireRole>} />
         </Route>

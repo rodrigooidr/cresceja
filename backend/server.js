@@ -48,10 +48,13 @@ import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
 import funnelRouter from './routes/crm.funnel.js';
 import debugRouter from './routes/debug.js';
+import adminOrgsRouter from './routes/admin/orgs.js';
 
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
+import { requireRole } from './middleware/requireRole.js';
+import { adminContext } from './middleware/adminContext.js';
 
 // ---------- Paths ----------
 const __filename = fileURLToPath(import.meta.url);
@@ -182,6 +185,16 @@ async function init() {
 
   // ---------- Middlewares globais para /api/* protegidas ----------
   app.use('/api', applyCommonHeadersForApi);
+
+  // Rotas administrativas (escopo global)
+  app.use(
+    '/api/admin',
+    authRequired,
+    requireRole('SuperAdmin', 'Support'),
+    adminContext,
+    adminOrgsRouter
+  );
+
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
 
   // ---------- Rotas protegidas ----------
