@@ -34,31 +34,37 @@ export const handlers = [
 
   // Templates / quick replies
   rest.get(`${API}/inbox/templates`, (_req, res, ctx) =>
-    res(ctx.json({ data: [{ id: 't1', title: 'Boas-vindas', text: 'Bem-vindo(a)!' }] }))
+    res(ctx.json({ data: { items: [{ id: 't1', title: 'Boas-vindas', text: 'Bem-vindo(a)!' }] } }))
   ),
   rest.get(`${API}/inbox/quick-replies`, (_req, res, ctx) =>
-    res(ctx.json({ data: [{ id: 'q1', title: 'Olá!', content: 'Olá, como posso ajudar?' }] }))
+    res(ctx.json({ data: { items: [{ id: 'q1', title: 'Olá!', content: 'Olá, como posso ajudar?' }] } }))
   ),
 
   // Channels summary
   rest.get(`${API}/channels/summary`, (_req, res, ctx) =>
     res(ctx.json({
-      whatsapp_official: { status: 'disconnected' },
-      whatsapp_baileys:  { status: 'disconnected' },
-      instagram:         { status: 'disconnected' },
-      facebook:          { status: 'disconnected' },
-      google_calendar:   { status: 'disconnected' },
+      data: {
+        items: {
+          whatsapp_official: { status: 'disconnected' },
+          whatsapp_baileys:  { status: 'disconnected' },
+          instagram:         { status: 'disconnected' },
+          facebook:          { status: 'disconnected' },
+          google_calendar:   { status: 'disconnected' },
+        }
+      }
     }))
   ),
 
   // Orgs (global)
   rest.get(`${API}/orgs`, (_req, res, ctx) =>
     res(ctx.json({
-      items: [
-        { id: '00000000-0000-0000-0000-000000000001', name: 'Default Org', slug: 'default', status: 'active', created_at: now },
-        { id: '00000000-0000-0000-0000-000000000002', name: 'Acme Inc.',   slug: 'acme',    status: 'active', created_at: now },
-      ],
-      total: 2, page: 1, pageSize: 50
+      data: {
+        items: [
+          { id: '00000000-0000-0000-0000-000000000001', name: 'Default Org', slug: 'default', status: 'active', created_at: now },
+          { id: '00000000-0000-0000-0000-000000000002', name: 'Acme Inc.',   slug: 'acme',    status: 'active', created_at: now },
+        ],
+        total: 2, page: 1, pageSize: 50,
+      }
     }))
   ),
 ];
