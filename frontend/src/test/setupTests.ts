@@ -168,9 +168,33 @@ jest.mock('api/inboxApi', () => {
   const helpers = {
     setAuthToken: jest.fn(),
     clearAuthToken: jest.fn(),
+    getAuthToken: jest.fn(() => 'test-token'),
+    setActiveOrg: jest.fn(),
+    getImpersonateOrgId: jest.fn(() => ''),
+    setImpersonateOrgId: jest.fn(),
+    API_BASE_URL: 'http://localhost:4000/api',
     apiUrl: 'http://localhost:4000/api',
   };
   return { __esModule: true, default: api, ...helpers };
+});
+
+// OrgContext stub
+jest.mock('../contexts/OrgContext', () => {
+  const React = require('react');
+  const ctx = {
+    orgs: [],
+    loading: false,
+    selected: 'org-1',
+    setSelected: jest.fn(),
+    canSeeSelector: false,
+    orgChangeTick: 0,
+  };
+  return {
+    __esModule: true,
+    OrgContext: React.createContext(ctx),
+    OrgProvider: ({ children }: any) => React.createElement(React.Fragment, null, children),
+    useOrg: () => ctx,
+  };
 });
 
 // Fixar Date para estabilidade

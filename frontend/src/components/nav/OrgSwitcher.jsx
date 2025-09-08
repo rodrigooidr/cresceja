@@ -29,22 +29,26 @@ export default function OrgSwitcher({ compact = false }) {
         placeholder="Buscar organização…"
         className="w-full border rounded px-2 py-1 text-sm mb-1"
       />
-      <div className="max-h-52 overflow-auto border rounded">
+      <ul className="max-h-52 overflow-auto border rounded">
         {filtered.map((org) => (
-          <button
-            key={org.id}
-            onClick={() => setSelected(org.id)}
-            className={`w-full text-left px-2 py-1 text-sm hover:bg-gray-50 ${
-              selected === org.id ? "bg-gray-100 font-medium" : ""
-            }`}
-          >
-            {org.name}
-          </button>
+          <li key={org.id}>
+            <button
+              type="button"
+              className={`w-full text-left px-2 py-1 rounded ${
+                selected === org.id ? "bg-blue-50 font-medium" : "hover:bg-gray-50"
+              }`}
+              onClick={() => setSelected(org.id)}
+            >
+              {org.name}
+            </button>
+          </li>
         ))}
         {filtered.length === 0 && (
-          <div className="px-2 py-2 text-sm text-gray-500">Nenhuma organização</div>
+          <li>
+            <div className="px-2 py-2 text-sm text-gray-500">Nenhuma organização</div>
+          </li>
         )}
-      </div>
+      </ul>
     </div>
   );
 }

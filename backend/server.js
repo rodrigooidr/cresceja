@@ -249,7 +249,6 @@ async function init() {
       if (!token) return next(new Error('no_token'));
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       socket.user = { id: payload.id, org_id: payload.org_id, role: payload.role };
-      if (payload.org_id) socket.join(`org:${payload.org_id}`);
       return next();
     } catch (e) {
       return next(new Error('bad_token'));
@@ -257,6 +256,16 @@ async function init() {
   });
 
   io.on('connection', (socket) => {
+    let currentOrg = socket.user?.org_id || null;
+    if (currentOrg) socket.join(`org:${currentOrg}`);
+
+    socket.on('org:switch', ({ orgId }) => {
+      if (!orgId) return;
+      if (currentOrg) socket.leave(`org:${currentOrg}`);
+      currentOrg = orgId;
+      socket.join(`org:${currentOrg}`);
+    });
+
     socket.on('inbox:join', ({ room }) => socket.join(room));
     socket.on('inbox:leave', ({ room }) => socket.leave(room));
     socket.on('wa:session:ping', () => socket.emit('wa:session:pong', { ok: true }));
