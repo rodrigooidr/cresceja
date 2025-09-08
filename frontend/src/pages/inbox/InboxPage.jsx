@@ -111,6 +111,7 @@ export default function InboxPage({ addToast: addToastProp }) {
       try {
         const { items } = await getMessages(selectedId, { limit: 100 });
         const list = Array.isArray(items) ? items.map(normalizeMessage) : [];
+        list.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
         setMessages(list);
         await markRead(selectedId);
       } catch (err) {
