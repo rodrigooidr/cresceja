@@ -6,6 +6,7 @@ import normalizeMessage from "../../inbox/normalizeMessage";
 import channelIconBySlug from "../../inbox/channelIcons";
 import { makeSocket } from "../../sockets/socket";
 import { listConversations, getMessages, sendMessage as sendMessageApi } from "../../inbox/inbox.service";
+import { useOrg } from "../../contexts/OrgContext";
 
 import ConversationList from "./components/ConversationList.jsx";
 import ConversationHeader from "./components/ConversationHeader.jsx";
@@ -18,6 +19,7 @@ import useToastFallback from "../../hooks/useToastFallback";
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
+  const { selected: orgId, orgChangeTick } = useOrg();
 
   // ===== FILTROS =====
   const [filters, setFilters] = useState(() => ({
@@ -43,6 +45,7 @@ export default function InboxPage({ addToast: addToastProp }) {
   const [selectedId, setSelectedId] = useState(() => searchParams.get("c") || null);
 
   const fetchConversations = useCallback(async () => {
+    if (!orgId) return;
     try {
       setLoadingConvs(true);
       const data = await listConversations({
@@ -62,11 +65,11 @@ export default function InboxPage({ addToast: addToastProp }) {
     } finally {
       setLoadingConvs(false);
     }
-  }, [filters, addToast]);
+  }, [filters, addToast, orgId]);
 
   useEffect(() => {
     fetchConversations();
-  }, [fetchConversations]);
+  }, [fetchConversations, orgChangeTick]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -138,6 +141,12 @@ export default function InboxPage({ addToast: addToastProp }) {
       }
     };
   }, [socket]);
+
+  useEffect(() => {
+    if (socket && orgId) {
+      socket.emit('org:switch', { orgId });
+    }
+  }, [socket, orgId]);
 
   useEffect(() => {
     if (!socket || !selectedId) return;

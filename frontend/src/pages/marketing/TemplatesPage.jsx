@@ -1,13 +1,16 @@
 import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from 'react';
 import { useApi } from '../../contexts/useApi';
+import { useOrg } from '../../contexts/OrgContext';
 
 export default function TemplatesPage() {
   const api = useApi();
   const [templates, setTemplates] = useState([]);
   const [form, setForm] = useState({ name: '', subject: '', body: '' });
+  const { selected: orgId, orgChangeTick } = useOrg();
 
   useEffect(() => {
+    if (!orgId) return;
     (async () => {
       try {
         const res = await inboxApi.get('/marketing/templates');
@@ -16,7 +19,7 @@ export default function TemplatesPage() {
         console.error('load templates', err);
       }
     })();
-  }, []);
+  }, [orgId, orgChangeTick]);
 
   const create = async () => {
     try {

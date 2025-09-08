@@ -4,6 +4,13 @@ import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
 
+// pequeno helper para avisar a app toda que a org mudou
+function announceOrgChanged(orgId) {
+  try {
+    window.dispatchEvent(new CustomEvent("org:changed", { detail: { orgId } }));
+  } catch {}
+}
+
 function readTokenOrgId() {
   try {
     const t = localStorage.getItem("token");
@@ -26,6 +33,7 @@ export function OrgProvider({ children }) {
       return null;
     }
   });
+  const [orgChangeTick, setOrgChangeTick] = useState(0);
 
   // SuperAdmin/Support sempre; OrgOwner/OrgAdmin podem ver seletor (condicional ao número de empresas)
   const canSeeSelector = useMemo(() => {
@@ -91,16 +99,24 @@ export function OrgProvider({ children }) {
     }
   }, [loading, orgs, selected, user?.role]);
 
-  const choose = useCallback(async (orgId) => {
-    setSelected(orgId);
-    setActiveOrg(orgId);
-    // opcional: auditar a troca
-    // await inboxApi.post('/session/org', { org_id: orgId }, { meta: { scope: 'global' } });
-  }, []);
+  const choose = useCallback(
+    async (orgId) => {
+      // garante seleção única (apenas 1 por vez)
+      if (!orgId || orgId === selected) return;
+      setSelected(orgId);
+      setActiveOrg(orgId);
+      // notifica app inteira
+      announceOrgChanged(orgId);
+      setOrgChangeTick((n) => n + 1);
+      // opcional: auditar a troca
+      // await inboxApi.post('/session/org', { org_id: orgId }, { meta: { scope: 'global' } });
+    },
+    [selected]
+  );
 
   const value = useMemo(
-    () => ({ orgs, loading, selected, setSelected: choose, canSeeSelector }),
-    [orgs, loading, selected, choose, canSeeSelector]
+    () => ({ orgs, loading, selected, setSelected: choose, canSeeSelector, orgChangeTick }),
+    [orgs, loading, selected, choose, canSeeSelector, orgChangeTick]
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
