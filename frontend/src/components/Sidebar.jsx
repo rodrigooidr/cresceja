@@ -1,11 +1,11 @@
 // src/components/Sidebar.jsx
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 
-const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'SuperAdmin'];
+const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
 
 const normalizeRole = (role) => {
   if (!role) return null;
@@ -22,6 +22,7 @@ const normalizeRole = (role) => {
     admin: 'OrgOwner',
     superadmin: 'SuperAdmin',
     superadministrator: 'SuperAdmin',
+    support: 'Support',
   };
   return map[k] || null;
 };
@@ -35,6 +36,8 @@ const hasRole = (userRole, minRole) => {
 
 export default function Sidebar({ collapsed = false, onToggle }) {
   const { user, logout } = useAuth();
+  const location = useLocation();
+  const isAdmin = location.pathname.startsWith('/admin');
   const hasFeature = (flag) => !flag || user?.features?.[flag];
 
   return (
@@ -46,9 +49,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
           {collapsed ? '>' : '<'}
         </button>
       </div>
-      <div className="p-2">
-        <WorkspaceSwitcher collapsed={collapsed} />
-      </div>
+      {!isAdmin && (
+        <div className="p-2">
+          <WorkspaceSwitcher collapsed={collapsed} />
+        </div>
+      )}
       <nav className="flex-1 overflow-y-auto mt-2">
         {sidebar.map((section) => {
           const items = section.items.filter((item) =>

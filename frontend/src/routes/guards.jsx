@@ -18,7 +18,15 @@ export function RequireOrg({ children }) {
 
 export function RequireGlobal({ children }) {
   const { user } = useAuth();
-  if (user?.role !== "SuperAdmin") {
+  if (user?.role !== "SuperAdmin" && user?.role !== "Support") {
+    return <Navigate to="/403" replace />;
+  }
+  return children;
+}
+
+export function AdminRoute({ children }) {
+  const { user } = useAuth();
+  if (!user || (user.role !== "SuperAdmin" && user.role !== "Support")) {
     return <Navigate to="/403" replace />;
   }
   return children;

@@ -9,7 +9,7 @@ function getRole(){
 export default function AdminRoute({ children }){
   const role = getRole();
   if (!role) return <Navigate to="/login" replace />;
-  if (role !== "owner" && role !== "client_admin") return <Navigate to="/crm/oportunidades" replace />;
+  if (role !== "SuperAdmin" && role !== "Support") return <Navigate to="/crm/oportunidades" replace />;
   // Se usar nesting, renderize Outlet; ou envolva <MainLayout/> aqui
   return children || <Outlet />;
 }
