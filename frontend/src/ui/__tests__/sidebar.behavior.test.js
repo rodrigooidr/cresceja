@@ -1,9 +1,9 @@
-import { screen, fireEvent } from '@testing-library/react';
+import { fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../test/utils/renderWithProviders';
 import Sidebar from '../../ui/layout/Sidebar';
 
 test('sidebar inicia colapsada e expande no hover', () => {
-  renderWithProviders(<Sidebar />);
+  const { screen } = renderWithProviders(<Sidebar />);
   const sb = screen.getByTestId('sidebar');
   // colapsado: não deve renderizar labels de texto
   expect(sb).toBeInTheDocument();

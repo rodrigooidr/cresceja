@@ -12,6 +12,10 @@ const msgs = (id: string) => ([
   { id: 'm1', conversation_id: id, text: 'hi',    direction: 'in',  sender: 'contact', created_at: now },
   { id: 'm2', conversation_id: id, text: 'reply', direction: 'out', sender: 'agent',   created_at: now, status: 'sent' },
 ]);
+const orgs = [
+  { id: '00000000-0000-0000-0000-000000000001', name: 'Default Org', slug: 'default', status: 'active', created_at: now },
+  { id: '00000000-0000-0000-0000-000000000002', name: 'Acme Inc.',   slug: 'acme',    status: 'active', created_at: now },
+];
 
 export const handlers = [
   // Conversas (ambas famílias)
@@ -58,13 +62,26 @@ export const handlers = [
   // Orgs (global)
   rest.get(`${API}/orgs`, (_req, res, ctx) =>
     res(ctx.json({
-      data: {
-        items: [
-          { id: '00000000-0000-0000-0000-000000000001', name: 'Default Org', slug: 'default', status: 'active', created_at: now },
-          { id: '00000000-0000-0000-0000-000000000002', name: 'Acme Inc.',   slug: 'acme',    status: 'active', created_at: now },
-        ],
-        total: 2, page: 1, pageSize: 50,
-      }
+      data: { items: orgs, total: orgs.length, page: 1, pageSize: 50 }
     }))
+  ),
+
+  // Admin orgs list
+  rest.get(`${API}/admin/orgs`, (_req, res, ctx) =>
+    res(ctx.json({
+      data: { items: orgs, total: orgs.length, page: 1, pageSize: 20 }
+    }))
+  ),
+
+  // Admin org details
+  rest.get(`${API}/admin/orgs/:id`, (req, res, ctx) => {
+    const id = req.params.id as string;
+    const org = orgs.find(o => o.id === id) || null;
+    return res(ctx.json({ data: org }));
+  }),
+
+  // Admin summary
+  rest.get(`${API}/admin/summary`, (_req, res, ctx) =>
+    res(ctx.json({ data: { items: { orgs: orgs.length } } }))
   ),
 ];
