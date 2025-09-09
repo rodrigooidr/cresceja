@@ -103,7 +103,8 @@ async function init() {
     'Authorization',
     'Content-Type',
     'X-Org-Id',
-    'Cache-Control',     // <- necessário para seu caso
+    'X-Impersonate-Org-Id',
+    'Cache-Control', // <- necessário para seu caso
     'Pragma',
     'Expires',
     'Accept',
