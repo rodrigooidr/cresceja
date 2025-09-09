@@ -11,6 +11,9 @@ module.exports = {
   moduleNameMapper: {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '^@/(.*)$': '<rootDir>/src/$1',
+    // Map problematic ESM-only statuses package to a CommonJS shim for tests
+    '^@bundled-es-modules/statuses$': '<rootDir>/src/test/shims/statuses.cjs',
+    '^statuses$': '<rootDir>/src/test/shims/statuses.cjs',
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'json', 'node'],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/build/'],
