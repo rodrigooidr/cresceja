@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom';
 import 'whatwg-fetch';
+import React from 'react';
 
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -95,11 +96,58 @@ beforeAll(() => {
   localStorage.setItem('active_org_id', '00000000-0000-0000-0000-000000000001');
 });
 
-// Mock do gate
-jest.mock('./hooks/useActiveOrgGate', () => ({
+// 🔧 Deixa gates sempre liberados nos testes
+jest.mock('hooks/useActiveOrgGate', () => ({
   __esModule: true,
-  default: () => ({ me: { role: 'SuperAdmin', org_id: '00000000-0000-0000-0000-000000000001' }, allowed: true }),
+  default: () => ({ allowed: true, reason: null }),
 }));
+
+// 🔧 Mock leve do OrgContext
+jest.mock('contexts/OrgContext', () => ({
+  __esModule: true,
+  useOrg: () => ({ org: { id: 'test-org', name: 'Test Org' }, setOrg: jest.fn(), isLoading: false }),
+  OrgProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+// (Se houver dependência de Auth/Trial)
+jest.mock('contexts/AuthContext', () => ({
+  __esModule: true,
+  useAuth: () => ({ user: { id: 'u1', role: 'SuperAdmin' }, token: 't', signOut: jest.fn() }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+jest.mock('contexts/TrialContext', () => ({
+  __esModule: true,
+  useTrial: () => ({ trialDays: 14 }),
+  TrialProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
+// 🔧 Mock do cliente HTTP usado nas páginas
+jest.mock('api/inboxApi', () => {
+  const ok = (data: any) => Promise.resolve({ data });
+  return {
+    __esModule: true,
+    default: {
+      get: jest.fn((url: string) => {
+        if (url.includes('/admin/plans')) {
+          return ok({ plans: [], feature_defs: [], plan_features: [] });
+        }
+        if (url.includes('/public/plans')) {
+          return ok({ items: [] });
+        }
+        if (url.includes('/integrations/google-calendar/status')) {
+          return ok({ status: 'disconnected', config: null });
+        }
+        if (url.includes('/admin/orgs')) {
+          return ok({ orgs: [{ id: 'org-1', name: 'CresceJá' }, { id: 'org-2', name: 'CresceJá Demo' }] });
+        }
+        return ok({});
+      }),
+      post: jest.fn(() => ok({ ok: true })),
+      put: jest.fn(() => ok({ ok: true })),
+      delete: jest.fn(() => ok({ ok: true })),
+    },
+  };
+});
 
 // socket.io-client mock
 jest.mock('socket.io-client', () => {
