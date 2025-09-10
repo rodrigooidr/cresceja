@@ -55,6 +55,10 @@ r.post('/integrations/google-calendar/events', (_req, res) => {
   res.json({ ok: true });
 });
 
+r.post('/integrations/google-calendar/test', (_req, res) => {
+  res.json({ ok: true });
+});
+
 r.post('/integrations/google-calendar/disconnect', (_req, res) => {
   res.json({ ok: true });
 });

@@ -8,6 +8,7 @@ module.exports = {
     '^inbox/(.*)$': '<rootDir>/src/inbox/$1',
     '^components/(.*)$': '<rootDir>/src/components/$1',
     '^pages/(.*)$': '<rootDir>/src/pages/$1',
+    '^contexts/(.*)$': '<rootDir>/src/contexts/$1',
     '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '^hooks/(.*)$': '<rootDir>/src/hooks/$1',
     '^auth/(.*)$': '<rootDir>/src/auth/$1',
