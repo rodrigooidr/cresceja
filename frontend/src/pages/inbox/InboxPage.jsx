@@ -21,7 +21,7 @@ import useToastFallback from "../../hooks/useToastFallback";
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
-  const { loading, ready, error } = useActiveOrgGate();
+  const { allowed } = useActiveOrgGate();
   const { selected: orgId } = useOrg();
 
   // ===== FILTROS =====
@@ -284,8 +284,7 @@ export default function InboxPage({ addToast: addToastProp }) {
     [selectedId, addToast]
   );
 
-  if (loading) return <div>Carregando…</div>;
-  if (!ready) return <div>{error}</div>;
+  if (!allowed) return null;
 
   // ===== UI =====
   return (

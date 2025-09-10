@@ -8,7 +8,7 @@ import useOrgRefetch from '../../hooks/useOrgRefetch';
 import useActiveOrgGate from '../../hooks/useActiveOrgGate';
 
 export default function ChannelsPage() {
-  const { loading, ready, error } = useActiveOrgGate();
+  const { allowed } = useActiveOrgGate();
   const [tab, setTab] = useState('whatsapp');
   const [summary, setSummary] = useState(null);
 
@@ -19,8 +19,7 @@ export default function ChannelsPage() {
 
   useOrgRefetch(load, [load]);
 
-  if (loading) return <div>Carregando…</div>;
-  if (!ready) return <div>{error}</div>;
+  if (!allowed) return null;
   if (!summary) return <div>Carregando…</div>;
 
   return (
