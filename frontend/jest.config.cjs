@@ -1,10 +1,10 @@
 /** @type {import('jest').Config} */
 module.exports = {
   testEnvironment: 'jsdom',
-  setupFilesAfterEnv: ['<rootDir>/src/test/setupTests.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   testEnvironmentOptions: {},
   transform: {
-    '^.+\\.(mjs|cjs|ts|tsx|js|jsx)$': 'babel-jest',
+    '^.+\\.(t|j)sx?$': 'babel-jest',
   },
   transformIgnorePatterns: [
     '/node_modules/(?!(msw|@mswjs|@bundled-es-modules|headers-polyfill|is-node-process|strict-event-emitter|cookie|urlpattern-polyfill|whatwg-url|fetch-blob|formdata-polyfill|web-streams-polyfill|data-urls|undici|nanoid|uuid|@reduxjs/toolkit)/)',
