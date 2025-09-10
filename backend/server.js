@@ -41,7 +41,7 @@ import integrationsRouter from './routes/integrations.js';
 import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
 import metaOauthIntegrationRouter from './routes/integrations/meta.oauth.js';
-import gcalRouter from './routes/integrations/google.calendar.js';
+import googleCalendarRouter from './routes/integrations/google.calendar.js';
 import orgsRouter from './routes/orgs.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
@@ -54,7 +54,7 @@ import plansRouter from './routes/plans.js';
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
-import { requireRole } from './middleware/requireRole.js';
+import { requireRole } from './auth/requireRole.js';
 import { adminContext } from './middleware/adminContext.js';
 
 // ---------- Paths ----------
@@ -192,13 +192,7 @@ async function init() {
   app.use('/api', plansRouter);
 
   // Rotas administrativas (escopo global)
-  app.use(
-    '/api/admin',
-    authRequired,
-    requireRole('SuperAdmin', 'Support'),
-    adminContext,
-    adminOrgsRouter
-  );
+  app.use('/api/admin', authRequired, requireRole('SuperAdmin'), adminContext, adminOrgsRouter);
 
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
 
@@ -225,7 +219,7 @@ async function init() {
   app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);     // ex.: /api/integrations/whatsapp/cloud/status
   app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter); // ex.: /api/integrations/whatsapp/session/status
   app.use('/api/integrations/meta', metaOauthIntegrationRouter);             // ex.: /api/integrations/meta/pages
-  app.use('/api/integrations/google/calendar', gcalRouter);
+  app.use('/api', googleCalendarRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);

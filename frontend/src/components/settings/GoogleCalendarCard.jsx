@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { gcal } from 'api/integrations.service';
-
-const canConnect = (allowed, current) =>
-  typeof allowed === 'number' && (allowed < 0 || current < allowed);
+import { useAuth } from '../../contexts/AuthContext';
+import { hasRoleAtLeast } from '../../auth/roles';
 
 export default function GoogleCalendarCard({ refresh }) {
   const [status, setStatus] = useState('disconnected');
@@ -10,6 +9,10 @@ export default function GoogleCalendarCard({ refresh }) {
   const [testing, setTesting] = useState(false);
   const [limit, setLimit] = useState(0);
   const [count, setCount] = useState(0);
+  const { user: me } = useAuth();
+
+  const canManage = hasRoleAtLeast(me?.role, 'OrgAdmin');
+  const withinPlan = typeof limit === 'number' && (limit < 0 || count < limit);
 
   const load = async () => {
     const { data } = await gcal.status();
@@ -20,7 +23,7 @@ export default function GoogleCalendarCard({ refresh }) {
   useEffect(() => { load(); }, []);
 
   const connect = async () => {
-    const { data } = await gcal.oauthStart();
+    const { data } = await gcal.connect();
     if (data?.url) window.location.href = data.url;
   };
 
@@ -50,17 +53,17 @@ export default function GoogleCalendarCard({ refresh }) {
       <div className="mt-2 flex gap-2">
         {status !== 'connected' ? (
           <button
-            className={`btn btn-primary ${!canConnect(limit, count) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`btn btn-primary ${(!canManage || !withinPlan) ? 'opacity-50 cursor-not-allowed' : ''}`}
             onClick={connect}
-            disabled={!canConnect(limit, count)}
-            title={!canConnect(limit, count) ? `Seu plano permite ${limit < 0 ? 'ilimitados' : limit} calendários` : ''}
+            disabled={!canManage || !withinPlan}
+            title={!canManage ? 'Requer OrgAdmin ou superior' : !withinPlan ? `Seu plano permite ${limit < 0 ? 'ilimitados' : limit} calendários` : ''}
           >
-            Conectar Google
+            Conectar Google Calendar
           </button>
         ) : (
-          <button className="btn" onClick={createTestEvent}>Criar evento teste</button>
+          <button className="btn" onClick={createTestEvent} disabled={!canManage}>Criar evento teste</button>
         )}
-        <button className="btn" onClick={test} disabled={testing}>Testar</button>
+        <button className="btn" onClick={test} disabled={testing || !canManage}>Testar</button>
       </div>
       <ul className="mt-2 text-sm">
         <li className="flex justify-between">Status

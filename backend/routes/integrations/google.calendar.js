@@ -1,9 +1,16 @@
 import { Router } from 'express';
-import { authRequired, orgScope } from '../../middleware/auth.js';
 import db from '../../db.js';
+import { requireMinRole } from '../../auth/roles.js';
 
-const router = Router();
-router.use(authRequired, orgScope);
+const r = Router();
+
+// Todas as rotas exigem no mínimo OrgAdmin
+r.use(requireMinRole('OrgAdmin'));
+
+function resolveOrgId(req) {
+  if (req.user?.role === 'SuperAdmin' && req.query?.orgId) return req.query.orgId;
+  return req.user?.org_id;
+}
 
 async function getLimits(orgId) {
   const { rows: [{ value: limitValue }] = [{}] } = await db.query(
@@ -21,36 +28,35 @@ async function getLimits(orgId) {
   return { limit, count };
 }
 
-router.get('/oauth/start', async (req, res, next) => {
+r.post('/integrations/google-calendar/connect', async (req, res, next) => {
   try {
-    const { limit, count } = await getLimits(req.orgId);
+    const orgId = resolveOrgId(req);
+    const { limit, count } = await getLimits(orgId);
     if (limit >= 0 && count >= limit) {
-      return res.status(403).json({
-        error: 'plan_limit_reached',
-        detail: 'Limite de calendários do Google atingido para seu plano.'
-      });
+      return res.status(403).json({ error: 'plan_limit_reached' });
     }
     res.json({ url: 'https://example.com/oauth' });
   } catch (e) { next(e); }
 });
 
-router.get('/status', async (req, res, next) => {
+r.get('/integrations/google-calendar/status', async (req, res, next) => {
   try {
-    const { limit, count } = await getLimits(req.orgId);
+    const orgId = resolveOrgId(req);
+    const { limit, count } = await getLimits(orgId);
     res.json({ status: 'disconnected', limit, count });
   } catch (e) { next(e); }
 });
 
-router.get('/calendars', (_req, res) => {
+r.get('/integrations/google-calendar/calendars', (_req, res) => {
   res.json({ items: [] });
 });
 
-router.post('/events', (_req, res) => {
+r.post('/integrations/google-calendar/events', (_req, res) => {
   res.json({ ok: true });
 });
 
-router.post('/disconnect', (_req, res) => {
+r.post('/integrations/google-calendar/disconnect', (_req, res) => {
   res.json({ ok: true });
 });
 
-export default router;
+export default r;
