@@ -1,23 +1,27 @@
 import '@testing-library/jest-dom';
 import 'whatwg-fetch';
 
-class RO { observe(){} disconnect(){} unobserve(){} }
-// @ts-ignore
-(global as any).ResizeObserver = RO;
-
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: (query: string) => ({
+  value: jest.fn().mockImplementation((query: string) => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener() {},
-    removeListener() {},
-    addEventListener() {},
-    removeEventListener() {},
-    dispatchEvent() { return false; },
-  }),
+    addListener: jest.fn(),
+    removeListener: jest.fn(),
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+    dispatchEvent: jest.fn(),
+  })),
 });
+
+class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+// @ts-ignore
+(global as any).ResizeObserver = ResizeObserver;
 
 // força axios a usar o adapter http no ambiente de testes, se necessário
 try {
@@ -58,8 +62,20 @@ if (typeof TransformStream === 'undefined') {
 }
 
 // MSW vazio (bypass por padrão)
-import { setupServer } from 'msw/node';
-export const server = setupServer();
+// tenta carregar "msw" só se disponível
+let server: any = {
+  listen: () => undefined,
+  resetHandlers: () => undefined,
+  close: () => undefined,
+};
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { setupServer } = require('msw/node');
+  server = setupServer();
+} catch {
+  // módulo msw não disponível
+}
+export { server };
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
@@ -80,7 +96,7 @@ beforeAll(() => {
 });
 
 // Mock do gate
-jest.mock('../hooks/useActiveOrgGate', () => ({
+jest.mock('./hooks/useActiveOrgGate', () => ({
   __esModule: true,
   default: () => ({ me: { role: 'SuperAdmin', org_id: '00000000-0000-0000-0000-000000000001' }, allowed: true }),
 }));
