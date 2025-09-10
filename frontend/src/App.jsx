@@ -22,6 +22,8 @@ import AdminOrgsList from './pages/admin/AdminOrgsList.jsx';
 import AdminOrgDetails from './pages/admin/AdminOrgDetails.jsx';
 import LandingPage from './pages/LandingPage.jsx';
 import PlansAdmin from './pages/admin/PlansAdmin.jsx';
+import GoogleCalendarSettingsPage from './pages/settings/GoogleCalendarSettingsPage.jsx';
+import { hasRoleAtLeast } from './auth/roles';
 
 const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
 
@@ -81,6 +83,11 @@ function Placeholder({ label }) {
   return <div className="p-4">{label}</div>;
 }
 
+function RequireMinRole({ children, min }) {
+  const { user } = useAuth();
+  return hasRoleAtLeast(user?.role, min) ? children : <Navigate to="/app/forbidden" replace />;
+}
+
 export default function App() {
   const { addToast } = useToasts();
   return (
@@ -126,6 +133,7 @@ export default function App() {
           <Route path="settings/users"        element={<RequireRole minRole="Manager"><Placeholder label="Settings Users" /></RequireRole>} />
           <Route path="settings/permissions"  element={<RequireRole minRole="Manager"><Placeholder label="Settings Permissions" /></RequireRole>} />
           <Route path="settings/plan"         element={<RequireRole minRole="OrgOwner"><Placeholder label="Settings Plan" /></RequireRole>} />
+          <Route path="settings/integrations/google-calendar" element={<RequireMinRole min="OrgAdmin"><GoogleCalendarSettingsPage /></RequireMinRole>} />
 
           <Route path="forbidden" element={<Placeholder label="Acesso negado" />} />
         </Route>

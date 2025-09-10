@@ -1,6 +1,24 @@
 import '@testing-library/jest-dom';
 import 'whatwg-fetch';
 
+class RO { observe(){} disconnect(){} unobserve(){} }
+// @ts-ignore
+(global as any).ResizeObserver = RO;
+
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: (query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() { return false; },
+  }),
+});
+
 // força axios a usar o adapter http no ambiente de testes, se necessário
 try {
   // @ts-ignore

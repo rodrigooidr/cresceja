@@ -34,9 +34,9 @@ export const meta = {
 };
 
 export const gcal = {
-  oauthStart: ({ orgId } = {}) => inboxApi.get('/integrations/google/calendar/oauth/start', cfg(orgId)),
-  status: ({ orgId } = {}) => inboxApi.get('/integrations/google/calendar/status', cfg(orgId)),
-  calendars: ({ orgId } = {}) => inboxApi.get('/integrations/google/calendar/calendars', cfg(orgId)),
-  events: ({ orgId, ...body }) => inboxApi.post('/integrations/google/calendar/events', body, cfg(orgId)),
-  disconnect: ({ orgId } = {}) => inboxApi.post('/integrations/google/calendar/disconnect', {}, cfg(orgId)),
+  connect: ({ orgId, ...body } = {}) => inboxApi.post('/integrations/google-calendar/connect', body, cfg(orgId)),
+  status: ({ orgId } = {}) => inboxApi.get('/integrations/google-calendar/status', cfg(orgId)),
+  calendars: ({ orgId } = {}) => inboxApi.get('/integrations/google-calendar/calendars', cfg(orgId)),
+  events: ({ orgId, ...body }) => inboxApi.post('/integrations/google-calendar/events', body, cfg(orgId)),
+  disconnect: ({ orgId } = {}) => inboxApi.post('/integrations/google-calendar/disconnect', {}, cfg(orgId)),
 };
