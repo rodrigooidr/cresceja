@@ -10,7 +10,8 @@
     "db:bootstrap:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/db_bootstrap.ps1",
     "db:bootstrap:sh": "bash ./scripts/db_bootstrap.sh",
     "smoke": "node ./scripts/smoke.js",
-    "smoke:inbox": "node ./scripts/smoke_inbox_ws_notify.js"
+    "smoke:inbox": "node ./scripts/smoke_inbox_ws_notify.js",
+    "db:migrate:plans": "psql \"$DATABASE_URL\" -f backend/migrations/20250909_plans_features.sql"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.883.0",
