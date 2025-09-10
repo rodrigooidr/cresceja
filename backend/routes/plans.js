@@ -78,6 +78,53 @@ r.get('/admin/plans', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// cria um plano
+r.post('/admin/plans', async (req, res, next) => {
+  try {
+    const { name, price_cents = 0, currency = 'BRL', trial_days = 0, is_active = true, sort_order = 0 } = req.body;
+    const { rows } = await db.query(
+      `INSERT INTO plans (id, name, price_cents, currency, trial_days, is_active, sort_order)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [name, price_cents, currency, trial_days, !!is_active, Number(sort_order)]
+    );
+    res.json({ ok: true, plan: rows[0] });
+  } catch (e) { next(e); }
+});
+
+// atualiza um plano
+r.put('/admin/plans/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, price_cents, currency, trial_days, is_active, sort_order } = req.body;
+    const { rows } = await db.query(
+      `UPDATE plans
+         SET name = COALESCE($2,name),
+             price_cents = COALESCE($3,price_cents),
+             currency = COALESCE($4,currency),
+             trial_days = COALESCE($5,trial_days),
+             is_active = COALESCE($6,is_active),
+             sort_order = COALESCE($7,sort_order),
+             updated_at = now()
+       WHERE id = $1
+       RETURNING *`,
+      [id, name, price_cents, currency, trial_days, is_active, sort_order]
+    );
+    res.json({ ok: true, plan: rows[0] });
+  } catch (e) { next(e); }
+});
+
+// reordena planos
+r.put('/admin/plans/reorder', async (req, res, next) => {
+  try {
+    const arr = Array.isArray(req.body?.items) ? req.body.items : [];
+    for (const it of arr) {
+      await db.query(`UPDATE plans SET sort_order = $2, updated_at = now() WHERE id = $1`, [it.id, Number(it.sort_order || 0)]);
+    }
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
 // atualiza/insere valor de um recurso em um plano
 r.put('/admin/plans/:planId/features/:featureCode', async (req, res, next) => {
   try {

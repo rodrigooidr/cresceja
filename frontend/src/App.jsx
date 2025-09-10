@@ -18,12 +18,10 @@ import TemplatesPage from './pages/marketing/TemplatesPage.jsx';
 import CampaignsPage from './pages/marketing/CampaignsPage.jsx';
 import AutomationsPage from './pages/marketing/AutomationsPage.jsx';
 import BillingPage from './pages/admin/BillingPage.jsx';
-import AdminOrgsList from './pages/admin/AdminOrgsList.jsx';
-import AdminOrgDetails from './pages/admin/AdminOrgDetails.jsx';
+import OrgsListPage from './pages/admin/OrgsListPage.jsx';
+import OrgDetailsPage from './pages/admin/OrgDetailsPage.jsx';
 import LandingPage from './pages/LandingPage.jsx';
-import PlansAdmin from './pages/admin/PlansAdmin.jsx';
-import GoogleCalendarSettingsPage from './pages/settings/GoogleCalendarSettingsPage.jsx';
-import { hasRoleAtLeast } from './auth/roles';
+import PlansAdminPage from './pages/admin/PlansAdminPage.jsx';
 
 const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
 
@@ -83,11 +81,6 @@ function Placeholder({ label }) {
   return <div className="p-4">{label}</div>;
 }
 
-function RequireMinRole({ children, min }) {
-  const { user } = useAuth();
-  return hasRoleAtLeast(user?.role, min) ? children : <Navigate to="/app/forbidden" replace />;
-}
-
 export default function App() {
   const { addToast } = useToasts();
   return (
@@ -129,11 +122,10 @@ export default function App() {
           <Route path="marketing/campaigns"   element={<RequireRole minRole="Manager"><CampaignsPage /></RequireRole>} />
           <Route path="marketing/automations" element={<RequireRole minRole="Manager"><AutomationsPage /></RequireRole>} />
 
-          <Route path="settings/channels"     element={<RequireRole minRole="Manager"><ChannelsPage /></RequireRole>} />
+          <Route path="settings/channels"     element={<ChannelsPage minRole="Manager" />} />
           <Route path="settings/users"        element={<RequireRole minRole="Manager"><Placeholder label="Settings Users" /></RequireRole>} />
           <Route path="settings/permissions"  element={<RequireRole minRole="Manager"><Placeholder label="Settings Permissions" /></RequireRole>} />
           <Route path="settings/plan"         element={<RequireRole minRole="OrgOwner"><Placeholder label="Settings Plan" /></RequireRole>} />
-          <Route path="settings/integrations/google-calendar" element={<RequireMinRole min="OrgAdmin"><GoogleCalendarSettingsPage /></RequireMinRole>} />
 
           <Route path="forbidden" element={<Placeholder label="Acesso negado" />} />
         </Route>
@@ -150,10 +142,10 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="orgs" replace />} />
-          <Route path="orgs" element={<RequireRole minRole="Support"><AdminOrgsList /></RequireRole>} />
-          <Route path="orgs/:id" element={<RequireRole minRole="Support"><AdminOrgDetails /></RequireRole>} />
+          <Route path="orgs" element={<OrgsListPage minRole="SuperAdmin" />} />
+          <Route path="orgs/:orgId/*" element={<OrgDetailsPage minRole="SuperAdmin" />} />
           <Route path="billing" element={<RequireRole minRole="SuperAdmin"><BillingPage /></RequireRole>} />
-          <Route path="plans" element={<RequireRole minRole="SuperAdmin"><PlansAdmin /></RequireRole>} />
+          <Route path="planos" element={<PlansAdminPage minRole="SuperAdmin" />} />
           <Route path="support" element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Support" /></RequireRole>} />
         </Route>
 

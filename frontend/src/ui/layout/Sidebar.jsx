@@ -5,7 +5,6 @@ import { MessageSquare, Users, BarChart3, Settings, Bot, Calendar, FileText, Zap
 import { useAuth } from '../../contexts/AuthContext';
 import inboxApi from '../../api/inboxApi';
 import OrgSwitcher from '../../components/nav/OrgSwitcher.jsx';
-import { hasRoleAtLeast } from '../../auth/roles';
 
 const NAV = [
   { to: '/app/inbox',               label: 'Inbox',         icon: MessageSquare },
@@ -19,6 +18,7 @@ const NAV = [
 
 const ADMIN_NAV = [
   { to: '/admin/orgs', label: 'Organizações', icon: Users },
+  { to: '/admin/planos', label: 'Planos', icon: BarChart3 },
 ];
 
 export default function Sidebar({ expanded, setExpanded } = {}) {
@@ -49,10 +49,7 @@ export default function Sidebar({ expanded, setExpanded } = {}) {
   const isAdmin = location.pathname.startsWith('/admin');
   let items = isAdmin ? ADMIN_NAV : NAV;
   if (!isAdmin && role === 'SuperAdmin') {
-    items = [...items, { to: '/admin/orgs', label: 'Organizações/Clientes', icon: Users }];
-  }
-  if (!isAdmin && hasRoleAtLeast(role, 'OrgAdmin')) {
-    items = [...items, { to: '/app/settings/integrations/google-calendar', label: 'Google Calendar', icon: Calendar }];
+    items = [...items, { to: '/admin/orgs', label: 'Organizações/Clientes', icon: Users }, { to: '/admin/planos', label: 'Planos (Admin)', icon: BarChart3 }];
   }
 
   return (

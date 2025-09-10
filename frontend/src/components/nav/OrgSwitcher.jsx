@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useOrg } from "../../contexts/OrgContext";
 
-const useDebounced = (value, delay = 300) => {
+const useDebounced = (value, delay = 250) => {
   const [v, setV] = useState(value);
   useEffect(() => {
     const t = setTimeout(() => setV(value), delay);
@@ -20,9 +20,10 @@ export default function OrgSwitcher() {
   const active = useMemo(() => orgs.find(o => o.id === selected) || null, [orgs, selected]);
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState(qServer || "");
-  const debouncedQ = useDebounced(q, 300);
+  const debouncedQ = useDebounced(q, 250);
   const ref = useRef(null);
   const listRef = useRef(null);
+  const inputRef = useRef(null);
 
   // fechar ao clicar fora
   useEffect(() => {
@@ -51,6 +52,19 @@ export default function OrgSwitcher() {
     return () => el.removeEventListener("scroll", onScroll);
   }, [open, hasMore, loading, loadMoreOrgs]);
 
+  // focus with Ctrl+K
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setOpen(true);
+        setTimeout(() => inputRef.current?.focus(), 0);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   if (!canSeeSelector) {
     return <div className="px-2 text-sm text-gray-600 truncate" title={active?.name}>{active?.name || "—"}</div>;
   }
@@ -71,12 +85,13 @@ export default function OrgSwitcher() {
       {open && (
         <div className="absolute z-50 mt-1 w-64 rounded-md border bg-white shadow">
           <div className="p-2 border-b">
-            <input
-              className="w-full rounded border px-2 py-1 text-sm"
-              placeholder="Buscar organização…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              autoFocus
+              <input
+                ref={inputRef}
+                className="w-full rounded border px-2 py-1 text-sm"
+                placeholder="Buscar organização…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                autoFocus
             />
           </div>
 
