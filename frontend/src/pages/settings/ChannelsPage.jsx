@@ -1,67 +1,55 @@
-import React, { useCallback, useState } from 'react';
-import inboxApi from 'api/inboxApi';
-import WhatsAppOfficialCard from 'components/settings/WhatsAppOfficialCard';
-import WhatsAppBaileysCard from 'components/settings/WhatsAppBaileysCard';
-import InstagramCard from 'components/settings/InstagramCard';
-import FacebookCard from 'components/settings/FacebookCard';
-import useOrgRefetch from '../../hooks/useOrgRefetch';
-import useActiveOrgGate from '../../hooks/useActiveOrgGate';
+import React, { useMemo } from "react";
+import useActiveOrgGate from "../../hooks/useActiveOrgGate";
+import WhatsAppOfficialCard from "../../components/settings/WhatsAppOfficialCard.jsx";
+import InstagramCard from "../../components/settings/InstagramCard.jsx";
+import FacebookCard from "../../components/settings/FacebookCard.jsx";
+import GoogleCalendarCard from "../../components/settings/GoogleCalendarCard.jsx";
 
-export default function ChannelsPage() {
-  const { allowed } = useActiveOrgGate();
-  const [tab, setTab] = useState('whatsapp');
-  const [summary, setSummary] = useState(null);
+export default function ChannelsPage({ minRole = "Manager" }) {
+  const { allowed, reason } = useActiveOrgGate({ minRole, requireActiveOrg: true });
+  const tabs = useMemo(
+    () => ([
+      { key: "whatsapp", label: "WhatsApp", component: <WhatsAppOfficialCard /> },
+      { key: "instagram", label: "Instagram", component: <InstagramCard /> },
+      { key: "facebook", label: "Facebook", component: <FacebookCard /> },
+      { key: "google-calendar", label: "Google Calendar", component: <GoogleCalendarCard /> },
+    ]),
+    []
+  );
 
-  const load = useCallback(async () => {
-    const { data } = await inboxApi.get('/channels/summary');
-    setSummary(data);
-  }, []);
+  if (!allowed) {
+    return (
+      <div className="p-6">
+        <div className="text-sm text-gray-600">Acesso bloqueado: {String(reason || "role/org")}</div>
+      </div>
+    );
+  }
 
-  useOrgRefetch(load, [load]);
-
-  if (!allowed) return null;
-  if (!summary) return <div>Carregando…</div>;
+  const [hash] = (typeof window !== "undefined" ? window.location.hash : "#whatsapp").split("?");
+  const activeKey = (hash?.replace("#", "") || "whatsapp");
+  const setTab = (k) => {
+    if (typeof window !== "undefined") window.location.hash = k;
+  };
 
   return (
-    <div className="p-4">
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Configurações</h1>
 
-      <div className="flex gap-4 mb-4 border-b">
-        <button
-          className={`pb-2 ${tab === 'whatsapp' ? 'border-b-2 border-blue-600 font-medium' : 'text-gray-500'}`}
-          onClick={() => setTab('whatsapp')}
-        >
-          WhatsApp
-        </button>
-        <button
-          className={`pb-2 ${tab === 'instagram' ? 'border-b-2 border-blue-600 font-medium' : 'text-gray-500'}`}
-          onClick={() => setTab('instagram')}
-        >
-          Instagram
-        </button>
-        <button
-          className={`pb-2 ${tab === 'facebook' ? 'border-b-2 border-blue-600 font-medium' : 'text-gray-500'}`}
-          onClick={() => setTab('facebook')}
-        >
-          Facebook
-        </button>
+      <div className="border-b mb-4 flex gap-4">
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-3 py-2 -mb-px border-b-2 ${activeKey === t.key ? "border-blue-600 text-blue-700" : "border-transparent text-gray-600 hover:text-gray-800"}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {tab === 'whatsapp' && (
-        <div>
-          <WhatsAppOfficialCard data={summary.whatsapp_official} refresh={load} />
-          {summary.whatsapp_baileys && (
-            <WhatsAppBaileysCard data={summary.whatsapp_baileys} refresh={load} />
-          )}
-        </div>
-      )}
-
-      {tab === 'instagram' && (
-        <InstagramCard data={summary.instagram} refresh={load} />
-      )}
-
-      {tab === 'facebook' && (
-        <FacebookCard data={summary.facebook} refresh={load} />
-      )}
+      <div className="mt-4">
+        {(tabs.find(t => t.key === activeKey) || tabs[0]).component}
+      </div>
     </div>
   );
 }
