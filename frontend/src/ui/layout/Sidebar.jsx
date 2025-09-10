@@ -1,8 +1,9 @@
 // src/ui/layout/Sidebar.jsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { MessageSquare, Users, BarChart3, Settings, Bot, Calendar, FileText, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import inboxApi from '../../api/inboxApi';
 import OrgSwitcher from '../../components/nav/OrgSwitcher.jsx';
 
 const NAV = [
@@ -21,16 +22,33 @@ const ADMIN_NAV = [
 
 export default function Sidebar({ expanded, setExpanded } = {}) {
   const [inner, setInner] = useState(false);
+  const [me, setMe] = useState(null);
+  const [loading, setLoading] = useState(true);
   const isExpanded = typeof expanded === 'boolean' ? expanded : inner;
   const setExp = setExpanded || setInner;
 
   const width = isExpanded ? 220 : 64;
   const { logout, user } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await inboxApi.get('/auth/me');
+        setMe(data);
+      } catch (e) {
+        console.error('auth_me_failed', e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const role = me?.role || user?.role;
   const isAdmin = location.pathname.startsWith('/admin');
   let items = isAdmin ? ADMIN_NAV : NAV;
-  if (!isAdmin && (user?.role === 'SuperAdmin' || user?.role === 'Support')) {
-    items = [...NAV, { to: '/admin/orgs', label: 'Admin', icon: Settings }];
+  if (!isAdmin && role === 'SuperAdmin') {
+    items = [...NAV, { to: '/admin/orgs', label: 'Organizações/Clientes', icon: Users }];
   }
 
   return (

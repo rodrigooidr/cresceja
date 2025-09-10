@@ -135,7 +135,7 @@ export default function ChatPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await inboxApi.get('/api/quick-replies');
+        const { data } = await inboxApi.get('/quick-replies');
         setQuickReplies(Array.isArray(data?.templates) ? data.templates : []);
       } catch {}
     })();
@@ -178,7 +178,7 @@ export default function ChatPage() {
         if (statusFilter !== "todas") qs.push(`status=${encodeURIComponent(statusFilter)}`);
         if (channelFilter !== "todos") qs.push(`channel=${encodeURIComponent(channelFilter)}`);
         if (search) qs.push(`q=${encodeURIComponent(search)}`);
-        const url = `/api/conversations${qs.length ? `?${qs.join("&")}` : ""}`;
+        const url = `/conversations${qs.length ? `?${qs.join("&")}` : ""}`;
         const { data } = await inboxApi.get(url);
         if (!mounted) return;
         setConversations(Array.isArray(data) ? data : []);

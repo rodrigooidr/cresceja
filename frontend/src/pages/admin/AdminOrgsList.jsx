@@ -1,16 +1,29 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import inboxApi, { setImpersonateOrgId } from '../../api/inboxApi';
+import useToastFallback from '../../hooks/useToastFallback';
 
 export default function AdminOrgsList() {
   const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const toast = useToastFallback();
 
   const load = useCallback(async () => {
-    const res = await inboxApi.get('/api/admin/orgs', { params: { q, page, pageSize: 20 }, meta: { scope: 'global' } });
-    setItems(res.data.items || []);
-  }, [q, page]);
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await inboxApi.get('/admin/orgs', { params: { q, page, pageSize: 20 }, meta: { scope: 'global' } });
+      setItems(res.data.items || []);
+    } catch (e) {
+      setError(true);
+      toast({ title: 'Falha ao carregar organizações' });
+    } finally {
+      setLoading(false);
+    }
+  }, [q, page, toast]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -18,6 +31,10 @@ export default function AdminOrgsList() {
     setImpersonateOrgId(org.id);
     alert(`Agora você está atuando como ${org.name}`);
   };
+
+  if (loading || error) {
+    return <div className="p-4 animate-pulse">Carregando…</div>;
+  }
 
   return (
     <div className="p-4">

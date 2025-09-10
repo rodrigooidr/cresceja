@@ -16,7 +16,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
 
     (async () => {
       try {
-        const { data } = await inboxApi.get('/api/orgs/me');
+        const { data } = await inboxApi.get('/orgs/me');
         if (!alive) return;
 
         const list = Array.isArray(data?.orgs) ? data.orgs : [];
@@ -43,7 +43,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
     setCurrent(orgId);
     localStorage.setItem('org_id', orgId); // mantém WS e outras áreas em sincronia
     try {
-      await inboxApi.post('/api/orgs/switch', { orgId });
+      await inboxApi.post('/orgs/switch', { orgId });
     } catch {
       // ignora erros: a página vai recarregar de qualquer jeito
     }

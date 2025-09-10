@@ -1,9 +1,10 @@
 // src/components/Sidebar.jsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
+import inboxApi from '../api/inboxApi';
 
 const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
 
@@ -39,6 +40,18 @@ export default function Sidebar({ collapsed = false, onToggle }) {
   const location = useLocation();
   const isAdmin = location.pathname.startsWith('/admin');
   const hasFeature = (flag) => !flag || user?.features?.[flag];
+  const [me, setMe] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await inboxApi.get('/auth/me');
+        setMe(data);
+      } catch (e) {
+        console.error('auth_me_failed', e);
+      }
+    })();
+  }, []);
 
   return (
     <aside
@@ -86,6 +99,21 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             </div>
           );
         })}
+        {me?.role === 'SuperAdmin' && (
+          <NavLink
+            to="/admin/orgs"
+            className={({ isActive }) =>
+              `block px-2 py-2 text-sm rounded ${
+                isActive
+                  ? 'bg-blue-50 text-blue-700 font-semibold'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`
+            }
+            title={collapsed ? 'Organizações / Clientes' : undefined}
+          >
+            {collapsed ? 'O' : 'Organizações / Clientes'}
+          </NavLink>
+        )}
       </nav>
       <div className="p-2 border-t">
         <button

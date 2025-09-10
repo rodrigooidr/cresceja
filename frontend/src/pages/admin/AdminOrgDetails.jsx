@@ -12,7 +12,7 @@ export default function AdminOrgDetails(){
   useEffect(()=>{
     (async ()=>{
       try {
-        const res = await inboxApi.get(`/api/admin/orgs/${id}`, { meta:{ scope:'global' }});
+        const res = await inboxApi.get(`/admin/orgs/${id}`, { meta:{ scope:'global' }});
         setOrg(res.data);
       } catch(e){
         console.error(e);

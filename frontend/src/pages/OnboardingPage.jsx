@@ -10,7 +10,7 @@ export default function OnboardingPage() {
   const carregar = async () => {
     setLoading(true);
     try {
-      const { data } = await inboxApi.get('/api/onboarding');
+      const { data } = await inboxApi.get('/onboarding');
       setClientes(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Erro ao carregar clientes', err);

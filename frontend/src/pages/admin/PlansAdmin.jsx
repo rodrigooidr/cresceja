@@ -54,7 +54,7 @@ export default function PlansAdmin() {
   const load = async () => {
     setLoading(true);
     try {
-      const { data } = await inboxApi.get('/api/admin/plans');
+      const { data } = await inboxApi.get('/admin/plans');
       const defs = (data?.feature_defs || []).map(d => ({
         ...d,
         enum_options: Array.isArray(d.enum_options) ? d.enum_options : [],
@@ -78,7 +78,7 @@ export default function PlansAdmin() {
       return { ...prev, plan_features: list };
     });
     try {
-      await inboxApi.put(`/api/admin/plans/${planId}/features/${featureCode}`, { value });
+      await inboxApi.put(`/admin/plans/${planId}/features/${featureCode}`, { value });
     } catch (e) {
       console.error('save_feature', e);
     }
@@ -98,7 +98,7 @@ export default function PlansAdmin() {
       show_as_tick: def.show_as_tick,
     };
     try {
-      await inboxApi.post('/api/admin/feature-defs', body);
+      await inboxApi.post('/admin/feature-defs', body);
       await load();
     } catch (e) {
       console.error('save_def', e);
