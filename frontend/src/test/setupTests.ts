@@ -57,8 +57,9 @@ if (typeof TransformStream === 'undefined') {
   global.TransformStream = TransformStream;
 }
 
-const { server } = require('./msw/server');
-
+// MSW vazio (bypass por padrão)
+import { setupServer } from 'msw/node';
+export const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
