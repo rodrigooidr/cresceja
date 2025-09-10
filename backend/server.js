@@ -49,6 +49,7 @@ import inboxRoutes from './routes/inbox.js';
 import funnelRouter from './routes/crm.funnel.js';
 import debugRouter from './routes/debug.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
+import plansRouter from './routes/plans.js';
 
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
@@ -186,6 +187,9 @@ async function init() {
 
   // ---------- Middlewares globais para /api/* protegidas ----------
   app.use('/api', applyCommonHeadersForApi);
+
+  // Rotas de planos (públicas e admin)
+  app.use('/api', plansRouter);
 
   // Rotas administrativas (escopo global)
   app.use(

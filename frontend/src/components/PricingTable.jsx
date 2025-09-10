@@ -1,132 +1,66 @@
-// src/components/PricingTable.jsx
-import React, { useEffect } from "react";
-import { Link } from "react-router-dom";
-import { usePricing } from "../contexts/PricingContext";
-import { useTrial } from "../contexts/TrialContext";
+import React, { useEffect, useState } from "react";
+import inboxApi from "../api/inboxApi";
+
+function fmtBRL(cents, currency='BRL') {
+  if (cents === 0) return 'Grátis';
+  return (cents/100).toLocaleString('pt-BR', { style: 'currency', currency });
+}
 
 export default function PricingTable() {
-  const { plans, loading, error, refresh } = usePricing();
-  const { trialDays } = useTrial();
+  const [data, setData] = useState({ items: [] });
+  const [loading, setLoading] = useState(true);
 
-  // 🔄 Recarrega quando o Admin emitir o evento
   useEffect(() => {
-    const handler = () => {
-      if (typeof refresh === "function") refresh();
-    };
-    window.addEventListener("plans-updated", handler);
-    return () => window.removeEventListener("plans-updated", handler);
-  }, [refresh]);
+    (async () => {
+      try {
+        const { data } = await inboxApi.get("/public/plans");
+        setData(data);
+      } catch (e) {
+        console.error("pricing_fetch_failed", e);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-  if (loading) {
-    return (
-      <div className="grid md:grid-cols-3 gap-6">
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="p-6 border rounded-2xl animate-pulse">
-            <div className="h-5 bg-gray-200 rounded w-1/3" />
-            <div className="h-8 bg-gray-200 rounded w-1/2 mt-3" />
-            <div className="h-4 bg-gray-200 rounded w-2/3 mt-3" />
-            <div className="h-9 bg-gray-200 rounded w-1/2 mt-6" />
-          </div>
-        ))}
-      </div>
-    );
-  }
+  if (loading) return <div>Carregando planos…</div>;
 
-  const listRaw = Array.isArray(plans) ? plans : [];
-  const list = listRaw.filter((p) => p.is_published !== false);
-
-  const fmtBRL = (n) =>
-    typeof n === "number"
-      ? n.toLocaleString("pt-BR", { minimumFractionDigits: 0 })
-      : n;
-
-  if (!list.length) {
-    return (
-      <div className="p-6 border rounded-2xl">
-        <div className="font-semibold">Planos temporariamente indisponíveis.</div>
-        {error ? <div className="text-sm text-amber-600 mt-2">{String(error)}</div> : null}
-      </div>
-    );
-  }
+  // Coleta a ordem de features com base no primeiro item
+  const featureKeys = Object.keys(data.items?.[0]?.features || {});
+  const featureRows = featureKeys.map(k => ({
+    code: k,
+    label: data.items[0].features[k].label
+  }));
 
   return (
-    <div className="grid md:grid-cols-3 gap-6">
-      {list.map((p) => {
-        const isFree =
-          p.id === "free" ||
-          p.is_free === true ||
-          (p.name || "").toLowerCase().includes("free") ||
-          p.monthlyPrice === 0;
-
-        const price =
-          p.currency === "BRL"
-            ? `R$ ${fmtBRL(p.monthlyPrice)}`
-            : `${p.monthlyPrice} ${p.currency || ""}`;
-
-        return (
-          <div key={p.id || p.name} className="p-6 border rounded-2xl">
-            <div className="font-bold text-lg">{p.name}</div>
-            <div className="text-2xl font-black mt-2">
-              {price}/mês
-            </div>
-
-            {isFree ? (
-              <div className="text-xs text-blue-600 font-medium mt-1">
-                Período de teste: {trialDays} dia{trialDays === 1 ? "" : "s"}
-              </div>
-            ) : null}
-
-            <ul className="text-sm text-gray-600 mt-3 space-y-1">
-              {p.modules?.omnichannel?.enabled && (
-                <li>
-                  Omnichannel
-                  {Number(p.modules?.omnichannel?.chat_sessions) > 0 &&
-                    ` — até ${p.modules.omnichannel.chat_sessions} chats/mês`}
-                </li>
-              )}
-              {p.modules?.crm?.enabled && (
-                <li>
-                  CRM
-                  {Number(p.modules?.crm?.opportunities) > 0 &&
-                    ` — até ${p.modules.crm.opportunities} oportunidades/mês`}
-                </li>
-              )}
-              {p.modules?.marketing?.enabled && (
-                <li>
-                  Marketing
-                  {Number(p.modules?.marketing?.posts_per_month) > 0 &&
-                    ` — até ${p.modules.marketing.posts_per_month} posts/mês`}
-                </li>
-              )}
-              {p.modules?.approvals?.enabled && <li>Aprovação</li>}
-              {p.modules?.ai_credits?.enabled && (
-                <li>
-                  Créditos de IA
-                  {Number(p.modules?.ai_credits?.credits) > 0 &&
-                    ` — ${p.modules.ai_credits.credits}/mês`}
-                </li>
-              )}
-              {p.modules?.governance?.enabled && <li>Governança</li>}
-            </ul>
-
-            {isFree ? (
-              <Link
-                to="/register"
-                className="mt-4 inline-block px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-              >
-                Começar agora — {trialDays} dia{trialDays === 1 ? "" : "s"} grátis
-              </Link>
-            ) : (
-              <Link
-                to={`/checkout?plan=${encodeURIComponent(p.id || "")}`}
-                className="mt-4 inline-block px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-              >
-                Assinar agora
-              </Link>
-            )}
-          </div>
-        );
-      })}
+    <div className="overflow-x-auto">
+      <table className="min-w-full border">
+        <thead>
+          <tr className="bg-gray-50">
+            <th className="p-3 text-left">Recurso</th>
+            {data.items.map(p => (
+              <th key={p.id} className="p-3 text-center">
+                {p.name}<div className="text-sm text-gray-500">{fmtBRL(p.price_cents, p.currency)}/mês</div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {featureRows.map(fr => (
+            <tr key={fr.code} className="border-t">
+              <td className="p-3 font-medium">{fr.label}</td>
+              {data.items.map(p => {
+                const f = p.features[fr.code];
+                const isTick = f.showAsTick && (f.value === true || f.display === 'Ilimitado');
+                const text = f.showAsTick ? (isTick ? '✔' : '✖') : f.display;
+                return (
+                  <td key={p.id} className="p-3 text-center">{text || '—'}</td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

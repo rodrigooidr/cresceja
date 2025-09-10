@@ -1,14 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { gcal } from 'api/integrations.service';
 
+const canConnect = (allowed, current) =>
+  typeof allowed === 'number' && (allowed < 0 || current < allowed);
+
 export default function GoogleCalendarCard({ refresh }) {
   const [status, setStatus] = useState('disconnected');
   const [calendars, setCalendars] = useState([]);
   const [testing, setTesting] = useState(false);
+  const [limit, setLimit] = useState(0);
+  const [count, setCount] = useState(0);
 
   const load = async () => {
     const { data } = await gcal.status();
     setStatus(data?.status || 'disconnected');
+    setLimit(data?.limit ?? 0);
+    setCount(data?.count ?? 0);
   };
   useEffect(() => { load(); }, []);
 
@@ -25,7 +32,10 @@ export default function GoogleCalendarCard({ refresh }) {
         gcal.calendars(),
       ]);
       setStatus(st?.status || 'disconnected');
-      setCalendars(Array.isArray(cals?.items) ? cals.items : []);
+      setLimit(st?.limit ?? 0);
+      const items = Array.isArray(cals?.items) ? cals.items : [];
+      setCalendars(items);
+      setCount(items.length);
     } finally { setTesting(false); }
   };
 
@@ -39,7 +49,14 @@ export default function GoogleCalendarCard({ refresh }) {
       <h3 className="font-semibold text-sm mb-2">Google Calendar</h3>
       <div className="mt-2 flex gap-2">
         {status !== 'connected' ? (
-          <button className="btn btn-primary" onClick={connect}>Conectar Google</button>
+          <button
+            className={`btn btn-primary ${!canConnect(limit, count) ? 'opacity-50 cursor-not-allowed' : ''}`}
+            onClick={connect}
+            disabled={!canConnect(limit, count)}
+            title={!canConnect(limit, count) ? `Seu plano permite ${limit < 0 ? 'ilimitados' : limit} calendários` : ''}
+          >
+            Conectar Google
+          </button>
         ) : (
           <button className="btn" onClick={createTestEvent}>Criar evento teste</button>
         )}

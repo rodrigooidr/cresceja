@@ -21,6 +21,7 @@ import BillingPage from './pages/admin/BillingPage.jsx';
 import AdminOrgsList from './pages/admin/AdminOrgsList.jsx';
 import AdminOrgDetails from './pages/admin/AdminOrgDetails.jsx';
 import LandingPage from './pages/LandingPage.jsx';
+import PlansAdmin from './pages/admin/PlansAdmin.jsx';
 
 const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
 
@@ -144,6 +145,7 @@ export default function App() {
           <Route path="orgs" element={<RequireRole minRole="Support"><AdminOrgsList /></RequireRole>} />
           <Route path="orgs/:id" element={<RequireRole minRole="Support"><AdminOrgDetails /></RequireRole>} />
           <Route path="billing" element={<RequireRole minRole="SuperAdmin"><BillingPage /></RequireRole>} />
+          <Route path="plans" element={<RequireRole minRole="SuperAdmin"><PlansAdmin /></RequireRole>} />
           <Route path="support" element={<RequireRole minRole="SuperAdmin"><Placeholder label="Admin Support" /></RequireRole>} />
         </Route>
 
