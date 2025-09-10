@@ -82,7 +82,7 @@ beforeAll(() => {
 // Mock do gate
 jest.mock('../hooks/useActiveOrgGate', () => ({
   __esModule: true,
-  default: () => ({ loading: false, selected: '00000000-0000-0000-0000-000000000001', ready: true, error: null }),
+  default: () => ({ me: { role: 'SuperAdmin', org_id: '00000000-0000-0000-0000-000000000001' }, allowed: true }),
 }));
 
 // socket.io-client mock
