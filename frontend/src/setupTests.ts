@@ -24,6 +24,14 @@ class ResizeObserver {
 // @ts-ignore
 (global as any).ResizeObserver = ResizeObserver;
 
+// 👉 Opcional: alguns componentes de inbox usam IntersectionObserver
+class IO {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(window as any).IntersectionObserver = IO as any;
+
 // força axios a usar o adapter http no ambiente de testes, se necessário
 try {
   // @ts-ignore
@@ -124,26 +132,39 @@ jest.mock('contexts/TrialContext', () => ({
 // 🔧 Mock do cliente HTTP usado nas páginas
 jest.mock('api/inboxApi', () => {
   const ok = (data: any) => Promise.resolve({ data });
+
+  // Fixture mínima com "Alice"
+  const THREADS_FIXTURE = {
+    items: [
+      {
+        id: 't1',
+        org_id: 'test-org',
+        contact: { id: 'c1', name: 'Alice', handle: 'alice', avatar_url: null },
+        last_message: { id: 'm1', text: 'Olá', created_at: '2025-01-01T00:00:00Z' },
+        unread_count: 0,
+      },
+    ],
+  };
+
   return {
     __esModule: true,
     default: {
       get: jest.fn((url: string) => {
-        if (url.includes('/admin/plans')) {
-          return ok({ plans: [], feature_defs: [], plan_features: [] });
-        }
-        if (url.includes('/public/plans')) {
-          return ok({ items: [] });
-        }
-        if (url.includes('/integrations/google-calendar/status')) {
-          return ok({ status: 'disconnected', config: null });
-        }
-        if (url.includes('/admin/orgs')) {
-          return ok({ orgs: [{ id: 'org-1', name: 'CresceJá' }, { id: 'org-2', name: 'CresceJá Demo' }] });
-        }
+        // ✅ Endpoints do Inbox usados pelo teste
+        if (url.includes('/inbox/threads'))   return ok(THREADS_FIXTURE);
+        if (url.includes('/inbox/messages'))  return ok({ items: [] });
+        if (url.includes('/contacts'))        return ok({ items: THREADS_FIXTURE.items.map(t => t.contact) });
+
+        // ✅ O que já existia
+        if (url.includes('/admin/plans'))                     return ok({ plans: [], feature_defs: [], plan_features: [] });
+        if (url.includes('/public/plans'))                    return ok({ items: [] });
+        if (url.includes('/integrations/google-calendar/status')) return ok({ status: 'disconnected', config: null });
+        if (url.includes('/admin/orgs'))                      return ok({ orgs: [{ id: 'org-1', name: 'CresceJá' }, { id: 'org-2', name: 'CresceJá Demo' }] });
+
         return ok({});
       }),
       post: jest.fn(() => ok({ ok: true })),
-      put: jest.fn(() => ok({ ok: true })),
+      put:  jest.fn(() => ok({ ok: true })),
       delete: jest.fn(() => ok({ ok: true })),
     },
   };
