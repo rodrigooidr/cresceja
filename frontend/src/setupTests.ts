@@ -2,139 +2,96 @@ import '@testing-library/jest-dom';
 import 'whatwg-fetch';
 import React from 'react';
 
+// ------- Browser shims -------
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: jest.fn().mockImplementation((query: string) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
+  value: jest.fn().mockImplementation((q) => ({
+    matches: false, media: q, onchange: null,
+    addListener: jest.fn(), removeListener: jest.fn(),
+    addEventListener: jest.fn(), removeEventListener: jest.fn(),
     dispatchEvent: jest.fn(),
   })),
 });
 
-class ResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-// @ts-ignore
+class ResizeObserver { observe(){} unobserve(){} disconnect(){} }
 (global as any).ResizeObserver = ResizeObserver;
 
-// 👉 Opcional: alguns componentes de inbox usam IntersectionObserver
-class IO {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
+class IO { observe(){} unobserve(){} disconnect(){} }
 ;(window as any).IntersectionObserver = IO as any;
 
-// força axios a usar o adapter http no ambiente de testes, se necessário
+;(window as any).scrollTo = jest.fn();
+;(HTMLElement as any).prototype.scrollIntoView = jest.fn();
+
+URL.createObjectURL = URL.createObjectURL || jest.fn();
+
+// crypto (getRandomValues/subtle)
 try {
-  // @ts-ignore
-  const httpAdapter = require('axios/lib/adapters/http');
-  // @ts-ignore
-  require('axios').defaults.adapter = httpAdapter;
-} catch {}
+  const { webcrypto } = require('crypto');
+  if (!global.crypto) (global as any).crypto = webcrypto;
+} catch { /* noop */ }
 
-// Polyfills
-if (!global.requestAnimationFrame) {
-  // @ts-ignore
-  global.requestAnimationFrame = (cb: any) => setTimeout(cb, 0);
-}
-if (!window.getComputedStyle) {
-  // @ts-ignore
-  window.getComputedStyle = () => ({ getPropertyValue: () => '' });
-}
-if (!Element.prototype.closest) {
-  // @ts-ignore
-  Element.prototype.closest = function () { return null; };
+// navigator.clipboard
+if (!(navigator as any).clipboard) {
+  (navigator as any).clipboard = { writeText: jest.fn().mockResolvedValue(void 0) };
 }
 
-if (!('TextEncoder' in global)) {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { TextEncoder, TextDecoder } = require('util');
-  // @ts-ignore
-  global.TextEncoder = TextEncoder;
-  // @ts-ignore
-  global.TextDecoder = TextDecoder;
-}
-
-if (typeof TransformStream === 'undefined') {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { TransformStream } = require('web-streams-polyfill/dist/ponyfill.js');
-  // @ts-ignore
-  global.TransformStream = TransformStream;
-}
-
-// MSW vazio (bypass por padrão)
-// tenta carregar "msw" só se disponível
-let server: any = {
-  listen: () => undefined,
-  resetHandlers: () => undefined,
-  close: () => undefined,
-};
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { setupServer } = require('msw/node');
-  server = setupServer();
-} catch {
-  // módulo msw não disponível
-}
-export { server };
-beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-
-// LocalStorage estável
-beforeAll(() => {
-  const store: Record<string, string> = {};
-  Object.defineProperty(window, 'localStorage', {
-    value: {
-      getItem: (k: string) => store[k] ?? null,
-      setItem: (k: string, v: string) => { store[k] = String(v); },
-      removeItem: (k: string) => { delete store[k]; },
-      clear: () => { for (const k of Object.keys(store)) delete store[k]; }
-    },
-  });
-  localStorage.setItem('token', 'test-token');
-  localStorage.setItem('active_org_id', '00000000-0000-0000-0000-000000000001');
+// ------- Router: usa MemoryRouter nos testes mesmo se o app usar BrowserRouter -------
+jest.mock('react-router-dom', () => {
+  const actual = jest.requireActual('react-router-dom');
+  const MemoryRouter = actual.MemoryRouter;
+  return {
+    ...actual,
+    BrowserRouter: ({ children, ...props }: any) => (
+      <MemoryRouter initialEntries={['/']} {...props}>{children}</MemoryRouter>
+    ),
+  };
 });
 
-// 🔧 Deixa gates sempre liberados nos testes
+// ------- Gates/Contexts -------
 jest.mock('hooks/useActiveOrgGate', () => ({
   __esModule: true,
   default: () => ({ allowed: true, reason: null }),
 }));
 
-// 🔧 Mock leve do OrgContext
 jest.mock('contexts/OrgContext', () => ({
   __esModule: true,
   useOrg: () => ({ org: { id: 'test-org', name: 'Test Org' }, setOrg: jest.fn(), isLoading: false }),
-  OrgProvider: ({ children }: { children: React.ReactNode }) => children,
+  OrgProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-// (Se houver dependência de Auth/Trial)
 jest.mock('contexts/AuthContext', () => ({
   __esModule: true,
   useAuth: () => ({ user: { id: 'u1', role: 'SuperAdmin' }, token: 't', signOut: jest.fn() }),
-  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
+
 jest.mock('contexts/TrialContext', () => ({
   __esModule: true,
   useTrial: () => ({ trialDays: 14 }),
-  TrialProvider: ({ children }: { children: React.ReactNode }) => children,
+  TrialProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-// 🔧 Mock do cliente HTTP usado nas páginas
+// ------- React Query (simplificado p/ não exigir Provider em todo teste) -------
+jest.mock('@tanstack/react-query', () => {
+  const actual = jest.requireActual('@tanstack/react-query');
+  return {
+    ...actual,
+    QueryClientProvider: ({ children }: any) => <>{children}</>,
+    useQuery: jest.fn().mockImplementation(() => ({
+      data: undefined, isLoading: false, isFetching: false, error: null, refetch: jest.fn(), status: 'success'
+    })),
+    useMutation: jest.fn().mockImplementation(() => ({
+      mutate: jest.fn(), isLoading: false, error: null, status: 'idle'
+    })),
+  };
+});
+
+// ------- HTTP client: fixtures úteis -------
 jest.mock('api/inboxApi', () => {
   const ok = (data: any) => Promise.resolve({ data });
 
-  // Fixture mínima com "Alice"
-  const THREADS_FIXTURE = {
+  // Inbox fixtures com "Alice"
+  const THREADS = {
     items: [
       {
         id: 't1',
@@ -150,39 +107,32 @@ jest.mock('api/inboxApi', () => {
     __esModule: true,
     default: {
       get: jest.fn((url: string) => {
-        // ✅ Endpoints do Inbox usados pelo teste
-        if (url.includes('/inbox/threads'))   return ok(THREADS_FIXTURE);
+        // Inbox
+        if (url.includes('/inbox/threads'))   return ok(THREADS);
         if (url.includes('/inbox/messages'))  return ok({ items: [] });
-        if (url.includes('/contacts'))        return ok({ items: THREADS_FIXTURE.items.map(t => t.contact) });
+        if (url.includes('/contacts'))        return ok({ items: THREADS.items.map(t => t.contact) });
 
-        // ✅ O que já existia
-        if (url.includes('/admin/plans'))                     return ok({ plans: [], feature_defs: [], plan_features: [] });
-        if (url.includes('/public/plans'))                    return ok({ items: [] });
+        // Admin/Plans + público
+        if (url.includes('/admin/plans'))     return ok({ plans: [], feature_defs: [], plan_features: [] });
+        if (url.includes('/public/plans'))    return ok({ items: [] });
+
+        // Orgs
+        if (url.includes('/admin/orgs'))      return ok({ orgs: [{ id: 'org-1', name: 'CresceJá' }, { id: 'org-2', name: 'CresceJá Demo' }] });
+        if (url.match(/\/admin\/orgs\/[^/]+$/)) return ok({ org: { id: 'org-1', name: 'CresceJá', status: 'active' }, payments: [], purchases: [] });
+
+        // Google Calendar
         if (url.includes('/integrations/google-calendar/status')) return ok({ status: 'disconnected', config: null });
-        if (url.includes('/admin/orgs'))                      return ok({ orgs: [{ id: 'org-1', name: 'CresceJá' }, { id: 'org-2', name: 'CresceJá Demo' }] });
 
         return ok({});
       }),
-      post: jest.fn(() => ok({ ok: true })),
+      post: jest.fn((url: string) => {
+        if (url.includes('/integrations/google-calendar/')) return ok({ ok: true });
+        return ok({ ok: true });
+      }),
       put:  jest.fn(() => ok({ ok: true })),
       delete: jest.fn(() => ok({ ok: true })),
     },
   };
 });
 
-// socket.io-client mock
-jest.mock('socket.io-client', () => {
-  const handlers: Record<string, Function> = {};
-  const sock = {
-    on: (evt: string, cb: Function) => { handlers[evt] = cb; return sock; },
-    off: (evt: string) => { delete handlers[evt]; return sock; },
-    emit: (_evt: string, _payload?: any) => sock,
-    connect: () => { handlers['connect']?.(); return sock; },
-    disconnect: () => sock,
-    io: { opts: {} },
-  } as any;
-  // helper global p/ disparar eventos nos testes se precisar
-  // @ts-ignore
-  global.__SOCKET_PUSH__ = (evt: string, payload: any) => { handlers[evt]?.(payload); };
-  return { __esModule: true, io: () => sock, default: () => sock };
-});
+// Se algum teste precisar do comportamento real de React Query ou de um endpoint, você pode desfazer o mock dentro do teste específico com jest.unmock(...) e/ou sobrescrever inboxApi.get naquele teste.
