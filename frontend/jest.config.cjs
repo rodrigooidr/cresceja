@@ -1,7 +1,8 @@
 /** @type {import('jest').Config} */
 module.exports = {
   testEnvironment: 'jsdom',
-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
+  setupFilesAfterEnv: ['<rootDir>/test/setupTests.js'],
+  testMatch: ['<rootDir>/test/**/*.test.jsx', '<rootDir>/test/**/*.test.js'],
   // opcional: já estamos importando 'whatwg-fetch' dentro do setup
   // setupFiles: ['whatwg-fetch'],
   moduleDirectories: ['node_modules', 'src'],
