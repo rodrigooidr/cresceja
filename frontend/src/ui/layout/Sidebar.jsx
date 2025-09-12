@@ -17,8 +17,8 @@ const NAV = [
 ];
 
 const ADMIN_NAV = [
-  { to: '/admin/orgs', label: 'Organizações', icon: Users },
-  { to: '/admin/planos', label: 'Planos', icon: BarChart3 },
+  { to: '/admin/organizations', label: 'Organizações/Clientes', icon: Users },
+  { to: '/admin/plans', label: 'Planos (Admin)', icon: BarChart3 },
 ];
 
 export default function Sidebar({ expanded, setExpanded } = {}) {
@@ -49,7 +49,11 @@ export default function Sidebar({ expanded, setExpanded } = {}) {
   const isAdmin = location.pathname.startsWith('/admin');
   let items = isAdmin ? ADMIN_NAV : NAV;
   if (!isAdmin && role === 'SuperAdmin') {
-    items = [...items, { to: '/admin/orgs', label: 'Organizações/Clientes', icon: Users }, { to: '/admin/planos', label: 'Planos (Admin)', icon: BarChart3 }];
+    items = [
+      ...items,
+      { to: '/admin/organizations', label: 'Organizações/Clientes', icon: Users },
+      { to: '/admin/plans', label: 'Planos (Admin)', icon: BarChart3 },
+    ];
   }
 
   return (
