@@ -1,18 +1,16 @@
+// src/components/ErrorBoundary.jsx
 import React from 'react';
-
 export default class ErrorBoundary extends React.Component {
-  constructor(props){ super(props); this.state = { hasError: false, err: null }; }
-  static getDerivedStateFromError(err){ return { hasError: true, err }; }
+  state = { err: null };
+  static getDerivedStateFromError(err){ return { err }; }
   componentDidCatch(err, info){ console.error('ErrorBoundary', err, info); }
   render(){
-    if (this.state.hasError) {
-      return (
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-red-700">Algo deu errado</h1>
-          <p className="text-sm text-gray-600 mt-2">Cheque o console para detalhes.</p>
-        </div>
-      );
-    }
-    return this.props.children;
+    if (!this.state.err) return this.props.children;
+    return (
+      <div style={{padding:16}}>
+        <h2 style={{color:'#b91c1c'}}>Algo deu errado</h2>
+        <pre style={{whiteSpace:'pre-wrap'}}>{String(this.state.err?.message || this.state.err)}</pre>
+      </div>
+    );
   }
 }

@@ -1,6 +1,6 @@
 // backend/routes/admin/orgs.js
 import { Router } from 'express';
-import db from '../../db.js';
+import db from '#db';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
 
 const r = Router();

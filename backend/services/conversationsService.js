@@ -1,5 +1,5 @@
 // backend/services/conversationsService.js
-import { query as rootQuery } from '../config/db.js';
+import { query as rootQuery } from '#db';
 
 /**
  * IMPORTANTE:

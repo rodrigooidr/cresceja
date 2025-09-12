@@ -1,35 +1,46 @@
+// src/components/PricingTable.jsx
 import React, { useEffect, useState } from "react";
 import inboxApi from "../api/inboxApi";
 
-function fmtBRL(cents, currency='BRL') {
-  if (cents === 0) return 'Grátis';
-  return (cents/100).toLocaleString('pt-BR', { style: 'currency', currency });
+function fmtBRL(cents, currency = "BRL") {
+  if (!Number.isFinite(cents)) return "—";
+  if (cents === 0) return "Grátis";
+  try {
+    return (cents / 100).toLocaleString("pt-BR", { style: "currency", currency });
+  } catch {
+    return `${(cents / 100).toFixed(2)} ${currency}`;
+  }
 }
 
-export default function PricingTable() {
-  const [data, setData] = useState({ items: [] });
-  const [loading, setLoading] = useState(true);
+export default function PricingTable({ endpoint = "/public/plans" }) {
+  const [state, setState] = useState({ loading: true, items: [], error: null });
 
   useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        const { data } = await inboxApi.get("/public/plans");
-        setData(data);
+        const res = await inboxApi.get(endpoint);
+        const items = Array.isArray(res?.data?.items) ? res.data.items : [];
+        if (!alive) return;
+        setState({ loading: false, items, error: null });
       } catch (e) {
-        console.error("pricing_fetch_failed", e);
-      } finally {
-        setLoading(false);
+        if (!alive) return;
+        setState({ loading: false, items: [], error: e?.message || "Falha ao carregar planos" });
       }
     })();
-  }, []);
+    return () => { alive = false; };
+  }, [endpoint]);
 
-  if (loading) return <div>Carregando planos…</div>;
+  if (state.loading) return <div>Carregando planos…</div>;
+  if (state.error)   return <div className="text-amber-700 text-sm">{state.error}</div>;
+  if (!state.items.length) return <div className="text-sm text-gray-600">Nenhum plano disponível no momento.</div>;
 
-  // Coleta a ordem de features com base no primeiro item
-  const featureKeys = Object.keys(data.items?.[0]?.features || {});
-  const featureRows = featureKeys.map(k => ({
+  // Descobre a ordem dos recursos a partir do primeiro item
+  const first = state.items[0] || {};
+  const featureKeys = Object.keys(first.features || {});
+  const featureRows = featureKeys.map((k) => ({
     code: k,
-    label: data.items[0].features[k].label
+    label: first.features?.[k]?.label || k
   }));
 
   return (
@@ -38,23 +49,29 @@ export default function PricingTable() {
         <thead>
           <tr className="bg-gray-50">
             <th className="p-3 text-left">Recurso</th>
-            {data.items.map(p => (
-              <th key={p.id} className="p-3 text-center">
-                {p.name}<div className="text-sm text-gray-500">{fmtBRL(p.price_cents, p.currency)}/mês</div>
+            {state.items.map((p) => (
+              <th key={p.id || p.name} className="p-3 text-center">
+                <div className="font-medium">{p.name || "Plano"}</div>
+                <div className="text-sm text-gray-500">
+                  {fmtBRL(p.price_cents, p.currency)}/mês
+                </div>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {featureRows.map(fr => (
+          {featureRows.map((fr) => (
             <tr key={fr.code} className="border-t">
               <td className="p-3 font-medium">{fr.label}</td>
-              {data.items.map(p => {
-                const f = p.features[fr.code];
-                const isTick = f.showAsTick && (f.value === true || f.display === 'Ilimitado');
-                const text = f.showAsTick ? (isTick ? '✔' : '✖') : f.display;
+              {state.items.map((p) => {
+                const f = p?.features?.[fr.code] || {};
+                const isTick =
+                  f.showAsTick && (f.value === true || f.display === "Ilimitado");
+                const text = f.showAsTick ? (isTick ? "✔" : "✖") : (f.display ?? "—");
                 return (
-                  <td key={p.id} className="p-3 text-center">{text || '—'}</td>
+                  <td key={`${p.id || p.name}-${fr.code}`} className="p-3 text-center">
+                    {text}
+                  </td>
                 );
               })}
             </tr>

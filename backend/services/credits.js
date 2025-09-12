@@ -1,5 +1,5 @@
 
-import { query as rootQuery } from '../config/db.js';
+import { query as rootQuery } from '#db';
 
 const DEFAULTS = {
   free:   { attend: 0, content: 0 },

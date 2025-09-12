@@ -1,7 +1,7 @@
 // backend/scripts/reset-password.js
 import 'dotenv/config';
 import bcrypt from 'bcryptjs';
-import { query, closePool } from '../config/db.js';
+import { query, closePool } from '#db';
 
 const [email, newPassword, roleFlag] = process.argv.slice(2);
 

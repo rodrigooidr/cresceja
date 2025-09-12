@@ -1,6 +1,6 @@
 // backend/routes/orgs.js
 import { Router } from 'express';
-import { pool } from '../config/db.js';
+import { pool } from '#db';
 
 const router = Router();
 

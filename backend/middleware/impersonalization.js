@@ -1,7 +1,7 @@
 // Impersonação de Org por Support/SuperAdmin com auditoria
 
 import { ROLES, SUPPORT_SCOPES } from '../lib/permissions.js';
-import { query } from '../config/db.js';
+import { query } from '#db';
 
 export async function impersonation(req, res, next) {
   try {

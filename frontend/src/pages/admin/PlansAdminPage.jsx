@@ -15,7 +15,7 @@ function Field({ label, children }) {
 function FeatureInput({ def, value, onChange }) {
   if (def.type === "boolean") {
     return (
-      <select className="border rounded px-2 py-1" value={value ? "true" : "false"} onChange={e => onChange(e.target.value === "true")}> 
+      <select className="border rounded px-2 py-1" value={value ? "true" : "false"} onChange={e => onChange(e.target.value === "true")}>
         <option value="false">Não</option>
         <option value="true">Sim</option>
       </select>
@@ -50,24 +50,38 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
   const load = async () => {
     setState(s => ({ ...s, loading: true }));
     try {
-      const { data } = await inboxApi.get("/admin/plans");
-      setState({ loading: false, error: null, plans: data?.plans ?? [], defs: data?.feature_defs ?? [], feats: data?.plan_features ?? [] });
+      const { data } = await inboxApi.get("/admin/plans", { meta: { scope: "global" } });
+      setState({
+        loading: false,
+        error: null,
+        plans: data?.plans ?? [],
+        defs: data?.feature_defs ?? [],
+        feats: data?.plan_features ?? [],
+      });
     } catch (e) {
-      setState({ loading: false, error: e?.message || "Falha ao carregar", plans: [], defs: [], feats: [] });
+      const status = e?.response?.status;
+      const msg =
+        status === 401 || status === 403
+          ? "Sem permissão para acessar os planos."
+          : e?.message || "Falha ao carregar";
+      setState({ loading: false, error: msg, plans: [], defs: [], feats: [] });
     }
   };
 
   useEffect(() => { load(); }, []);
 
-  const defsPublic = useMemo(() => state.defs.sort((a,b)=> (a.sort_order||0)-(b.sort_order||0)), [state.defs]);
+  const defsPublic = useMemo(
+    () => [...state.defs].sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)),
+    [state.defs]
+  );
 
   const upsertPlan = async (p) => {
     setSaving(true);
     try {
       if (p.id) {
-        await inboxApi.put(`/admin/plans/${p.id}`, p);
+        await inboxApi.put(`/admin/plans/${p.id}`, p, { meta: { scope: "global" } });
       } else {
-        await inboxApi.post(`/admin/plans`, p);
+        await inboxApi.post(`/admin/plans`, p, { meta: { scope: "global" } });
       }
       await load();
     } finally { setSaving(false); }
@@ -76,7 +90,7 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
   const upsertFeatureDef = async (def) => {
     setSaving(true);
     try {
-      await inboxApi.post(`/admin/feature-defs`, def);
+      await inboxApi.post(`/admin/feature-defs`, def, { meta: { scope: "global" } });
       await load();
     } finally { setSaving(false); }
   };
@@ -84,7 +98,7 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
   const upsertPlanFeature = async (planId, code, value) => {
     setSaving(true);
     try {
-      await inboxApi.put(`/admin/plans/${planId}/features/${code}`, { value });
+      await inboxApi.put(`/admin/plans/${planId}/features/${code}`, { value }, { meta: { scope: "global" } });
       await load();
     } finally { setSaving(false); }
   };
@@ -95,9 +109,22 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
     <div className="p-6 space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Planos (Admin)</h1>
-        <button className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
-          onClick={async () => { setCreating(true); await upsertPlan({ name: "Novo Plano", price_cents: 0, currency: "BRL", trial_days: 0, is_active: true, sort_order: 99 }); setCreating(false); }}
-          disabled={creating || saving}>
+        <button
+          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
+          onClick={async () => {
+            setCreating(true);
+            await upsertPlan({
+              name: "Novo Plano",
+              price_cents: 0,
+              currency: "BRL",
+              trial_days: 0,
+              is_active: true,
+              sort_order: 99
+            });
+            setCreating(false);
+          }}
+          disabled={creating || saving}
+        >
           {creating ? "Criando..." : "Novo plano"}
         </button>
       </div>
@@ -105,7 +132,7 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
       {state.loading && <div>Carregando…</div>}
       {state.error && <div className="text-amber-700">{String(state.error)}</div>}
 
-      {!state.loading && (
+      {!state.loading && !state.error && (
         <div className="grid md:grid-cols-2 gap-8">
           {/* Coluna esquerda: planos e features */}
           <div className="space-y-6">
@@ -113,38 +140,53 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
               <div key={p.id} className="border rounded-xl p-4">
                 <div className="flex items-center justify-between mb-3">
                   <div className="font-semibold">{p.name || p.id}</div>
-                  <button className="text-sm px-3 py-1 rounded border disabled:opacity-60"
+                  <button
+                    className="text-sm px-3 py-1 rounded border disabled:opacity-60"
                     onClick={() => upsertPlan({ id: p.id, is_active: !p.is_active })}
-                    disabled={saving}>
+                    disabled={saving}
+                  >
                     {p.is_active ? "Desativar" : "Ativar"}
                   </button>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-3">
                   <Field label="Nome">
-                    <input className="border rounded px-2 py-1"
+                    <input
+                      className="border rounded px-2 py-1"
                       defaultValue={p.name}
-                      onBlur={(e)=> upsertPlan({ id: p.id, name: e.target.value })} />
+                      onBlur={(e)=> upsertPlan({ id: p.id, name: e.target.value })}
+                    />
                   </Field>
                   <Field label="Preço (centavos)">
-                    <input type="number" className="border rounded px-2 py-1"
+                    <input
+                      type="number"
+                      className="border rounded px-2 py-1"
                       defaultValue={p.price_cents ?? 0}
-                      onBlur={(e)=> upsertPlan({ id: p.id, price_cents: Number(e.target.value||0) })} />
+                      onBlur={(e)=> upsertPlan({ id: p.id, price_cents: Number(e.target.value||0) })}
+                    />
                   </Field>
                   <Field label="Moeda">
-                    <input className="border rounded px-2 py-1"
+                    <input
+                      className="border rounded px-2 py-1"
                       defaultValue={p.currency || "BRL"}
-                      onBlur={(e)=> upsertPlan({ id: p.id, currency: e.target.value || "BRL" })} />
+                      onBlur={(e)=> upsertPlan({ id: p.id, currency: e.target.value || "BRL" })}
+                    />
                   </Field>
                   <Field label="Dias de trial">
-                    <input type="number" className="border rounded px-2 py-1"
+                    <input
+                      type="number"
+                      className="border rounded px-2 py-1"
                       defaultValue={p.trial_days ?? 0}
-                      onBlur={(e)=> upsertPlan({ id: p.id, trial_days: Number(e.target.value||0) })} />
+                      onBlur={(e)=> upsertPlan({ id: p.id, trial_days: Number(e.target.value||0) })}
+                    />
                   </Field>
                   <Field label="Ordem">
-                    <input type="number" className="border rounded px-2 py-1"
+                    <input
+                      type="number"
+                      className="border rounded px-2 py-1"
                       defaultValue={p.sort_order ?? 0}
-                      onBlur={(e)=> upsertPlan({ id: p.id, sort_order: Number(e.target.value||0) })} />
+                      onBlur={(e)=> upsertPlan({ id: p.id, sort_order: Number(e.target.value||0) })}
+                    />
                   </Field>
                 </div>
 
@@ -157,8 +199,11 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
                       return (
                         <div key={`${p.id}-${def.code}`} className="flex items-center gap-3">
                           <div className="w-64 text-sm">{def.label}</div>
-                          <FeatureInput def={def} value={currentValue}
-                            onChange={(val)=> upsertPlanFeature(p.id, def.code, val)} />
+                          <FeatureInput
+                            def={def}
+                            value={currentValue}
+                            onChange={(val)=> upsertPlanFeature(p.id, def.code, val)}
+                          />
                           {def.unit && <span className="text-xs text-gray-500">{def.unit}</span>}
                           {def.show_as_tick && <span className="text-xs text-gray-400">(tick)</span>}
                         </div>
@@ -178,24 +223,37 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
                 {defsPublic.map(def => (
                   <div key={def.code} className="flex items-center gap-2">
                     <span className="w-40 text-sm">{def.code}</span>
-                    <input className="border rounded px-2 py-1 w-56"
+                    <input
+                      className="border rounded px-2 py-1 w-56"
                       defaultValue={def.label}
-                      onBlur={(e)=> upsertFeatureDef({ ...def, label: e.target.value })} />
-                    <input className="border rounded px-2 py-1 w-24"
+                      onBlur={(e)=> upsertFeatureDef({ ...def, label: e.target.value })}
+                    />
+                    <input
+                      className="border rounded px-2 py-1 w-24"
                       placeholder="unidade"
                       defaultValue={def.unit ?? ""}
-                      onBlur={(e)=> upsertFeatureDef({ ...def, unit: e.target.value || null })} />
-                    <input type="number" className="border rounded px-2 py-1 w-20"
+                      onBlur={(e)=> upsertFeatureDef({ ...def, unit: e.target.value || null })}
+                    />
+                    <input
+                      type="number"
+                      className="border rounded px-2 py-1 w-20"
                       defaultValue={def.sort_order ?? 0}
-                      onBlur={(e)=> upsertFeatureDef({ ...def, sort_order: Number(e.target.value||0) })} />
+                      onBlur={(e)=> upsertFeatureDef({ ...def, sort_order: Number(e.target.value||0) })}
+                    />
                     <label className="text-xs flex items-center gap-1">
-                      <input type="checkbox" defaultChecked={!!def.is_public}
-                        onChange={(e)=> upsertFeatureDef({ ...def, is_public: e.target.checked })} />
+                      <input
+                        type="checkbox"
+                        defaultChecked={!!def.is_public}
+                        onChange={(e)=> upsertFeatureDef({ ...def, is_public: e.target.checked })}
+                      />
                       público
                     </label>
                     <label className="text-xs flex items-center gap-1">
-                      <input type="checkbox" defaultChecked={!!def.show_as_tick}
-                        onChange={(e)=> upsertFeatureDef({ ...def, show_as_tick: e.target.checked })} />
+                      <input
+                        type="checkbox"
+                        defaultChecked={!!def.show_as_tick}
+                        onChange={(e)=> upsertFeatureDef({ ...def, show_as_tick: e.target.checked })}
+                      />
                       tick
                     </label>
                   </div>
@@ -213,4 +271,3 @@ export default function PlansAdminPage({ minRole = "SuperAdmin" }) {
     </div>
   );
 }
-

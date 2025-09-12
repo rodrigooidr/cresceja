@@ -1,5 +1,5 @@
 // backend/controllers/inboxExtraController.js
-import { pool } from '../config/db.js';
+import { pool } from '#db';
 import { io } from '../services/realtime.js';
 
 export async function markRead(req, res) {

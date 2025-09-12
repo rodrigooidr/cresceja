@@ -1,11 +1,17 @@
 // frontend/src/contexts/OrgContext.jsx
-import React, { createContext, useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import inboxApi, { setActiveOrg } from "../api/inboxApi";
 import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
 
-// avisa a app toda que a org mudou
+// Broadcast opcional (quem quiser ouvir “org:changed”)
 function announceOrgChanged(orgId) {
   try {
     window.dispatchEvent(new CustomEvent("org:changed", { detail: { orgId } }));
@@ -16,7 +22,9 @@ function readTokenOrgId() {
   try {
     const t = localStorage.getItem("token");
     if (!t) return null;
-    const payload = JSON.parse(atob((t.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/")));
+    const payload = JSON.parse(
+      atob((t.split(".")[1] || "").replace(/-/g, "+").replace(/_/g, "/"))
+    );
     return payload?.org_id || null;
   } catch {
     return null;
@@ -24,9 +32,9 @@ function readTokenOrgId() {
 }
 
 export function OrgProvider({ children }) {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
-  // lista e estado de busca/paginação (server-side)
+  // Lista / paginação
   const [orgs, setOrgs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -34,9 +42,10 @@ export function OrgProvider({ children }) {
   const pageSize = 50;
   const [hasMore, setHasMore] = useState(false);
 
-  // org selecionada (1 por vez)
+  // Seleção atual (1 org)
   const [selected, setSelected] = useState(() => {
     try {
+      // Se não estiver autenticado, ignore qualquer seleção persistida
       return localStorage.getItem("active_org_id") || readTokenOrgId() || null;
     } catch {
       return null;
@@ -44,30 +53,41 @@ export function OrgProvider({ children }) {
   });
   const [orgChangeTick, setOrgChangeTick] = useState(0);
 
-  // quem enxerga o seletor
+  // Quem vê o seletor
   const canSeeSelector = useMemo(() => {
-    if (!user) return false;
+    if (!isAuthenticated || !user) return false;
     const r = user.role;
     return ["SuperAdmin", "Support", "OrgOwner", "OrgAdmin"].includes(r);
-  }, [user]);
+  }, [isAuthenticated, user]);
 
-  // visibilidade da listagem
+  // Visibilidade da listagem
   const visibility = useMemo(() => {
+    if (!isAuthenticated) return null; // modo público: não busca
     if (user?.role === "SuperAdmin" || user?.role === "Support") return "all";
     return "mine";
-  }, [user]);
+  }, [isAuthenticated, user]);
 
-  // carrega lista (replace/append) com busca/paginação no servidor
+  // Carrega lista (server-side)
   const refreshOrgs = useCallback(
     async (qArg = q, p = 1, mode = "replace") => {
+      // Sem login → modo público (nada a carregar)
+      if (!isAuthenticated) {
+        setLoading(false);
+        setOrgs([]);
+        setHasMore(false);
+        return;
+      }
+
       setLoading(true);
       try {
         const { data } = await inboxApi.get("/orgs", {
           params: { visibility, q: qArg, page: p, pageSize },
-          meta: { scope: "global" }, // evita exigir X-Org-Id
+          meta: { scope: "global" }, // não força X-Org-Id (mas exige auth)
         });
-        const items = data.items || data || [];
-        const total = typeof data.total === "number" ? data.total : items.length;
+
+        const items = data?.items ?? (Array.isArray(data) ? data : []);
+        const total =
+          typeof data?.total === "number" ? data.total : items.length;
 
         setHasMore(p * pageSize < total);
         setPage(p);
@@ -82,14 +102,15 @@ export function OrgProvider({ children }) {
         } else {
           setOrgs(items);
         }
-      } catch {
+      } catch (err) {
+        // 401/403 em modo autenticado: trate como falha de carga, mas sem quebrar a UI
         if (mode === "replace") setOrgs([]);
         setHasMore(false);
       } finally {
         setLoading(false);
       }
     },
-    [visibility, q]
+    [isAuthenticated, visibility, q]
   );
 
   const searchOrgs = useCallback(
@@ -97,24 +118,30 @@ export function OrgProvider({ children }) {
     [refreshOrgs]
   );
 
-  const loadMoreOrgs = useCallback(
-    () => {
-      if (!hasMore || loading) return;
-      return refreshOrgs(q, page + 1, "append");
-    },
-    [hasMore, loading, q, page, refreshOrgs]
-  );
+  const loadMoreOrgs = useCallback(() => {
+    if (!hasMore || loading) return;
+    return refreshOrgs(q, page + 1, "append");
+  }, [hasMore, loading, q, page, refreshOrgs]);
 
-  // load inicial e quando a visibilidade mudar (ex.: troca de papel do usuário)
+  // Load inicial / quando mudar autenticação ou visibilidade
   useEffect(() => {
-    (async () => {
-      await refreshOrgs();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibility]);
+    // Se público, finalize rápido para não travar render da landing
+    if (!isAuthenticated) {
+      setLoading(false);
+      setOrgs([]);
+      setHasMore(false);
+      return;
+    }
+    refreshOrgs();
+  }, [isAuthenticated, visibility, refreshOrgs]);
 
-  // se o usuário logar/deslogar, revalida seleção
+  // Ao logar/deslogar, garante X-Org-Id coerente
   useEffect(() => {
+    if (!isAuthenticated) {
+      setSelected(null);
+      setActiveOrg(null); // remove header e localStorage
+      return;
+    }
     const tokOrg = readTokenOrgId();
     if (tokOrg) {
       setSelected(tokOrg);
@@ -122,13 +149,13 @@ export function OrgProvider({ children }) {
     } else {
       setSelected((prev) => prev || null);
     }
-  }, [user?.id]);
+  }, [isAuthenticated, user?.id]);
 
-  // autocorreção da seleção após carregar orgs
+  // Ajusta seleção após listar orgs (somente autenticado)
   useEffect(() => {
-    if (loading) return;
+    if (!isAuthenticated || loading) return;
 
-    // 1) OrgOwner/OrgAdmin com 1 empresa: fixa
+    // 1) Dono/Admin com 1 empresa → fixa
     if (["OrgOwner", "OrgAdmin"].includes(user?.role) && orgs.length === 1) {
       const only = orgs[0]?.id || null;
       if (only && selected !== only) {
@@ -138,31 +165,30 @@ export function OrgProvider({ children }) {
       }
     }
 
-    // 2) se a seleção é inválida (ou vazia), escolher uma válida
+    // 2) Seleção inválida → escolher válida
     const exists = selected && orgs.some((o) => o.id === selected);
     if (!exists) {
       const fromToken = readTokenOrgId();
       const tokenIsValid = fromToken && orgs.some((o) => o.id === fromToken);
-      const next = tokenIsValid ? fromToken : (orgs[0]?.id || null);
+      const next = tokenIsValid ? fromToken : orgs[0]?.id || null;
       if (next) {
         setSelected(next);
-        setActiveOrg(next); // atualiza axios + localStorage
+        setActiveOrg(next);
       }
     }
-  }, [loading, orgs, selected, user?.role]);
+  }, [isAuthenticated, loading, orgs, selected, user?.role]);
 
-  // troca de org (seleção única + broadcast)
+  // Troca de org
   const choose = useCallback(
     async (orgId) => {
+      if (!isAuthenticated) return;
       if (!orgId || orgId === selected) return;
       setSelected(orgId);
       setActiveOrg(orgId);
       announceOrgChanged(orgId);
       setOrgChangeTick((n) => n + 1);
-      // opcional: auditar a troca no backend
-      // await inboxApi.post('/session/org', { org_id: orgId }, { meta: { scope: 'global' } });
     },
-    [selected]
+    [isAuthenticated, selected]
   );
 
   const value = useMemo(
@@ -173,13 +199,26 @@ export function OrgProvider({ children }) {
       setSelected: choose,
       canSeeSelector,
       orgChangeTick,
-      // busca/paginação expostas
       searchOrgs,
       loadMoreOrgs,
       hasMore,
       q,
+      // útil para saber se está no modo público
+      publicMode: !isAuthenticated,
     }),
-    [orgs, loading, selected, choose, canSeeSelector, orgChangeTick, searchOrgs, loadMoreOrgs, hasMore, q]
+    [
+      orgs,
+      loading,
+      selected,
+      choose,
+      canSeeSelector,
+      orgChangeTick,
+      searchOrgs,
+      loadMoreOrgs,
+      hasMore,
+      q,
+      isAuthenticated,
+    ]
   );
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;

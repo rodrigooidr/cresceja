@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { query } from '../../config/db.js';
+import { query } from '#db';
 import { decrypt } from '../../services/crypto.js';
 
 const r = Router();

@@ -1,5 +1,5 @@
 // backend/repos/inbox.repo.js
-import { query } from '../config/db.js';
+import { query } from '#db';
 
 /**
  * Lista conversas da org corrente (RLS via pgRlsContext)

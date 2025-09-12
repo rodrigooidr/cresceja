@@ -1,4 +1,4 @@
-import { pool } from '../config/db.js';
+import { pool } from '#db';
 import { enqueueSocialSend } from '../queues/social.queue.js';
 import { enqueueTranscribe } from '../queues/content.queue.js';
 import { uploadToAssets } from '../services/assets.js';

@@ -1,4 +1,4 @@
-import { pool } from '../config/db.js';
+import { pool } from '#db';
 
 // backend/middleware/adminContext.js
 // Provides a global transaction with role "super" and no org scope

@@ -1,0 +1,127 @@
+# Query: /db.js'
+# Including: ./backend
+
+41 results - 41 files
+
+backend\db.js:
+  1: import { pool } from '../config/db.js';
+
+backend\server.js:
+  16: import { pool, healthcheck } from '../config/db.js';
+
+backend\controllers\adminBillingController.js:
+  1: import { query as rootQuery } from '../config/db.js';
+
+backend\controllers\auditController.js:
+  2: import { query } from '../config/db.js';
+
+backend\controllers\fidelizacaoController.js:
+  1: import { query } from '../config/db.js';
+
+backend\controllers\inboxController.js:
+  1: import { pool } from '../config/db.js';
+
+backend\controllers\inboxExtraController.js:
+  2: import { pool } from '../config/db.js';
+
+backend\controllers\orgsController.js:
+  1: import { query } from '../config/db.js';
+
+backend\middleware\adminContext.js:
+  1: import { pool } from '../config/db.js';
+
+backend\middleware\consent.js:
+  2: import { query } from '../config/db.js';
+
+backend\middleware\impersonalization.js:
+  4: import { query } from '../config/db.js';
+
+backend\middleware\pgRlsContext.js:
+  2: import { pool, als } from '../config/db.js';
+
+backend\middleware\withOrg.js:
+  1: import { pool } from '../config/db.js';
+
+backend\queues\social.worker.js:
+  6: import { query as rootQuery } from '../config/db.js';
+
+backend\queues\transcribe.worker.js:
+  6: import { pool } from '../config/db.js';
+
+backend\repos\inbox.repo.js:
+  2: import { query } from '../config/db.js';
+
+backend\routes\lgpd.js:
+  3: import { query, getClient } from '../config/db.js';
+
+backend\routes\orgs.js:
+  3: import { pool } from '../config/db.js';
+
+backend\routes\plans.js:
+  2: import db from '../config/db.js';
+
+backend\routes\public.js:
+  3: import { query as rootQuery } from '../config/db.js';
+
+backend\routes\admin\orgs.js:
+  3: import db from '../config/db.js';
+
+backend\routes\integrations\google.calendar.js:
+  2: import db from '../config/db.js';
+
+backend\routes\webhooks\social.js:
+  2: import { pool } from '../config/db.js';
+
+backend\routes\webhooks\whatsapp.js:
+  2: import { query } from '../config/db.js';
+
+backend\scripts\recreate-tables.js:
+  5: import { query } from '../config/db.js';
+
+backend\scripts\reset-password.js:
+  4: import { query, closePool } from '../config/db.js';
+
+backend\services\audit.js:
+  1: import { query as rootQuery } from '../config/db.js';
+
+backend\services\baileysService.js:
+  2: import db from '../db.js';
+
+backend\services\channels.service.js:
+  1: import { query as rootQuery } from '../config/db.js';
+
+backend\services\contactsService.js:
+  2: import { query as rootQuery } from '../config/db.js';
+
+backend\services\conversationsService.js:
+  2: import { query as rootQuery } from '../config/db.js';
+
+backend\services\credits.js:
+  2: import { query as rootQuery } from '../config/db.js';
+
+backend\services\messages.js:
+  2: import { query as rootQuery } from '../config/db.js';
+
+backend\services\socialHelpers.js:
+  2: import { query as rootQuery } from '../config/db.js';
+
+backend\services\templates.js:
+  1: import { query as rootQuery } from '../config/db.js';
+
+backend\services\ai\autoResponder.js:
+  2: import { query as rootQuery } from '../config/db.js';
+
+backend\services\ai\chat.js:
+  3: import { query } from '../config/db.js';
+
+backend\services\calendar\google.js:
+  3: import { query } from '../config/db.js';
+
+backend\services\calendar\outlook.js:
+  2: import { query } from '../config/db.js';
+
+backend\services\social\shared.js:
+  2: import { query as rootQuery } from '../config/db.js';
+
+backend\services\social\waCloud.js:
+  2: import { query as rootQuery } from '../config/db.js';

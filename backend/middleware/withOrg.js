@@ -1,4 +1,4 @@
-import { pool } from '../config/db.js';
+import { pool } from '#db';
 
 export async function withOrg(req, res, next) {
   try {

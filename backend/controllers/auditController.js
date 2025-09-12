@@ -1,5 +1,5 @@
 // controllers/auditController.js
-import { query } from '../config/db.js';
+import { query } from '#db';
 
 export async function getLogs(req, res, next) {
   try {

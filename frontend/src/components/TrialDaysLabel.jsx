@@ -1,13 +1,14 @@
-// src/components/TrialDaysLabel.jsx
 import React from "react";
 import { useTrial } from "../contexts/TrialContext";
 
-export default function TrialDaysLabel({ prefix = "—", suffix = "grátis" }) {
-  const { trialDays } = useTrial();
-  if (trialDays <= 0) return null; // se você zerar o trial, some automaticamente
+export default function TrialDaysLabel({ prefix = "" }) {
+  const { trialDays } = useTrial() || {};
+
+  if (trialDays == null || Number(trialDays) <= 0) return null;
+
   return (
-    <>
-      {prefix} {trialDays} dia{trialDays === 1 ? "" : "s"} {suffix}
-    </>
+    <span className="ml-1 text-xs text-white/80">
+      {prefix}{trialDays} dias grátis
+    </span>
   );
 }

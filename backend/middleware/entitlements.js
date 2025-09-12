@@ -1,5 +1,5 @@
 // backend/middleware/entitlements.js
-import { query as rootQuery } from "../config/db.js";
+import { query as rootQuery } from '#db';
 import { currentMonthlyWindow, getClientByUserId, isExpired } from "../lib/subscription.js";
 
 const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);

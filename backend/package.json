@@ -2,16 +2,20 @@
   "name": "cresceja-server",
   "version": "1.0.0",
   "type": "module",
+  "imports": {
+    "#db": "./config/db.js",
+    "#redis": "./config/redis.js"
+  },
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js",
+    "dev": "nodemon --watch . --ext js,mjs server.js",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js -i",
     "worker:repurpose": "node ./queues/repurpose.worker.js",
     "db:bootstrap:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/db_bootstrap.ps1",
     "db:bootstrap:sh": "bash ./scripts/db_bootstrap.sh",
     "smoke": "node ./scripts/smoke.js",
     "smoke:inbox": "node ./scripts/smoke_inbox_ws_notify.js",
-    "db:migrate:plans": "psql \"$DATABASE_URL\" -f backend/migrations/20250909_plans_features.sql"
+    "db:migrate:plans": "psql \"$DATABASE_URL\" -f ./migrations/20250909_plans_features.sql"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.883.0",
@@ -39,6 +43,10 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "pino-pretty": "^13.1.1",
-    "supertest": "^6.3.4"
+    "supertest": "^6.3.4",
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

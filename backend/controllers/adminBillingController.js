@@ -1,4 +1,4 @@
-import { query as rootQuery } from '../config/db.js';
+import { query as rootQuery } from '#db';
 import { auditLog } from '../services/audit.js';
 import { getProvider } from '../services/billing/index.js';
 

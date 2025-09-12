@@ -1,6 +1,6 @@
 // backend/routes/admin.plans.js
 import express from "express";
-import { query } from "../config/db.js";
+import { query } from '#db';
 
 const router = express.Router();
 

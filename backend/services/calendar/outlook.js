@@ -1,5 +1,5 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
-import { query } from '../../config/db.js';
+import { query } from '#db';
 
 let msalApp = null;
 

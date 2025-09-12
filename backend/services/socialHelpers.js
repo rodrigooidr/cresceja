@@ -1,5 +1,5 @@
 // backend/services/socialHelpers.js
-import { query as rootQuery } from '../config/db.js';
+import { query as rootQuery } from '#db';
 import { v4 as uuidv4 } from 'uuid';
 
 const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);

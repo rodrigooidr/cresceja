@@ -1,5 +1,5 @@
 // backend/services/social/shared.js
-import { query as rootQuery } from '../../config/db.js';
+import { query as rootQuery } from '#db';
 import { io } from '../realtime.js';
 import { upsertContactAndConversation, persistInboundMessage } from '../socialHelpers.js';
 import { autoReplyIfEnabled } from '../ai/autoResponder.js';

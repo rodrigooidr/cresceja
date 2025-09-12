@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import db from '../db.js';
+import db from '#db';
 import { authRequired } from '../middleware/auth.js';
 import { requireRole } from '../middleware/requireRole.js';
 

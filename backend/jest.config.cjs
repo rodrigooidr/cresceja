@@ -1,4 +1,6 @@
 module.exports = {
-  testEnvironment: 'node',
-  transform: {},
-};
+  moduleNameMapper: {
+    '^#db$': '<rootDir>/config/db.js',
+    '^#redis$': '<rootDir>/config/redis.js'
+  }
+}

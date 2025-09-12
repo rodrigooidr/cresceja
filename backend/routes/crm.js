@@ -1,6 +1,6 @@
 import express from "express";
 import { auth as authRequired } from "../middleware/auth.js";
-import { query } from "../config/db.js";
+import { query } from '#db';
 
 const r = express.Router();
 

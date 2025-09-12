@@ -1,6 +1,6 @@
 // backend/scripts/setup-plans-meta.js
 import "dotenv/config";
-import { query, closePool } from "../config/db.js";
+import { query, closePool } from '#db';
 
 (async () => {
   try {

@@ -1,4 +1,4 @@
-import { query } from '../config/db.js';
+import { query } from '#db';
 import { randomUUID } from 'crypto';
 
 export async function getMe(req, res, next) {

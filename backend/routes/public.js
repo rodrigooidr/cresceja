@@ -1,6 +1,6 @@
 // backend/routes/public.js
 import express from 'express';
-import { query as rootQuery } from '../config/db.js';
+import { query as rootQuery } from '#db';
 
 const router = express.Router();
 

@@ -1,5 +1,5 @@
 // backend/middleware/pgRlsContext.js
-import { pool, als } from '../config/db.js';
+import { pool, als } from '#db';
 
 export async function pgRlsContext(req, res, next) {
   try {

@@ -3,7 +3,7 @@ import 'dotenv/config';
 import pkg from 'bullmq';
 const { Worker } = pkg;
 import IORedis from 'ioredis';
-import { pool } from '../config/db.js';
+import { pool } from '#db';
 
 const connection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,

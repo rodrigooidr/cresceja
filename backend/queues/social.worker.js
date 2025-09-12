@@ -3,7 +3,7 @@ import 'dotenv/config';
 import pkg from 'bullmq';
 const { Worker } = pkg;
 import IORedis from 'ioredis';
-import { query as rootQuery } from '../config/db.js';
+import { query as rootQuery } from '#db';
 import * as wa from '../services/social/waCloud.js';
 import * as igfb from '../services/social/igfb.js';
 

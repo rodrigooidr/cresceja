@@ -1,5 +1,5 @@
 // backend/services/social/waCloud.js
-import { query as rootQuery } from '../../config/db.js';
+import { query as rootQuery } from '#db';
 import { saveInboundMessage } from './shared.js';
 
 // Use Node 18+ global fetch (no node-fetch import needed)

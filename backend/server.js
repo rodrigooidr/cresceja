@@ -13,7 +13,7 @@ import { Server as IOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 
 // DB (pool + healthcheck)
-import { pool, healthcheck } from './config/db.js';
+import { pool, healthcheck } from '#db';
 
 // Routers públicos e protegidos
 import authRouter from './routes/auth.js';

@@ -1,5 +1,5 @@
 
-import { query } from '../config/db.js';
+import { query } from '#db';
 
 export async function ensureConsent(req,res,next){
   // If lead exists and has consent=false, add a header so UI can prompt

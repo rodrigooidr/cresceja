@@ -1,4 +1,4 @@
-import { query } from '../config/db.js';
+import { query } from '#db';
 
 export async function sendNps(req, res, next) {
   try {

@@ -1,5 +1,5 @@
 // backend/services/baileysService.js
-import db from '../db.js';
+import db from '#db';
 
 export async function startForOrg(orgId, phone) {
   await db.query(

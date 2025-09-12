@@ -2,7 +2,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { query } from '../config/db.js';
+import { query } from '#db';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const sqlFile = path.join(__dirname, '../db/migrations/alltables.sql');

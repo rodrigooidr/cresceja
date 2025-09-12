@@ -1,5 +1,5 @@
 // backend/services/ai/autoResponder.js
-import { query as rootQuery } from '../../config/db.js';
+import { query as rootQuery } from '#db';
 import pkg from 'bullmq';
 const { Queue } = pkg;
 import IORedis from 'ioredis';

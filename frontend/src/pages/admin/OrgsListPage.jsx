@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import inboxApi from "../../api/inboxApi";
 import useActiveOrgGate from "../../hooks/useActiveOrgGate";
@@ -13,9 +13,10 @@ export default function OrgsListPage({ minRole = "SuperAdmin" }) {
     let alive = true;
     (async () => {
       try {
-        // tenta admin primeiro; fallback para público
-        const res = await inboxApi.get("/admin/orgs", { params: { q } }).catch(async () => {
-          return inboxApi.get("/orgs", { params: { q } });
+        // Admin endpoint em ESCOPO GLOBAL (sem X-Org-Id)
+        const res = await inboxApi.get("/admin/orgs", {
+          params: { q },
+          meta: { scope: "global" },
         });
         const raw = res?.data;
         const items =
@@ -26,7 +27,12 @@ export default function OrgsListPage({ minRole = "SuperAdmin" }) {
         setState({ loading: false, items, error: null });
       } catch (e) {
         if (!alive) return;
-        setState({ loading: false, items: [], error: e?.message || "Falha ao carregar organizações" });
+        const status = e?.response?.status;
+        const msg =
+          status === 401 || status === 403
+            ? "Sem permissão para listar organizações."
+            : e?.message || "Falha ao carregar organizações";
+        setState({ loading: false, items: [], error: msg });
       }
     })();
     return () => { alive = false; };
@@ -64,8 +70,11 @@ export default function OrgsListPage({ minRole = "SuperAdmin" }) {
             {state.loading && (
               <tr><td className="p-3" colSpan={4}>Carregando...</td></tr>
             )}
-            {!state.loading && !state.items.length && (
+            {!state.loading && !state.items.length && !state.error && (
               <tr><td className="p-3" colSpan={4}>Nenhuma organização encontrada.</td></tr>
+            )}
+            {!state.loading && state.error && (
+              <tr><td className="p-3 text-amber-700" colSpan={4}>{String(state.error)}</td></tr>
             )}
             {state.items.map((o) => (
               <tr key={o.id} className="border-t">
@@ -81,9 +90,6 @@ export default function OrgsListPage({ minRole = "SuperAdmin" }) {
           </tbody>
         </table>
       </div>
-
-      {state.error && <div className="mt-3 text-amber-700">{String(state.error)}</div>}
     </div>
   );
 }
-
