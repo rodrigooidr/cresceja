@@ -1,7 +1,9 @@
+/** @type {import('jest').Config} */
 module.exports = {
   testEnvironment: 'jsdom',
-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
-  setupFiles: ['whatwg-fetch'],
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.js'],
+  // opcional: já estamos importando 'whatwg-fetch' dentro do setup
+  // setupFiles: ['whatwg-fetch'],
   moduleDirectories: ['node_modules', 'src'],
   moduleNameMapper: {
     '^api/(.*)$': '<rootDir>/src/api/$1',
@@ -15,8 +17,5 @@ module.exports = {
     '\\.(svg|png|jpg|jpeg|gif|webp|mp4|mp3)$': '<rootDir>/test/__mocks__/fileMock.js',
   },
   transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
-  // transpila libs ESM populares usadas no projeto
-  transformIgnorePatterns: [
-    '/node_modules/(?!(nanoid|@tanstack|msw)/)'
-  ],
+  transformIgnorePatterns: ['/node_modules/(?!(nanoid|@tanstack|msw)/)'],
 };
