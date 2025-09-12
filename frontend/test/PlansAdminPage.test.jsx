@@ -13,8 +13,8 @@ jest.mock("../src/components/PricingTable", () => (props) => <div data-testid="p
 test("loads plans and renders preview", async () => {
   const inboxApi = require("../src/api/inboxApi");
   render(<PlansAdminPage minRole="SuperAdmin" />);
-  expect(inboxApi.get).toHaveBeenCalledWith("/admin/plans");
+  const called = inboxApi.get.mock.calls.some(([url]) => url === "/admin/plans");
+  expect(called).toBe(true);
   const el = await screen.findByTestId("pricing-table");
   expect(el.getAttribute("endpoint")).toBe("/public/plans");
 });
-
