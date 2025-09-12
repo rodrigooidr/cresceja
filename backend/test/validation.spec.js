@@ -1,6 +1,10 @@
-import { isValidCPF, isValidCNPJ, isValidCEP, isValidUF, isValidBRPhone } from '../validation/br.js';
-import { orgSchema } from '../validation/orgSchemas.js';
-import { clientSchema } from '../validation/clientSchemas.js';
+import br from '../validation/br.cjs';
+import org from '../validation/orgSchemas.cjs';
+import client from '../validation/clientSchemas.cjs';
+
+const { isValidCPF, isValidCNPJ, isValidCEP, isValidUF, isValidBRPhone } = br;
+const { orgSchema } = org;
+const { clientSchema } = client;
 
 describe('br helpers', () => {
   test('cpf', () => {

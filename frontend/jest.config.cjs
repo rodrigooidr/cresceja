@@ -3,8 +3,6 @@ module.exports = {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/test/setupTests.js'],
   testMatch: ['<rootDir>/test/**/*.test.jsx', '<rootDir>/test/**/*.test.js'],
-  // opcional: já estamos importando 'whatwg-fetch' dentro do setup
-  // setupFiles: ['whatwg-fetch'],
   moduleDirectories: ['node_modules', 'src'],
   moduleNameMapper: {
     '^api/(.*)$': '<rootDir>/src/api/$1',
@@ -18,5 +16,6 @@ module.exports = {
     '\\.(svg|png|jpg|jpeg|gif|webp|mp4|mp3)$': '<rootDir>/test/__mocks__/fileMock.js',
   },
   transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
-  transformIgnorePatterns: ['/node_modules/(?!(nanoid|@tanstack|msw)/)'],
+  transformIgnorePatterns: ['/node_modules/(?!(@testing-library|nanoid)/)'],
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/build/', '/e2e/'],
 };

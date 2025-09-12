@@ -15,52 +15,64 @@ function TabButton({ k, active, onClick, children }) {
 }
 
 function WhatsAppTab({ orgId }) {
-  const [status, setStatus] = useState(null);
+  const [ws, setWs] = useState(null);
+
   useEffect(() => {
-    let alive = true;
     (async () => {
-      try {
-        const res = await inboxApi.get(`/admin/orgs/${orgId}/whatsapp/status`);
-        if (!alive) return;
-        setStatus(res.data);
-      } catch (e) {
-        if (!alive) return;
-        setStatus({ error: e?.message || "Falha ao carregar" });
-      }
+      const { data } = await inboxApi.get(`/admin/orgs/${orgId}/whatsapp/status`);
+      setWs(data);
     })();
-    return () => { alive = false; };
   }, [orgId]);
 
-  if (!status) return <div>Carregando status...</div>;
-  if (status.error) return <div className="text-amber-700">{status.error}</div>;
+  if (!ws) return <div>Carregando…</div>;
+
+  const isBaileysBlocked = ws.mode === 'api';
+  const isApiBlocked = ws.mode === 'baileys';
+  const hideBaileysForOrgAdmin = ws.allow_baileys === false;
 
   return (
     <div className="space-y-4">
-      {status.allow_baileys && (
-        <div className="border p-3 rounded">
-          <div className="font-semibold mb-2">Baileys</div>
-          <div className="mb-2">Status: {status.baileys.connected ? "conectado" : "desconectado"}</div>
+      <div className="p-3 rounded border">
+        <b>Modo ativo:</b> {ws.mode}
+      </div>
+
+      {!hideBaileysForOrgAdmin && (
+        <section className="rounded border p-4">
+          <h3 className="font-semibold mb-2">Baileys</h3>
           <button
-            disabled={status.mode === 'api'}
-            title={status.mode === 'api' ? 'Desconecte API para usar Baileys' : undefined}
-            className="px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50"
+            className="btn btn-primary"
+            disabled={isBaileysBlocked}
+            title={isBaileysBlocked ? 'API está ativa. Desconecte a API para usar Baileys.' : ''}
+            onClick={() => inboxApi.post(`/admin/orgs/${orgId}/baileys/connect`)}
           >
             Conectar Baileys
           </button>
-        </div>
+          <button
+            className="btn ml-2"
+            onClick={() => inboxApi.post(`/admin/orgs/${orgId}/baileys/disconnect`)}
+          >
+            Desconectar Baileys
+          </button>
+        </section>
       )}
 
-      <div className="border p-3 rounded">
-        <div className="font-semibold mb-2">API</div>
-        <div className="mb-2">Status: {status.api.connected ? "conectado" : "desconectado"}</div>
+      <section className="rounded border p-4">
+        <h3 className="font-semibold mb-2">API WhatsApp</h3>
         <button
-          disabled={status.mode === 'baileys'}
-          title={status.mode === 'baileys' ? 'Desconecte Baileys para usar API' : undefined}
-          className="px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50"
+          className="btn btn-primary"
+          disabled={isApiBlocked}
+          title={isApiBlocked ? 'Baileys está ativo. Desconecte o Baileys para usar a API.' : ''}
+          onClick={() => inboxApi.post(`/admin/orgs/${orgId}/api-whatsapp/connect`)}
         >
           Conectar API
         </button>
-      </div>
+        <button
+          className="btn ml-2"
+          onClick={() => inboxApi.post(`/admin/orgs/${orgId}/api-whatsapp/disconnect`)}
+        >
+          Desconectar API
+        </button>
+      </section>
     </div>
   );
 }

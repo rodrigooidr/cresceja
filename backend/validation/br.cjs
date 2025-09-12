@@ -1,8 +1,8 @@
-export function onlyDigits(str = "") {
+function onlyDigits(str = "") {
   return (str || "").toString().replace(/\D+/g, "");
 }
 
-export function isValidCPF(value = "") {
+function isValidCPF(value = "") {
   const cpf = onlyDigits(value);
   if (cpf.length !== 11 || /^([0-9])\1+$/.test(cpf)) return false;
   const calc = (factor) => {
@@ -16,7 +16,7 @@ export function isValidCPF(value = "") {
   return calc(10) === parseInt(cpf[9]) && calc(11) === parseInt(cpf[10]);
 }
 
-export function isValidCNPJ(value = "") {
+function isValidCNPJ(value = "") {
   const cnpj = onlyDigits(value);
   if (cnpj.length !== 14 || /^([0-9])\1+$/.test(cnpj)) return false;
   const calc = (base) => {
@@ -31,17 +31,26 @@ export function isValidCNPJ(value = "") {
   return calc(12) === parseInt(cnpj[12]) && calc(13) === parseInt(cnpj[13]);
 }
 
-export function isValidCEP(value = "") {
+function isValidCEP(value = "") {
   const cep = onlyDigits(value);
   return cep.length === 8;
 }
 
-export function isValidUF(value = "") {
+function isValidUF(value = "") {
   return [
     "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
   ].includes((value || "").toUpperCase());
 }
 
-export function isValidBRPhone(value = "") {
+function isValidBRPhone(value = "") {
   return /^\+55\d{10,11}$/.test(value);
 }
+
+module.exports = {
+  onlyDigits,
+  isValidCPF,
+  isValidCNPJ,
+  isValidCEP,
+  isValidUF,
+  isValidBRPhone,
+};
