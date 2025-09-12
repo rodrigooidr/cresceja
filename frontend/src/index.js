@@ -5,12 +5,11 @@ import App from "./App";
 import "./index.css";
 import inboxApi from "./api/inboxApi";
 
-// Providers (importe apenas os que você tem no projeto)
+// Providers
 import { TrialProvider } from "./contexts/TrialContext";
 import { PricingProvider } from "./contexts/PricingContext";   // se existir
 import { AuthProvider } from "./contexts/AuthContext";         // se existir
 import { OrgProvider } from "./contexts/OrgContext";
-import ErrorBoundary from "./components/ErrorBoundary";         // se criou
 
 if (process.env.NODE_ENV !== "production") {
   try { require("./debug/installDebug"); } catch {}
@@ -22,16 +21,14 @@ if (!container) throw new Error('Elemento <div id="root" /> não encontrado em p
 const root = createRoot(container);
 root.render(
   <React.StrictMode>
-    <ErrorBoundary>
-      <AuthProvider>        {/* remova se não existir */}
-        <OrgProvider>
-          <TrialProvider>     {/* mantenha se usa Trial */}
-            <PricingProvider> {/* remova se não existir */}
-              <App />
-            </PricingProvider>
-          </TrialProvider>
-        </OrgProvider>
-      </AuthProvider>
-    </ErrorBoundary>
+    <AuthProvider>
+      <OrgProvider>
+        <TrialProvider>
+          <PricingProvider>
+            <App />
+          </PricingProvider>
+        </TrialProvider>
+      </OrgProvider>
+    </AuthProvider>
   </React.StrictMode>
 );
