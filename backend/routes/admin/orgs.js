@@ -228,4 +228,29 @@ r.get('/orgs/:id/api-whatsapp/status', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/admin/orgs/:id/whatsapp/status
+r.get('/orgs/:id/whatsapp/status', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const [{ rows: [settings] }, { rows: [org] }, { rows: [apiCh] }] = await Promise.all([
+      db.query(`SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`, [id]),
+      db.query(`SELECT whatsapp_baileys_status, updated_at FROM organizations WHERE id=$1`, [id]),
+      db.query(`SELECT status, updated_at FROM channels WHERE org_id=$1 AND type='whatsapp'`, [id])
+    ]);
+    const now = new Date().toISOString();
+    res.json({
+      mode: settings?.whatsapp_active_mode || 'none',
+      allow_baileys: settings?.allow_baileys ?? false,
+      baileys: {
+        connected: org?.whatsapp_baileys_status === 'connected',
+        last_check: org?.updated_at || now,
+      },
+      api: {
+        connected: apiCh?.status === 'connected',
+        last_check: apiCh?.updated_at || now,
+      }
+    });
+  } catch (e) { next(e); }
+});
+
 export default r;

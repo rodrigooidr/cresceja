@@ -14,6 +14,57 @@ function TabButton({ k, active, onClick, children }) {
   );
 }
 
+function WhatsAppTab({ orgId }) {
+  const [status, setStatus] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await inboxApi.get(`/admin/orgs/${orgId}/whatsapp/status`);
+        if (!alive) return;
+        setStatus(res.data);
+      } catch (e) {
+        if (!alive) return;
+        setStatus({ error: e?.message || "Falha ao carregar" });
+      }
+    })();
+    return () => { alive = false; };
+  }, [orgId]);
+
+  if (!status) return <div>Carregando status...</div>;
+  if (status.error) return <div className="text-amber-700">{status.error}</div>;
+
+  return (
+    <div className="space-y-4">
+      {status.allow_baileys && (
+        <div className="border p-3 rounded">
+          <div className="font-semibold mb-2">Baileys</div>
+          <div className="mb-2">Status: {status.baileys.connected ? "conectado" : "desconectado"}</div>
+          <button
+            disabled={status.mode === 'api'}
+            title={status.mode === 'api' ? 'Desconecte API para usar Baileys' : undefined}
+            className="px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50"
+          >
+            Conectar Baileys
+          </button>
+        </div>
+      )}
+
+      <div className="border p-3 rounded">
+        <div className="font-semibold mb-2">API</div>
+        <div className="mb-2">Status: {status.api.connected ? "conectado" : "desconectado"}</div>
+        <button
+          disabled={status.mode === 'baileys'}
+          title={status.mode === 'baileys' ? 'Desconecte Baileys para usar API' : undefined}
+          className="px-3 py-1 bg-blue-500 text-white rounded disabled:opacity-50"
+        >
+          Conectar API
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
   const { orgId } = useParams();
   const { allowed, reason } = useActiveOrgGate({ minRole, requireActiveOrg: false });
@@ -74,7 +125,7 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
           )}
 
           {active === "whatsapp" && (
-            <div className="text-gray-600">Configurações WhatsApp — reusar os cards existentes aqui, se desejar.</div>
+            <WhatsAppTab orgId={orgId} />
           )}
 
           {active === "integrations" && (
