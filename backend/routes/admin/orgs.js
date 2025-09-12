@@ -78,21 +78,153 @@ r.get('/orgs/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// PUT /api/admin/orgs/:id/baileys {enabled:boolean, phone?:string}
-r.put('/orgs/:id/baileys', async (req, res, next) => {
+// ----- Settings -----
+// GET /api/admin/orgs/:id/settings
+r.get('/orgs/:id/settings', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { enabled, phone } = req.body ?? {};
-    if (enabled === true && !phone) {
-      return res.status(400).json({ error: 'phone_required' });
+    const { rows: [settings] } = await db.query(
+      `SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
+      [id]
+    );
+    res.json(settings || { allow_baileys: false, whatsapp_active_mode: 'none' });
+  } catch (e) { next(e); }
+});
+
+// PUT /api/admin/orgs/:id/settings { allow_baileys:boolean }
+r.put('/orgs/:id/settings', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { allow_baileys } = req.body ?? {};
+    await db.query(
+      `INSERT INTO org_settings (org_id, allow_baileys)
+         VALUES ($1,$2)
+         ON CONFLICT (org_id) DO UPDATE SET allow_baileys=EXCLUDED.allow_baileys`,
+      [id, !!allow_baileys]
+    );
+    const { rows: [settings] } = await db.query(
+      `SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
+      [id]
+    );
+    res.json(settings);
+  } catch (e) { next(e); }
+});
+
+// ----- Baileys connection -----
+// POST /api/admin/orgs/:id/baileys/connect { phone }
+r.post('/orgs/:id/baileys/connect', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { phone } = req.body ?? {};
+    if (!phone) return res.status(400).json({ error: 'phone_required' });
+
+    const { rows: [settings] } = await db.query(
+      `SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
+      [id]
+    );
+    if (!settings?.allow_baileys) {
+      return res.status(403).json({ error: 'baileys_not_allowed' });
     }
-    if (enabled) await startForOrg(id, phone);
-    else        await stopForOrg(id);
+    if (settings.whatsapp_active_mode === 'api') {
+      return res.status(409).json({ error: 'ExclusiveMode', active: 'api', trying: 'baileys' });
+    }
+
+    await db.query('BEGIN');
+    try {
+      await startForOrg(id, phone);
+      await db.query(
+        `INSERT INTO org_settings (org_id, whatsapp_active_mode)
+           VALUES ($1,'baileys')
+           ON CONFLICT (org_id) DO UPDATE SET whatsapp_active_mode='baileys'`,
+        [id]
+      );
+      await db.query('COMMIT');
+    } catch (e) {
+      await db.query('ROLLBACK');
+      throw e;
+    }
+
     const { rows: [org] } = await db.query(
       `SELECT whatsapp_baileys_enabled, whatsapp_baileys_status, whatsapp_baileys_phone
-         FROM organizations WHERE id=$1`, [id]
+         FROM organizations WHERE id=$1`,
+      [id]
     );
-    res.json({ ok: true, baileys: org });
+    res.json({ ok: true, baileys: org, mode: 'baileys' });
+  } catch (e) { next(e); }
+});
+
+// POST /api/admin/orgs/:id/baileys/disconnect
+r.post('/orgs/:id/baileys/disconnect', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await stopForOrg(id);
+    await db.query(
+      `UPDATE org_settings SET whatsapp_active_mode='none' WHERE org_id=$1 AND whatsapp_active_mode='baileys'`,
+      [id]
+    );
+    res.json({ ok: true, mode: 'none' });
+  } catch (e) { next(e); }
+});
+
+// GET /api/admin/orgs/:id/baileys/status
+r.get('/orgs/:id/baileys/status', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { rows: [org] } = await db.query(
+      `SELECT whatsapp_baileys_enabled, whatsapp_baileys_status, whatsapp_baileys_phone FROM organizations WHERE id=$1`,
+      [id]
+    );
+    const { rows: [settings] } = await db.query(
+      `SELECT whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
+      [id]
+    );
+    res.json({ ...org, mode: settings?.whatsapp_active_mode || 'none' });
+  } catch (e) { next(e); }
+});
+
+// ----- API WhatsApp connection -----
+// POST /api/admin/orgs/:id/api-whatsapp/connect
+r.post('/orgs/:id/api-whatsapp/connect', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { rows: [settings] } = await db.query(
+      `SELECT whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
+      [id]
+    );
+    if (settings?.whatsapp_active_mode === 'baileys') {
+      return res.status(409).json({ error: 'ExclusiveMode', active: 'baileys', trying: 'api' });
+    }
+    await db.query(
+      `INSERT INTO org_settings (org_id, whatsapp_active_mode)
+         VALUES ($1,'api')
+         ON CONFLICT (org_id) DO UPDATE SET whatsapp_active_mode='api'`,
+      [id]
+    );
+    res.json({ ok: true, mode: 'api' });
+  } catch (e) { next(e); }
+});
+
+// POST /api/admin/orgs/:id/api-whatsapp/disconnect
+r.post('/orgs/:id/api-whatsapp/disconnect', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await db.query(
+      `UPDATE org_settings SET whatsapp_active_mode='none' WHERE org_id=$1 AND whatsapp_active_mode='api'`,
+      [id]
+    );
+    res.json({ ok: true, mode: 'none' });
+  } catch (e) { next(e); }
+});
+
+// GET /api/admin/orgs/:id/api-whatsapp/status
+r.get('/orgs/:id/api-whatsapp/status', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { rows: [settings] } = await db.query(
+      `SELECT whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
+      [id]
+    );
+    res.json({ mode: settings?.whatsapp_active_mode || 'none' });
   } catch (e) { next(e); }
 });
 
