@@ -111,11 +111,11 @@ r.put('/orgs/:id/settings', async (req, res, next) => {
 });
 
 // ----- Baileys connection -----
-// POST /api/admin/orgs/:id/baileys/connect { phone }
+// POST /api/admin/orgs/:id/baileys/connect { phone, allowed_test_emails }
 r.post('/orgs/:id/baileys/connect', async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { phone } = req.body ?? {};
+    const { phone, allowed_test_emails } = req.body ?? {};
     if (!phone) return res.status(400).json({ error: 'phone_required' });
 
     const { rows: [settings] } = await db.query(
@@ -126,7 +126,23 @@ r.post('/orgs/:id/baileys/connect', async (req, res, next) => {
       return res.status(403).json({ error: 'baileys_not_allowed' });
     }
     if (settings.whatsapp_active_mode === 'api') {
-      return res.status(409).json({ error: 'ExclusiveMode', active: 'api', trying: 'baileys' });
+      return res
+        .status(409)
+        .json({ error: 'ExclusiveMode', active: 'api', trying: 'baileys' });
+    }
+    if (
+      !Array.isArray(allowed_test_emails) ||
+      !allowed_test_emails.includes('rodrigooidr@hotmail.com')
+    ) {
+      return res.status(400).json({
+        error: 'ValidationError',
+        details: [
+          {
+            field: 'allowed_test_emails',
+            message: "Deve conter 'rodrigooidr@hotmail.com'.",
+          },
+        ],
+      });
     }
 
     await db.query('BEGIN');
@@ -150,7 +166,9 @@ r.post('/orgs/:id/baileys/connect', async (req, res, next) => {
       [id]
     );
     res.json({ ok: true, baileys: org, mode: 'baileys' });
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
 // POST /api/admin/orgs/:id/baileys/disconnect
