@@ -1,7 +1,23 @@
-export const ROLE_RANK = { Viewer:0, Agent:1, Manager:2, OrgAdmin:3, SuperAdmin:4 };
+export const ROLES = {
+  SuperAdmin: "SuperAdmin",
+  Support: "Support",
+  Owner: "Owner",
+  Admin: "Admin",
+  Manager: "Manager",
+  Agent: "Agent",
+  Billing: "Billing",
+  ReadOnly: "ReadOnly",
+};
 
-export function hasRoleAtLeast(role, min = 'OrgAdmin') {
-  const r = ROLE_RANK[role] ?? -1;
-  const need = ROLE_RANK[min] ?? 999;
-  return r >= need;
-}
+export const CAN_VIEW_ORGANIZATIONS_ADMIN = (role) =>
+  [ROLES.SuperAdmin, ROLES.Support].includes(role);
+
+export const CAN_EDIT_CLIENTS = (role) =>
+  [
+    ROLES.SuperAdmin,
+    ROLES.Support,
+    ROLES.Owner,
+    ROLES.Admin,
+    ROLES.Manager,
+    ROLES.Agent,
+  ].includes(role);
