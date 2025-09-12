@@ -1,9 +1,8 @@
 // src/ui/layout/Sidebar.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { MessageSquare, Users, BarChart3, Settings, Bot, Calendar, FileText, Zap } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import inboxApi from '../../api/inboxApi';
 import OrgSwitcher from '../../components/nav/OrgSwitcher.jsx';
 
 const NAV = [
@@ -23,38 +22,20 @@ const ADMIN_NAV = [
 
 export default function Sidebar({ expanded, setExpanded } = {}) {
   const [inner, setInner] = useState(false);
-  const [me, setMe] = useState(null);
-  const [loading, setLoading] = useState(true);
   const isExpanded = typeof expanded === 'boolean' ? expanded : inner;
   const setExp = setExpanded || setInner;
 
   const width = isExpanded ? 220 : 64;
-  const { logout, user } = useAuth();
+  const { logout, user } = useAuth?.() ?? { logout: () => {}, user: null };
   const location = useLocation();
+  const isAdminPath = location.pathname.startsWith('/admin');
+  const isAdminRole = ['SuperAdmin', 'Admin', 'Owner'].includes(user?.role);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await inboxApi.get('/auth/me');
-        setMe(data);
-      } catch (e) {
-        console.error('auth_me_failed', e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
-
-  const role = me?.role || user?.role;
-  const isAdmin = location.pathname.startsWith('/admin');
-  let items = isAdmin ? ADMIN_NAV : NAV;
-  if (!isAdmin && role === 'SuperAdmin') {
-    items = [
-      ...items,
-      { to: '/admin/organizations', label: 'Organizações/Clientes', icon: Users },
-      { to: '/admin/plans', label: 'Planos (Admin)', icon: BarChart3 },
-    ];
-  }
+  const items = isAdminPath
+    ? ADMIN_NAV
+    : isAdminRole
+    ? [...NAV, ...ADMIN_NAV]
+    : NAV;
 
   return (
     <aside
@@ -62,14 +43,13 @@ export default function Sidebar({ expanded, setExpanded } = {}) {
       onMouseLeave={() => setExp(false)}
       className="fixed inset-y-0 left-0 border-r bg-white overflow-hidden transition-[width] duration-200 z-30 flex flex-col"
       style={{ width }}
-      data-testid="sidebar"
     >
-      {isExpanded && !isAdmin && (
+      {isExpanded && !isAdminPath && (
         <div className="p-2 border-b">
           <OrgSwitcher />
         </div>
       )}
-      <nav className="py-2 flex-1 overflow-y-auto">
+      <nav data-testid="sidebar" className="py-2 flex-1 overflow-y-auto">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}

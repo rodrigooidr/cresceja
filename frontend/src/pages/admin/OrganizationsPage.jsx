@@ -66,7 +66,7 @@ export default function OrganizationsPage() {
       {!state.loading && rows.length === 0 && <div>Nenhuma organização encontrada.</div>}
 
       {rows.length > 0 && (
-        <div className="overflow-x-auto rounded border bg-white">
+        <div data-testid="orgs-table" className="overflow-x-auto rounded border bg-white">
           <table className="min-w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
