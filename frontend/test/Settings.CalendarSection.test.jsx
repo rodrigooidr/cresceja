@@ -11,7 +11,8 @@ describe('SettingsPage Google Calendar section', () => {
   test('renders section with add button enabled', async () => {
     inboxApi.get.mockImplementation((url) => {
       if (url.includes('/calendar/accounts')) return Promise.resolve({ data: [] });
-      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: { enabled: true, limit: 1, used: 0 } } });
+      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: { enabled: true, limit: 1, used: 0 }, facebook_pages: { enabled: false, limit: 0, used: 0 } } });
+      if (url.includes('/facebook/pages')) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: {} });
     });
 
@@ -26,7 +27,11 @@ describe('SettingsPage Google Calendar section', () => {
     { enabled: true, limit: 0, used: 0 },
     { enabled: false, limit: 1, used: 0 },
   ])('section hidden when disabled or limit=0', async (feature) => {
-    inboxApi.get.mockResolvedValueOnce({ data: { google_calendar_accounts: feature } });
+    inboxApi.get.mockImplementation((url) => {
+      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: feature, facebook_pages: { enabled: false, limit: 0, used: 0 } } });
+      if (url.includes('/facebook/pages')) return Promise.resolve({ data: [] });
+      return Promise.resolve({ data: {} });
+    });
     render(<SettingsPage />);
     await waitFor(() => expect(inboxApi.get).toHaveBeenCalled());
     expect(screen.queryByText('Google Calendar')).not.toBeInTheDocument();
@@ -35,7 +40,8 @@ describe('SettingsPage Google Calendar section', () => {
   test('button disabled when limit reached', async () => {
     inboxApi.get.mockImplementation((url) => {
       if (url.includes('/calendar/accounts')) return Promise.resolve({ data: [{ id: '1', google_user_id: 'g1', email: 'a@a.com', display_name: 'A', is_active: true }] });
-      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: { enabled: true, limit: 1, used: 1 } } });
+      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: { enabled: true, limit: 1, used: 1 }, facebook_pages: { enabled: false, limit: 0, used: 0 } } });
+      if (url.includes('/facebook/pages')) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: {} });
     });
 
@@ -50,7 +56,8 @@ describe('SettingsPage Google Calendar section', () => {
   test('revoking removes account from list', async () => {
     inboxApi.get.mockImplementation((url) => {
       if (url.includes('/calendar/accounts')) return Promise.resolve({ data: [{ id: 'a1', google_user_id: 'g1', email: 'a@a.com', display_name: 'A', is_active: true }] });
-      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: { enabled: true, limit: 5, used: 1 } } });
+      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: { enabled: true, limit: 5, used: 1 }, facebook_pages: { enabled: false, limit: 0, used: 0 } } });
+      if (url.includes('/facebook/pages')) return Promise.resolve({ data: [] });
       return Promise.resolve({ data: {} });
     });
     inboxApi.post.mockResolvedValue({ data: { ok: true } });
