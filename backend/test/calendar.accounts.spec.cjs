@@ -1,13 +1,12 @@
 const request = require('supertest');
 const express = require('express');
 
-jest.mock('googleapis', () => ({ google: { calendar: () => ({}) } }));
-
 describe('google calendar accounts routes', () => {
   let router;
   beforeAll(async () => {
     jest.resetModules();
-    process.env.CRED_SECRET = '12345678901234567890123456789012';
+    process.env.GOOGLE_TOKEN_ENC_KEY = '12345678901234567890123456789012';
+    await jest.unstable_mockModule('googleapis', () => ({ google: { calendar: () => ({}) } }));
     router = (await import('../routes/orgs.calendar.js')).default;
   });
 
