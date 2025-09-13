@@ -49,7 +49,14 @@ export default function InboxPage({ addToast: addToastProp }) {
   const [selectedId, setSelectedId] = useState(() => searchParams.get("c") || null);
   const [channelId, setChannelId] = useState(() => {
     try {
-      return localStorage.getItem('active_channel_id');
+      if (!orgId) return null;
+      const key = `active_channel_id::${orgId}`;
+      const legacy = localStorage.getItem('active_channel_id');
+      if (!localStorage.getItem(key) && legacy) {
+        localStorage.setItem(key, legacy);
+        localStorage.removeItem('active_channel_id');
+      }
+      return localStorage.getItem(key);
     } catch {
       return null;
     }
