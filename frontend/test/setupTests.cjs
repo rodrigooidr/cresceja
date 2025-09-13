@@ -23,6 +23,33 @@ jest.mock('../src/contexts/AuthContext', () => {
   };
 });
 
+// Mock do contexto de organizações para os testes
+jest.mock('../src/contexts/OrgContext.jsx', () => {
+  const React = require('react');
+  return {
+    useOrg: () => ({
+      orgs: [{ id: 'org_test', name: 'Org Teste' }],
+      selected: 'org_test', // padrão: há uma org ativa
+      setSelected: jest.fn(),
+      loading: false,
+      hasMore: false,
+      searchOrgs: jest.fn(),
+      loadMoreOrgs: jest.fn(),
+      canSeeSelector: true,
+      q: '',
+      publicMode: false,
+      hasActive: true,
+      activeOrgName: 'Org Teste',
+    }),
+    OrgContext: React.createContext(null),
+    OrgProvider: ({ children }) => children,
+  };
+});
+
+// Polyfills que costumam faltar
+global.ResizeObserver = global.ResizeObserver ||
+  class { observe() {} unobserve() {} disconnect() {} };
+
 class MockIntersectionObserver {
   constructor() {}
   observe() {}

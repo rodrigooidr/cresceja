@@ -26,11 +26,13 @@ function WhatsAppTab({ orgId, api }) {
 
   if (!status) return <div>Carregando…</div>;
 
-  const mode = status.activeMode || status.mode;
-  const allowBaileys = status.allowBaileys ?? status.allow_baileys;
-  const isBaileysBlocked = mode === 'api';
-  const isApiBlocked = mode === 'baileys';
-  const hideBaileysForOrgAdmin = allowBaileys === false;
+  // esconder/disable quando não permitido
+  const canSeeBaileys = status?.allowBaileys === true; // backend já expõe essa flag
+  const isApiActive = status?.activeMode === 'api';
+  const isBaileysActive = status?.activeMode === 'baileys';
+
+  const handleConnectBaileys = () => api.post(`admin/orgs/${orgId}/baileys/connect`);
+  const handleConnectApi = () => api.post(`admin/orgs/${orgId}/api-whatsapp/connect`);
 
   return (
     <div className="space-y-4">
@@ -38,35 +40,34 @@ function WhatsAppTab({ orgId, api }) {
         <b>Modo ativo:</b> {status.activeMode}
       </div>
 
-      {!hideBaileysForOrgAdmin && (
-        <section className="rounded border p-4">
-          <h3 className="font-semibold mb-2">Baileys</h3>
-          <button
-            className="btn btn-primary"
-            disabled={isBaileysBlocked}
-            title={isBaileysBlocked ? 'API está ativa. Desconecte a API para usar Baileys.' : ''}
-            onClick={() => api.post(`admin/orgs/${orgId}/baileys/connect`)}
-          >
-            Conectar Baileys
-          </button>
-          <button
-            className="btn ml-2"
-            onClick={() => api.post(`admin/orgs/${orgId}/baileys/disconnect`)}
-          >
-            Desconectar Baileys
-          </button>
-        </section>
-      )}
+      <section className="rounded border p-4">
+        <h3 className="font-semibold mb-2">Baileys</h3>
+        <button
+          className="btn btn-primary"
+          onClick={handleConnectBaileys}
+          disabled={!canSeeBaileys || isApiActive}
+          title={!canSeeBaileys ? 'Baileys não liberado para esta organização' : (isApiActive ? 'API ativa — desative para usar Baileys' : '')}
+        >
+          Conectar Baileys
+        </button>
+        <button
+          className="btn ml-2"
+          onClick={() => api.post(`admin/orgs/${orgId}/baileys/disconnect`)}
+          disabled={!canSeeBaileys}
+        >
+          Desconectar Baileys
+        </button>
+      </section>
 
       <section className="rounded border p-4">
         <h3 className="font-semibold mb-2">API WhatsApp</h3>
         <button
           className="btn btn-primary"
-          disabled={isApiBlocked}
-          title={isApiBlocked ? 'Baileys está ativo. Desconecte o Baileys para usar a API.' : ''}
-          onClick={() => api.post(`admin/orgs/${orgId}/api-whatsapp/connect`)}
+          onClick={handleConnectApi}
+          disabled={isBaileysActive}
+          title={isBaileysActive ? 'Baileys ativo — desconecte para usar API' : ''}
         >
-          Conectar API
+          Conectar via API WhatsApp
         </button>
         <button
           className="btn ml-2"

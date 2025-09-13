@@ -109,6 +109,15 @@ export default function Sidebar() {
     } catch {}
   }, [collapsed]);
 
+  // auto-colapse em telas menores
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1200px)');
+    const apply = () => setCollapsed(true);
+    if (mq.matches) apply();
+    mq.addEventListener?.('change', apply);
+    return () => mq.removeEventListener?.('change', apply);
+  }, []);
+
   return (
     <nav
       className={`h-full flex flex-col ${collapsed ? "w-16" : "w-72"}`}
