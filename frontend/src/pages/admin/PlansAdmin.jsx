@@ -7,6 +7,7 @@ function Field({ def, value, onChange }) {
     return (
       <input
         type="number"
+        placeholder="0 = desabilita, vazio = ilimitado"
         value={value ?? ''}
         onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
         {...common}
@@ -22,19 +23,14 @@ function Field({ def, value, onChange }) {
       />
     );
   }
-  if (def.type === 'enum') {
-    const opts = Array.isArray(def.enum_options) ? def.enum_options : [];
+  if (def.type === 'enum' || def.type === 'string') {
     return (
-      <select
+      <input
+        type="text"
         value={value ?? ''}
-        onChange={e => onChange(e.target.value)}
-        className="border p-1 w-full"
-      >
-        <option value=""></option>
-        {opts.map(opt => (
-          <option key={opt} value={opt}>{opt}</option>
-        ))}
-      </select>
+        readOnly
+        className="border p-1 w-full bg-gray-100"
+      />
     );
   }
   return (
@@ -71,14 +67,27 @@ export default function PlansAdmin() {
 
   useEffect(() => { load(); }, []);
 
-  const saveFeature = async (planId, featureCode, value) => {
+  const saveFeature = async (planId, def, rawValue) => {
+    let value;
+    if (def.type === 'number') {
+      const limit = rawValue;
+      value = limit === 0
+        ? { enabled: false, limit: 0 }
+        : limit == null
+          ? { enabled: true }
+          : { enabled: true, limit };
+    } else if (def.type === 'boolean') {
+      value = { enabled: !!rawValue };
+    } else {
+      value = rawValue;
+    }
     setData(prev => {
-      const list = prev.plan_features.filter(pf => !(pf.plan_id === planId && pf.feature_code === featureCode));
-      list.push({ plan_id: planId, feature_code: featureCode, value });
+      const list = prev.plan_features.filter(pf => !(pf.plan_id === planId && pf.feature_code === def.code));
+      list.push({ plan_id: planId, feature_code: def.code, value });
       return { ...prev, plan_features: list };
     });
     try {
-      await inboxApi.put(`/admin/plans/${planId}/features/${featureCode}`, { value });
+      await inboxApi.put(`/admin/plans/${planId}/features/${def.code}`, { value });
     } catch (e) {
       console.error('save_feature', e);
     }
@@ -107,14 +116,18 @@ export default function PlansAdmin() {
 
   if (loading) return <div className="p-4">Carregando…</div>;
 
-  const getValue = (planId, code) => {
-    const pf = data.plan_features.find(p => p.plan_id === planId && p.feature_code === code);
-    return pf ? pf.value : null;
+  const getValue = (planId, def) => {
+    const pf = data.plan_features.find(p => p.plan_id === planId && p.feature_code === def.code);
+    if (!pf) return def.type === 'boolean' ? false : null;
+    if (def.type === 'boolean') return pf.value?.enabled ?? false;
+    if (def.type === 'number') return pf.value?.limit ?? null;
+    return pf.value ?? null;
   };
 
   return (
     <div className="p-4 space-y-8">
       <h1 className="text-2xl font-bold mb-4">Planos & Recursos</h1>
+      <p className="text-sm text-gray-600 mb-2">0 = desabilita, vazio = ilimitado</p>
 
       <div className="overflow-x-auto">
         <table className="min-w-full border">
@@ -134,8 +147,8 @@ export default function PlansAdmin() {
                   <td key={p.id} className="p-2 text-center">
                     <Field
                       def={def}
-                      value={getValue(p.id, def.code)}
-                      onChange={v => saveFeature(p.id, def.code, v)}
+                      value={getValue(p.id, def)}
+                      onChange={v => saveFeature(p.id, def, v)}
                     />
                   </td>
                 ))}

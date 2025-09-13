@@ -14,7 +14,7 @@ describe('admin plans features routes', () => {
     ];
     const planFeatures = {
       whatsapp_numbers: { enabled: true, limit: 1 },
-      whatsapp_mode_baileys: { enabled: false, limit: 1 }
+      whatsapp_mode_baileys: { enabled: false }
     };
     const mockDb = {
       query: jest.fn((sql, params) => {
@@ -78,12 +78,13 @@ describe('admin plans features routes', () => {
 
     const body = {
       features: {
-        whatsapp_numbers: { enabled: true, limit: 3 },
-        google_calendar_accounts: { enabled: true, limit: 2 }
+        whatsapp_numbers: { limit: 3 },
+        google_calendar_accounts: { limit: 2 }
       }
     };
     const putRes = await request(app).put('/api/admin/plans/plan1/features').send(body);
     expect(putRes.statusCode).toBe(200);
+    expect(planFeatures.whatsapp_numbers).toEqual({ enabled: true, limit: 3 });
     const getRes = await request(app).get('/api/admin/plans/plan1/features');
     const feat = getRes.body.find(f => f.code === 'whatsapp_numbers');
     expect(feat.value.limit).toBe(3);

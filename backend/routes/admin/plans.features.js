@@ -32,7 +32,9 @@ router.get('/:id/features', async (req, res, next) => {
       type: r.type,
       unit: r.unit,
       category: r.category,
-      value: { enabled: r.enabled, limit: r.limit }
+      value: r.type === 'boolean'
+        ? { enabled: r.enabled }
+        : { limit: r.limit }
     }));
     res.json(items);
   } catch (e) {
@@ -42,16 +44,43 @@ router.get('/:id/features', async (req, res, next) => {
 
 router.put('/:id/features', async (req, res, next) => {
   try {
-    const schema = z.object({
-      features: z.record(
-        z.object({
-          enabled: z.boolean(),
-          limit: z.number().int().min(0).nullable(),
-        })
-      )
-    });
+    const schema = z.object({ features: z.record(z.any()) });
     const { features } = schema.parse(req.body || {});
-    await upsertPlanFeatures(req.params.id, features, req.db);
+    const codes = Object.keys(features);
+    if (codes.length === 0) return res.json({ ok: true });
+    const { rows: defs } = await q(req)(
+      'SELECT code, type FROM feature_defs WHERE code = ANY($1)',
+      [codes]
+    );
+    const defsMap = Object.fromEntries(defs.map(d => [d.code, d]));
+    const parsed = {};
+    for (const code of codes) {
+      const def = defsMap[code];
+      if (!def) {
+        return res.status(404).json({ error: 'feature_not_found', code });
+      }
+      const val = features[code] || {};
+      if (def.type === 'number') {
+        const limit = val.limit ?? null;
+        if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
+          return res.status(422).json({ error: 'validation', details: [{ code, message: 'limit_invalid' }] });
+        }
+        parsed[code] =
+          limit === 0
+            ? { enabled: false, limit: 0 }
+            : limit === null
+              ? { enabled: true }
+              : { enabled: true, limit };
+      } else if (def.type === 'boolean') {
+        if (typeof val.enabled !== 'boolean') {
+          return res.status(422).json({ error: 'validation', details: [{ code, message: 'enabled_invalid' }] });
+        }
+        parsed[code] = { enabled: val.enabled };
+      } else {
+        return res.status(422).json({ error: 'unsupported_type', code });
+      }
+    }
+    await upsertPlanFeatures(req.params.id, parsed, req.db);
     res.json({ ok: true });
   } catch (e) {
     if (e instanceof z.ZodError) {
