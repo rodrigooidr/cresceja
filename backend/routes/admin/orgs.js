@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import db from '#db';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
+import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
 
 const r = Router();
 
@@ -54,6 +55,83 @@ r.get('/orgs', async (req, res, next) => {
 
     res.json({ page, pageSize, total: count, items });
   } catch (e) { next(e); }
+});
+
+// POST /api/admin/orgs
+r.post('/orgs', async (req, res, next) => {
+  try {
+    const payload = OrgCreateSchema.parse(req.body);
+
+    const dup = await db.oneOrNone(
+      `SELECT 1
+         FROM organizations
+        WHERE util_digits(cnpj) = util_digits($1)
+           OR lower(email) = lower($2)
+           OR phone_e164 = $3
+        LIMIT 1`,
+      [payload.cnpj, payload.email || null, payload.phone_e164 || null]
+    );
+    if (dup) return res.status(409).json({ error: 'duplicate_org_key' });
+
+    const org = await db.one(
+      `INSERT INTO organizations (
+         id, cnpj, razao_social, nome_fantasia, ie, ie_isento,
+         site, email, phone_e164, status,
+         cep, logradouro, numero, complemento, bairro, cidade, uf, country,
+         resp_nome, resp_cpf, resp_email, resp_phone_e164,
+         created_at, updated_at
+       ) VALUES (
+         gen_random_uuid(), util_digits($1), $2, $3, $4, $5,
+         $6, lower($7), $8, $9,
+         $10, $11, $12, $13, $14, $15, upper($16), $17,
+         $18, util_digits($19), lower($20), $21,
+         now(), now()
+       ) RETURNING id`,
+      [
+        payload.cnpj,
+        payload.razao_social,
+        payload.nome_fantasia,
+        payload.ie,
+        payload.ie_isento,
+        payload.site,
+        payload.email,
+        payload.phone_e164,
+        payload.status,
+        payload.endereco.cep,
+        payload.endereco.logradouro,
+        payload.endereco.numero,
+        payload.endereco.complemento,
+        payload.endereco.bairro,
+        payload.endereco.cidade,
+        payload.endereco.uf,
+        payload.endereco.country,
+        payload.responsavel.nome,
+        payload.responsavel.cpf,
+        payload.responsavel.email,
+        payload.responsavel.phone_e164,
+      ]
+    );
+
+    if (payload.plano?.plan_id) {
+      await db.none(
+        `INSERT INTO org_subscriptions (id, org_id, plan_id, period, trial_start, trial_end, created_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())`,
+        [
+          org.id,
+          payload.plano.plan_id,
+          payload.plano.period || null,
+          payload.plano.trial_start || null,
+          payload.plano.trial_end || null,
+        ]
+      );
+    }
+
+    return res.status(201).json({ id: org.id });
+  } catch (err) {
+    if (err.name === 'ZodError')
+      return res.status(422).json({ error: 'validation', issues: err.issues });
+    next(err);
+  }
 });
 
 // GET /api/admin/orgs/:id
