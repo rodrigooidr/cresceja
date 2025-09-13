@@ -9,32 +9,34 @@ function InnerChannelPicker({ onChange }) {
   const toast = useToastFallback();
   const [loading, setLoading] = useState(true);
   const [channels, setChannels] = useState([]);
-  const [value, setValue] = useState(() => {
-    try {
-      return localStorage.getItem('active_channel_id') || '';
-    } catch {
-      return '';
-    }
-  });
+  const [value, setValue] = useState('');
 
   useEffect(() => {
     if (!orgId) return;
     let isMounted = true;
     setLoading(true);
+    const key = `active_channel_id::${orgId}`;
+    const legacy = localStorage.getItem('active_channel_id');
+    if (!localStorage.getItem(key) && legacy) {
+      localStorage.setItem(key, legacy);
+      localStorage.removeItem('active_channel_id');
+    }
+    let stored = localStorage.getItem(key) || '';
+
     inboxApi
       .get(`/orgs/${orgId}/whatsapp/channels`, { meta: { scope: 'global' } })
       .then((r) => {
         if (!isMounted) return;
         const list = Array.isArray(r.data) ? r.data : [];
         setChannels(list);
-        let active = value;
+        let active = stored;
         if (!list.find((c) => String(c.id) === String(active))) {
           const firstActive = list.find((c) => c.is_active);
           active = firstActive?.id || list[0]?.id || '';
         }
         if (active) {
           setValue(String(active));
-          try { localStorage.setItem('active_channel_id', String(active)); } catch {}
+          try { localStorage.setItem(key, String(active)); } catch {}
           onChange?.(String(active));
         }
       })
@@ -57,7 +59,7 @@ function InnerChannelPicker({ onChange }) {
   const handleChange = (e) => {
     const newId = e.target.value;
     setValue(newId);
-    try { localStorage.setItem('active_channel_id', newId); } catch {}
+    try { localStorage.setItem(`active_channel_id::${orgId}`, newId); } catch {}
     onChange?.(newId);
   };
 

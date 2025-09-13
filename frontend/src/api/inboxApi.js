@@ -152,7 +152,9 @@ inboxApi.interceptors.request.use((config) => {
 
   // active channel header
   try {
-    const ch = localStorage.getItem('active_channel_id');
+    const orgId = localStorage.getItem('active_org_id');
+    const key = orgId ? `active_channel_id::${orgId}` : null;
+    const ch = key ? localStorage.getItem(key) : null;
     if (ch) setHeader(config, 'X-Channel-Id', ch);
   } catch {}
 

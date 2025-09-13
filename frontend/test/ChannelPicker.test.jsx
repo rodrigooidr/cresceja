@@ -15,7 +15,8 @@ jest.mock('../src/hooks/useOrgFeatures.js', () => () => ({ features: mockFeature
 jest.mock('../src/api/inboxApi.js', () => {
   const get = jest.fn((url, config = {}) => {
     const headers = { ...(config.headers || {}) };
-    const ch = global.localStorage?.getItem('active_channel_id');
+    const org = global.localStorage?.getItem('active_org_id');
+    const ch = org ? global.localStorage?.getItem(`active_channel_id::${org}`) : null;
     if (ch) headers['X-Channel-Id'] = ch;
     const data = url.includes('/whatsapp/channels') ? mockChannels : {};
     return Promise.resolve({ data, config: { headers } });
@@ -24,6 +25,10 @@ jest.mock('../src/api/inboxApi.js', () => {
 });
 
 const inboxApi = require('../src/api/inboxApi.js').default;
+
+beforeEach(() => {
+  localStorage.setItem('active_org_id', '1');
+});
 
 afterEach(() => {
   localStorage.clear();
@@ -50,11 +55,11 @@ test('persiste active_channel_id no localStorage', async () => {
   render(<ChannelPicker />);
   const select = await screen.findByLabelText('Número WhatsApp');
   fireEvent.change(select, { target: { value: '2' } });
-  expect(localStorage.getItem('active_channel_id')).toBe('2');
+  expect(localStorage.getItem('active_channel_id::1')).toBe('2');
 });
 
 test('fallback para primeiro ativo quando salvo não existe', async () => {
-  localStorage.setItem('active_channel_id', '99');
+  localStorage.setItem('active_channel_id::1', '99');
   mockChannels = [
     { id: '1', phone_e164: '+5511999999999', display_name: 'Main', provider: 'api', is_active: true },
     { id: '2', phone_e164: '+5511888888888', display_name: 'Sec', provider: 'baileys', is_active: false },
@@ -62,7 +67,7 @@ test('fallback para primeiro ativo quando salvo não existe', async () => {
   render(<ChannelPicker />);
   const select = await screen.findByLabelText('Número WhatsApp');
   expect(select.value).toBe('1');
-  expect(localStorage.getItem('active_channel_id')).toBe('1');
+  expect(localStorage.getItem('active_channel_id::1')).toBe('1');
 });
 
 test('exibe CTA quando não há canais', async () => {
