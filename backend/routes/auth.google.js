@@ -4,6 +4,7 @@ import { google } from 'googleapis';
 import { authRequired, impersonationGuard } from '../middleware/auth.js';
 import { getFeatureAllowance, getUsage } from '../services/features.js';
 import { query } from '#db';
+import { saveTokens } from '../services/calendar/googleTokens.js';
 
 const router = Router();
 
@@ -33,7 +34,9 @@ function cleanupStates() {
 router.get('/api/auth/google/start', authRequired, impersonationGuard, setOrgId, async (req, res, next) => {
   try {
     const orgId = req.orgId;
-    const returnTo = req.query.returnTo || '/settings';
+    const allowed = ['/settings', '/calendar'];
+    const rt = typeof req.query.returnTo === 'string' ? req.query.returnTo : '/settings';
+    const returnTo = allowed.includes(rt) ? rt : '/settings';
 
     const allow = await getFeatureAllowance(orgId, 'google_calendar_accounts', req.db);
     if (!allow.enabled || allow.limit === 0) {
@@ -105,17 +108,7 @@ router.get('/api/auth/google/callback', async (req, res, next) => {
     );
 
     const scopes = (tokens.scope || '').split(' ').filter(Boolean);
-    await query(
-      `INSERT INTO google_oauth_tokens (account_id, access_token, refresh_token, expiry, scopes)
-         VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (account_id) DO UPDATE
-            SET access_token=EXCLUDED.access_token,
-                refresh_token=EXCLUDED.refresh_token,
-                expiry=EXCLUDED.expiry,
-                scopes=EXCLUDED.scopes,
-                updated_at=now()` ,
-      [acc.id, tokens.access_token, tokens.refresh_token || null, tokens.expiry_date ? new Date(tokens.expiry_date).toISOString() : null, scopes]
-    );
+    await saveTokens(req.db, acc.id, { ...tokens, scopes });
 
     const redirectTo = st.returnTo.includes('?') ? `${st.returnTo}&connected=1` : `${st.returnTo}?connected=1`;
     res.redirect(redirectTo);
