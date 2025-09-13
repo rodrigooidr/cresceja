@@ -3,6 +3,7 @@ import inboxApi from "../../api/inboxApi";
 import { useAuth } from "../../auth/useAuth";
 import { CAN_EDIT_CLIENTS } from "../../auth/roles";
 import useWhatsApp from "../../hooks/useWhatsApp.js";
+import { useOrg } from "../../contexts/OrgContext.jsx";
 
 function coerce(payload) {
   if (!payload) return [];
@@ -16,15 +17,17 @@ export default function ClientsPage() {
   const { user } = useAuth();
   const canEdit = CAN_EDIT_CLIENTS(user?.role);
   const { connected } = useWhatsApp();
+  const { selected } = useOrg();
 
   const [q, setQ] = useState({ name: "", phone: "", email: "", tag: "", stage: "" });
   const [state, setState] = useState({ loading: true, error: null, items: [] });
 
   useEffect(() => {
+    if (!selected) return;
     let alive = true;
     (async () => {
       try {
-        setState(s => ({ ...s, loading: true, error: null }));
+        setState((s) => ({ ...s, loading: true, error: null }));
         const res = await inboxApi.get("/clients", { params: q });
         const items = coerce(res?.data);
         if (!alive) return;
@@ -34,8 +37,10 @@ export default function ClientsPage() {
         setState({ loading: false, error: err?.message || "Falha ao carregar", items: [] });
       }
     })();
-    return () => { alive = false; };
-  }, [q]);
+    return () => {
+      alive = false;
+    };
+  }, [q, selected]);
 
   const rows = useMemo(() => state.items.map(c => ({
     id: c.id || c._id,
@@ -53,6 +58,17 @@ export default function ClientsPage() {
     } catch (e) {
       // mostrar erro amigável
     }
+  }
+
+  if (!selected) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold mb-4">Clientes</h1>
+        <div className="p-4 bg-yellow-50 border rounded">
+          Selecione uma organização
+        </div>
+      </div>
+    );
   }
 
   return (

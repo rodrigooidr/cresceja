@@ -8,6 +8,7 @@ jest.mock("../src/contexts/AuthContext.jsx", () => ({
 jest.mock("../src/contexts/OrgContext.jsx", () => ({
   __esModule: true,
   useOrg: () => ({ selected: null, setSelected: () => {} }),
+  OrgProvider: ({ children }) => <>{children}</>,
 }));
 import App from "../src/App.jsx";
 

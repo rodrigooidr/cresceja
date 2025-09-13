@@ -13,6 +13,12 @@ import LoginPage from "./pages/auth/LoginPage.jsx";
 // protegidas
 import InboxPage from "./pages/inbox/InboxPage.jsx";
 import ClientsPage from "./pages/clients/ClientsPage.jsx";
+import CrmPage from "./pages/CrmPage.jsx";
+import IntegrationsPage from "./pages/IntegrationsPage.jsx";
+import ReportsPage from "./pages/ReportsPage.jsx";
+import SettingsPage from "./pages/SettingsPage.jsx";
+import CalendarPage from "./pages/CalendarPage.jsx";
+import MarketingPage from "./pages/MarketingPage.jsx";
 import AdminOrganizationsPage from "./pages/admin/organizations/AdminOrganizationsPage.jsx";
 import OrgDetailsPage from "./pages/admin/OrgDetailsPage.jsx"; // ← detalhe da org
 import PlansAdminPage from "./pages/admin/PlansAdminPage.jsx";
@@ -32,7 +38,15 @@ export default function App() {
             <Route element={<ActiveOrgGate />}>
               <Route path="/inbox" element={<InboxPage />} />
               <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/crm" element={<CrmPage />} />
+              <Route path="/integrations" element={<IntegrationsPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
             </Route>
+
+            {/* rotas que não dependem da org ativa */}
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/marketing" element={<MarketingPage />} />
 
             {/* admin da plataforma (não depende da org ativa) */}
             <Route

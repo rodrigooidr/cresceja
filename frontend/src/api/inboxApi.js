@@ -132,6 +132,13 @@ inboxApi.interceptors.request.use((config) => {
 
   // Impersonação (se houver)
   config = ensureImpersonateHeader(config);
+  try {
+    const imp = config.meta?.impersonateOrgId;
+    if (imp) {
+      if (!config.headers) config.headers = {};
+      config.headers["X-Impersonate-Org-Id"] = imp;
+    }
+  } catch {}
 
   // X-Org-Id: NÃO enviar para auth/health/public/global
   try {

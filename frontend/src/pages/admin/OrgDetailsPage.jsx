@@ -14,26 +14,26 @@ function TabButton({ k, active, onClick, children }) {
   );
 }
 
-function WhatsAppTab({ orgId }) {
-  const [ws, setWs] = useState(null);
+function WhatsAppTab({ orgId, api }) {
+  const [status, setStatus] = useState(null);
 
   useEffect(() => {
     (async () => {
-      const { data } = await inboxApi.get(`/admin/orgs/${orgId}/whatsapp/status`);
-      setWs(data);
+      const { data } = await api.get("admin/orgs/whatsapp/status", { params: { id: orgId } });
+      setStatus(data);
     })();
-  }, [orgId]);
+  }, [orgId, api]);
 
-  if (!ws) return <div>Carregando…</div>;
+  if (!status) return <div>Carregando…</div>;
 
-  const isBaileysBlocked = ws.mode === 'api';
-  const isApiBlocked = ws.mode === 'baileys';
-  const hideBaileysForOrgAdmin = ws.allow_baileys === false;
+  const isBaileysBlocked = status.activeMode === 'api';
+  const isApiBlocked = status.activeMode === 'baileys';
+  const hideBaileysForOrgAdmin = status.allowBaileys === false;
 
   return (
     <div className="space-y-4">
       <div className="p-3 rounded border">
-        <b>Modo ativo:</b> {ws.mode}
+        <b>Modo ativo:</b> {status.activeMode}
       </div>
 
       {!hideBaileysForOrgAdmin && (
@@ -43,13 +43,13 @@ function WhatsAppTab({ orgId }) {
             className="btn btn-primary"
             disabled={isBaileysBlocked}
             title={isBaileysBlocked ? 'API está ativa. Desconecte a API para usar Baileys.' : ''}
-            onClick={() => inboxApi.post(`/admin/orgs/${orgId}/baileys/connect`)}
+            onClick={() => api.post(`admin/orgs/${orgId}/baileys/connect`)}
           >
             Conectar Baileys
           </button>
           <button
             className="btn ml-2"
-            onClick={() => inboxApi.post(`/admin/orgs/${orgId}/baileys/disconnect`)}
+            onClick={() => api.post(`admin/orgs/${orgId}/baileys/disconnect`)}
           >
             Desconectar Baileys
           </button>
@@ -62,13 +62,13 @@ function WhatsAppTab({ orgId }) {
           className="btn btn-primary"
           disabled={isApiBlocked}
           title={isApiBlocked ? 'Baileys está ativo. Desconecte o Baileys para usar a API.' : ''}
-          onClick={() => inboxApi.post(`/admin/orgs/${orgId}/api-whatsapp/connect`)}
+          onClick={() => api.post(`admin/orgs/${orgId}/api-whatsapp/connect`)}
         >
           Conectar API
         </button>
         <button
           className="btn ml-2"
-          onClick={() => inboxApi.post(`/admin/orgs/${orgId}/api-whatsapp/disconnect`)}
+          onClick={() => api.post(`admin/orgs/${orgId}/api-whatsapp/disconnect`)}
         >
           Desconectar API
         </button>
@@ -78,8 +78,25 @@ function WhatsAppTab({ orgId }) {
 }
 
 export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
-  const { orgId } = useParams();
+  const { id: orgId } = useParams();
   const { allowed, reason } = useActiveOrgGate({ minRole, requireActiveOrg: false });
+  const api = {
+    get: (url, opts = {}) =>
+      inboxApi.get(url, {
+        ...opts,
+        meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
+      }),
+    post: (url, body, opts = {}) =>
+      inboxApi.post(url, body, {
+        ...opts,
+        meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
+      }),
+    put: (url, body, opts = {}) =>
+      inboxApi.put(url, body, {
+        ...opts,
+        meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
+      }),
+  };
   const [params, setParams] = useSearchParams();
   const [state, setState] = useState({ loading: true, data: null, error: null });
 
@@ -90,8 +107,8 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
     let alive = true;
     (async () => {
       try {
-        const res = await inboxApi.get(`/admin/orgs/${orgId}`).catch(async () => {
-          return inboxApi.get(`/orgs/${orgId}`);
+        const res = await api.get(`admin/orgs/${orgId}`).catch(async () => {
+          return api.get(`orgs/${orgId}`);
         });
         if (!alive) return;
         setState({ loading: false, data: res?.data || null, error: null });
@@ -100,8 +117,10 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
         setState({ loading: false, data: null, error: e?.message || "Falha ao carregar" });
       }
     })();
-    return () => { alive = false; };
-  }, [orgId]);
+    return () => {
+      alive = false;
+    };
+  }, [orgId, api]);
 
   const sections = useMemo(() => ([
     "overview","billing","whatsapp","integrations","users","credits","logs","data"
@@ -137,7 +156,7 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
           )}
 
           {active === "whatsapp" && (
-            <WhatsAppTab orgId={orgId} />
+            <WhatsAppTab orgId={orgId} api={api} />
           )}
 
           {active === "integrations" && (
