@@ -53,6 +53,7 @@ import funnelRouter from './routes/crm.funnel.js';
 import debugRouter from './routes/debug.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import plansRouter from './routes/plans.js';
+import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
 
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
@@ -194,7 +195,10 @@ async function init() {
   // Rotas de planos (públicas e admin)
   app.use('/api', plansRouter);
 
-  // Rotas administrativas (escopo global)
+  // Rotas administrativas de planos (SuperAdmin/Support)
+  app.use('/api/admin/plans', authRequired, requireRole('SuperAdmin','Support'), adminContext, adminPlansFeaturesRouter);
+
+  // Demais rotas administrativas (SuperAdmin)
   app.use('/api/admin', authRequired, requireRole('SuperAdmin'), adminContext, adminOrgsRouter);
 
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
