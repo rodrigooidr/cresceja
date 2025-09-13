@@ -26,9 +26,11 @@ function WhatsAppTab({ orgId, api }) {
 
   if (!status) return <div>Carregando…</div>;
 
-  const isBaileysBlocked = status.activeMode === 'api';
-  const isApiBlocked = status.activeMode === 'baileys';
-  const hideBaileysForOrgAdmin = status.allowBaileys === false;
+  const mode = status.activeMode || status.mode;
+  const allowBaileys = status.allowBaileys ?? status.allow_baileys;
+  const isBaileysBlocked = mode === 'api';
+  const isApiBlocked = mode === 'baileys';
+  const hideBaileysForOrgAdmin = allowBaileys === false;
 
   return (
     <div className="space-y-4">

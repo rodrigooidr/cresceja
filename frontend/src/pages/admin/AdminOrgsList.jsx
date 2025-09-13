@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import inboxApi, { setImpersonateOrgId } from '../../api/inboxApi';
+import inboxApi from '../../api/inboxApi';
+import { useOrg } from '../../contexts/OrgContext.jsx';
 import useToastFallback from '../../hooks/useToastFallback';
 
 export default function AdminOrgsList() {
@@ -27,9 +28,9 @@ export default function AdminOrgsList() {
 
   useEffect(() => { load(); }, [load]);
 
+  const { setSelected } = useOrg();
   const handleImpersonate = (org) => {
-    setImpersonateOrgId(org.id);
-    alert(`Agora você está atuando como ${org.name}`);
+    setSelected(org.id);
   };
 
   if (loading || error) {

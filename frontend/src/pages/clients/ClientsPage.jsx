@@ -23,12 +23,18 @@ export default function ClientsPage() {
   const [state, setState] = useState({ loading: true, error: null, items: [] });
 
   useEffect(() => {
-    if (!selected) return;
     let alive = true;
     (async () => {
+      if (!selected) {
+        if (!alive) return;
+        setState({ loading: false, error: "Selecione uma organização para listar/criar clientes.", items: [] });
+        return;
+      }
       try {
         setState((s) => ({ ...s, loading: true, error: null }));
-        const res = await inboxApi.get("/clients", { params: q });
+        const res = await inboxApi.get("/clients", {
+          params: { ...q, limit: 50, page: 1 },
+        });
         const items = coerce(res?.data);
         if (!alive) return;
         setState({ loading: false, error: null, items });
@@ -41,6 +47,22 @@ export default function ClientsPage() {
       alive = false;
     };
   }, [q, selected]);
+
+  async function addClient() {
+    const name = prompt("Nome do cliente?") || "";
+    if (!name.trim()) return;
+    const email = prompt("E-mail do cliente?" ) || undefined;
+    const phone = prompt("Telefone (E.164)?") || undefined;
+    const tagsStr = prompt("Tags (separadas por vírgula)?") || "";
+    const tags = tagsStr ? tagsStr.split(",").map(t => t.trim()).filter(Boolean) : undefined;
+    try {
+      await inboxApi.post("clients", { name, email, phone_e164: phone, tags });
+      setQ((s) => ({ ...s }));
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("add_client_fail", e);
+    }
+  }
 
   const rows = useMemo(() => state.items.map(c => ({
     id: c.id || c._id,
@@ -90,7 +112,7 @@ export default function ClientsPage() {
       {/* Ações topo */}
       <div className="mb-4 flex gap-2">
         {canEdit && (
-          <button className="btn btn-primary" onClick={()=>/* abrir modal adicionar cliente */null}>
+          <button className="btn btn-primary" onClick={addClient}>
             Adicionar cliente
           </button>
         )}
