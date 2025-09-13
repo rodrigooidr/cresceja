@@ -4,6 +4,9 @@ import { encrypt, decrypt } from './crypto.js';
 const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
 
 export async function upsertChannel(db, { org_id, type, mode, credentials = null, status = 'disconnected', webhook_secret = null }) {
+  if (type === 'instagram' && credentials) {
+    console.log('[channels] encrypting Instagram credentials for org', org_id);
+  }
   const enc = credentials ? encrypt(credentials) : null;
   const sql = `
     INSERT INTO channels (id, org_id, type, mode, status, credentials_json, webhook_secret, created_at, updated_at)
