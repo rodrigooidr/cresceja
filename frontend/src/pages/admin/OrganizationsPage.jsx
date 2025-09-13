@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 import inboxApi from "../../api/inboxApi";
+import FilterBar from "../../ui/filters/FilterBar.jsx";
 
 function coerceItems(payload) {
   if (!payload) return [];
@@ -56,12 +57,14 @@ export default function OrganizationsPage() {
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-4">Organizações</h1>
 
-      <input
-        className="input input-bordered w-full max-w-md mb-4"
-        placeholder="Buscar..."
-        value={q}
-        onChange={e => setQ(e.target.value)}
-      />
+      <FilterBar>
+        <input
+          className="input input-bordered w-full max-w-md"
+          placeholder="Buscar..."
+          value={q}
+          onChange={e => setQ(e.target.value)}
+        />
+      </FilterBar>
 
       {state.loading && <div>Carregando...</div>}
       {state.error && <div className="text-red-600 mb-2">Erro: {state.error}</div>}
