@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import inboxApi from "../../../api/inboxApi";
 import { useOrg } from "../../../contexts/OrgContext.jsx";
 import OrgCreateModal from "./OrgCreateModal.jsx";
+import FilterBar from "../../../ui/filters/FilterBar.jsx";
 
 function coerce(payload) {
   if (!payload) return [];
@@ -50,8 +51,7 @@ export default function AdminOrganizationsPage() {
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-4">Organizações (Assinantes)</h1>
 
-      {/* Filtros */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+      <FilterBar>
         <input placeholder="Empresa ou cliente" value={q.name} onChange={e=>setQ(s=>({...s,name:e.target.value}))} className="input input-bordered"/>
         <input placeholder="E-mail" value={q.email} onChange={e=>setQ(s=>({...s,email:e.target.value}))} className="input input-bordered"/>
         <input placeholder="Telefone" value={q.phone} onChange={e=>setQ(s=>({...s,phone:e.target.value}))} className="input input-bordered"/>
@@ -64,7 +64,7 @@ export default function AdminOrganizationsPage() {
           <input type="date" value={q.periodFrom} onChange={e=>setQ(s=>({...s,periodFrom:e.target.value}))} className="input input-bordered"/>
           <input type="date" value={q.periodTo} onChange={e=>setQ(s=>({...s,periodTo:e.target.value}))} className="input input-bordered"/>
         </div>
-      </div>
+      </FilterBar>
 
       {/* Ações topo */}
       <div className="mb-4 flex gap-2">

@@ -4,6 +4,7 @@ import { useAuth } from "../../auth/useAuth";
 import { CAN_EDIT_CLIENTS } from "../../auth/roles";
 import useWhatsApp from "../../hooks/useWhatsApp.js";
 import { useOrg } from "../../contexts/OrgContext.jsx";
+import FilterBar from "../../ui/filters/FilterBar.jsx";
 
 function coerce(payload) {
   if (!payload) return [];
@@ -90,8 +91,7 @@ export default function ClientsPage() {
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-4">Clientes</h1>
 
-      {/* Filtros */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+      <FilterBar>
         <input placeholder="Nome" value={q.name} onChange={e=>setQ(s=>({...s,name:e.target.value}))} className="input input-bordered"/>
         <input placeholder="Telefone/WhatsApp" value={q.phone} onChange={e=>setQ(s=>({...s,phone:e.target.value}))} className="input input-bordered"/>
         <input placeholder="E-mail" value={q.email} onChange={e=>setQ(s=>({...s,email:e.target.value}))} className="input input-bordered"/>
@@ -100,7 +100,7 @@ export default function ClientsPage() {
           <option value="">Estágio</option>
           <option>Lead</option><option>Qualificado</option><option>Proposta</option><option>Fechado</option>
         </select>
-      </div>
+      </FilterBar>
 
       {/* Ações topo */}
       <div className="mb-4 flex gap-2">
