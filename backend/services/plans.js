@@ -17,14 +17,21 @@ export async function getPlanFeatures(planId, db) {
 
 export async function upsertPlanFeatures(planId, features, db) {
   const qExec = q(db);
-  for (const [code, value] of Object.entries(features)) {
-    await qExec(
-      `INSERT INTO plan_features(plan_id, feature_code, value, updated_at)
-       VALUES ($1, $2, $3::jsonb, now())
-       ON CONFLICT (plan_id, feature_code)
-       DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-      [planId, code, JSON.stringify(value)]
-    );
+  await qExec('BEGIN');
+  try {
+    for (const [code, value] of Object.entries(features)) {
+      await qExec(
+        `INSERT INTO plan_features(plan_id, feature_code, value, updated_at)
+         VALUES ($1, $2, $3::jsonb, now())
+         ON CONFLICT (plan_id, feature_code)
+         DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+        [planId, code, JSON.stringify(value)]
+      );
+    }
+    await qExec('COMMIT');
+  } catch (err) {
+    await qExec('ROLLBACK');
+    throw err;
   }
 }
 
