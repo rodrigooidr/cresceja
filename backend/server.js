@@ -48,6 +48,7 @@ import orgsRouter from './routes/orgs.js';
 import orgFeaturesRouter from './routes/orgs.features.js';
 import orgWhatsappRouter from './routes/orgs.whatsapp.js';
 import orgsCalendarRouter from './routes/orgs.calendar.js';
+import orgsCalendarApiRouter from './routes/orgs.calendar.api.cjs';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
@@ -227,6 +228,7 @@ async function init() {
   app.use('/', orgFeaturesRouter);
   app.use('/', orgWhatsappRouter);
   app.use('/', orgsCalendarRouter);
+  app.use('/', orgsCalendarApiRouter);
 
   // Integrações (rotas base + sub-rotas específicas)
   app.use('/api/integrations', integrationsRouter);                          // ex.: /api/integrations/status

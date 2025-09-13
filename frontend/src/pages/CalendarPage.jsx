@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import inboxApi from '../api/inboxApi';
 import { useOrg } from '../contexts/OrgContext.jsx';
 import FeatureGate from '../ui/feature/FeatureGate';
+import FormField from '../ui/form/FormField.jsx';
 
 function CalendarPageInner() {
   const { selected } = useOrg();
@@ -9,13 +10,15 @@ function CalendarPageInner() {
   const [accountId, setAccountId] = useState('');
   const [calendars, setCalendars] = useState([]);
   const [calendarId, setCalendarId] = useState('');
+  const [from, setFrom] = useState(() => new Date().toISOString().slice(0,10));
+  const [to, setTo] = useState(() => new Date(Date.now()+30*24*3600*1000).toISOString().slice(0,10));
   const [events, setEvents] = useState([]);
   const [status, setStatus] = useState('idle');
+  const [errors, setErrors] = useState({});
 
-  // load accounts
   useEffect(() => {
     if (!selected) return;
-    inboxApi.get(`/orgs/${selected}/calendar/accounts`, { meta: { scope: 'global' } })
+    inboxApi.get(`/orgs/${selected}/calendar/accounts`, { meta:{ scope:'global' } })
       .then(r => {
         const list = r.data || [];
         setAccounts(list);
@@ -24,13 +27,12 @@ function CalendarPageInner() {
       .catch(() => setStatus('error'));
   }, [selected]);
 
-  // load calendars when account changes
   useEffect(() => {
     if (!accountId) return;
     setStatus('loading');
     inboxApi.get(`/orgs/${selected}/calendar/accounts/${accountId}/calendars`)
       .then(r => {
-        const items = r.data?.items || [];
+        const items = r.data || [];
         setCalendars(items);
         if (items[0]?.id) setCalendarId(items[0].id);
         setStatus('idle');
@@ -38,19 +40,22 @@ function CalendarPageInner() {
       .catch(() => setStatus('error'));
   }, [accountId, selected]);
 
-  // load events when calendar changes
-  useEffect(() => {
-    if (!calendarId) return;
+  async function handleLoad() {
+    const errs = {};
+    if (!calendarId) errs.calendarId = { message: 'Obrigatório' };
+    setErrors(errs);
+    if (Object.keys(errs).length > 0) return;
     setStatus('loading');
-    const from = new Date().toISOString();
-    const to = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-    inboxApi.get(`/orgs/${selected}/calendar/accounts/${accountId}/events`, { params: { calendarId, from, to } })
-      .then(r => {
-        setEvents(r.data?.items || []);
-        setStatus('idle');
-      })
-      .catch(() => setStatus('error'));
-  }, [calendarId, selected, accountId]);
+    try {
+      const { data } = await inboxApi.get(`/orgs/${selected}/calendar/accounts/${accountId}/events`, {
+        params: { calendarId, from, to }
+      });
+      setEvents(data || []);
+      setStatus('idle');
+    } catch {
+      setStatus('error');
+    }
+  }
 
   if (status === 'error') {
     return <div className="p-6">Erro ao carregar.</div>;
@@ -59,26 +64,30 @@ function CalendarPageInner() {
   return (
     <div className="p-6" data-testid="calendar-page">
       <h1 className="text-2xl font-semibold mb-4">Calendário</h1>
-      <div className="mb-4 flex gap-2">
-        <select
-          value={accountId}
-          onChange={e => setAccountId(e.target.value)}
-          className="border px-2 py-1 rounded"
-        >
-          {accounts.map(a => (
-            <option key={a.id} value={a.id}>{a.display_name || a.email || a.google_user_id}</option>
-          ))}
-        </select>
-        <select
-          value={calendarId}
-          onChange={e => setCalendarId(e.target.value)}
-          className="border px-2 py-1 rounded"
-        >
-          {calendars.map(c => (
-            <option key={c.id} value={c.id}>{c.summary}</option>
-          ))}
-        </select>
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <FormField label="Conta" name="accountId">
+          <select value={accountId} onChange={e=>setAccountId(e.target.value)} className="border px-2 py-1 rounded w-full">
+            {accounts.map(a => (
+              <option key={a.id} value={a.id}>{a.display_name || a.email || a.google_user_id}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Calendário" name="calendarId" error={errors.calendarId}>
+          <select value={calendarId} onChange={e=>setCalendarId(e.target.value)} className="border px-2 py-1 rounded w-full" data-testid="calendar-select">
+            <option value="">Selecione…</option>
+            {calendars.map(c => (
+              <option key={c.id} value={c.id}>{c.summary}</option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="De" name="from">
+          <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="border px-2 py-1 rounded w-full" />
+        </FormField>
+        <FormField label="Até" name="to">
+          <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="border px-2 py-1 rounded w-full" />
+        </FormField>
       </div>
+      <button className="btn btn-primary mb-4" onClick={handleLoad}>Carregar eventos</button>
       {status === 'loading' ? (
         <div>Carregando...</div>
       ) : events.length === 0 ? (
@@ -89,8 +98,7 @@ function CalendarPageInner() {
             <li key={ev.id} className="border rounded p-2">
               <div className="font-medium">{ev.summary || '(Sem título)'}</div>
               <div className="text-sm opacity-75">
-                {formatDate(ev.start?.dateTime)} - {formatDate(ev.end?.dateTime)}
-                {ev.location ? ` @ ${ev.location}` : ''}
+                {formatDate(ev.start)} - {formatDate(ev.end)}{ev.location ? ` @ ${ev.location}` : ''}
               </div>
             </li>
           ))}

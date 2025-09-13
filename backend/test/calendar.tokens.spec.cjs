@@ -1,79 +1,65 @@
 const request = require('supertest');
 const express = require('express');
+const { encrypt, decrypt } = require('../services/crypto.util.cjs');
 
-const mockQuery = jest.fn();
+jest.mock('../middleware/auth', () => ({ requireAuth: (_req,_res,next) => next() }));
+jest.mock('../middleware/impersonalization', () => ({ impersonation: (_req,_res,next) => next() }));
 
-jest.mock('googleapis', () => ({
-  google: {
-    auth: {
-      OAuth2: class {
-        constructor() {}
-        setCredentials() {}
-        refreshAccessToken() {
-          return Promise.resolve({ credentials: { access_token: 'newA', refresh_token: 'ref', expiry_date: Date.now() + 3600000 } });
-        }
-      }
-    },
-    calendar: () => ({
-      calendarList: { list: () => Promise.resolve({ data: { items: [] } }) },
-      events: { list: () => Promise.resolve({ data: { items: [] } }) }
-    })
-  }
-}));
+process.env.GOOGLE_TOKEN_ENC_KEY = '12345678901234567890123456789012';
+
+const router = require('../routes/orgs.calendar.api.cjs');
 
 describe('calendar token refresh and revoke', () => {
-  let router, encrypt, decrypt;
-  beforeAll(async () => {
-    jest.resetModules();
-    process.env.CRED_SECRET = '12345678901234567890123456789012';
-    jest.unstable_mockModule('#db', () => ({ query: (sql, params) => mockQuery(sql, params) }));
-    ({ encrypt, decrypt } = await import('../services/crypto.js'));
-    ({ default: router } = await import('../routes/orgs.calendar.js'));
-  });
+  let app, db, tokens, account;
 
   beforeEach(() => {
-    mockQuery.mockReset();
-  });
-
-  function appWithRouter() {
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => { req.db = { query: mockQuery }; next(); });
-    app.use(router);
-    return app;
-  }
-
-  test('refresh past expiry updates tokens', async () => {
-    const encrypted = encrypt('oldA');
-    const tokens = { access_token: encrypted, refresh_token: encrypt('ref'), expiry: new Date(Date.now() - 1000).toISOString() };
-    mockQuery.mockImplementation((sql, params) => {
-      if (sql.startsWith('SELECT t.access_token')) return { rows: [tokens] };
+    tokens = null;
+    account = { is_active: true };
+    db = { query: jest.fn(async (sql, params) => {
+      if (sql.startsWith('SELECT id, access_token')) return { rows: tokens ? [tokens] : [] };
       if (sql.startsWith('INSERT INTO google_oauth_tokens')) {
-        tokens.access_token = params[1];
-        tokens.refresh_token = params[2];
-        tokens.expiry = params[3];
+        tokens = { id: tokens?.id || 't1', access_token: params[1], refresh_token: params[2], expiry: params[3], scopes: params[4], enc_ver: params[5] };
         return { rows: [] };
       }
+      if (sql.startsWith('DELETE FROM google_oauth_tokens')) { tokens = null; return { rows: [] }; }
+      if (sql.startsWith('UPDATE google_calendar_accounts SET is_active=false')) { account.is_active = false; return { rows: [] }; }
       return { rows: [] };
-    });
-    const res = await request(appWithRouter()).post('/api/orgs/o1/calendar/accounts/a1/refresh');
-    expect(res.statusCode).toBe(200);
-    expect(decrypt(tokens.access_token)).toBe('newA');
+    }) };
+    app = express();
+    app.use(express.json());
+    app.use((req,_res,next)=>{ req.db = db; next(); });
+    app.use(router);
+    global.fetch = jest.fn();
   });
 
-  test('revoke removes token and deactivates account', async () => {
-    const accounts = [{ id: 'a1', org_id: 'o1', is_active: true }];
-    const tokens = { access_token: encrypt('old'), refresh_token: encrypt('ref'), expiry: null };
-    global.fetch = jest.fn(() => Promise.resolve({ ok: true }));
-    mockQuery.mockImplementation((sql, params) => {
-      if (sql.startsWith('SELECT t.access_token')) return { rows: [tokens] };
-      if (sql.startsWith('DELETE FROM google_oauth_tokens')) { tokens.removed = true; return { rows: [] }; }
-      if (sql.startsWith('UPDATE google_calendar_accounts SET is_active=false')) { accounts[0].is_active = false; return { rows: [] }; }
-      return { rows: [] };
+  test('events refreshes expired token', async () => {
+    const encA = encrypt('oldA');
+    tokens = { id:'t1', access_token: encA.c, refresh_token: encrypt('ref').c, expiry: new Date(Date.now()-1000).toISOString(), scopes:null, enc_ver: encA.v };
+    global.fetch.mockImplementation((url) => {
+      if (url === 'https://oauth2.googleapis.com/token') return Promise.resolve({ ok: true, json: async () => ({ access_token:'newA', expires_in:3600, scope:'s' }) });
+      if (String(url).includes('/events')) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+      return Promise.resolve({ ok: true, json: async () => ({}) });
     });
-    const res = await request(appWithRouter()).post('/api/orgs/o1/calendar/accounts/a1/revoke');
+    const res = await request(app).get('/api/orgs/o1/calendar/accounts/a1/events').query({ calendarId:'cal1' });
     expect(res.statusCode).toBe(200);
-    expect(tokens.removed).toBe(true);
-    expect(accounts[0].is_active).toBe(false);
+    expect(decrypt({ c: tokens.access_token, v: tokens.enc_ver })).toBe('newA');
+  });
+
+  test('manual refresh without refresh token returns 404', async () => {
+    const encA = encrypt('tok');
+    tokens = { id:'t1', access_token: encA.c, refresh_token: null, expiry: new Date(Date.now()-1000).toISOString(), scopes:null, enc_ver: encA.v };
+    const res = await request(app).post('/api/orgs/o1/calendar/accounts/a1/refresh');
+    expect(res.statusCode).toBe(404);
+    expect(res.body.error).toBe('no_refresh');
+  });
+
+  test('revoke deletes tokens and deactivates account', async () => {
+    const encA = encrypt('tok');
+    tokens = { id:'t1', access_token: encA.c, refresh_token: encrypt('ref').c, expiry: null, scopes:null, enc_ver: encA.v };
+    global.fetch.mockResolvedValue({ ok: true, json: async () => ({}) });
+    const res = await request(app).post('/api/orgs/o1/calendar/accounts/a1/revoke');
+    expect(res.statusCode).toBe(200);
+    expect(tokens).toBeNull();
+    expect(account.is_active).toBe(false);
   });
 });
