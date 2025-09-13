@@ -5,6 +5,14 @@ import { google } from 'googleapis';
 
 const router = Router();
 
+async function accountBelongs(db, orgId, accountId) {
+  const { rowCount } = await db.query(
+    'SELECT 1 FROM google_calendar_accounts WHERE org_id=$1 AND id=$2',
+    [orgId, accountId]
+  );
+  return rowCount > 0;
+}
+
 // Lista contas
 router.get('/api/orgs/:id/calendar/accounts', async (req, res, next) => {
   try {
@@ -59,6 +67,9 @@ router.delete('/api/orgs/:id/calendar/accounts/:accountId', async (req, res, nex
 router.post('/api/orgs/:id/calendar/accounts/:accountId/refresh', async (req, res, next) => {
   try {
     const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
+    if (!(await accountBelongs(req.db, id, accountId))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
     const creds = await forceRefresh(req.db, accountId, id);
     if (!creds) return res.status(404).json({ error: 'not_found' });
     res.json({ expiry: creds.expiry_date ? new Date(creds.expiry_date).toISOString() : null });
@@ -69,6 +80,9 @@ router.post('/api/orgs/:id/calendar/accounts/:accountId/refresh', async (req, re
 router.post('/api/orgs/:id/calendar/accounts/:accountId/revoke', async (req, res, next) => {
   try {
     const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
+    if (!(await accountBelongs(req.db, id, accountId))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
     const ok = await revokeTokens(req.db, accountId, id);
     if (!ok) return res.status(404).json({ error: 'not_found' });
     res.json({ ok: true });
@@ -79,11 +93,33 @@ router.post('/api/orgs/:id/calendar/accounts/:accountId/revoke', async (req, res
 router.get('/api/orgs/:id/calendar/accounts/:accountId/calendars', async (req, res, next) => {
   try {
     const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
-    const auth = await ensureFreshTokens(req.db, accountId, id);
+    if (!(await accountBelongs(req.db, id, accountId))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    let auth = await ensureFreshTokens(req.db, accountId, id);
     if (!auth) return res.status(404).json({ error: 'not_found' });
     const cal = google.calendar({ version: 'v3', auth });
-    const { data } = await cal.calendarList.list();
-    res.json(data);
+    try {
+      const { data } = await cal.calendarList.list();
+      return res.json(data);
+    } catch (err) {
+      if (err?.code === 401 || err?.response?.status === 401) {
+        try {
+          await forceRefresh(req.db, accountId, id);
+          auth = await ensureFreshTokens(req.db, accountId, id);
+          const cal2 = google.calendar({ version: 'v3', auth });
+          const { data } = await cal2.calendarList.list();
+          return res.json(data);
+        } catch {
+          await req.db.query(
+            'UPDATE google_calendar_accounts SET is_active=false, updated_at=now() WHERE org_id=$1 AND id=$2',
+            [id, accountId]
+          );
+          return res.status(409).json({ error: 'reauth_required' });
+        }
+      }
+      return next(err);
+    }
   } catch (e) { next(e); }
 });
 
@@ -93,17 +129,45 @@ router.get('/api/orgs/:id/calendar/accounts/:accountId/events', async (req, res,
     const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
     const { calendarId, from, to } = req.query || {};
     if (!calendarId) return res.status(422).json({ error: 'validation', field: 'calendarId' });
-    const auth = await ensureFreshTokens(req.db, accountId, id);
+    if (!(await accountBelongs(req.db, id, accountId))) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    let auth = await ensureFreshTokens(req.db, accountId, id);
     if (!auth) return res.status(404).json({ error: 'not_found' });
     const cal = google.calendar({ version: 'v3', auth });
-    const { data } = await cal.events.list({
-      calendarId,
-      timeMin: from,
-      timeMax: to,
-      singleEvents: true,
-      orderBy: 'startTime'
-    });
-    res.json(data);
+    try {
+      const { data } = await cal.events.list({
+        calendarId,
+        timeMin: from,
+        timeMax: to,
+        singleEvents: true,
+        orderBy: 'startTime'
+      });
+      return res.json(data);
+    } catch (err) {
+      if (err?.code === 401 || err?.response?.status === 401) {
+        try {
+          await forceRefresh(req.db, accountId, id);
+          auth = await ensureFreshTokens(req.db, accountId, id);
+          const cal2 = google.calendar({ version: 'v3', auth });
+          const { data } = await cal2.events.list({
+            calendarId,
+            timeMin: from,
+            timeMax: to,
+            singleEvents: true,
+            orderBy: 'startTime'
+          });
+          return res.json(data);
+        } catch {
+          await req.db.query(
+            'UPDATE google_calendar_accounts SET is_active=false, updated_at=now() WHERE org_id=$1 AND id=$2',
+            [id, accountId]
+          );
+          return res.status(409).json({ error: 'reauth_required' });
+        }
+      }
+      return next(err);
+    }
   } catch (e) { next(e); }
 });
 

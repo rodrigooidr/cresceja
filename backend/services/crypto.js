@@ -1,9 +1,14 @@
 import crypto from 'crypto';
 
-const secret = process.env.CRED_SECRET || '';
+const secret = process.env.GOOGLE_TOKEN_ENC_KEY || '';
 const key = Buffer.from(secret, 'utf8');
-if (key.length !== 32) {
-  console.warn('CRED_SECRET must be 32 bytes');
+if (process.env.NODE_ENV === 'production') {
+  if (key.length !== 32) {
+    console.error('GOOGLE_TOKEN_ENC_KEY must be 32 bytes');
+    process.exit(1);
+  }
+} else if (key.length !== 32) {
+  console.warn('GOOGLE_TOKEN_ENC_KEY must be 32 bytes');
 }
 
 export function encrypt(data) {

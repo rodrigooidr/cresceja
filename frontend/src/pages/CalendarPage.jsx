@@ -109,7 +109,15 @@ function CalendarPageInner() {
 }
 
 function formatDate(dt) {
-  return dt ? new Date(dt).toLocaleString() : '';
+  if (!dt) return '';
+  const optsBase = { timeZone: 'America/Sao_Paulo' };
+  if (typeof dt === 'string' && !dt.includes('T')) {
+    const [y, m, d] = dt.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return new Intl.DateTimeFormat('pt-BR', { ...optsBase, dateStyle: 'short' }).format(date);
+  }
+  const date = new Date(dt);
+  return new Intl.DateTimeFormat('pt-BR', { ...optsBase, dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 
 export default function CalendarPage() {

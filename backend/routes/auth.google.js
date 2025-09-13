@@ -10,7 +10,7 @@ const router = Router();
 
 // simple in-memory state store with TTL
 const stateStore = new Map();
-const STATE_TTL_MS = 5 * 60 * 1000;
+const STATE_TTL_MS = 10 * 60 * 1000;
 
 function setOrgId(req, _res, next) {
   const impersonate = req.get('X-Impersonate-Org-Id');
@@ -36,7 +36,13 @@ router.get('/api/auth/google/start', authRequired, impersonationGuard, setOrgId,
     const orgId = req.orgId;
     const allowed = ['/settings', '/calendar'];
     const rt = typeof req.query.returnTo === 'string' ? req.query.returnTo : '/settings';
-    const returnTo = allowed.includes(rt) ? rt : '/settings';
+    let pathname;
+    try {
+      pathname = new URL(rt, 'http://localhost').pathname;
+    } catch {
+      pathname = '/settings';
+    }
+    const returnTo = allowed.includes(pathname) ? pathname : '/settings';
 
     const allow = await getFeatureAllowance(orgId, 'google_calendar_accounts', req.db);
     if (!allow.enabled || allow.limit === 0) {

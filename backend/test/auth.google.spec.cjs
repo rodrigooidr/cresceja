@@ -4,28 +4,27 @@ const jwt = require('jsonwebtoken');
 
 const mockQuery = jest.fn();
 
-jest.mock('googleapis', () => ({
-  google: {
-    auth: {
-      OAuth2: class {
-        constructor() {}
-        generateAuthUrl(opts) { return `https://accounts.google.com/o/oauth2/v2/auth?state=${opts.state}`; }
-        getToken() { return Promise.resolve({ tokens: { access_token: 'a', refresh_token: 'r', expiry_date: Date.now() + 1000, scope: 's1 s2' } }); }
-        setCredentials() {}
-      }
-    },
-    oauth2: () => ({ userinfo: { get: () => Promise.resolve({ data: { id: 'gid', email: 'e@x.com', name: 'G User' } }) } })
-    }
-  }));
-
 beforeAll(async () => {
   jest.resetModules();
+  await jest.unstable_mockModule('googleapis', () => ({
+    google: {
+      auth: {
+        OAuth2: class {
+          constructor() {}
+          generateAuthUrl(opts) { return `https://accounts.google.com/o/oauth2/v2/auth?state=${opts.state}`; }
+          getToken() { return Promise.resolve({ tokens: { access_token: 'a', refresh_token: 'r', expiry_date: Date.now() + 1000, scope: 's1 s2' } }); }
+          setCredentials() {}
+        }
+      },
+      oauth2: () => ({ userinfo: { get: () => Promise.resolve({ data: { id: 'gid', email: 'e@x.com', name: 'G User' } }) } }),
+    },
+  }));
   jest.unstable_mockModule('#db', () => ({ query: (sql, params) => mockQuery(sql, params) }));
   process.env.JWT_SECRET = 'dev-secret-change-me';
   process.env.GOOGLE_CLIENT_ID = 'id';
   process.env.GOOGLE_CLIENT_SECRET = 'sec';
   process.env.GOOGLE_REDIRECT_URI = 'http://localhost/cb';
-  process.env.CRED_SECRET = '12345678901234567890123456789012';
+  process.env.GOOGLE_TOKEN_ENC_KEY = '12345678901234567890123456789012';
   ({ default: router } = await import('../routes/auth.google.js'));
 });
 
@@ -120,4 +119,26 @@ test('returnTo outside allowlist falls back to /settings', async () => {
     .query({ state, code: 'abc' });
   expect(cbRes.statusCode).toBe(302);
   expect(cbRes.headers.location).toBe('/settings?connected=1');
+});
+
+test('reusing state returns 400', async () => {
+  mockQuery.mockImplementation((sql) => {
+    if (sql.includes('SELECT plan_id FROM organizations')) return { rows: [{ plan_id: 'plan1' }] };
+    if (sql.includes('FROM plan_features')) return { rows: [{ enabled: true, limit: 1 }] };
+    if (sql.includes('COUNT(*)') && sql.includes('google_calendar_accounts')) return { rows: [{ used: 0 }] };
+    if (sql.startsWith('INSERT INTO google_calendar_accounts')) return { rows: [{ id: 'acc1' }] };
+    if (sql.startsWith('INSERT INTO google_oauth_tokens')) return { rows: [] };
+    return { rows: [] };
+  });
+  const token = jwt.sign({ id: 'u1', org_id: 'org1', role: 'OrgAdmin' }, process.env.JWT_SECRET);
+  const app = appWithRouter();
+  const startRes = await request(app)
+    .get('/api/auth/google/start')
+    .set('Authorization', 'Bearer ' + token)
+    .query({ orgId: 'org1', returnTo: '/settings' });
+  const state = new URL(startRes.headers.location).searchParams.get('state');
+  await request(app).get('/api/auth/google/callback').query({ state, code: 'abc' });
+  const second = await request(app).get('/api/auth/google/callback').query({ state, code: 'abc' });
+  expect(second.statusCode).toBe(400);
+  expect(second.body.error).toBe('invalid_state');
 });
