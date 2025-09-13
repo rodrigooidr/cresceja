@@ -3,7 +3,7 @@ const express = require('express');
 
 process.env.GOOGLE_TOKEN_ENC_KEY = '12345678901234567890123456789012';
 
-const mockEnsureFresh = jest.fn();
+const mockRefreshIfNeeded = jest.fn();
 const mockForceRefresh = jest.fn();
 
 const listMock = jest.fn();
@@ -11,20 +11,16 @@ const listMock = jest.fn();
 let router;
 beforeAll(async () => {
   await jest.unstable_mockModule('../services/calendar/googleTokens.js', () => ({
-    ensureFreshTokens: mockEnsureFresh,
+    refreshIfNeeded: mockRefreshIfNeeded,
     forceRefresh: mockForceRefresh,
     revokeTokens: jest.fn(),
   }));
-  await jest.unstable_mockModule('googleapis', () => ({
-    google: {
-      calendar: () => ({ events: { list: listMock }, calendarList: { list: listMock } }),
-    },
-  }));
+  global.fetch = (...args) => listMock(...args);
   ({ default: router } = await import('../routes/orgs.calendar.js'));
 });
 
 beforeEach(() => {
-  mockEnsureFresh.mockReset();
+  mockRefreshIfNeeded.mockReset();
   mockForceRefresh.mockReset();
   listMock.mockReset();
 });
@@ -46,10 +42,10 @@ test('returns 404 when account does not belong to org', async () => {
 
 test('401 from google triggers refresh', async () => {
   const db = { query: jest.fn().mockResolvedValueOnce({ rowCount: 1 }) };
-  mockEnsureFresh.mockResolvedValue({});
+  mockRefreshIfNeeded.mockResolvedValue({ access_token: 't' });
   listMock
-    .mockRejectedValueOnce({ response: { status: 401 } })
-    .mockResolvedValueOnce({ data: { items: [] } });
+    .mockResolvedValueOnce({ status: 401 })
+    .mockResolvedValueOnce({ ok: true, json: () => ({ items: [] }) });
   mockForceRefresh.mockResolvedValue({});
   const app = appWithDb(db);
   const res = await request(app).get('/api/orgs/o1/calendar/accounts/a1/events').query({ calendarId: 'c1' });
@@ -67,8 +63,8 @@ test('refresh failure causes 409 and deactivates', async () => {
       return Promise.resolve({});
     }),
   };
-  mockEnsureFresh.mockResolvedValue({});
-  listMock.mockRejectedValue({ response: { status: 401 } });
+  mockRefreshIfNeeded.mockResolvedValue({ access_token: 't' });
+  listMock.mockResolvedValue({ status: 401 });
   mockForceRefresh.mockRejectedValue(new Error('bad'));
   const app = appWithDb(db);
   const res = await request(app).get('/api/orgs/o1/calendar/accounts/a1/events').query({ calendarId: 'c1' });

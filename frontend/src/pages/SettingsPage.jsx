@@ -234,6 +234,104 @@ function FacebookSection() {
   );
 }
 
+function InstagramSection() {
+  const { selected } = useOrg();
+  const toast = useToastFallback();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [limitInfo, setLimitInfo] = useState({ used: 0, limit: null });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [list, features] = await Promise.all([
+        inboxApi.get(`/orgs/${selected}/instagram/accounts`, { meta: { scope: 'global' } }),
+        inboxApi.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } }),
+      ]);
+      setItems(list.data || []);
+      const f = features.data?.instagram_accounts || {};
+      setLimitInfo({ used: f.used ?? 0, limit: f.limit ?? null });
+    } finally {
+      setLoading(false);
+    }
+  }, [selected]);
+
+  useEffect(() => { if (selected) load(); }, [selected, load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ig_connected') === '1') {
+      toast({ title: 'Conta conectada' });
+      params.delete('ig_connected');
+      const newUrl = window.location.pathname + (params.toString() ? `?${params}` : '');
+      window.history.replaceState({}, '', newUrl);
+      load();
+    }
+  }, [toast, load]);
+
+  const canAdd = limitInfo.limit == null || limitInfo.used < limitInfo.limit;
+
+  function handleConnect() {
+    setSaving(true);
+    const url = `/api/auth/instagram/start?orgId=${selected}&returnTo=/settings`;
+    window.location.href = url;
+  }
+
+  async function handleRemove(id) {
+    setSaving(true);
+    try {
+      await inboxApi.delete(`/orgs/${selected}/instagram/accounts/${id}`, { meta: { scope: 'global' } });
+      setItems(prev => prev.filter(x => x.id !== id));
+      toast({ title: 'Conta removida' });
+    } catch (err) { mapApiErrorToForm(err, () => {}); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Instagram</h3>
+        <div className="text-sm opacity-75">Usados: {limitInfo.used} / {limitInfo.limit ?? '∞'}</div>
+      </div>
+      {loading ? (
+        <div className="mt-3 text-sm opacity-70">Carregando...</div>
+      ) : items.length === 0 ? (
+        <div className="mt-3 rounded border p-3 text-sm">
+          Nenhuma conta conectada.
+          <div className="mt-2">
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+              {saving ? 'Redirecionando…' : 'Conectar conta'}
+            </button>
+            {!canAdd && <span className="ml-2 text-red-600">Limite do plano atingido</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {items.map(acc => (
+            <div key={acc.id} className="flex items-center justify-between rounded border p-3">
+              <div>
+                <div className="font-medium">{acc.username || acc.ig_user_id}</div>
+                <div className="text-xs opacity-70">{acc.name}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs opacity-70">{acc.is_active ? 'Ativa' : 'Inativa'}</span>
+                <button className="btn btn-outline" onClick={() => handleRemove(acc.id)} disabled={saving}>Remover</button>
+              </div>
+            </div>
+          ))}
+          <div className="pt-2">
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+              {saving ? 'Redirecionando…' : 'Adicionar outra conta'}
+            </button>
+            {!canAdd && <span className="ml-2 text-red-600 text-sm">Limite do plano atingido</span>}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="p-4 space-y-8">
@@ -242,6 +340,9 @@ export default function SettingsPage() {
       </FeatureGate>
       <FeatureGate code="facebook_pages" fallback={null}>
         <FacebookSection />
+      </FeatureGate>
+      <FeatureGate code="instagram_accounts" fallback={null}>
+        <InstagramSection />
       </FeatureGate>
     </div>
   );

@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { google } from 'googleapis';
 import { authRequired, impersonationGuard } from '../middleware/auth.js';
 import { getFeatureAllowance, getUsage } from '../services/features.js';
 import { query } from '#db';
@@ -57,22 +56,20 @@ router.get('/api/auth/google/start', authRequired, impersonationGuard, setOrgId,
     cleanupStates();
     stateStore.set(state, { orgId, returnTo, createdAt: Date.now() });
 
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
     const scopes = [
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/userinfo.email'
     ];
-    const url = oauth2Client.generateAuthUrl({
+    const params = new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      response_type: 'code',
       access_type: 'offline',
       prompt: 'consent',
-      scope: scopes,
-      state
+      scope: scopes.join(' '),
+      state,
     });
-    res.redirect(url);
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   } catch (e) {
     next(e);
   }
@@ -86,20 +83,29 @@ router.get('/api/auth/google/callback', async (req, res, next) => {
     if (!st) return res.status(400).json({ error: 'invalid_state' });
     stateStore.delete(state);
 
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI
-    );
+    const body = new URLSearchParams({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI,
+      grant_type: 'authorization_code',
+      code,
+    });
     let tokens;
     try {
-      ({ tokens } = await oauth2Client.getToken(code));
+      const r = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body,
+      });
+      if (!r.ok) throw new Error('token');
+      tokens = await r.json();
     } catch {
       return res.status(502).json({ error: 'oauth_exchange_failed' });
     }
-    oauth2Client.setCredentials(tokens);
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
-    const { data: info } = await oauth2.userinfo.get();
+    const rInfo = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: 'Bearer ' + tokens.access_token },
+    });
+    const info = await rInfo.json();
 
     const { rows: [acc] } = await query(
       `INSERT INTO google_calendar_accounts (org_id, google_user_id, email, display_name, is_active)

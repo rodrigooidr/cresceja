@@ -6,7 +6,6 @@ describe('google calendar accounts routes', () => {
   beforeAll(async () => {
     jest.resetModules();
     process.env.GOOGLE_TOKEN_ENC_KEY = '12345678901234567890123456789012';
-    await jest.unstable_mockModule('googleapis', () => ({ google: { calendar: () => ({}) } }));
     router = (await import('../routes/orgs.calendar.js')).default;
   });
 
