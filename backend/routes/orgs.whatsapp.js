@@ -3,6 +3,23 @@ import { requireFeature } from '../middleware/requireFeature.js';
 
 const router = Router();
 
+// GET /api/orgs/:id/whatsapp/channels
+router.get('/api/orgs/:id/whatsapp/channels', async (req, res) => {
+  const orgId = req.params.id;
+  try {
+    const { rows } = await req.db.query(
+      `SELECT id, phone_e164, display_name, provider, is_active
+       FROM whatsapp_channels
+       WHERE org_id = $1
+       ORDER BY created_at ASC`,
+      [orgId]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: 'channels_fetch_failed' });
+  }
+});
+
 // POST /api/orgs/:id/whatsapp/channels
 router.post('/api/orgs/:id/whatsapp/channels', requireFeature('whatsapp_numbers'), async (req, res) => {
   const orgId = req.params.id;
