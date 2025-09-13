@@ -38,6 +38,6 @@ describe("Sidebar visibility and routes", () => {
     mockUser = { role: "Admin" };
     mockActiveOrg = "org1";
     renderWithProviders(<App />, { route: "/clients" });
-    expect(await screen.findByText("Clientes")).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Clientes' })).toBeInTheDocument();
   });
 });

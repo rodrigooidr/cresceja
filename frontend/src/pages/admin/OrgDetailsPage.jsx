@@ -17,47 +17,57 @@ function TabButton({ k, active, onClick, children }) {
 function WhatsAppTab({ orgId, api }) {
   const [status, setStatus] = useState(null);
 
+  const loadStatus = async () => {
+    const { data } = await api.get("admin/orgs/whatsapp/status", { params: { id: orgId } });
+    setStatus(data);
+  };
+
   useEffect(() => {
-    (async () => {
-      const { data } = await api.get("admin/orgs/whatsapp/status", { params: { id: orgId } });
-      setStatus(data);
-    })();
-  }, [orgId, api]);
+    loadStatus();
+  }, [orgId]);
 
   if (!status) return <div>Carregando…</div>;
 
   // esconder/disable quando não permitido
-  const canSeeBaileys = status?.allowBaileys === true; // backend já expõe essa flag
-  const isApiActive = status?.activeMode === 'api';
-  const isBaileysActive = status?.activeMode === 'baileys';
+  const canSeeBaileys = status?.allow_baileys === true; // backend já expõe essa flag
+  const isApiActive = status?.mode === 'api';
+  const isBaileysActive = status?.mode === 'baileys';
 
-  const handleConnectBaileys = () => api.post(`admin/orgs/${orgId}/baileys/connect`);
-  const handleConnectApi = () => api.post(`admin/orgs/${orgId}/api-whatsapp/connect`);
+  const handleConnectBaileys = () => api.post(`admin/orgs/${orgId}/baileys/connect`).then(loadStatus);
+  const handleConnectApi = () => api.post(`admin/orgs/${orgId}/api-whatsapp/connect`).then(loadStatus);
+  const toggleAllow = () => api.put(`admin/orgs/${orgId}/whatsapp/allow_baileys`, { allow: !status.allow_baileys }).then(loadStatus);
 
   return (
     <div className="space-y-4">
       <div className="p-3 rounded border">
-        <b>Modo ativo:</b> {status.activeMode}
+        <b>Modo ativo:</b> {status.mode}
       </div>
 
-      <section className="rounded border p-4">
-        <h3 className="font-semibold mb-2">Baileys</h3>
-        <button
-          className="btn btn-primary"
-          onClick={handleConnectBaileys}
-          disabled={!canSeeBaileys || isApiActive}
-          title={!canSeeBaileys ? 'Baileys não liberado para esta organização' : (isApiActive ? 'API ativa — desative para usar Baileys' : '')}
-        >
-          Conectar Baileys
+      <div>
+        <button className="btn btn-sm mb-4" onClick={toggleAllow}>
+          {status.allow_baileys ? 'Revogar Baileys' : 'Permitir Baileys'}
         </button>
-        <button
-          className="btn ml-2"
-          onClick={() => api.post(`admin/orgs/${orgId}/baileys/disconnect`)}
-          disabled={!canSeeBaileys}
-        >
-          Desconectar Baileys
-        </button>
-      </section>
+      </div>
+
+      {canSeeBaileys && (
+        <section className="rounded border p-4">
+          <h3 className="font-semibold mb-2">Baileys</h3>
+          <button
+            className="btn btn-primary"
+            onClick={handleConnectBaileys}
+            disabled={isApiActive}
+            title={isApiActive ? 'API ativa — desative para usar Baileys' : ''}
+          >
+            Conectar Baileys
+          </button>
+          <button
+            className="btn ml-2"
+            onClick={() => api.post(`admin/orgs/${orgId}/baileys/disconnect`).then(loadStatus)}
+          >
+            Desconectar Baileys
+          </button>
+        </section>
+      )}
 
       <section className="rounded border p-4">
         <h3 className="font-semibold mb-2">API WhatsApp</h3>
@@ -67,7 +77,7 @@ function WhatsAppTab({ orgId, api }) {
           disabled={isBaileysActive}
           title={isBaileysActive ? 'Baileys ativo — desconecte para usar API' : ''}
         >
-          Conectar via API WhatsApp
+          Conectar API
         </button>
         <button
           className="btn ml-2"
@@ -101,29 +111,43 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
       }),
   };
   const [params, setParams] = useSearchParams();
-  const [state, setState] = useState({ loading: true, data: null, error: null });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [overview, setOverview] = useState(null);
+  const [billing, setBilling] = useState(null);
+  const [users, setUsers] = useState(null);
+  const [logs, setLogs] = useState(null);
 
   const active = params.get("tab") || "overview";
   const setTab = (k) => setParams({ tab: k });
 
   useEffect(() => {
-    let alive = true;
+    let cancelled = false;
     (async () => {
       try {
-        const res = await api.get(`admin/orgs/${orgId}`).catch(async () => {
-          return api.get(`orgs/${orgId}`);
-        });
-        if (!alive) return;
-        setState({ loading: false, data: res?.data || null, error: null });
+        setLoading(true);
+        if (active === 'overview') {
+          const { data } = await api.get(`admin/orgs/${orgId}/overview`);
+          if (!cancelled) setOverview(data.overview);
+        } else if (active === 'billing') {
+          const { data } = await api.get(`admin/orgs/${orgId}/billing`);
+          if (!cancelled) setBilling(data);
+        } else if (active === 'users') {
+          const { data } = await api.get(`admin/orgs/${orgId}/users`);
+          if (!cancelled) setUsers(data.users);
+        } else if (active === 'logs') {
+          const { data } = await api.get(`admin/orgs/${orgId}/logs`);
+          if (!cancelled) setLogs(data.logs);
+        }
+        if (!cancelled) setError(null);
       } catch (e) {
-        if (!alive) return;
-        setState({ loading: false, data: null, error: e?.message || "Falha ao carregar" });
+        if (!cancelled) setError(e?.message || 'Falha ao carregar');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
-  }, [orgId, api]);
+    return () => { cancelled = true; };
+  }, [active, orgId]);
 
   const sections = useMemo(() => ([
     "overview","billing","whatsapp","integrations","users","credits","logs","data"
@@ -143,19 +167,16 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
         ))}
       </div>
 
-      {state.loading && <div>Carregando...</div>}
-      {state.error && <div className="text-amber-700">{String(state.error)}</div>}
-      {!state.loading && state.data && (
+      {loading && <div>Carregando...</div>}
+      {error && <div className="text-amber-700">{String(error)}</div>}
+      {!loading && !error && (
         <div className="text-sm">
-          {active === "overview" && (
-            <pre className="bg-gray-50 border rounded p-3 overflow-auto">{JSON.stringify(state.data, null, 2)}</pre>
+          {active === "overview" && overview && (
+            <pre className="bg-gray-50 border rounded p-3 overflow-auto">{JSON.stringify(overview, null, 2)}</pre>
           )}
 
-          {active === "billing" && (
-            <div className="space-y-2">
-              <div className="text-gray-600">Plano atual: {state.data?.org?.plan?.name || "-"}</div>
-              <div className="text-gray-600">Trial até: {state.data?.org?.trial_ends_at || "-"}</div>
-            </div>
+          {active === "billing" && billing && (
+            <pre className="bg-gray-50 border rounded p-3 overflow-auto">{JSON.stringify(billing, null, 2)}</pre>
           )}
 
           {active === "whatsapp" && (
@@ -166,16 +187,24 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
             <div className="text-gray-600">Integrações diversas (resumo). Para editar, use “Configurações &gt; abas”.</div>
           )}
 
-          {active === "users" && (
-            <div className="text-gray-600">Lista de usuários da org (implementar fetch quando a API estiver disponível).</div>
+          {active === "users" && users && (
+            <ul className="list-disc pl-4">
+              {users.map(u => (
+                <li key={u.id}>{u.email} ({u.role})</li>
+              ))}
+            </ul>
           )}
 
           {active === "credits" && (
             <div className="text-gray-600">Créditos de IA, consumo e limites.</div>
           )}
 
-          {active === "logs" && (
-            <div className="text-gray-600">Logs/Auditoria da org.</div>
+          {active === "logs" && logs && (
+            <ul className="list-disc pl-4">
+              {logs.map(l => (
+                <li key={l.id}>{l.method} {l.path}</li>
+              ))}
+            </ul>
           )}
 
           {active === "data" && (

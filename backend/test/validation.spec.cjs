@@ -1,6 +1,6 @@
-import br from '../validation/br.cjs';
-import org from '../validation/orgSchemas.cjs';
-import client from '../validation/clientSchemas.cjs';
+const br = require('../validation/br.cjs');
+const org = require('../validation/orgSchemas.cjs');
+const client = require('../validation/clientSchemas.cjs');
 
 const { isValidCPF, isValidCNPJ, isValidCEP, isValidUF, isValidBRPhone } = br;
 const { orgSchema } = org;

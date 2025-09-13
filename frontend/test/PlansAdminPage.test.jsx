@@ -12,10 +12,10 @@ jest.mock("../src/contexts/OrgContext.jsx", () => ({
 }));
 import App from "../src/App.jsx";
 
-test("Sidebar aparece em /admin/plans", () => {
+test("Sidebar aparece em /admin/plans", async () => {
   renderWithProviders(<App />, { route: "/admin/plans" });
   expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   expect(
-    screen.getByRole("heading", { name: /Planos \(Admin\)/i })
+    await screen.findByRole("heading", { name: /Planos \(Admin\)/i })
   ).toBeInTheDocument();
 });

@@ -2,6 +2,7 @@
 const request = require("supertest");
 const { Client } = require("pg");
 const { PostgreSqlContainer } = require("@testcontainers/postgresql");
+const runInt = process.env.RUN_INT_TESTS === 'true';
 
 let container;
 let app;
@@ -60,7 +61,7 @@ async function mkOrg() {
   return orgId;
 }
 
-describe("WhatsApp status & exclusividade (com Postgres efêmero)", () => {
+(runInt ? describe : describe.skip)("WhatsApp status & exclusividade (com Postgres efêmero)", () => {
   let orgId;
 
   beforeAll(async () => {

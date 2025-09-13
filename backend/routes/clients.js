@@ -4,6 +4,42 @@ import { requireOrgHeader } from '../middleware/requireOrgHeader.js';
 
 const router = Router();
 
+router.get('/clients', requireOrgHeader, async (req, res, next) => {
+  try {
+    const orgId = req.headers['x-org-id'];
+    const q = (req.query.q || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200);
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const offset = (page - 1) * limit;
+
+    const where = [`org_id = $/orgId/`];
+    const params = { orgId, limit, offset };
+
+    if (q.length >= 2) {
+      where.push(`(
+        name ILIKE '%' || $/q/ || '%'
+        OR email ILIKE '%' || $/q/ || '%'
+        OR phone_e164 ILIKE '%' || $/q/ || '%'
+      )`);
+      params.q = q;
+    }
+
+    const rows = await db.any(`
+      SELECT id, name, email, phone_e164, cpf, cnpj, created_at
+      FROM clients
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC
+      LIMIT $/limit/ OFFSET $/offset/
+    `, params);
+
+    const total = await db.one(`
+      SELECT COUNT(*)::int AS c FROM clients WHERE ${where.join(' AND ')}
+    `, params);
+
+    res.json({ items: rows, total: total.c, page, pageSize: limit });
+  } catch (e) { next(e); }
+});
+
 router.post('/clients', requireOrgHeader, async (req, res, next) => {
   try {
     const orgId = req.headers['x-org-id'];

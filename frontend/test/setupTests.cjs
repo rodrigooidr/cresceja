@@ -57,3 +57,20 @@ class MockIntersectionObserver {
   disconnect() {}
 }
 global.IntersectionObserver = MockIntersectionObserver;
+
+// matchMedia polyfill para jsdom
+if (!window.matchMedia) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: jest.fn().mockImplementation((query) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),             // legacy
+      removeListener: jest.fn(),          // legacy
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    })),
+  });
+}
