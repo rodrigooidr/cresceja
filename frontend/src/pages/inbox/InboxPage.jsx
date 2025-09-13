@@ -17,6 +17,7 @@ import MessageComposer from "./components/MessageComposer.jsx";
 import SidebarFilters from "./components/SidebarFilters.jsx";
 import ClientDetailsPanel from "./components/ClientDetailsPanel.jsx";
 import useToastFallback from "../../hooks/useToastFallback";
+import ChannelPicker from "../../components/inbox/ChannelPicker.jsx";
 
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
@@ -46,6 +47,13 @@ export default function InboxPage({ addToast: addToastProp }) {
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(false);
   const [selectedId, setSelectedId] = useState(() => searchParams.get("c") || null);
+  const [channelId, setChannelId] = useState(() => {
+    try {
+      return localStorage.getItem('active_channel_id');
+    } catch {
+      return null;
+    }
+  });
 
   const fetchConversations = useCallback(async () => {
     if (!orgId) return;
@@ -71,6 +79,10 @@ export default function InboxPage({ addToast: addToastProp }) {
   }, [filters, addToast, orgId]);
 
   useOrgRefetch(fetchConversations, [fetchConversations]);
+
+  useEffect(() => {
+    fetchConversations();
+  }, [channelId, fetchConversations]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -290,11 +302,14 @@ export default function InboxPage({ addToast: addToastProp }) {
   return (
     <div className="h-[calc(100vh-56px)] grid grid-cols-[320px_1fr_360px] overflow-hidden">
       <aside className="border-r overflow-y-auto flex flex-col">
-        <SidebarFilters
-          value={filters}
-          onChange={setFilters}
-          channelIconBySlug={channelIconBySlug}
-        />
+        <div className="p-2 space-y-2">
+          <ChannelPicker onChange={(id) => { setChannelId(id); setSelectedId(null); }} />
+          <SidebarFilters
+            value={filters}
+            onChange={setFilters}
+            channelIconBySlug={channelIconBySlug}
+          />
+        </div>
         <ConversationList
           loading={loadingConvs}
           items={conversations || []}
