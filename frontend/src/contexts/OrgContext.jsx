@@ -45,7 +45,6 @@ export function OrgProvider({ children }) {
   // Seleção atual (1 org)
   const [selected, setSelected] = useState(() => {
     try {
-      // Se não estiver autenticado, ignore qualquer seleção persistida
       return localStorage.getItem("active_org_id") || readTokenOrgId() || null;
     } catch {
       return null;
@@ -70,7 +69,6 @@ export function OrgProvider({ children }) {
   // Carrega lista (server-side)
   const refreshOrgs = useCallback(
     async (qArg = q, p = 1, mode = "replace") => {
-      // Sem login → modo público (nada a carregar)
       if (!isAuthenticated) {
         setLoading(false);
         setOrgs([]);
@@ -80,14 +78,54 @@ export function OrgProvider({ children }) {
 
       setLoading(true);
       try {
-        const { data } = await inboxApi.get("/orgs", {
-          params: { visibility, q: qArg, page: p, pageSize },
-          meta: { scope: "global" }, // não força X-Org-Id (mas exige auth)
-        });
+        const endpoint = visibility === "all" ? "admin/orgs" : "orgs/accessible"; // sem barra inicial
+        const params = {
+          q: qArg || undefined,
+          search: qArg || undefined,
+          limit: pageSize,
+          page: p,
+        };
 
-        const items = data?.items ?? (Array.isArray(data) ? data : []);
+        // Use inboxApi e marque escopo global (sem X-Org-Id)
+        let data;
+        try {
+          ({ data } = await inboxApi.get(endpoint, {
+            params,
+            meta: { scope: "global" },
+          }));
+        } catch (err) {
+          // Se /admin/orgs for 403, tenta /orgs/accessible
+          if (visibility === "all" && err?.response?.status === 403) {
+            ({ data } = await inboxApi.get("orgs/accessible", {
+              params,
+              meta: { scope: "global" },
+            }));
+          } else {
+            throw err;
+          }
+        }
+
+        // Normaliza vários formatos: {items,total} | {data,count} | array
+        const rawItems = Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
+
+        // Garante {id,name} para o seletor
+        const items = rawItems.map((o) => ({
+          id: o.id ?? o._id,
+          name: o.company?.name ?? o.name ?? o.fantasy_name ?? "Sem nome",
+        }));
+
         const total =
-          typeof data?.total === "number" ? data.total : items.length;
+          typeof data?.total === "number"
+            ? data.total
+            : typeof data?.count === "number"
+            ? data.count
+            : items.length;
 
         setHasMore(p * pageSize < total);
         setPage(p);
@@ -103,14 +141,19 @@ export function OrgProvider({ children }) {
           setOrgs(items);
         }
       } catch (err) {
-        // 401/403 em modo autenticado: trate como falha de carga, mas sem quebrar a UI
+        // eslint-disable-next-line no-console
+        console.warn(
+          "[orgs] list fail:",
+          err?.response?.status,
+          err?.response?.data || err?.message
+        );
         if (mode === "replace") setOrgs([]);
         setHasMore(false);
       } finally {
         setLoading(false);
       }
     },
-    [isAuthenticated, visibility, q]
+    [isAuthenticated, visibility, q, pageSize]
   );
 
   const searchOrgs = useCallback(
@@ -125,7 +168,6 @@ export function OrgProvider({ children }) {
 
   // Load inicial / quando mudar autenticação ou visibilidade
   useEffect(() => {
-    // Se público, finalize rápido para não travar render da landing
     if (!isAuthenticated) {
       setLoading(false);
       setOrgs([]);
@@ -203,7 +245,6 @@ export function OrgProvider({ children }) {
       loadMoreOrgs,
       hasMore,
       q,
-      // útil para saber se está no modo público
       publicMode: !isAuthenticated,
     }),
     [

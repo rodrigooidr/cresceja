@@ -1,28 +1,38 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { hasRoleAtLeast } from '../auth/roles';
-// Ajuste o caminho se seu AuthContext estiver em outro lugar:
-import { useAuth } from '../contexts/AuthContext';
+// frontend/src/hooks/useActiveOrgGate.js
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { hasRoleAtLeast, ROLES } from "../auth/roles";
+import { useAuth } from "../contexts/AuthContext";
+import { useOrg } from "../contexts/OrgContext.jsx";
 
 /**
- * Garante:
- * - usuário autenticado
- * - papel mínimo (default: 'Agent')
- * - organização ativa para papéis abaixo de SuperAdmin
- * Redireciona em caso de violação.
+ * Hook imperativo para proteger páginas (fora do router).
+ * Redireciona se:
+ * - não autenticado
+ * - sem papel mínimo
+ * - sem organização (para papéis abaixo de Support/SuperAdmin)
  */
 export default function useActiveOrgGate(options = {}) {
   const {
-    minRole = 'Agent',
-    redirectNoAuth = '/login',
-    redirectNoPerm = '/403',
-    redirectNoOrg = '/onboarding', // ou '/select-org'
+    minRole = ROLES.Agent,
+    redirectNoAuth = "/login",
+    redirectNoPerm = "/403",
+    redirectNoOrg = "/onboarding", // ou '/select-org'
+    mode = "redirect", // 'redirect' | 'silent'
   } = options;
 
   const navigate = useNavigate();
-  const { user: me, loading } = useAuth?.() ?? { user: null, loading: false };
+  const { user: me, loading } = useAuth();
+  const { selected } = useOrg(); // org ativa escolhida no sidebar
+
+  const isPlatformPrivileged =
+    me?.role === ROLES.SuperAdmin || me?.role === ROLES.Support;
+
+  const hasOrg = isPlatformPrivileged ? true : Boolean(selected || me?.org_id);
+  const allowed = !!me && hasRoleAtLeast(me.role, minRole) && hasOrg;
 
   useEffect(() => {
+    if (mode !== "redirect") return;
     if (loading) return;
 
     if (!me) {
@@ -33,14 +43,10 @@ export default function useActiveOrgGate(options = {}) {
       navigate(redirectNoPerm, { replace: true });
       return;
     }
-    if (me.role !== 'SuperAdmin' && !me.org_id) {
+    if (!hasOrg) {
       navigate(redirectNoOrg, { replace: true });
-      return;
     }
-  }, [loading, me, minRole, navigate, redirectNoAuth, redirectNoPerm, redirectNoOrg]);
+  }, [mode, loading, me, minRole, navigate, redirectNoAuth, redirectNoPerm, redirectNoOrg, hasOrg]);
 
-  return {
-    me,
-    allowed: !!me && hasRoleAtLeast(me.role, minRole) && (me.role === 'SuperAdmin' || !!me.org_id),
-  };
+  return { me, allowed, hasOrg, isPlatformPrivileged };
 }
