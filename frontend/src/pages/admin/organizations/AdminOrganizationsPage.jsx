@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import inboxApi from "../../../api/inboxApi";
+import OrgCreateModal from "./OrgCreateModal.jsx";
 
 function coerce(payload) {
   if (!payload) return [];
@@ -12,6 +13,7 @@ function coerce(payload) {
 export default function AdminOrganizationsPage() {
   const [q, setQ] = useState({ name: "", email: "", phone: "", plan: "", status: "", periodFrom: "", periodTo: "" });
   const [state, setState] = useState({ loading: true, error: null, items: [] });
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -62,7 +64,7 @@ export default function AdminOrganizationsPage() {
 
       {/* Ações topo */}
       <div className="mb-4 flex gap-2">
-        <button className="btn btn-primary" onClick={()=>/* abrir modal adicionar org (manual ou via plano) */null}>
+        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
           Adicionar organização
         </button>
         {/* Quick KPIs */}
@@ -99,7 +101,7 @@ export default function AdminOrganizationsPage() {
                   <td className="px-3 py-2 text-right space-x-3">
                     <a href={`/admin/organizations/${r.id}`} className="text-blue-600">Ver</a>
                     <a href={`/admin/organizations/${r.id}/history`} className="text-blue-600">Histórico</a>
-                    <a href={`/admin/organizations/${r.id}/baileys`} className="text-blue-600">Config. Baileys</a>
+                    <a href={`/admin/organizations/${r.id}?tab=whatsapp`} className="text-blue-600">Config. Baileys</a>
                     <a href={`/admin/impersonate/${r.id}`} className="text-blue-600">Impersonar</a>
                     {/* Ativar/Suspender por botão/confirm */}
                   </td>
@@ -108,6 +110,12 @@ export default function AdminOrganizationsPage() {
             </tbody>
           </table>
         </div>
+      )}
+      {showCreate && (
+        <OrgCreateModal
+          onClose={() => setShowCreate(false)}
+          onCreated={() => setQ((s) => ({ ...s }))}
+        />
       )}
     </div>
   );

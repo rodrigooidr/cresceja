@@ -6,6 +6,12 @@ jest.mock("../src/auth/useAuth.js", () => ({
   useAuth: () => ({ user: { role: "Admin" } })
 }));
 
+let mockSelected = "org1";
+jest.mock("../src/contexts/OrgContext.jsx", () => ({
+  useOrg: () => ({ selected: mockSelected }),
+  OrgProvider: ({ children }) => <>{children}</>,
+}));
+
 let mockConnected = true;
 jest.mock("../src/hooks/useWhatsApp.js", () => ({
   __esModule: true,
