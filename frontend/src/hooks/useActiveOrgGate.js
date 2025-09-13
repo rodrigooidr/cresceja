@@ -19,6 +19,7 @@ export default function useActiveOrgGate(options = {}) {
     redirectNoPerm = "/403",
     redirectNoOrg = "/onboarding", // ou '/select-org'
     mode = "redirect", // 'redirect' | 'silent'
+    requireActiveOrg = true,
   } = options;
 
   const navigate = useNavigate();
@@ -29,7 +30,8 @@ export default function useActiveOrgGate(options = {}) {
     me?.role === ROLES.SuperAdmin || me?.role === ROLES.Support;
 
   const hasOrg = isPlatformPrivileged ? true : Boolean(selected || me?.org_id);
-  const allowed = !!me && hasRoleAtLeast(me.role, minRole) && hasOrg;
+  const hasRole = !!me && hasRoleAtLeast(me.role, minRole);
+  const allowed = hasRole;
 
   useEffect(() => {
     if (mode !== "redirect") return;
@@ -39,14 +41,14 @@ export default function useActiveOrgGate(options = {}) {
       navigate(redirectNoAuth, { replace: true });
       return;
     }
-    if (!hasRoleAtLeast(me.role, minRole)) {
+    if (!hasRole) {
       navigate(redirectNoPerm, { replace: true });
       return;
     }
-    if (!hasOrg) {
+    if (requireActiveOrg && !hasOrg) {
       navigate(redirectNoOrg, { replace: true });
     }
-  }, [mode, loading, me, minRole, navigate, redirectNoAuth, redirectNoPerm, redirectNoOrg, hasOrg]);
+  }, [mode, loading, me, hasRole, navigate, redirectNoAuth, redirectNoPerm, redirectNoOrg, hasOrg, requireActiveOrg]);
 
   return { me, allowed, hasOrg, isPlatformPrivileged };
 }

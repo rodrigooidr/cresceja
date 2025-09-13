@@ -17,7 +17,8 @@ const schema = z
     path: ["email"],
   });
 
-export default function OrgCreateModal({ onClose, onCreated }) {
+export default function OrgCreateModal({ open, onClose, onCreated }) {
+  if (!open) return null;
   const {
     register,
     handleSubmit,
@@ -32,7 +33,14 @@ export default function OrgCreateModal({ onClose, onCreated }) {
       onCreated?.();
       onClose?.();
     } catch (e) {
-      setError(e?.response?.data?.message || e.message || "Erro");
+      const status = e?.response?.status;
+      if (status === 409) {
+        setError("Organização já existe");
+      } else if (status === 422) {
+        setError("Dados inválidos");
+      } else {
+        setError(e?.response?.data?.message || e.message || "Erro");
+      }
     }
   };
 

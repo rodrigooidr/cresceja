@@ -2,9 +2,11 @@ import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import inboxApi from "../../api/inboxApi";
 import useActiveOrgGate from "../../hooks/useActiveOrgGate";
+import { useOrg } from "../../contexts/OrgContext.jsx";
 
 export default function OrgsListPage({ minRole = "SuperAdmin" }) {
   const { allowed, reason } = useActiveOrgGate({ minRole, requireActiveOrg: false });
+  const { setSelected } = useOrg();
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useState(params.get("q") || "");
   const [state, setState] = useState({ loading: true, items: [], error: null });
@@ -83,7 +85,13 @@ export default function OrgsListPage({ minRole = "SuperAdmin" }) {
                 <td className="p-3 text-center">{o.status || "-"}</td>
                 <td className="p-3 text-right space-x-3">
                   <Link className="text-blue-600 hover:underline" to={`/admin/orgs/${o.id}`}>Ver</Link>
-                  <Link className="text-blue-600 hover:underline" to={`/admin/orgs/${o.id}?impersonate=1`}>Impersonar</Link>
+                  <button
+                    type="button"
+                    className="text-blue-600 hover:underline"
+                    onClick={() => setSelected(o.id)}
+                  >
+                    Impersonar
+                  </button>
                 </td>
               </tr>
             ))}

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import inboxApi from "../../../api/inboxApi";
+import { useOrg } from "../../../contexts/OrgContext.jsx";
 import OrgCreateModal from "./OrgCreateModal.jsx";
 
 function coerce(payload) {
@@ -13,7 +15,9 @@ function coerce(payload) {
 export default function AdminOrganizationsPage() {
   const [q, setQ] = useState({ name: "", email: "", phone: "", plan: "", status: "", periodFrom: "", periodTo: "" });
   const [state, setState] = useState({ loading: true, error: null, items: [] });
-  const [showCreate, setShowCreate] = useState(false);
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const { setSelected } = useOrg();
 
   useEffect(() => {
     let alive = true;
@@ -64,7 +68,7 @@ export default function AdminOrganizationsPage() {
 
       {/* Ações topo */}
       <div className="mb-4 flex gap-2">
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
+        <button className="btn btn-primary" onClick={() => setOpen(true)}>
           Adicionar organização
         </button>
         {/* Quick KPIs */}
@@ -101,8 +105,20 @@ export default function AdminOrganizationsPage() {
                   <td className="px-3 py-2 text-right space-x-3">
                     <a href={`/admin/organizations/${r.id}`} className="text-blue-600">Ver</a>
                     <a href={`/admin/organizations/${r.id}/history`} className="text-blue-600">Histórico</a>
-                    <a href={`/admin/organizations/${r.id}?tab=whatsapp`} className="text-blue-600">Config. Baileys</a>
-                    <a href={`/admin/impersonate/${r.id}`} className="text-blue-600">Impersonar</a>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline"
+                      onClick={() => navigate(`/admin/organizations/${r.id}?tab=whatsapp`)}
+                    >
+                      Config. Baileys
+                    </button>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline"
+                      onClick={() => setSelected(r.id)}
+                    >
+                      Impersonar
+                    </button>
                     {/* Ativar/Suspender por botão/confirm */}
                   </td>
                 </tr>
@@ -111,12 +127,11 @@ export default function AdminOrganizationsPage() {
           </table>
         </div>
       )}
-      {showCreate && (
-        <OrgCreateModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => setQ((s) => ({ ...s }))}
-        />
-      )}
+      <OrgCreateModal
+        open={open}
+        onClose={() => setOpen(false)}
+        onCreated={() => setQ((s) => ({ ...s }))}
+      />
     </div>
   );
 }

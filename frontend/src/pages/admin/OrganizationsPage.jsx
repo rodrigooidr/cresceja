@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useOrg } from "../../contexts/OrgContext.jsx";
 import inboxApi from "../../api/inboxApi";
 
 function coerceItems(payload) {
@@ -43,6 +44,7 @@ export default function OrganizationsPage() {
     return () => { alive = false; };
   }, [q]);
 
+  const { setSelected } = useOrg();
   const rows = useMemo(() => state.items.map(o => ({
     id: o.id || o._id,
     name: o.name || o.nome || o.title || "—",
@@ -84,7 +86,13 @@ export default function OrganizationsPage() {
                   <td className="px-4 py-3">{r.status}</td>
                   <td className="px-4 py-3 text-right space-x-4">
                     <a className="text-blue-600 hover:underline" href={`/orgs/${r.id}`}>Ver</a>
-                    <a className="text-blue-600 hover:underline" href={`/admin/impersonate/${r.id}`}>Impersonar</a>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline"
+                      onClick={() => setSelected(r.id)}
+                    >
+                      Impersonar
+                    </button>
                   </td>
                 </tr>
               ))}
