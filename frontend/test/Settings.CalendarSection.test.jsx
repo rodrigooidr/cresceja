@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import SettingsPage from '../src/pages/SettingsPage.jsx';
 import inboxApi from '../src/api/inboxApi.js';
 
 describe('SettingsPage Google Calendar section', () => {
   beforeEach(() => {
     inboxApi.get.mockReset();
-    inboxApi.delete.mockReset();
+    inboxApi.post.mockReset();
   });
 
   test('renders section with add button enabled', async () => {
@@ -45,5 +45,20 @@ describe('SettingsPage Google Calendar section', () => {
     const addBtn = await screen.findByText('Adicionar outra conta');
     expect(addBtn).toBeDisabled();
     expect(screen.getByText(/Limite do plano atingido/)).toBeInTheDocument();
+  });
+
+  test('revoking removes account from list', async () => {
+    inboxApi.get.mockImplementation((url) => {
+      if (url.includes('/calendar/accounts')) return Promise.resolve({ data: [{ id: 'a1', google_user_id: 'g1', email: 'a@a.com', display_name: 'A', is_active: true }] });
+      if (url.includes('/features')) return Promise.resolve({ data: { google_calendar_accounts: { enabled: true, limit: 5, used: 1 } } });
+      return Promise.resolve({ data: {} });
+    });
+    inboxApi.post.mockResolvedValue({ data: { ok: true } });
+    render(<SettingsPage />);
+    await screen.findByText('Google Calendar');
+    const revokeBtn = await screen.findByRole('button', { name: 'Revogar' });
+    fireEvent.click(revokeBtn);
+    await waitFor(() => expect(inboxApi.post).toHaveBeenCalledWith('/orgs/org_test/calendar/accounts/a1/revoke', null, { meta: { scope: 'global' } }));
+    await waitFor(() => expect(screen.queryByText('A')).not.toBeInTheDocument());
   });
 });

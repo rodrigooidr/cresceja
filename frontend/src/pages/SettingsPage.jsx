@@ -52,12 +52,24 @@ function GoogleCalendarSection() {
     window.location.href = url;
   }
 
-  async function handleDelete(id) {
+  async function handleRefresh(id) {
     setSaving(true);
     try {
-      await inboxApi.delete(`/orgs/${selected}/calendar/accounts/${id}`, { meta: { scope: 'global' } });
+      const { data } = await inboxApi.post(`/orgs/${selected}/calendar/accounts/${id}/refresh`, null, { meta: { scope: 'global' } });
+      if (data?.expiry) toast({ title: 'Token atualizado', description: new Date(data.expiry).toLocaleString() });
+    } catch (err) {
+      mapApiErrorToForm(err, () => {});
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleRevoke(id) {
+    setSaving(true);
+    try {
+      await inboxApi.post(`/orgs/${selected}/calendar/accounts/${id}/revoke`, null, { meta: { scope: 'global' } });
       setItems(prev => prev.filter(x => x.id !== id));
-      setLimitInfo(prev => ({ ...prev, used: Math.max(0, (prev.used ?? 1) - 1) }));
+      toast({ title: 'Token revogado' });
     } catch (err) {
       mapApiErrorToForm(err, () => {});
     } finally {
@@ -94,8 +106,11 @@ function GoogleCalendarSection() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs opacity-70">{acc.is_active ? 'Ativo' : 'Inativo'}</span>
-                <button className="btn btn-outline" onClick={() => handleDelete(acc.id)} disabled={saving}>
-                  Remover
+                <button className="btn btn-outline" onClick={() => handleRefresh(acc.id)} disabled={saving}>
+                  Atualizar token
+                </button>
+                <button className="btn btn-outline" onClick={() => handleRevoke(acc.id)} disabled={saving}>
+                  Revogar
                 </button>
               </div>
             </div>
