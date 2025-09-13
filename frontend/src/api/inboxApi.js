@@ -150,6 +150,12 @@ inboxApi.interceptors.request.use((config) => {
     }
   } catch {}
 
+  // active channel header
+  try {
+    const ch = localStorage.getItem('active_channel_id');
+    if (ch) setHeader(config, 'X-Channel-Id', ch);
+  } catch {}
+
   // Reescritas
   if (config._skipRewrite) {
     log(`bypass rewrite for ${method} ${config.url}`);
