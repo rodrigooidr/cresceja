@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon --watch . --ext js,mjs server.js",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --detectOpenHandles --forceExit",
+    "test": "jest --runInBand --detectOpenHandles --forceExit",
     "worker:repurpose": "node ./queues/repurpose.worker.js",
     "db:bootstrap:ps": "powershell -ExecutionPolicy Bypass -File ./scripts/db_bootstrap.ps1",
     "db:bootstrap:sh": "bash ./scripts/db_bootstrap.sh",
@@ -42,10 +42,12 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "^11.5.1",
     "jest": "^29.7.0",
+    "nodemon": "^3.1.0",
     "pino-pretty": "^13.1.1",
     "supertest": "^6.3.4",
-    "nodemon": "^3.1.0"
+    "testcontainers": "^11.5.1"
   },
   "engines": {
     "node": ">=20.0.0"
