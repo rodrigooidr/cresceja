@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { requireFeature } from '../middleware/requireFeature.js';
-import { ensureFreshTokens, forceRefresh, revokeTokens } from '../services/calendar/googleTokens.js';
-import { google } from 'googleapis';
+import { refreshIfNeeded, forceRefresh, revokeTokens } from '../services/calendar/googleTokens.js';
 
 const router = Router();
 
@@ -96,19 +95,24 @@ router.get('/api/orgs/:id/calendar/accounts/:accountId/calendars', async (req, r
     if (!(await accountBelongs(req.db, id, accountId))) {
       return res.status(404).json({ error: 'not_found' });
     }
-    let auth = await ensureFreshTokens(req.db, accountId, id);
-    if (!auth) return res.status(404).json({ error: 'not_found' });
-    const cal = google.calendar({ version: 'v3', auth });
+    let tok = await refreshIfNeeded(req.db, accountId, id);
+    if (!tok) return res.status(404).json({ error: 'not_found' });
+    const headers = { Authorization: 'Bearer ' + tok.access_token };
     try {
-      const { data } = await cal.calendarList.list();
+      const r = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', { headers });
+      if (r.status === 401) throw { status: 401 };
+      const data = await r.json();
       return res.json(data);
     } catch (err) {
-      if (err?.code === 401 || err?.response?.status === 401) {
+      if (err.status === 401) {
         try {
           await forceRefresh(req.db, accountId, id);
-          auth = await ensureFreshTokens(req.db, accountId, id);
-          const cal2 = google.calendar({ version: 'v3', auth });
-          const { data } = await cal2.calendarList.list();
+          tok = await refreshIfNeeded(req.db, accountId, id);
+          const r2 = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
+            headers: { Authorization: 'Bearer ' + tok.access_token },
+          });
+          if (!r2.ok) throw new Error('fail');
+          const data = await r2.json();
           return res.json(data);
         } catch {
           await req.db.query(
@@ -132,31 +136,26 @@ router.get('/api/orgs/:id/calendar/accounts/:accountId/events', async (req, res,
     if (!(await accountBelongs(req.db, id, accountId))) {
       return res.status(404).json({ error: 'not_found' });
     }
-    let auth = await ensureFreshTokens(req.db, accountId, id);
-    if (!auth) return res.status(404).json({ error: 'not_found' });
-    const cal = google.calendar({ version: 'v3', auth });
+    let tok = await refreshIfNeeded(req.db, accountId, id);
+    if (!tok) return res.status(404).json({ error: 'not_found' });
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
+    if (from) url.searchParams.set('timeMin', from);
+    if (to) url.searchParams.set('timeMax', to);
+    url.searchParams.set('singleEvents', 'true');
+    url.searchParams.set('orderBy', 'startTime');
     try {
-      const { data } = await cal.events.list({
-        calendarId,
-        timeMin: from,
-        timeMax: to,
-        singleEvents: true,
-        orderBy: 'startTime'
-      });
+      const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tok.access_token } });
+      if (r.status === 401) throw { status: 401 };
+      const data = await r.json();
       return res.json(data);
     } catch (err) {
-      if (err?.code === 401 || err?.response?.status === 401) {
+      if (err.status === 401) {
         try {
           await forceRefresh(req.db, accountId, id);
-          auth = await ensureFreshTokens(req.db, accountId, id);
-          const cal2 = google.calendar({ version: 'v3', auth });
-          const { data } = await cal2.events.list({
-            calendarId,
-            timeMin: from,
-            timeMax: to,
-            singleEvents: true,
-            orderBy: 'startTime'
-          });
+          tok = await refreshIfNeeded(req.db, accountId, id);
+          const r2 = await fetch(url, { headers: { Authorization: 'Bearer ' + tok.access_token } });
+          if (!r2.ok) throw new Error('fail');
+          const data = await r2.json();
           return res.json(data);
         } catch {
           await req.db.query(

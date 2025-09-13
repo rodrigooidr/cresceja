@@ -6,19 +6,15 @@ const mockQuery = jest.fn();
 
 beforeAll(async () => {
   jest.resetModules();
-  await jest.unstable_mockModule('googleapis', () => ({
-    google: {
-      auth: {
-        OAuth2: class {
-          constructor() {}
-          generateAuthUrl(opts) { return `https://accounts.google.com/o/oauth2/v2/auth?state=${opts.state}`; }
-          getToken() { return Promise.resolve({ tokens: { access_token: 'a', refresh_token: 'r', expiry_date: Date.now() + 1000, scope: 's1 s2' } }); }
-          setCredentials() {}
-        }
-      },
-      oauth2: () => ({ userinfo: { get: () => Promise.resolve({ data: { id: 'gid', email: 'e@x.com', name: 'G User' } }) } }),
-    },
-  }));
+  global.fetch = jest.fn((url) => {
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ access_token: 'a', refresh_token: 'r', expires_in: 3600, scope: 's1 s2' }) });
+    }
+    if (String(url).includes('googleapis.com/oauth2/v2/userinfo')) {
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ id: 'gid', email: 'e@x.com', name: 'G User' }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) });
+  });
   jest.unstable_mockModule('#db', () => ({ query: (sql, params) => mockQuery(sql, params) }));
   process.env.JWT_SECRET = 'dev-secret-change-me';
   process.env.GOOGLE_CLIENT_ID = 'id';
@@ -32,6 +28,7 @@ let router;
 
 beforeEach(() => {
   mockQuery.mockReset();
+  global.fetch.mockClear();
 });
 
 function appWithRouter() {

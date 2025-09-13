@@ -46,6 +46,22 @@ export async function getUsage(orgId, featureCode, db) {
     );
     return rows[0]?.used ?? 0;
   }
+  if (featureCode === 'instagram_accounts') {
+    const { rows } = await q(db)(
+      'SELECT COUNT(*)::int AS used FROM instagram_accounts WHERE org_id=$1 AND is_active=true',
+      [orgId]
+    );
+    return rows[0]?.used ?? 0;
+  }
+  if (featureCode === 'instagram_publish_daily_quota') {
+    const { rows } = await q(db)(
+      `SELECT COUNT(*)::int AS used
+         FROM instagram_publish_jobs
+        WHERE org_id=$1 AND status='done' AND created_at >= now() - interval '1 day'`,
+      [orgId]
+    );
+    return rows[0]?.used ?? 0;
+  }
   // default: sem contagem
   return 0;
 }

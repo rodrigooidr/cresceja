@@ -19,6 +19,7 @@ import { pool, healthcheck } from '#db';
 import authRouter from './routes/auth.js';
 import authGoogleRouter from './routes/auth.google.js';
 import authFacebookRouter from './routes/auth.facebook.js';
+import authInstagramRouter from './routes/auth.instagram.js';
 import publicRouter from './routes/public.js';
 import metaWebhookRouter from './routes/webhooks/meta.js';
 import igRouter from './routes/webhooks/instagram.js';
@@ -50,6 +51,8 @@ import orgFeaturesRouter from './routes/orgs.features.js';
 import orgWhatsappRouter from './routes/orgs.whatsapp.js';
 import orgsCalendarRouter from './routes/orgs.calendar.js';
 import orgsFacebookRouter from './routes/orgs.facebook.js';
+import orgsInstagramRouter from './routes/orgs.instagram.js';
+import orgsInstagramPublishRouter from './routes/orgs.instagram.publish.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
@@ -194,6 +197,7 @@ async function init() {
   app.use('/api/auth', authRouter); // login é público
   app.use(authGoogleRouter);
   app.use(authFacebookRouter);
+  app.use(authInstagramRouter);
 
   // ---------- Middlewares globais para /api/* protegidas ----------
   app.use('/api', applyCommonHeadersForApi);
@@ -231,6 +235,8 @@ async function init() {
   app.use('/', orgWhatsappRouter);
   app.use('/', orgsCalendarRouter);
   app.use('/', orgsFacebookRouter);
+  app.use('/', orgsInstagramRouter);
+  app.use('/', orgsInstagramPublishRouter);
 
   // Integrações (rotas base + sub-rotas específicas)
   app.use('/api/integrations', integrationsRouter);                          // ex.: /api/integrations/status
