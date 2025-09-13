@@ -38,6 +38,7 @@ import whatsappRouter from './routes/whatsapp.js';
 import whatsappTemplatesRouter from './routes/whatsapp_templates.js';
 import agendaRouter from './routes/agenda_whatsapp.js';
 import integrationsRouter from './routes/integrations.js';
+import clientsRouter from './routes/clients.js';
 import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
 import metaOauthIntegrationRouter from './routes/integrations/meta.oauth.js';
@@ -213,6 +214,7 @@ async function init() {
   app.use('/api/whatsapp', whatsappRouter);
   app.use('/api/whatsapp-templates', whatsappTemplatesRouter);
   app.use('/api/agenda', agendaRouter);
+  app.use('/api', clientsRouter);
 
   // Integrações (rotas base + sub-rotas específicas)
   app.use('/api/integrations', integrationsRouter);                          // ex.: /api/integrations/status
