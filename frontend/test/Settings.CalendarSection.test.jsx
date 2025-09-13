@@ -1,13 +1,11 @@
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import SettingsPage from '../src/pages/SettingsPage.jsx';
 import inboxApi from '../src/api/inboxApi.js';
 
 describe('SettingsPage Google Calendar section', () => {
   beforeEach(() => {
     inboxApi.get.mockReset();
-    inboxApi.post.mockReset();
     inboxApi.delete.mockReset();
-    global.crypto = { randomUUID: () => 'uuid-1' };
   });
 
   test('renders section with add button enabled', async () => {

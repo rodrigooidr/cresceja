@@ -1,56 +1,55 @@
 import FeatureGate from '../ui/feature/FeatureGate';
 import inboxApi from '../api/inboxApi.js';
 import { useOrg } from '../contexts/OrgContext.jsx';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { mapApiErrorToForm } from '../ui/errors/mapApiError.js';
+import useToastFallback from '../hooks/useToastFallback.js';
 
 function GoogleCalendarSection() {
   const { selected } = useOrg();
+  const toast = useToastFallback();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [limitInfo, setLimitInfo] = useState({ used: 0, limit: null });
 
-  useEffect(() => {
-    let isMounted = true;
-    async function load() {
-      setLoading(true);
-      try {
-        const [list, features] = await Promise.all([
-          inboxApi.get(`/orgs/${selected}/calendar/accounts`, { meta: { scope: 'global' } }),
-          inboxApi.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } }),
-        ]);
-        if (!isMounted) return;
-        setItems(list.data || []);
-        const f = features.data?.google_calendar_accounts || {};
-        setLimitInfo({ used: f.used ?? 0, limit: f.limit ?? null });
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [list, features] = await Promise.all([
+        inboxApi.get(`/orgs/${selected}/calendar/accounts`, { meta: { scope: 'global' } }),
+        inboxApi.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } }),
+      ]);
+      setItems(list.data || []);
+      const f = features.data?.google_calendar_accounts || {};
+      setLimitInfo({ used: f.used ?? 0, limit: f.limit ?? null });
+    } finally {
+      setLoading(false);
     }
-    if (selected) load();
-    return () => { isMounted = false; };
   }, [selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    load();
+  }, [selected, load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === '1') {
+      toast({ title: 'Conta conectada' });
+      params.delete('connected');
+      const newUrl = window.location.pathname + (params.toString() ? `?${params}` : '');
+      window.history.replaceState({}, '', newUrl);
+      load();
+    }
+  }, [toast, load]);
 
   const canAdd = limitInfo.limit == null || limitInfo.used < limitInfo.limit;
 
-  async function handleAddMock() {
+  function handleConnect() {
     setSaving(true);
-    try {
-      const body = {
-        google_user_id: crypto.randomUUID(),
-        email: `user${Date.now()}@example.com`,
-        display_name: 'Conta Google (mock)',
-      };
-      await inboxApi.post(`/orgs/${selected}/calendar/accounts`, body, { meta: { scope: 'global' } });
-      const list = await inboxApi.get(`/orgs/${selected}/calendar/accounts`, { meta: { scope: 'global' } });
-      setItems(list.data || []);
-      setLimitInfo(prev => ({ ...prev, used: (prev.used ?? 0) + 1 }));
-    } catch (err) {
-      mapApiErrorToForm(err, () => {});
-    } finally {
-      setSaving(false);
-    }
+    const url = `/api/auth/google/start?orgId=${selected}&returnTo=/settings`;
+    window.location.href = url;
   }
 
   async function handleDelete(id) {
@@ -79,8 +78,8 @@ function GoogleCalendarSection() {
         <div className="mt-3 rounded border p-3 text-sm">
           Nenhuma conta conectada.
           <div className="mt-2">
-            <button className="btn btn-primary" onClick={handleAddMock} disabled={!canAdd || saving}>
-              Conectar conta
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+              {saving ? 'Redirecionando…' : 'Conectar conta'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600">Limite do plano atingido</span>}
           </div>
@@ -102,8 +101,8 @@ function GoogleCalendarSection() {
             </div>
           ))}
           <div className="pt-2">
-            <button className="btn btn-primary" onClick={handleAddMock} disabled={!canAdd || saving}>
-              Adicionar outra conta
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+              {saving ? 'Redirecionando…' : 'Adicionar outra conta'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600 text-sm">Limite do plano atingido</span>}
           </div>

@@ -17,6 +17,7 @@ import { pool, healthcheck } from '#db';
 
 // Routers públicos e protegidos
 import authRouter from './routes/auth.js';
+import authGoogleRouter from './routes/auth.google.js';
 import publicRouter from './routes/public.js';
 import metaWebhookRouter from './routes/webhooks/meta.js';
 import igRouter from './routes/webhooks/instagram.js';
@@ -189,6 +190,7 @@ async function init() {
   // ---------- Rotas públicas ----------
   app.use('/api/public', publicRouter);
   app.use('/api/auth', authRouter); // login é público
+  app.use(authGoogleRouter);
 
   // ---------- Middlewares globais para /api/* protegidas ----------
   app.use('/api', applyCommonHeadersForApi);
