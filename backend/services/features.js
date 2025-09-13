@@ -39,6 +39,13 @@ export async function getUsage(orgId, featureCode, db) {
     );
     return rows[0]?.used ?? 0;
   }
+  if (featureCode === 'facebook_pages') {
+    const { rows } = await q(db)(
+      'SELECT COUNT(*)::int AS used FROM facebook_pages WHERE org_id=$1',
+      [orgId]
+    );
+    return rows[0]?.used ?? 0;
+  }
   // default: sem contagem
   return 0;
 }

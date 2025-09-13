@@ -127,11 +127,121 @@ function GoogleCalendarSection() {
   );
 }
 
+function FacebookSection() {
+  const { selected } = useOrg();
+  const toast = useToastFallback();
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [limitInfo, setLimitInfo] = useState({ used: 0, limit: null });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [list, features] = await Promise.all([
+        inboxApi.get(`/orgs/${selected}/facebook/pages`, { meta: { scope: 'global' } }),
+        inboxApi.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } }),
+      ]);
+      setItems(list.data || []);
+      const f = features.data?.facebook_pages || {};
+      setLimitInfo({ used: f.used ?? 0, limit: f.limit ?? null });
+    } finally {
+      setLoading(false);
+    }
+  }, [selected]);
+
+  useEffect(() => {
+    if (!selected) return;
+    load();
+  }, [selected, load]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('fb_connected') === '1') {
+      toast({ title: 'Página conectada' });
+      params.delete('fb_connected');
+      const newUrl = window.location.pathname + (params.toString() ? `?${params}` : '');
+      window.history.replaceState({}, '', newUrl);
+      load();
+    }
+  }, [toast, load]);
+
+  const canAdd = limitInfo.limit == null || limitInfo.used < limitInfo.limit;
+
+  function handleConnect() {
+    setSaving(true);
+    const url = `/api/auth/facebook/start?orgId=${selected}&returnTo=/settings`;
+    window.location.href = url;
+  }
+
+  async function handleRemove(id) {
+    setSaving(true);
+    try {
+      await inboxApi.delete(`/orgs/${selected}/facebook/pages/${id}`, { meta: { scope: 'global' } });
+      setItems((prev) => prev.filter((x) => x.id !== id));
+      toast({ title: 'Página removida' });
+    } catch (err) {
+      mapApiErrorToForm(err, () => {});
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Facebook</h3>
+        <div className="text-sm opacity-75">Usados: {limitInfo.used} / {limitInfo.limit ?? '∞'}</div>
+      </div>
+
+      {loading ? (
+        <div className="mt-3 text-sm opacity-70">Carregando...</div>
+      ) : items.length === 0 ? (
+        <div className="mt-3 rounded border p-3 text-sm">
+          Nenhuma página conectada.
+          <div className="mt-2">
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+              {saving ? 'Redirecionando…' : 'Conectar página'}
+            </button>
+            {!canAdd && <span className="ml-2 text-red-600">Limite do plano atingido</span>}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {items.map((p) => (
+            <div key={p.id} className="flex items-center justify-between rounded border p-3">
+              <div>
+                <div className="font-medium">{p.name || p.page_id}</div>
+                <div className="text-xs opacity-70">{p.category}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs opacity-70">{p.is_active ? 'Ativa' : 'Inativa'}</span>
+                <button className="btn btn-outline" onClick={() => handleRemove(p.id)} disabled={saving}>
+                  Remover
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="pt-2">
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+              {saving ? 'Redirecionando…' : 'Adicionar outra página'}
+            </button>
+            {!canAdd && <span className="ml-2 text-red-600 text-sm">Limite do plano atingido</span>}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="p-4 space-y-8">
       <FeatureGate code="google_calendar_accounts" fallback={null}>
         <GoogleCalendarSection />
+      </FeatureGate>
+      <FeatureGate code="facebook_pages" fallback={null}>
+        <FacebookSection />
       </FeatureGate>
     </div>
   );

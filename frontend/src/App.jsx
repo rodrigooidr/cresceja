@@ -18,6 +18,7 @@ import IntegrationsPage from "./pages/IntegrationsPage.jsx";
 import ReportsPage from "./pages/ReportsPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import CalendarPage from "./pages/CalendarPage.jsx";
+import FacebookPage from "./pages/FacebookPage.jsx";
 import MarketingPage from "./pages/MarketingPage.jsx";
 import AdminOrganizationsPage from "./pages/admin/organizations/AdminOrganizationsPage.jsx";
 import OrgDetailsPage from "./pages/admin/OrgDetailsPage.jsx"; // ← detalhe da org
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/crm" element={<CrmPage />} />
               <Route path="/integrations" element={<IntegrationsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/facebook" element={<FacebookPage />} />
             </Route>
 
             {/* rotas que não dependem da org ativa */}
