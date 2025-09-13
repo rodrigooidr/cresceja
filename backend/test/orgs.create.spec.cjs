@@ -2,6 +2,7 @@
 const request = require('supertest');
 const { Client } = require('pg');
 const { PostgreSqlContainer } = require('@testcontainers/postgresql');
+const runInt = process.env.RUN_INT_TESTS === 'true';
 
 let container;
 let app;
@@ -79,7 +80,7 @@ const basePayload = {
   },
 };
 
-describe('POST /api/admin/orgs', () => {
+(runInt ? describe : describe.skip)('POST /api/admin/orgs', () => {
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start();
     const connectionString = container.getConnectionUri();

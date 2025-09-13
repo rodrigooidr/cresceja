@@ -22,30 +22,23 @@ export default function ClientsPage() {
   const [q, setQ] = useState({ name: "", phone: "", email: "", tag: "", stage: "" });
   const [state, setState] = useState({ loading: true, error: null, items: [] });
 
+  async function load() {
+    if (!selected) {
+      setState({ loading: false, error: "Selecione uma organização para listar/criar clientes.", items: [] });
+      return;
+    }
+    try {
+      setState(s => ({ ...s, loading: true, error: null }));
+      const res = await inboxApi.get("/clients", { params: { ...q, limit: 50, page: 1 } });
+      const items = coerce(res?.data);
+      setState({ loading: false, error: null, items });
+    } catch (err) {
+      setState({ loading: false, error: err?.message || "Falha ao carregar", items: [] });
+    }
+  }
+
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!selected) {
-        if (!alive) return;
-        setState({ loading: false, error: "Selecione uma organização para listar/criar clientes.", items: [] });
-        return;
-      }
-      try {
-        setState((s) => ({ ...s, loading: true, error: null }));
-        const res = await inboxApi.get("/clients", {
-          params: { ...q, limit: 50, page: 1 },
-        });
-        const items = coerce(res?.data);
-        if (!alive) return;
-        setState({ loading: false, error: null, items });
-      } catch (err) {
-        if (!alive) return;
-        setState({ loading: false, error: err?.message || "Falha ao carregar", items: [] });
-      }
-    })();
-    return () => {
-      alive = false;
-    };
+    load();
   }, [q, selected]);
 
   async function addClient() {
@@ -57,7 +50,7 @@ export default function ClientsPage() {
     const tags = tagsStr ? tagsStr.split(",").map(t => t.trim()).filter(Boolean) : undefined;
     try {
       await inboxApi.post("clients", { name, email, phone_e164: phone, tags });
-      setQ((s) => ({ ...s }));
+      await load();
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn("add_client_fail", e);

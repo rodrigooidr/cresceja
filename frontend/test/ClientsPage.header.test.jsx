@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+jest.mock('../src/api/inboxApi.js', () => jest.requireActual('../src/api/inboxApi.js'));
 import ClientsPage from '../src/pages/clients/ClientsPage.jsx';
 import inboxApi from '../src/api/inboxApi.js';
 
@@ -20,7 +21,8 @@ test('with selected sends X-Org-Id header', async () => {
   let captured;
   const original = inboxApi.defaults.adapter;
   inboxApi.defaults.adapter = (config) => {
-    captured = config.headers['X-Org-Id'];
+    const h = config.headers || {};
+    captured = h['X-Org-Id'] || h['x-org-id'] || (typeof h.get === 'function' ? h.get('X-Org-Id') : undefined);
     return Promise.resolve({ data: [] });
   };
   render(<ClientsPage />);

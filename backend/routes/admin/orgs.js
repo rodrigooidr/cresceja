@@ -156,6 +156,63 @@ r.get('/orgs/:id', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// GET /api/admin/orgs/:id/overview
+r.get('/orgs/:id/overview', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const org = await db.oneOrNone(
+      'SELECT id, name, razao_social, cnpj, status, created_at FROM organizations WHERE id = $1',
+      [id]
+    );
+    if (!org) return res.status(404).json({ error: 'not_found' });
+    res.json({ overview: org });
+  } catch (e) { next(e); }
+});
+
+// GET /api/admin/orgs/:id/billing
+r.get('/orgs/:id/billing', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const payments = await db.any(
+      'SELECT id, status, amount_cents, paid_at FROM payments WHERE org_id = $1 ORDER BY created_at DESC LIMIT 20',
+      [id]
+    );
+    res.json({ payments });
+  } catch (e) { next(e); }
+});
+
+// GET /api/admin/orgs/:id/users
+r.get('/orgs/:id/users', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const users = await db.any(
+      `SELECT u.id, u.email, ou.role
+         FROM org_users ou JOIN users u ON u.id = ou.user_id
+        WHERE ou.org_id = $1
+        ORDER BY u.email ASC
+        LIMIT 50`,
+      [id]
+    );
+    res.json({ users });
+  } catch (e) { next(e); }
+});
+
+// GET /api/admin/orgs/:id/logs
+r.get('/orgs/:id/logs', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const logs = await db.any(
+      `SELECT id, path, method, created_at
+         FROM support_audit_logs
+        WHERE target_org_id = $1
+        ORDER BY created_at DESC
+        LIMIT 50`,
+      [id]
+    );
+    res.json({ logs });
+  } catch (e) { next(e); }
+});
+
 // ----- Settings -----
 // GET /api/admin/orgs/:id/settings
 r.get('/orgs/:id/settings', async (req, res, next) => {
@@ -346,6 +403,21 @@ r.get('/orgs/:id/whatsapp/status', async (req, res, next) => {
         last_check: apiCh?.updated_at || now,
       }
     });
+  } catch (e) { next(e); }
+});
+
+// PUT /api/admin/orgs/:id/whatsapp/allow_baileys
+r.put('/orgs/:id/whatsapp/allow_baileys', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { allow } = req.body ?? {};
+    await db.query(
+      `INSERT INTO org_settings (org_id, allow_baileys)
+         VALUES ($1,$2)
+         ON CONFLICT (org_id) DO UPDATE SET allow_baileys=EXCLUDED.allow_baileys`,
+      [id, !!allow]
+    );
+    res.json({ ok: true });
   } catch (e) { next(e); }
 });
 
