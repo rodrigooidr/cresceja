@@ -33,6 +33,8 @@ function readTokenOrgId() {
 
 export function OrgProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
+  // Iniciar SEM org selecionada (padrão em branco)
+  const START_BLANK = true;
 
   // Lista / paginação
   const [orgs, setOrgs] = useState([]);
@@ -44,6 +46,7 @@ export function OrgProvider({ children }) {
 
   // Seleção atual (1 org)
   const [selected, setSelected] = useState(() => {
+    if (START_BLANK) return null;
     try {
       return localStorage.getItem("active_org_id") || readTokenOrgId() || null;
     } catch {
@@ -81,7 +84,7 @@ export function OrgProvider({ children }) {
         const endpoint = visibility === "all" ? "admin/orgs" : "orgs/accessible"; // sem barra inicial
         const params = {
           q: qArg || undefined,
-          search: qArg || undefined,
+          search: qArg || undefined,     // manda ambos para compatibilidade
           limit: pageSize,
           page: p,
         };
@@ -184,19 +187,17 @@ export function OrgProvider({ children }) {
       setActiveOrg(null); // remove header e localStorage
       return;
     }
+    // Se não for para iniciar em branco e o token já traz org, seleciona
     const tokOrg = readTokenOrgId();
-    if (tokOrg) {
+    if (!START_BLANK && tokOrg) {
       setSelected(tokOrg);
       setActiveOrg(tokOrg);
-    } else {
-      setSelected((prev) => prev || null);
     }
   }, [isAuthenticated, user?.id]);
 
   // Ajusta seleção após listar orgs (somente autenticado)
   useEffect(() => {
     if (!isAuthenticated || loading) return;
-
     // 1) Dono/Admin com 1 empresa → fixa
     if (["OrgOwner", "OrgAdmin"].includes(user?.role) && orgs.length === 1) {
       const only = orgs[0]?.id || null;
@@ -206,16 +207,18 @@ export function OrgProvider({ children }) {
         return;
       }
     }
-
-    // 2) Seleção inválida → escolher válida
+    // 2) Seleção inválida → se token tiver org válida, aplica; caso contrário, mantém EM BRANCO
     const exists = selected && orgs.some((o) => o.id === selected);
     if (!exists) {
       const fromToken = readTokenOrgId();
       const tokenIsValid = fromToken && orgs.some((o) => o.id === fromToken);
-      const next = tokenIsValid ? fromToken : orgs[0]?.id || null;
-      if (next) {
-        setSelected(next);
-        setActiveOrg(next);
+      if (tokenIsValid) {
+        setSelected(fromToken);
+        setActiveOrg(fromToken);
+      } else if (!START_BLANK && orgs[0]?.id) {
+        // fallback antigo (desativado por START_BLANK): pegar a primeira
+        setSelected(orgs[0].id);
+        setActiveOrg(orgs[0].id);
       }
     }
   }, [isAuthenticated, loading, orgs, selected, user?.role]);
