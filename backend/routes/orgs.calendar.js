@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { requireFeature } from '../middleware/requireFeature.js';
+import { ensureFreshTokens, forceRefresh, revokeTokens } from '../services/calendar/googleTokens.js';
+import { google } from 'googleapis';
 
 const router = Router();
 
@@ -50,6 +52,58 @@ router.delete('/api/orgs/:id/calendar/accounts/:accountId', async (req, res, nex
     const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
     await req.db.query(`DELETE FROM google_calendar_accounts WHERE org_id=$1 AND id=$2`, [id, accountId]);
     res.status(204).end();
+  } catch (e) { next(e); }
+});
+
+// Força refresh do token
+router.post('/api/orgs/:id/calendar/accounts/:accountId/refresh', async (req, res, next) => {
+  try {
+    const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
+    const creds = await forceRefresh(req.db, accountId, id);
+    if (!creds) return res.status(404).json({ error: 'not_found' });
+    res.json({ expiry: creds.expiry_date ? new Date(creds.expiry_date).toISOString() : null });
+  } catch (e) { next(e); }
+});
+
+// Revoga tokens e desativa conta
+router.post('/api/orgs/:id/calendar/accounts/:accountId/revoke', async (req, res, next) => {
+  try {
+    const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
+    const ok = await revokeTokens(req.db, accountId, id);
+    if (!ok) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// Lista calendários da conta
+router.get('/api/orgs/:id/calendar/accounts/:accountId/calendars', async (req, res, next) => {
+  try {
+    const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
+    const auth = await ensureFreshTokens(req.db, accountId, id);
+    if (!auth) return res.status(404).json({ error: 'not_found' });
+    const cal = google.calendar({ version: 'v3', auth });
+    const { data } = await cal.calendarList.list();
+    res.json(data);
+  } catch (e) { next(e); }
+});
+
+// Lista eventos de um calendário
+router.get('/api/orgs/:id/calendar/accounts/:accountId/events', async (req, res, next) => {
+  try {
+    const { id, accountId } = { id: req.params.id, accountId: req.params.accountId };
+    const { calendarId, from, to } = req.query || {};
+    if (!calendarId) return res.status(422).json({ error: 'validation', field: 'calendarId' });
+    const auth = await ensureFreshTokens(req.db, accountId, id);
+    if (!auth) return res.status(404).json({ error: 'not_found' });
+    const cal = google.calendar({ version: 'v3', auth });
+    const { data } = await cal.events.list({
+      calendarId,
+      timeMin: from,
+      timeMax: to,
+      singleEvents: true,
+      orderBy: 'startTime'
+    });
+    res.json(data);
   } catch (e) { next(e); }
 });
 
