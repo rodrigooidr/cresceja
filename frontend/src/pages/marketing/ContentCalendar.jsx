@@ -1,12 +1,11 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { useApi } from '../../contexts/useApi.js';
+import api from '../../api/index.js';
 import useActiveOrg from '../../hooks/useActiveOrg.js';
 import useToastFallback from '../../hooks/useToastFallback.js';
 import { DateTime } from 'luxon';
 import { Calendar, luxonLocalizer } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import FeatureGate from '../../ui/feature/FeatureGate.jsx';
 import SuggestionJobsModal from './components/SuggestionJobsModal.jsx';
 import { mapApiErrorToForm } from '../../ui/errors/mapApiError.js';
 import { useAuth } from '../../auth/useAuth.js';
@@ -16,29 +15,13 @@ const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
 const TZ = 'America/Sao_Paulo';
 
-export function createDropHandler(api, orgId, toast, refetch) {
-  return async ({ event, start }) => {
-    const dt = DateTime.fromJSDate(start).setZone(TZ);
-    const newDate = dt.toISODate();
-    const newTime = dt.toFormat('HH:mm:ssZZ');
-    try {
-      await api.patch(`/orgs/${orgId}/suggestions/${event.id}`, { date: newDate, time: newTime });
-      toast({ title: 'Sugestão reagendada' });
-      await refetch();
-    } catch (e) {
-      const code = e?.response?.data?.error;
-      if (code === 'job_locked') {
-        toast({ title: 'Não é possível mover: já existe job não-pendente. Duplique a sugestão.', status: 'error' });
-      } else {
-        const msg = mapApiErrorToForm(e, () => {}).toast || 'Falha ao mover';
-        toast({ title: msg, status: 'error' });
-      }
-    }
-  };
+export function toPatchDateTimeJS(startDate) {
+  const { DateTime } = require('luxon');
+  const dt = DateTime.fromJSDate(startDate).setZone(TZ);
+  return { date: dt.toISODate(), time: dt.toFormat('HH:mm:ssZZ') };
 }
 
 export default function ContentCalendar() {
-  const api = useApi();
   const { activeOrg } = useActiveOrg();
   const toast = useToastFallback();
   const { user } = useAuth();
@@ -53,15 +36,17 @@ export default function ContentCalendar() {
     if (!activeOrg) return;
     const monthRef = new Date().toISOString().slice(0, 7) + '-01';
     const r = await api.get(`/orgs/${activeOrg}/campaigns`, { params: { month: monthRef } });
-    setCampaigns(r.data?.data || []);
-    if (!campaignId && r.data?.data?.[0]?.id) setCampaignId(r.data.data[0].id);
-  }, [api, activeOrg, campaignId]);
+    setCampaigns(r.data?.items || r.data?.data || []);
+    if (!campaignId && (r.data?.items?.[0]?.id || r.data?.data?.[0]?.id)) {
+      setCampaignId((r.data.items || r.data.data)[0].id);
+    }
+  }, [activeOrg, campaignId]);
 
   const fetchSuggestions = useCallback(async () => {
     if (!activeOrg || !campaignId) return;
     const r = await api.get(`/orgs/${activeOrg}/campaigns/${campaignId}/suggestions`, { params: { page: 1, pageSize: 500 } });
-    setSuggestions(r.data?.data || []);
-  }, [api, activeOrg, campaignId]);
+    setSuggestions(r.data?.items || r.data?.data || []);
+  }, [activeOrg, campaignId]);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
   useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
@@ -85,7 +70,23 @@ export default function ContentCalendar() {
     return { style: { backgroundColor: bg, color: '#111827', borderRadius: '8px', border: '1px solid #d1d5db' } };
   }, []);
 
-  const handleEventDrop = useMemo(() => createDropHandler(api, activeOrg, toast, fetchSuggestions), [api, activeOrg, toast, fetchSuggestions]);
+  const handleEventDrop = useCallback(async ({ event, start }) => {
+    if (!activeOrg) return;
+    const { date, time } = toPatchDateTimeJS(start);
+    try {
+      await api.patch(`/orgs/${activeOrg}/suggestions/${event.id}`, { date, time });
+      toast({ title: 'Sugestão reagendada' });
+      await fetchSuggestions();
+    } catch (e) {
+      const code = e?.response?.data?.error;
+      if (code === 'job_locked') {
+        toast({ title: 'Não é possível mover: já existe job não-pendente. Duplique a sugestão.', status: 'error' });
+      } else {
+        const msg = mapApiErrorToForm(e, () => {}).toast || 'Falha ao mover';
+        toast({ title: msg, status: 'error' });
+      }
+    }
+  }, [activeOrg, toast, fetchSuggestions]);
 
   async function approve(id) {
     if (!activeOrg) return;
@@ -133,12 +134,12 @@ export default function ContentCalendar() {
         </div>
         {canManage ? (
           <div className="flex gap-1">
-            <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); approve(s.id); }}>Aprovar</button>
-            <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); reject(s.id); }}>Rejeitar</button>
-            <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); setJobsModal({ open: true, suggestionId: s.id }); }}>Jobs</button>
+            <button data-testid="btn-approve" className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); approve(s.id); }}>Aprovar</button>
+            <button data-testid="btn-reject" className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); reject(s.id); }}>Rejeitar</button>
+            <button data-testid="btn-jobs" className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); setJobsModal({ open: true, suggestionId: s.id }); }}>Jobs</button>
           </div>
         ) : (
-          <span className="text-[10px]" title="Você não tem permissão para gerenciar campanhas.">-</span>
+          <span className="text-[10px" title="Você não tem permissão para gerenciar campanhas.">-</span>
         )}
       </div>
     );
@@ -151,60 +152,46 @@ export default function ContentCalendar() {
     if (channel === 'fb') body.fb = { enabled: true };
     await api.patch(`/orgs/${activeOrg}/campaigns/${campaignId}/suggestions/apply-targets`, body);
     toast({ title: `Aplicado: Todos ${channel === 'ig' ? 'Instagram' : 'Facebook'}` });
-    fetchSuggestions();
+    await fetchSuggestions();
   };
 
   return (
     <div className="p-4">
-      <div className="mb-2 flex gap-2 items-center">
-        <select className="border p-1" value={campaignId} onChange={e => setCampaignId(e.target.value)}>
-          <option value="">Selecione a campanha</option>
-          {campaigns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
-        </select>
-
-        <FeatureGate code="ai_calendar_generator">
-          {canManage && (
-            <button onClick={()=>setShowGenerate(true)} className="border px-2 py-1">Gerar Campanha (IA)</button>
-          )}
-        </FeatureGate>
-        {!canManage && (
+      <div className="flex items-center gap-2 mb-2">
+        {canManage ? (
+          <button data-testid="btn-generate-campaign" onClick={()=>setShowGenerate(true)} className="border px-2 py-1">Gerar Campanha (IA)</button>
+        ) : (
           <span className="text-xs" title="Você não tem permissão para gerenciar campanhas.">Gerar Campanha (IA)</span>
         )}
-
-        {campaignId && canManage && (
+        {canManage && (
           <>
-            <button onClick={() => applyAll('ig')} className="border px-2 py-1">Todos Instagram</button>
-            <button onClick={() => applyAll('fb')} className="border px-2 py-1">Todos Facebook</button>
+            <button data-testid="btn-apply-ig" onClick={() => applyAll('ig')} className="border px-2 py-1">Todos Instagram</button>
+            <button data-testid="btn-apply-fb" onClick={() => applyAll('fb')} className="border px-2 py-1">Todos Facebook</button>
           </>
         )}
       </div>
-
       <DnDCalendar
         localizer={localizer}
         events={events}
-        defaultView="month"
-        popup
-        onEventDrop={canManage ? handleEventDrop : undefined}
-        draggableAccessor={canManage ? draggableAccessor : () => false}
         startAccessor="start"
         endAccessor="end"
-        eventPropGetter={eventPropGetter}
+        style={{ height: 500 }}
+        onEventDrop={canManage ? handleEventDrop : undefined}
+        draggableAccessor={draggableAccessor}
         components={{ event: EventCard }}
-        style={{ height: 'calc(100vh - 220px)' }}
-        messages={{ next: 'Próximo', previous: 'Anterior', today: 'Hoje', month: 'Mês', week: 'Semana', day: 'Dia', agenda: 'Agenda' }}
+        eventPropGetter={eventPropGetter}
       />
-
       {jobsModal.open && (
         <SuggestionJobsModal
           orgId={activeOrg}
           suggestionId={jobsModal.suggestionId}
-          onClose={() => setJobsModal({ open: false, suggestionId: null })}
+          onClose={() => setJobsModal({ open:false, suggestionId:null })}
           onChanged={fetchSuggestions}
         />
       )}
-
       {showGenerate && (
         <CampaignGenerateModal
+          orgId={activeOrg}
           onClose={() => setShowGenerate(false)}
           onGenerated={fetchSuggestions}
         />

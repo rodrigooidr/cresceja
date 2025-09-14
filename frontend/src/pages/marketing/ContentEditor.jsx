@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useApi } from '../../contexts/useApi.js';
+import api from '../../api/index.js';
 import useActiveOrg from '../../hooks/useActiveOrg.js';
 import useToastFallback from '../../hooks/useToastFallback.js';
 import { useParams } from 'react-router-dom';
@@ -7,7 +7,6 @@ import FeatureGate from '../../ui/feature/FeatureGate.jsx';
 
 function ContentEditor() {
   const { suggestionId } = useParams();
-  const api = useApi();
   const { activeOrg } = useActiveOrg();
   const toast = useToastFallback();
 

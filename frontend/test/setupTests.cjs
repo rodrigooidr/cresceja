@@ -1,11 +1,11 @@
-require('@testing-library/jest-dom');
-
-// TZ e Luxon
+const { Settings, DateTime } = require('luxon');
 process.env.TZ = 'America/Sao_Paulo';
-try {
-  const { Settings } = require('luxon');
-  Settings.defaultZone = 'America/Sao_Paulo';
-} catch {}
+Settings.defaultZone = 'America/Sao_Paulo';
+const fixedNow = DateTime.fromISO('2025-10-01T12:00:00-03:00', { setZone: true }).toMillis();
+Settings.now = () => fixedNow;
+
+// jest-dom
+require('@testing-library/jest-dom');
 
 // Polyfills comuns em JSDOM
 const { TextEncoder, TextDecoder } = require('util');
@@ -14,6 +14,7 @@ global.TextDecoder = TextDecoder;
 
 jest.mock('../src/api/inboxApi.js', () => {
   const mock = {
+    create: () => mock,
     get: jest.fn(() => Promise.resolve({ data: { items: [] } })),
     post: jest.fn(),
     put: jest.fn(),
@@ -24,13 +25,16 @@ jest.mock('../src/api/inboxApi.js', () => {
 });
 
 jest.mock('../src/contexts/AuthContext', () => {
+  const React = require('react');
   return {
+    __esModule: true,
     useAuth: () => ({
       user: { id: 'u_test', role: 'SuperAdmin', email: 'test@x.com' },
       isAuthenticated: true,
       login: jest.fn(),
       logout: jest.fn(),
     }),
+    AuthContext: React.createContext(null),
     AuthProvider: ({ children }) => children,
   };
 });
@@ -43,6 +47,7 @@ jest.mock('../src/auth/useAuth.js', () => ({
 jest.mock('../src/contexts/OrgContext.jsx', () => {
   const React = require('react');
   return {
+    __esModule: true,
     useOrg: () => ({
       orgs: [{ id: 'org_test', name: 'Org Teste' }],
       selected: 'org_test', // padrão: há uma org ativa
