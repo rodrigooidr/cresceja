@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireRole } from '../middleware/requireRole.js';
 import { ROLES } from '../lib/permissions.js';
+import { ensureEditable, cancelJobs } from '../services/campaigns.js';
 
 const router = Router();
 
@@ -62,6 +63,15 @@ router.patch('/api/orgs/:orgId/suggestions/:suggestionId', async (req, res, next
   try {
     const { orgId, suggestionId } = req.params;
     const { date, time, channel_targets, copy_json, asset_refs } = req.body || {};
+    const check = await ensureEditable(req.db, orgId, suggestionId);
+    if (check.error) return res.status(409).json({ error: check.error });
+    if (check.pendingJobs) {
+      await cancelJobs(req.db, orgId, check.pendingJobs);
+      await req.db.query(
+        `UPDATE content_suggestions SET status='suggested', jobs_map='{}'::jsonb, updated_at=now() WHERE org_id=$1 AND id=$2`,
+        [orgId, suggestionId]
+      );
+    }
     const { rows } = await req.db.query(
       `UPDATE content_suggestions
           SET date = COALESCE($3,date),
@@ -70,11 +80,11 @@ router.patch('/api/orgs/:orgId/suggestions/:suggestionId', async (req, res, next
               copy_json = COALESCE($6, copy_json),
               asset_refs = COALESCE($7, asset_refs),
               updated_at = now()
-        WHERE id=$2 AND org_id=$1 AND status IN ('suggested','rejected')
+        WHERE id=$2 AND org_id=$1
         RETURNING id, date, time, channel_targets, copy_json, asset_refs, status`,
       [orgId, suggestionId, date, time, channel_targets ? JSON.stringify(channel_targets):null, copy_json ? JSON.stringify(copy_json):null, asset_refs ? JSON.stringify(asset_refs):null]
     );
-    if (!rows[0]) return res.status(409).json({ error: 'job_locked' });
+    if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json(rows[0]);
   } catch (err) { next(err); }
 });
