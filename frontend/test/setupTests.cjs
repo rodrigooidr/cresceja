@@ -286,3 +286,14 @@ afterEach(() => {
 // Utilitário opcional: garantir idioma e tz
 Object.defineProperty(navigator, "language", { value: "pt-BR", configurable: true });
 process.env.TZ = "America/Sao_Paulo";
+
+// React 18: informa que o ambiente suporta act
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Reseta rotas mockadas entre testes (sem vazar handlers)
+beforeEach(() => {
+  try {
+    const api = require("../src/api/inboxApi").default;
+    api.__resetMockApi?.();
+  } catch {}
+});

@@ -53,7 +53,7 @@ function capture(method, url, body, config = {}) {
   return Promise.resolve(defaults(method, url, body, headers));
 }
 
-export default {
+const api = {
   get: jest.fn((url, c) => capture("GET", url, undefined, c)),
   post: jest.fn((url, b, c) => capture("POST", url, b, c)),
   put: jest.fn((url, b, c) => capture("PUT", url, b, c)),
@@ -61,5 +61,11 @@ export default {
   delete: jest.fn((url, c) => capture("DELETE", url, undefined, c)),
 };
 
+export default api;
 export { setOrgIdHeaderProvider };
+
+// ✅ Adicione os utilitários também no *default* para testes que fazem inboxApi.__mockRoute(...)
+api.__mockRoute = __mockRoute;
+api.__resetMockApi = __resetMockApi;
+api.__getLastRequest = __getLastRequest;
 
