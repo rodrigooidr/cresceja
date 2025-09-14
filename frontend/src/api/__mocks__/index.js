@@ -1,3 +1,7 @@
+import { applyOrgIdHeader } from "../orgHeader.js";
+
+let __lastRequest = null;
+
 const __state = {
   org: {
     id: "org_test",
@@ -27,8 +31,14 @@ function buildFeaturesResponse() {
   };
 }
 
+export function __getLastRequest() {
+  return __lastRequest;
+}
+
 const api = {
-  get: jest.fn(async (url) => {
+  get: jest.fn(async (url, config = {}) => {
+    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
+    __lastRequest = { method: "get", url, headers };
     if (url.includes('/orgs/current')) return { data: __state.org };
     if (url.includes('/plans/current')) return { data: __state.org.plan };
     if (/\/orgs\/[^/]+\/features$/.test(url)) return { data: buildFeaturesResponse() };
@@ -37,9 +47,21 @@ const api = {
     if (url.includes('/instagram/accounts')) return { data: [] };
     return { data: {} };
   }),
-  post: jest.fn(async () => ({ data: {} })),
-  patch: jest.fn(async () => ({ data: {} })),
-  delete: jest.fn(async () => ({ data: {} })),
+  post: jest.fn(async (url, body, config = {}) => {
+    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
+    __lastRequest = { method: "post", url, body, headers };
+    return { data: {} };
+  }),
+  patch: jest.fn(async (url, body, config = {}) => {
+    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
+    __lastRequest = { method: "patch", url, body, headers };
+    return { data: {} };
+  }),
+  delete: jest.fn(async (url, config = {}) => {
+    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
+    __lastRequest = { method: "delete", url, headers };
+    return { data: {} };
+  }),
   defaults: { headers: { common: {} } },
   interceptors: { request: { use: () => {} }, response: { use: () => {} } },
 };

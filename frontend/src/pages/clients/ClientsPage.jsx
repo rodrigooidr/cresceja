@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import inboxApi from "../../api/inboxApi";
+import inboxApi, { setOrgIdHeaderProvider } from "../../api/inboxApi";
 import { useAuth } from "../../auth/useAuth";
 import { CAN_EDIT_CLIENTS } from "../../auth/roles";
 import useWhatsApp from "../../hooks/useWhatsApp.js";
@@ -30,7 +30,6 @@ export default function ClientsPage() {
     }
     try {
       setState(s => ({ ...s, loading: true, error: null }));
-      inboxApi.defaults.headers.common["X-Org-Id"] = selected;
       const res = await inboxApi.get("/clients", {
         params: { ...q, limit: 50, page: 1 }
       });
@@ -40,6 +39,19 @@ export default function ClientsPage() {
       setState({ loading: false, error: err?.message || "Falha ao carregar", items: [] });
     }
   }
+
+  useEffect(() => {
+    setOrgIdHeaderProvider(() => selected || null);
+    try {
+      if (selected) {
+        localStorage.setItem("activeOrgId", String(selected));
+        localStorage.setItem("active_org_id", String(selected));
+      } else {
+        localStorage.removeItem("activeOrgId");
+        localStorage.removeItem("active_org_id");
+      }
+    } catch {}
+  }, [selected]);
 
   useEffect(() => {
     load();
