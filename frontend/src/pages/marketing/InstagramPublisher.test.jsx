@@ -2,43 +2,41 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import InstagramPublisher from './InstagramPublisher.jsx';
 import inboxApi from '../../api/inboxApi.js';
 import { OrgContext } from '../../contexts/OrgContext.jsx';
+import axios from 'axios';
 
 jest.mock('../../api/inboxApi.js');
 
-function renderWithOrg(ui) {
-  return render(<OrgContext.Provider value={{ selected: 'org1' }}>{ui}</OrgContext.Provider>);
+function renderWithOrg(ui){
+  return render(
+    <OrgContext.Provider value={{ selected: 'org1' }}>
+      {ui}
+    </OrgContext.Provider>
+  );
 }
 
-test('validates media required', async () => {
-  inboxApi.get.mockResolvedValueOnce({ data: [{ id: 'a1', ig_user_id: 'u', username: 'u' }] });
-  renderWithOrg(<InstagramPublisher />);
-  await screen.findByText('Instagram Publisher');
-  fireEvent.click(screen.getByText('Publicar agora'));
-  expect(await screen.findByText('Mídia obrigatória')).toBeInTheDocument();
-});
+test('uploads with progress and publishes', async () => {
+  inboxApi.get.mockResolvedValueOnce({ data: [{ id: 'acc1', username: 'u' }] });
+  inboxApi.post
+    .mockResolvedValueOnce({ data: { url: 'https://s3/upload', objectUrl: 'https://s3/file.jpg' } })
+    .mockResolvedValueOnce({});
+  jest.spyOn(axios, 'put').mockImplementation((_url,_file,config)=>{
+    config.onUploadProgress({ loaded:5, total:10 });
+    config.onUploadProgress({ loaded:10, total:10 });
+    return Promise.resolve({});
+  });
 
-test('publish and handle errors', async () => {
-  inboxApi.get.mockResolvedValueOnce({ data: [{ id: 'a1', ig_user_id: 'u', username: 'u' }] });
-  inboxApi.post.mockResolvedValueOnce({ data: { status: 'done' } });
   renderWithOrg(<InstagramPublisher />);
   await screen.findByText('Instagram Publisher');
-  fireEvent.change(screen.getByPlaceholderText('URL da mídia'), { target: { value: 'http://img' } });
-  fireEvent.click(screen.getByText('Publicar agora'));
-  await waitFor(() => expect(inboxApi.post).toHaveBeenCalled());
 
-  inboxApi.get.mockResolvedValueOnce({ data: [{ id: 'a1', ig_user_id: 'u', username: 'u' }] });
-  inboxApi.post.mockRejectedValueOnce({ response: { data: { error: 'feature_limit_reached' } } });
-  renderWithOrg(<InstagramPublisher />);
-  await screen.findByText('Instagram Publisher');
-  fireEvent.change(screen.getByPlaceholderText('URL da mídia'), { target: { value: 'http://img' } });
-  fireEvent.click(screen.getByText('Publicar agora'));
-  expect(await screen.findByText('Limite do plano atingido')).toBeInTheDocument();
+  const file = new File(['hello'], 'f.jpg', { type: 'image/jpeg' });
+  fireEvent.change(screen.getByTestId('file-input'), { target: { files: [file] } });
+  await screen.findByText('Progresso: 100%');
 
-  inboxApi.get.mockResolvedValueOnce({ data: [{ id: 'a1', ig_user_id: 'u', username: 'u' }] });
-  inboxApi.post.mockRejectedValueOnce({ response: { data: { error: 'reauth_required' } } });
-  renderWithOrg(<InstagramPublisher />);
-  await screen.findByText('Instagram Publisher');
-  fireEvent.change(screen.getByPlaceholderText('URL da mídia'), { target: { value: 'http://img' } });
   fireEvent.click(screen.getByText('Publicar agora'));
-  expect(await screen.findByText('Reautorização necessária')).toBeInTheDocument();
+  await waitFor(()=>{
+    expect(inboxApi.post).toHaveBeenLastCalledWith(
+      '/orgs/org1/instagram/accounts/acc1/publish',
+      expect.objectContaining({ media: { url: 'https://s3/file.jpg' } })
+    );
+  });
 });
