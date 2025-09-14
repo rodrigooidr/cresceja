@@ -1,11 +1,11 @@
-import FeatureGate from '../ui/feature/FeatureGate';
 import inboxApi from '../api/inboxApi.js';
 import { useOrg } from '../contexts/OrgContext.jsx';
 import { useCallback, useEffect, useState } from 'react';
 import { mapApiErrorToForm } from '../ui/errors/mapApiError.js';
 import useToastFallback from '../hooks/useToastFallback.js';
+import { canUse } from '../utils/featureGate.js';
 
-function GoogleCalendarSection() {
+function GoogleCalendarSection(props) {
   const { selected } = useOrg();
   const toast = useToastFallback();
   const [items, setItems] = useState([]);
@@ -78,7 +78,7 @@ function GoogleCalendarSection() {
   }
 
   return (
-    <section className="mb-8">
+    <section className="mb-8" data-testid={props['data-testid']}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Google Calendar</h3>
         <div className="text-sm opacity-75">Usados: {limitInfo.used} / {limitInfo.limit ?? '∞'}</div>
@@ -127,7 +127,7 @@ function GoogleCalendarSection() {
   );
 }
 
-function FacebookSection() {
+function FacebookSection(props) {
   const { selected } = useOrg();
   const toast = useToastFallback();
   const [items, setItems] = useState([]);
@@ -188,7 +188,7 @@ function FacebookSection() {
   }
 
   return (
-    <section className="mb-8">
+    <section className="mb-8" data-testid={props['data-testid']}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Facebook</h3>
         <div className="text-sm opacity-75">Usados: {limitInfo.used} / {limitInfo.limit ?? '∞'}</div>
@@ -234,7 +234,7 @@ function FacebookSection() {
   );
 }
 
-function InstagramSection() {
+function InstagramSection(props) {
   const { selected } = useOrg();
   const toast = useToastFallback();
   const [items, setItems] = useState([]);
@@ -289,7 +289,7 @@ function InstagramSection() {
   }
 
   return (
-    <section className="mb-8">
+    <section className="mb-8" data-testid={props['data-testid']}>
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Instagram</h3>
         <div className="text-sm opacity-75">Usados: {limitInfo.used} / {limitInfo.limit ?? '∞'}</div>
@@ -332,18 +332,47 @@ function InstagramSection() {
   );
 }
 
+function WhatsAppSection(props) {
+  return (
+    <section className="mb-8" data-testid={props['data-testid']}>
+      <h3 className="text-lg font-semibold">WhatsApp</h3>
+    </section>
+  );
+}
 export default function SettingsPage() {
+  const { selected } = useOrg();
+  const [org, setOrg] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!selected) return;
+    inboxApi.get('/orgs/current', { meta: { scope: 'global' } }).then((res) => {
+      if (active) setOrg(res.data);
+    });
+    return () => {
+      active = false;
+    };
+  }, [selected]);
+
+  const showCalendar = canUse(org, 'calendar', 'calendar');
+  const showFacebook = canUse(org, 'facebook', 'facebook_pages');
+  const showInstagram = canUse(org, 'instagram', 'instagram_accounts');
+  const showWhatsApp = canUse(org, 'whatsapp', 'wa_numbers');
+
   return (
     <div className="p-4 space-y-8">
-      <FeatureGate code="google_calendar_accounts" fallback={null}>
-        <GoogleCalendarSection />
-      </FeatureGate>
-      <FeatureGate code="facebook_pages" fallback={null}>
-        <FacebookSection />
-      </FeatureGate>
-      <FeatureGate code="instagram_accounts" fallback={null}>
-        <InstagramSection />
-      </FeatureGate>
+      {showCalendar ? (
+        <GoogleCalendarSection data-testid="settings-calendar-section" />
+      ) : null}
+      {showFacebook ? (
+        <FacebookSection data-testid="settings-facebook-section" />
+      ) : null}
+      {showInstagram ? (
+        <InstagramSection data-testid="settings-instagram-section" />
+      ) : null}
+      {showWhatsApp ? (
+        <WhatsAppSection data-testid="settings-whatsapp-section" />
+      ) : null}
     </div>
   );
 }
