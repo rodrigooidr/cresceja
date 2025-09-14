@@ -14,6 +14,10 @@ const { TextEncoder, TextDecoder } = require('util');
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
+const { renderAct, actTick } = require('./utils/actUtils.js');
+global.renderAct = renderAct;
+global.actTick = actTick;
+
 // Canvas e fabric
 require('jest-canvas-mock'); // provê getContext, toDataURL básico
 jest.mock(
