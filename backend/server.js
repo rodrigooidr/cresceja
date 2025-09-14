@@ -68,6 +68,7 @@ import debugRouter from './routes/debug.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import plansRouter from './routes/plans.js';
 import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
+import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
@@ -330,6 +331,10 @@ async function init() {
   // ---------- Boot ----------
   const PORT = Number(process.env.PORT || 4000);
   httpServer.listen(PORT, () => logger.info(`CresceJá backend + WS listening on :${PORT}`));
+
+  if (process.env.RUN_WORKERS !== '0') {
+    startCampaignsSyncWorker();
+  }
 
   // ---------- Shutdown gracioso ----------
   const shutdown = async (signal) => {

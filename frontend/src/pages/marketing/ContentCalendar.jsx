@@ -9,6 +9,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import FeatureGate from '../../ui/feature/FeatureGate.jsx';
 import SuggestionJobsModal from './components/SuggestionJobsModal.jsx';
 import { mapApiErrorToForm } from '../../ui/errors/mapApiError.js';
+import { useAuth } from '../../auth/useAuth.js';
+import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
 
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -39,10 +41,13 @@ export default function ContentCalendar() {
   const api = useApi();
   const { activeOrg } = useActiveOrg();
   const toast = useToastFallback();
+  const { user } = useAuth();
+  const canManage = !!user?.permissions?.includes('CAN_MANAGE_CAMPAIGNS');
   const [campaigns, setCampaigns] = useState([]);
   const [campaignId, setCampaignId] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [jobsModal, setJobsModal] = useState({ open: false, suggestionId: null });
+  const [showGenerate, setShowGenerate] = useState(false);
 
   const fetchCampaigns = useCallback(async () => {
     if (!activeOrg) return;
@@ -126,11 +131,15 @@ export default function ContentCalendar() {
           </div>
           <div className="text-[10px] opacity-70">{ig && 'IG '}{fb && 'FB '}{DateTime.fromJSDate(event.start).toFormat('HH:mm')}</div>
         </div>
-        <div className="flex gap-1">
-          <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); approve(s.id); }}>Aprovar</button>
-          <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); reject(s.id); }}>Rejeitar</button>
-          <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); setJobsModal({ open: true, suggestionId: s.id }); }}>Jobs</button>
-        </div>
+        {canManage ? (
+          <div className="flex gap-1">
+            <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); approve(s.id); }}>Aprovar</button>
+            <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); reject(s.id); }}>Rejeitar</button>
+            <button className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); setJobsModal({ open: true, suggestionId: s.id }); }}>Jobs</button>
+          </div>
+        ) : (
+          <span className="text-[10px]" title="Você não tem permissão para gerenciar campanhas.">-</span>
+        )}
       </div>
     );
   }
@@ -154,10 +163,15 @@ export default function ContentCalendar() {
         </select>
 
         <FeatureGate code="ai_calendar_generator">
-          <button className="border px-2 py-1">Gerar Campanha (IA)</button>
+          {canManage && (
+            <button onClick={()=>setShowGenerate(true)} className="border px-2 py-1">Gerar Campanha (IA)</button>
+          )}
         </FeatureGate>
+        {!canManage && (
+          <span className="text-xs" title="Você não tem permissão para gerenciar campanhas.">Gerar Campanha (IA)</span>
+        )}
 
-        {campaignId && (
+        {campaignId && canManage && (
           <>
             <button onClick={() => applyAll('ig')} className="border px-2 py-1">Todos Instagram</button>
             <button onClick={() => applyAll('fb')} className="border px-2 py-1">Todos Facebook</button>
@@ -170,8 +184,8 @@ export default function ContentCalendar() {
         events={events}
         defaultView="month"
         popup
-        onEventDrop={handleEventDrop}
-        draggableAccessor={draggableAccessor}
+        onEventDrop={canManage ? handleEventDrop : undefined}
+        draggableAccessor={canManage ? draggableAccessor : () => false}
         startAccessor="start"
         endAccessor="end"
         eventPropGetter={eventPropGetter}
@@ -186,6 +200,13 @@ export default function ContentCalendar() {
           suggestionId={jobsModal.suggestionId}
           onClose={() => setJobsModal({ open: false, suggestionId: null })}
           onChanged={fetchSuggestions}
+        />
+      )}
+
+      {showGenerate && (
+        <CampaignGenerateModal
+          onClose={() => setShowGenerate(false)}
+          onGenerated={fetchSuggestions}
         />
       )}
     </div>
