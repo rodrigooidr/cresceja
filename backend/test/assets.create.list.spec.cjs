@@ -5,6 +5,7 @@ let router;
 
 beforeAll(async () => {
   router = (await import('../routes/orgs.assets.js')).default;
+  process.env.S3_PUBLIC_URL = 'http://x';
 });
 
 function buildApp(mockDb) {
