@@ -74,6 +74,20 @@ router.post('/api/orgs/:id/instagram/accounts/:accountId/publish', requireFeatur
       }
     }
 
+    if (type === 'video') {
+      try {
+        const { rows:[job] } = await req.db.query(
+          `INSERT INTO instagram_publish_jobs (org_id, account_id, type, caption, media, status, scheduled_at, client_dedupe_key)
+             VALUES ($1,$2,$3,$4,$5,'pending',now(),$6) RETURNING id`,
+          [orgId, accountId, type, caption, JSON.stringify(media), clientKey]
+        );
+        return res.status(202).json({ job_id: job.id });
+      } catch (e) {
+        if (e.code === '23505') return res.status(409).json({ error: 'duplicate_job' });
+        throw e;
+      }
+    }
+
     let jobId;
     try {
       const { rows:[job] } = await req.db.query(
@@ -115,6 +129,21 @@ router.post('/api/orgs/:id/instagram/accounts/:accountId/publish', requireFeatur
       await req.db.query(`UPDATE instagram_publish_jobs SET status='failed', error=$2, updated_at=now() WHERE id=$1`, [jobId, err.message || 'error']);
       return next(err);
     }
+  } catch (e) { next(e); }
+});
+
+router.get('/api/orgs/:id/instagram/accounts/:accountId/media/:creationId/status', async (req, res, next) => {
+  try {
+    const orgId = req.params.id;
+    const accountId = req.params.accountId;
+    const creationId = req.params.creationId;
+    if (!(await accountBelongs(req.db, orgId, accountId))) return res.status(404).json({ error: 'not_found' });
+    const tok = await refreshIfNeeded(req.db, accountId, orgId);
+    if (!tok) return res.status(404).json({ error: 'not_found' });
+    const r = await fetch(`https://graph.facebook.com/v20.0/${creationId}?fields=status_code,video_status&access_token=${tok.access_token}`);
+    if (r.status === 401) return res.status(409).json({ error: 'reauth_required' });
+    const data = await r.json();
+    return res.json({ status_code: data.status_code, video_status: data.video_status });
   } catch (e) { next(e); }
 });
 
