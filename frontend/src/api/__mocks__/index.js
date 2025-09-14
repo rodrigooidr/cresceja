@@ -1,4 +1,4 @@
-import { applyOrgIdHeader } from "../orgHeader.js";
+import { applyOrgIdHeader, setOrgIdHeaderProvider } from "../orgHeader.js";
 
 let __lastRequest = null;
 
@@ -68,3 +68,4 @@ const api = {
 
 export default api;
 export const setActiveOrg = () => {};
+export { setOrgIdHeaderProvider };

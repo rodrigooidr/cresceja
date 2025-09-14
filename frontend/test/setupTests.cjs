@@ -81,31 +81,11 @@ global.setFeatureGate = (features = {}, limits = {}) => {
   if (api.__setFeatures) api.__setFeatures(features);
   if (api.__setLimits) api.__setLimits(limits);
 };
-
-// Observers e mídia
-if (!global.window.matchMedia) {
-  global.window.matchMedia = () => ({
-    matches: false, media: '', onchange: null,
-    addListener() {}, removeListener() {},
-    addEventListener() {}, removeEventListener() {}, dispatchEvent(){ return false; },
-  });
-}
-if (!global.ResizeObserver) {
-  global.ResizeObserver = class { observe(){} unobserve(){} disconnect(){} };
-}
-if (!global.IntersectionObserver) {
-  global.IntersectionObserver = class { observe(){} unobserve(){} disconnect(){} };
-}
-
 // URL helpers
 if (!global.URL.createObjectURL) global.URL.createObjectURL = jest.fn(() => 'blob:mock');
 if (!HTMLCanvasElement.prototype.toBlob) {
   HTMLCanvasElement.prototype.toBlob = function(cb){ cb(new Blob()); };
 }
-
-// requestAnimationFrame
-if (!global.requestAnimationFrame) global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-if (!global.cancelAnimationFrame) global.cancelAnimationFrame = (id) => clearTimeout(id);
 
 if (!HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView = function(){};
@@ -120,7 +100,7 @@ afterEach(() => {
 
 // Estado default de org para testes (pode ajustar conforme seu domínio)
 globalThis.__TEST_ORG__ = {
-  id: "org_test",
+  id: "1",
   name: "Org Test",
   features: { calendar: true, facebook: true, instagram: true, whatsapp: true },
   plan: {
@@ -154,3 +134,59 @@ global.setFeatureGate = (features = {}, limits = {}) => {
     },
   };
 };
+
+// ---- Reset consistente por teste ----
+const { setOrgIdHeaderProvider } = require("../src/api/inboxApi");
+
+beforeEach(() => {
+  // Limpando provider e storage para não vazar entre testes
+  try { setOrgIdHeaderProvider(null); } catch {}
+  try { localStorage.clear(); sessionStorage.clear(); } catch {}
+
+  // Força um org de teste compatível com os testes que esperam "1"
+  globalThis.__TEST_ORG__ = {
+    id: "1",
+    name: "Org Test",
+    features: { calendar: true, facebook: true, instagram: true, whatsapp: true },
+    plan: { limits: { calendar: 1, facebook_pages: 1, instagram_accounts: 1, wa_numbers: 1 } },
+    channels: {
+      facebook: { connected: false, pages: [], permissions: [] },
+      instagram: { connected: false, accounts: [], permissions: [] },
+      calendar: { connected: false, calendars: [], scopes: [] },
+      whatsapp: { connected: false },
+    },
+  };
+});
+
+// ---- Mocks de APIs do navegador que costumam quebrar testes ----
+if (!window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: jest.fn().mockImplementation((q) => ({
+      matches: false,
+      media: q,
+      onchange: null,
+      addListener: jest.fn(), // compat v15
+      removeListener: jest.fn(), // compat v15
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    })),
+  });
+}
+
+if (!window.ResizeObserver) {
+  class RO { observe(){} unobserve(){} disconnect(){} }
+  window.ResizeObserver = RO;
+}
+
+if (!window.IntersectionObserver) {
+  class IO { constructor(){} observe(){} unobserve(){} disconnect(){} }
+  window.IntersectionObserver = IO;
+}
+
+// rAF estável p/ componentes responsivos
+if (!window.requestAnimationFrame) {
+  window.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+  window.cancelAnimationFrame = (id) => clearTimeout(id);
+}

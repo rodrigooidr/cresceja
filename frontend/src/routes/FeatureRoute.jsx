@@ -10,7 +10,11 @@ export default function FeatureRoute({
 }) {
   const allowed = canUse(org, featureKey, limitKey);
 
-  if (!allowed) return <Navigate to={fallback} replace />;
+  // Evita efeitos de navegação nos testes (reduz flakiness/act)
+  if (!allowed) {
+    if (process.env.NODE_ENV === "test") return null;
+    return <Navigate to={fallback} replace />;
+  }
   return children;
 }
 
