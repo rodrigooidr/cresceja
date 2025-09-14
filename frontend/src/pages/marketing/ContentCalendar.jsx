@@ -33,6 +33,16 @@ function ContentCalendar() {
     }
   };
 
+  const applyAll = async (channel) => {
+    if (!activeOrg || !campaignId) return;
+    const body = { onlyStatus: ['suggested'] };
+    if (channel === 'ig') body.ig = { enabled: true };
+    if (channel === 'fb') body.fb = { enabled: true };
+    await api.patch(`/orgs/${activeOrg}/campaigns/${campaignId}/suggestions/apply-targets`, body);
+    const r = await api.get(`/orgs/${activeOrg}/campaigns/${campaignId}/suggestions`, { params:{ page:1, pageSize:50 } });
+    setSuggestions(r.data?.data || []);
+  };
+
   return (
     <div className="p-4">
       <h1 className="text-xl font-bold mb-4">Calendário de Conteúdo</h1>
@@ -41,6 +51,12 @@ function ContentCalendar() {
           <option value="">Selecione a campanha</option>
           {campaigns.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
+        {campaignId && (
+          <>
+            <button onClick={()=>applyAll('ig')} className="ml-2 border px-2 py-1">Todos Instagram</button>
+            <button onClick={()=>applyAll('fb')} className="ml-2 border px-2 py-1">Todos Facebook</button>
+          </>
+        )}
       </div>
       <ul className="space-y-3">
         {suggestions.map(s => {

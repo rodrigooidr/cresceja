@@ -58,6 +58,34 @@ router.get('/api/orgs/:orgId/campaigns/:campaignId/suggestions', async (req, res
   } catch (err) { next(err); }
 });
 
+// Apply targets to multiple suggestions in a campaign
+router.patch('/api/orgs/:orgId/campaigns/:campaignId/suggestions/apply-targets', async (req, res, next) => {
+  try {
+    const { orgId, campaignId } = req.params;
+    const { ig, fb, onlyStatus = ['suggested'] } = req.body || {};
+    if (!ig && !fb) return res.status(400).json({ error: 'validation', field: 'targets' });
+
+    const params = [orgId, campaignId];
+    const sets = [];
+    let idx = 3;
+    if (ig) {
+      sets.push(`channel_targets = jsonb_set(COALESCE(channel_targets,'{}'::jsonb),'{instagram}',$${idx}::jsonb,true)`);
+      params.push(JSON.stringify({ enabled: !!ig.enabled, accountId: ig.accountId || null }));
+      idx++;
+    }
+    if (fb) {
+      sets.push(`channel_targets = jsonb_set(COALESCE(channel_targets,'{}'::jsonb),'{facebook}',$${idx}::jsonb,true)`);
+      params.push(JSON.stringify({ enabled: !!fb.enabled, pageId: fb.pageId || null }));
+      idx++;
+    }
+    params.push(onlyStatus);
+    const sql = `UPDATE content_suggestions SET ${sets.join(', ')}, updated_at=now()
+                 WHERE org_id=$1 AND campaign_id=$2 AND status = ANY($${idx}::text[])`;
+    const result = await req.db.query(sql, params);
+    res.json({ updated: result.rowCount || 0, skipped: [], errors: [] });
+  } catch (err) { next(err); }
+});
+
 // Update suggestion
 router.patch('/api/orgs/:orgId/suggestions/:suggestionId', async (req, res, next) => {
   try {
@@ -101,6 +129,31 @@ router.post('/api/orgs/:orgId/suggestions/:suggestionId/regen', async (req, res,
     );
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
     res.json(rows[0]);
+  } catch (err) { next(err); }
+});
+
+// Get jobs status for a suggestion
+router.get('/api/orgs/:orgId/suggestions/:suggestionId/jobs', async (req, res, next) => {
+  try {
+    const { orgId, suggestionId } = req.params;
+    const { rows: [sug] } = await req.db.query(
+      'SELECT jobs_map FROM content_suggestions WHERE org_id=$1 AND id=$2',
+      [orgId, suggestionId]
+    );
+    if (!sug) return res.status(404).json({ error: 'not_found' });
+    const igId = sug.jobs_map?.instagram || null;
+    const fbId = sug.jobs_map?.facebook || null;
+    let igStatus = null;
+    let fbStatus = null;
+    if (igId) {
+      const { rows:[job] } = await req.db.query('SELECT status FROM instagram_publish_jobs WHERE org_id=$1 AND id=$2', [orgId, igId]);
+      igStatus = job?.status || null;
+    }
+    if (fbId) {
+      const { rows:[job] } = await req.db.query('SELECT status FROM facebook_publish_jobs WHERE org_id=$1 AND id=$2', [orgId, fbId]);
+      fbStatus = job?.status || null;
+    }
+    res.json({ ig: { jobId: igId || null, status: igStatus }, fb: { jobId: fbId || null, status: fbStatus } });
   } catch (err) { next(err); }
 });
 

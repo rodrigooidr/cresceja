@@ -11,11 +11,19 @@ router.post('/api/orgs/:orgId/assets',
       const { orgId } = req.params;
       const { url, mime, width, height, meta_json } = req.body || {};
       if (!url || !mime) return res.status(400).json({ error: 'validation', field: !url ? 'url' : 'mime' });
+      const base = process.env.S3_PUBLIC_URL || (process.env.S3_BUCKET ? `https://${process.env.S3_BUCKET}.s3.amazonaws.com` : '');
+      const allowedHost = new URL(base).host;
+      let parsedUrl;
+      try { parsedUrl = new URL(url); } catch { return res.status(400).json({ error: 'invalid_url' }); }
+      if (parsedUrl.host !== allowedHost) return res.status(400).json({ error: 'invalid_url' });
+      const normMime = String(mime).toLowerCase();
+      const normWidth = width ? parseInt(width,10) || null : null;
+      const normHeight = height ? parseInt(height,10) || null : null;
       const { rows } = await req.db.query(
         `INSERT INTO content_assets (org_id, url, mime, width, height, meta_json)
          VALUES ($1,$2,$3,$4,$5,$6)
          RETURNING id, url`,
-        [orgId, url, mime, width || null, height || null, meta_json ? JSON.stringify(meta_json) : null]
+        [orgId, url, normMime, normWidth, normHeight, meta_json ? JSON.stringify(meta_json) : null]
       );
       res.json({ asset_id: rows[0].id, url: rows[0].url });
     } catch (err) {
