@@ -5,16 +5,18 @@
   "proxy": "http://localhost:4000",
   "dependencies": {
     "@hello-pangea/dnd": "^16.6.0",
+    "@hookform/resolvers": "^3.9.0",
     "axios": "^1.7.2",
     "clsx": "^2.1.1",
     "lucide-react": "^0.453.0",
+    "luxon": "^3.7.2",
     "react": "^18.2.0",
+    "react-big-calendar": "^1.19.4",
     "react-dom": "^18.2.0",
+    "react-hook-form": "^7.51.0",
     "react-router-dom": "^6.23.1",
     "socket.io-client": "^4.8.1",
-    "zod": "^3.23.8",
-    "react-hook-form": "^7.51.0",
-    "@hookform/resolvers": "^3.9.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@babel/core": "7.25.2",
