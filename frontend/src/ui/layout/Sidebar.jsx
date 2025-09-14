@@ -4,6 +4,8 @@ import { NavLink } from "react-router-dom";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { CAN_EDIT_CLIENTS, CAN_VIEW_ORGANIZATIONS_ADMIN } from "../../auth/roles";
+import inboxApi from "../../api/inboxApi.js";
+import { canUse, limitKeyFor } from "../../utils/featureGate.js";
 
 function Item({ to, children, disabled, title, collapsed }) {
   const label = typeof children === "string" ? children : "";
@@ -95,6 +97,12 @@ export default function Sidebar() {
   const { user } = useAuth();
   const { selected, publicMode } = useOrg();
   const needsOrg = !publicMode && !selected;
+  const [org, setOrg] = useState(null);
+
+  useEffect(() => {
+    if (!selected) { setOrg(null); return; }
+    inboxApi.get('/orgs/current', { meta:{ scope:'global' } }).then(r => setOrg(r.data));
+  }, [selected]);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem("sidebar.collapsed") === "1";
@@ -178,6 +186,26 @@ export default function Sidebar() {
         <Item to="/marketing/facebook" disabled={needsOrg} collapsed={collapsed}>
           Facebook Publisher
         </Item>
+
+        {(() => {
+          const items = [
+            { to: "/settings/calendar", key: "calendar", label: "Calendar" },
+            { to: "/settings/facebook", key: "facebook", label: "Facebook" },
+            { to: "/settings/instagram", key: "instagram", label: "Instagram" },
+            { to: "/settings/whatsapp", key: "whatsapp", label: "WhatsApp" },
+          ];
+          const visible = items.filter(i => canUse(org, i.key, limitKeyFor(i.key)));
+          return visible.map(i => (
+            <NavLink
+              key={i.key}
+              to={i.to}
+              data-testid={`sb-${i.key}`}
+              className={`block px-3 py-2 rounded hover:bg-gray-100 ${collapsed ? "text-center" : ""}`}
+            >
+              {i.label}
+            </NavLink>
+          ));
+        })()}
 
         {CAN_VIEW_ORGANIZATIONS_ADMIN(user?.role) && (
           <>
