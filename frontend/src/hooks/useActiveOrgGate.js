@@ -1,7 +1,7 @@
 // frontend/src/hooks/useActiveOrgGate.js
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { hasRoleAtLeast, ROLES } from "../auth/roles";
+import { hasRoleAtLeast } from "../auth/roles";
 import { useAuth } from "../contexts/AuthContext";
 import { useOrg } from "../contexts/OrgContext.jsx";
 
@@ -14,7 +14,7 @@ import { useOrg } from "../contexts/OrgContext.jsx";
  */
 export default function useActiveOrgGate(options = {}) {
   const {
-    minRole = ROLES.Agent,
+    minRole = 'Agent',
     redirectNoAuth = "/login",
     redirectNoPerm = "/403",
     redirectNoOrg = "/onboarding", // ou '/select-org'
@@ -27,7 +27,7 @@ export default function useActiveOrgGate(options = {}) {
   const { selected } = useOrg(); // org ativa escolhida no sidebar
 
   const isPlatformPrivileged =
-    me?.role === ROLES.SuperAdmin || me?.role === ROLES.Support;
+    me?.role === 'SuperAdmin' || me?.role === 'Support';
 
   const hasOrg = isPlatformPrivileged ? true : Boolean(selected || me?.org_id);
   const hasRole = !!me && hasRoleAtLeast(me.role, minRole);

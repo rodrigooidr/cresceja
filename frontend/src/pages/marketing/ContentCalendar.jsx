@@ -9,6 +9,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import SuggestionJobsModal from './components/SuggestionJobsModal.jsx';
 import { mapApiErrorToForm } from '../../ui/errors/mapApiError.js';
 import { useAuth } from '../../auth/useAuth.js';
+import PermissionGate from '../../auth/PermissionGate.jsx';
+import { CAN_MANAGE_CAMPAIGNS } from '../../auth/roles.js';
 import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
 
 const localizer = luxonLocalizer(DateTime);
@@ -21,11 +23,16 @@ export function toPatchDateTimeJS(startDate) {
   return { date: dt.toISODate(), time: dt.toFormat('HH:mm:ssZZ') };
 }
 
+export function isDnDEnabledForUser(user) {
+  const { CAN_MANAGE_CAMPAIGNS } = require('../../auth/roles');
+  return CAN_MANAGE_CAMPAIGNS(user);
+}
+
 export default function ContentCalendar() {
   const { activeOrg } = useActiveOrg();
   const toast = useToastFallback();
-  const { user } = useAuth();
-  const canManage = !!user?.permissions?.includes('CAN_MANAGE_CAMPAIGNS');
+  const { user } = useAuth?.() ?? { user: null };
+  const canManage = CAN_MANAGE_CAMPAIGNS(user);
   const [campaigns, setCampaigns] = useState([]);
   const [campaignId, setCampaignId] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -113,8 +120,6 @@ export default function ContentCalendar() {
     }
   }
 
-  const draggableAccessor = (event) => !['published', 'rejected'].includes(event.resource?.status);
-
   function EventCard({ event }) {
     const s = event.resource;
     const thumb = s.asset_refs?.[0]?.url;
@@ -132,15 +137,44 @@ export default function ContentCalendar() {
           </div>
           <div className="text-[10px] opacity-70">{ig && 'IG '}{fb && 'FB '}{DateTime.fromJSDate(event.start).toFormat('HH:mm')}</div>
         </div>
-        {canManage ? (
-          <div className="flex gap-1">
-            <button data-testid="btn-approve" className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); approve(s.id); }}>Aprovar</button>
-            <button data-testid="btn-reject" className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); reject(s.id); }}>Rejeitar</button>
-            <button data-testid="btn-jobs" className="text-[10px] underline" onClick={(e) => { e.stopPropagation(); setJobsModal({ open: true, suggestionId: s.id }); }}>Jobs</button>
-          </div>
-        ) : (
-          <span className="text-[10px" title="Você não tem permissão para gerenciar campanhas.">-</span>
-        )}
+        <div className="flex gap-1">
+          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+            <button
+              data-testid="btn-approve"
+              className="text-[10px] underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                approve(s.id);
+              }}
+            >
+              Aprovar
+            </button>
+          </PermissionGate>
+          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+            <button
+              data-testid="btn-reject"
+              className="text-[10px] underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                reject(s.id);
+              }}
+            >
+              Rejeitar
+            </button>
+          </PermissionGate>
+          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+            <button
+              data-testid="btn-jobs"
+              className="text-[10px] underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                setJobsModal({ open: true, suggestionId: s.id });
+              }}
+            >
+              Jobs
+            </button>
+          </PermissionGate>
+        </div>
       </div>
     );
   }
@@ -158,17 +192,33 @@ export default function ContentCalendar() {
   return (
     <div className="p-4">
       <div className="flex items-center gap-2 mb-2">
-        {canManage ? (
-          <button data-testid="btn-generate-campaign" onClick={()=>setShowGenerate(true)} className="border px-2 py-1">Gerar Campanha (IA)</button>
-        ) : (
-          <span className="text-xs" title="Você não tem permissão para gerenciar campanhas.">Gerar Campanha (IA)</span>
-        )}
-        {canManage && (
-          <>
-            <button data-testid="btn-apply-ig" onClick={() => applyAll('ig')} className="border px-2 py-1">Todos Instagram</button>
-            <button data-testid="btn-apply-fb" onClick={() => applyAll('fb')} className="border px-2 py-1">Todos Facebook</button>
-          </>
-        )}
+        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <button
+            data-testid="btn-generate-campaign"
+            onClick={() => setShowGenerate(true)}
+            className="border px-2 py-1"
+          >
+            Gerar Campanha (IA)
+          </button>
+        </PermissionGate>
+        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <button
+            data-testid="btn-apply-ig"
+            onClick={() => applyAll('ig')}
+            className="border px-2 py-1"
+          >
+            Todos Instagram
+          </button>
+        </PermissionGate>
+        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <button
+            data-testid="btn-apply-fb"
+            onClick={() => applyAll('fb')}
+            className="border px-2 py-1"
+          >
+            Todos Facebook
+          </button>
+        </PermissionGate>
       </div>
       <DnDCalendar
         localizer={localizer}
@@ -177,7 +227,7 @@ export default function ContentCalendar() {
         endAccessor="end"
         style={{ height: 500 }}
         onEventDrop={canManage ? handleEventDrop : undefined}
-        draggableAccessor={draggableAccessor}
+        draggableAccessor={() => canManage}
         components={{ event: EventCard }}
         eventPropGetter={eventPropGetter}
       />
