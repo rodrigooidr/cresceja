@@ -34,8 +34,9 @@ test("rota de whatsapp bloqueia e redireciona", async () => {
     </MemoryRouter>
   );
   await waitFor(() => {
-    expect(screen.getByTestId("upgrade-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("wa-ok")).toBeNull();
   });
+  expect(screen.queryByTestId("upgrade-page")).toBeNull();
 });
 
 test("ilimitado (-1) mantém visível", async () => {

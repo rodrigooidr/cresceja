@@ -43,12 +43,14 @@ export default function ClientsPage() {
   useEffect(() => {
     setOrgIdHeaderProvider(() => selected || null);
     try {
+      const keyA = "activeOrgId";
+      const keyB = "active_org_id";
       if (selected) {
-        localStorage.setItem("activeOrgId", String(selected));
-        localStorage.setItem("active_org_id", String(selected));
+        localStorage.setItem(keyA, String(selected));
+        localStorage.setItem(keyB, String(selected));
       } else {
-        localStorage.removeItem("activeOrgId");
-        localStorage.removeItem("active_org_id");
+        localStorage.removeItem(keyA);
+        localStorage.removeItem(keyB);
       }
     } catch {}
   }, [selected]);

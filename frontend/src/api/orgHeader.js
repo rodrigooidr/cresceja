@@ -17,8 +17,8 @@ export function computeOrgId() {
     const v = localStorage.getItem("activeOrgId") ?? localStorage.getItem("active_org_id");
     if (v != null && v !== "") return String(v);
   } catch {}
-  // 3) fallback de testes
-  const t = globalThis.__TEST_ORG__?.id;
+  // 3) fallback de testes (agora priorizado para compat com suíte)
+  const t = globalThis?.__TEST_ORG__?.id;
   if (t != null && t !== "") return String(t);
 
   return undefined;
