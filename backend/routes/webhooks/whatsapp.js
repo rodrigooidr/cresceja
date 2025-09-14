@@ -49,7 +49,7 @@ r.post('/', async (req, res) => {
           let orgId = null;
           let channelId = null;
           for (const row of chans) {
-            const creds = decrypt(row.credentials_json);
+            const creds = JSON.parse(decrypt(row.credentials_json));
             if (creds?.phone_number_id === phoneNumberId) {
               orgId = row.org_id;
               channelId = row.id;
