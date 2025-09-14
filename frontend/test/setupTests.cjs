@@ -72,6 +72,12 @@ jest.mock('react-router-dom', () => {
   return { ...actual, useNavigate: () => jest.fn() };
 });
 
+const api = require('../src/api/inboxApi').default || require('../src/api/inboxApi');
+global.setFeatureGate = (features = {}, limits = {}) => {
+  if (api.__setFeatures) api.__setFeatures(features);
+  if (api.__setLimits) api.__setLimits(limits);
+};
+
 // Observers e mídia
 if (!global.window.matchMedia) {
   global.window.matchMedia = () => ({
