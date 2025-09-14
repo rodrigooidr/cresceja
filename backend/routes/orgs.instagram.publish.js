@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { createHash } from 'crypto';
 import { requireFeature } from '../middleware/requireFeature.js';
 import { refreshIfNeeded } from '../services/instagramTokens.js';
 
@@ -37,13 +38,34 @@ router.post('/api/orgs/:id/instagram/accounts/:accountId/publish', requireFeatur
     const igUserId = acc?.ig_user_id;
     if (!igUserId) return res.status(404).json({ error: 'not_found' });
 
+    const payload = { type, caption, media, scheduleAt: scheduleAt || null };
+    const clientKey = createHash('md5').update(JSON.stringify(payload)).digest('hex');
+
     if (scheduleAt && new Date(scheduleAt) > new Date()) {
+      try {
+        const { rows:[job] } = await req.db.query(
+          `INSERT INTO instagram_publish_jobs (org_id, account_id, type, caption, media, status, scheduled_at, client_dedupe_key)
+             VALUES ($1,$2,$3,$4,$5,'pending',$6,$7) RETURNING id, status`,
+          [orgId, accountId, type, caption, JSON.stringify(media), scheduleAt, clientKey]
+        );
+        return res.status(201).json(job);
+      } catch (e) {
+        if (e.code === '23505') return res.status(409).json({ error: 'duplicate_job' });
+        throw e;
+      }
+    }
+
+    let jobId;
+    try {
       const { rows:[job] } = await req.db.query(
-        `INSERT INTO instagram_publish_jobs (org_id, account_id, type, caption, media, status, scheduled_at)
-           VALUES ($1,$2,$3,$4,$5,'pending',$6) RETURNING id, status`,
-        [orgId, accountId, type, caption, JSON.stringify(media), scheduleAt]
+        `INSERT INTO instagram_publish_jobs (org_id, account_id, type, caption, media, status, client_dedupe_key)
+           VALUES ($1,$2,$3,$4,$5,'creating',$6) RETURNING id`,
+        [orgId, accountId, type, caption, JSON.stringify(media), clientKey]
       );
-      return res.status(201).json(job);
+      jobId = job.id;
+    } catch (e) {
+      if (e.code === '23505') return res.status(409).json({ error: 'duplicate_job' });
+      throw e;
     }
 
     try {
@@ -57,20 +79,25 @@ router.post('/api/orgs/:id/instagram/accounts/:accountId/publish', requireFeatur
       if (r2.status === 401) throw new Error('unauthorized');
       const data2 = await r2.json();
       await req.db.query(
-        `INSERT INTO instagram_publish_jobs (org_id, account_id, type, caption, media, status, creation_id, published_media_id)
-           VALUES ($1,$2,$3,$4,$5,'done',$6,$7)`,
-        [orgId, accountId, type, caption, JSON.stringify(media), creationId, data2.id]
+        `UPDATE instagram_publish_jobs SET status='done', creation_id=$2, published_media_id=$3, updated_at=now() WHERE id=$1`,
+        [jobId, creationId, data2.id]
       );
       return res.json({ status: 'done', published_media_id: data2.id });
     } catch (err) {
       if (err.message === 'unauthorized') {
         await req.db.query('UPDATE instagram_accounts SET is_active=false, updated_at=now() WHERE org_id=$1 AND id=$2',[orgId, accountId]);
+        await req.db.query(`UPDATE instagram_publish_jobs SET status='failed', error='unauthorized', updated_at=now() WHERE id=$1`, [jobId]);
         return res.status(401).json({ error: 'reauth_required' });
       }
-      if (err.message === 'quota') return res.status(409).json({ error: 'ig_quota_reached' });
+      if (err.message === 'quota') {
+        await req.db.query(`UPDATE instagram_publish_jobs SET status='failed', error='quota', updated_at=now() WHERE id=$1`, [jobId]);
+        return res.status(409).json({ error: 'ig_quota_reached' });
+      }
+      await req.db.query(`UPDATE instagram_publish_jobs SET status='failed', error=$2, updated_at=now() WHERE id=$1`, [jobId, err.message || 'error']);
       return next(err);
     }
   } catch (e) { next(e); }
 });
 
 export default router;
+
