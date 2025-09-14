@@ -20,7 +20,7 @@ export default function ClientsPage() {
   const { connected } = useWhatsApp();
   const { selected } = useOrg();
 
-  const [q, setQ] = useState({ name: "", phone: "", email: "", tag: "", stage: "" });
+  const [q, setQ] = useState({ name: "", phone: "", email: "", tag: "", stage: "", accountId: "" });
   const [state, setState] = useState({ loading: true, error: null, items: [] });
 
   async function load() {
@@ -30,7 +30,10 @@ export default function ClientsPage() {
     }
     try {
       setState(s => ({ ...s, loading: true, error: null }));
-      const res = await inboxApi.get("/clients", { params: { ...q, limit: 50, page: 1 } });
+      inboxApi.defaults.headers.common["X-Org-Id"] = selected;
+      const res = await inboxApi.get("/clients", {
+        params: { ...q, limit: 50, page: 1 }
+      });
       const items = coerce(res?.data);
       setState({ loading: false, error: null, items });
     } catch (err) {
@@ -92,6 +95,18 @@ export default function ClientsPage() {
       <h1 className="text-2xl font-semibold mb-4">Clientes</h1>
 
       <FilterBar>
+        <div className="flex flex-col">
+          <label htmlFor="accountId">Conta</label>
+          <select
+            id="accountId"
+            name="accountId"
+            value={q.accountId}
+            onChange={e=>setQ(s=>({...s,accountId:e.target.value}))}
+            className="select select-bordered"
+          >
+            <option value="">Conta</option>
+          </select>
+        </div>
         <input placeholder="Nome" value={q.name} onChange={e=>setQ(s=>({...s,name:e.target.value}))} className="input input-bordered"/>
         <input placeholder="Telefone/WhatsApp" value={q.phone} onChange={e=>setQ(s=>({...s,phone:e.target.value}))} className="input input-bordered"/>
         <input placeholder="E-mail" value={q.email} onChange={e=>setQ(s=>({...s,email:e.target.value}))} className="input input-bordered"/>
