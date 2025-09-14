@@ -1,6 +1,7 @@
 /** @type {import('jest').Config} */
 module.exports = {
   testEnvironment: 'jsdom',
+  testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
   setupFilesAfterEnv: ['<rootDir>/test/setupTests.cjs'],
   testMatch: ['<rootDir>/test/**/*.test.jsx', '<rootDir>/test/**/*.test.js'],
   moduleDirectories: ['node_modules', 'src'],
@@ -13,12 +14,13 @@ module.exports = {
     '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.(css|less|sass|scss)$': '<rootDir>/test/__mocks__/styleMock.js',
-    '\\.(svg|png|jpg|jpeg|gif|webp|mp4|mp3)$': '<rootDir>/test/__mocks__/fileMock.js',
+    '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/test/__mocks__/fileMock.js',
   },
-  transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
-  // ⚠️ Permite transformar pacotes ESM usados no front
+  transform: {
+    '^.+\\.(js|jsx)$': 'babel-jest',
+  },
   transformIgnorePatterns: [
-    '/node_modules/(?!(luxon|react-big-calendar|date-arithmetic|@internationalized/date|@testing-library|nanoid)/)',
+    '/node_modules/(?!(luxon|react-big-calendar|date-arithmetic|@internationalized/date)/)',
   ],
-  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/build/', '/e2e/'],
+  testPathIgnorePatterns: ['/dist/', '/build/', '/node_modules/', '/e2e/'],
 };

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import InstagramPublisher from '../src/pages/marketing/InstagramPublisher.jsx';
 import inboxApi from '../src/api/inboxApi.js';
 import axios from 'axios';
@@ -30,7 +30,10 @@ test('video publish shows progress steps', async () => {
   const file = new File(['vid'],'v.mp4',{ type:'video/mp4' });
   fireEvent.change(screen.getByTestId('file-input'), { target:{ files:[file] } });
   await waitFor(()=>expect(inboxApi.post).toHaveBeenCalledTimes(1));
-  fireEvent.click(screen.getByText('Publicar agora'));
+  await act(async () => {
+    fireEvent.click(screen.getByText('Publicar agora'));
+    jest.advanceTimersByTime(5_000);
+  });
   await screen.findByText('Criando container');
   await screen.findByText('Processando vídeo...');
   await screen.findByText('Publicando...');

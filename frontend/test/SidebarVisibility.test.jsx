@@ -1,19 +1,7 @@
 import React from "react";
 import { screen } from "@testing-library/react";
-import { renderWithProviders } from "./utils/renderWithProviders.jsx";
+import { renderWithRouterProviders } from "./utils/renderWithRouterProviders.jsx";
 import App from "../src/App.jsx";
-
-let mockUser = { role: "SuperAdmin" };
-let mockActiveOrg = "org1";
-
-jest.mock("../src/auth/useAuth.js", () => ({
-  useAuth: () => ({ user: mockUser })
-}));
-
-jest.mock("../src/hooks/useActiveOrg.js", () => ({
-  __esModule: true,
-  default: () => ({ activeOrg: mockActiveOrg })
-}));
 
 jest.mock("../src/api/inboxApi.js", () => ({
   __esModule: true,
@@ -21,23 +9,22 @@ jest.mock("../src/api/inboxApi.js", () => ({
 }));
 
 describe("Sidebar visibility and routes", () => {
-  test("Organizações link visible for SuperAdmin", () => {
-    mockUser = { role: "SuperAdmin" };
-    renderWithProviders(<App />, { route: "/inbox" });
-    expect(screen.getByText("Organizações")).toBeInTheDocument();
+  test("Organizações link visible for SuperAdmin", async () => {
+    window.history.pushState({}, '', '/inbox');
+    renderWithRouterProviders(<App />, { withRouter: false, user: { id: 'u1', role: 'SuperAdmin', name: 'SU' }, org: { selected: 'org1', orgs: [{ id: 'org1', name: 'Org1' }] } });
+    expect(await screen.findByText("Organizações")).toBeInTheDocument();
   });
 
   test("Agent redirected from /admin/organizations", () => {
-    mockUser = { role: "Agent" };
-    renderWithProviders(<App />, { route: "/admin/organizations" });
+    window.history.pushState({}, '', '/admin/organizations');
+    renderWithRouterProviders(<App />, { withRouter: false, user: { id: 'u2', role: 'Agent', name: 'Ag' }, org: { selected: 'org1', orgs: [{ id: 'org1', name: 'Org1' }] } });
     expect(window.location.pathname).toBe("/inbox");
     expect(screen.queryByText("Organizações (Assinantes)")).not.toBeInTheDocument();
   });
 
   test("/clients accessible when org active", async () => {
-    mockUser = { role: "Admin" };
-    mockActiveOrg = "org1";
-    renderWithProviders(<App />, { route: "/clients" });
+    window.history.pushState({}, '', '/clients');
+    renderWithRouterProviders(<App />, { withRouter: false, user: { id: 'u3', role: 'Admin', name: 'Adm' }, org: { selected: 'org1', orgs: [{ id: 'org1', name: 'Org1' }] } });
     expect(await screen.findByRole('heading', { name: 'Clientes' })).toBeInTheDocument();
   });
 });

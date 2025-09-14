@@ -105,7 +105,7 @@ export default function ClientsPage() {
       {/* Ações topo */}
       <div className="mb-4 flex gap-2">
         {canEdit && (
-          <button className="btn btn-primary" onClick={addClient}>
+          <button className="btn btn-primary" onClick={addClient} data-testid="btn-new-client">
             Adicionar cliente
           </button>
         )}
