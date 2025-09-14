@@ -1,0 +1,35 @@
+import { renderWithRouterProviders } from "./utils/renderWithRouterProviders.jsx";
+import Sidebar from "../src/ui/layout/Sidebar.jsx";
+import { screen, render } from "@testing-library/react";
+import FeatureRoute from "../src/routes/FeatureRoute.jsx";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
+
+test("sidebar esconde item quando limit=0", async () => {
+  global.setFeatureGate({ whatsapp: true }, { wa_numbers: 0 });
+  renderWithRouterProviders(<Sidebar />);
+  await screen.findByTestId("sidebar");
+  expect(screen.queryByTestId("sb-whatsapp")).toBeNull();
+});
+
+test("rota de whatsapp bloqueia e redireciona", () => {
+  const org = { features: { whatsapp: true }, plan: { limits: { wa_numbers: 0 } } };
+  render(
+    <MemoryRouter initialEntries={["/settings/whatsapp"]}>
+      <Routes>
+        <Route
+          path="/settings/whatsapp"
+          element={<FeatureRoute org={org} feature="whatsapp" element={<div data-testid="wa-ok" />} />}
+        />
+        <Route path="/upgrade" element={<div data-testid="upgrade-page" />} />
+      </Routes>
+    </MemoryRouter>
+  );
+  expect(screen.getByTestId("upgrade-page")).toBeInTheDocument();
+});
+
+test("ilimitado (-1) mantém visível", async () => {
+  global.setFeatureGate({ instagram: true }, { instagram_accounts: -1 });
+  renderWithRouterProviders(<Sidebar />);
+  expect(await screen.findByTestId("sb-instagram")).toBeInTheDocument();
+});
+

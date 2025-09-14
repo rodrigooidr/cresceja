@@ -3,7 +3,9 @@ import { useOrg } from '../contexts/OrgContext.jsx';
 import { useCallback, useEffect, useState } from 'react';
 import { mapApiErrorToForm } from '../ui/errors/mapApiError.js';
 import useToastFallback from '../hooks/useToastFallback.js';
-import { canUse } from '../utils/featureGate.js';
+import { canUse, limitKeyFor } from '../utils/featureGate.js';
+import Gate from '../components/Gate.jsx';
+import useFeatureGate from '../utils/useFeatureGate.js';
 
 function GoogleCalendarSection(props) {
   const { selected } = useOrg();
@@ -333,10 +335,39 @@ function InstagramSection(props) {
 }
 
 function WhatsAppSection(props) {
+  const { org } = props;
+  const { allowed, reason } = useFeatureGate(org, "whatsapp", "wa_numbers");
+
+  const required = {
+    phone: org?.channels?.whatsapp?.phone,
+    provider: org?.channels?.whatsapp?.provider,
+  };
+  const ready = !!(required.phone && required.provider);
+
+  const disabledTip = !allowed
+    ? reason === "feature_disabled"
+      ? "Recurso indisponível no plano."
+      : "Limite do plano esgotado."
+    : !ready
+      ? "Preencha os campos obrigatórios para testar."
+      : "";
+
   return (
-    <section className="mb-8" data-testid={props['data-testid']}>
-      <h3 className="text-lg font-semibold">WhatsApp</h3>
-    </section>
+    <Gate org={org} feature="whatsapp">
+      <section className="mb-8" data-testid={props['data-testid']}>
+        <h3 className="text-lg font-semibold">WhatsApp</h3>
+        <div className={!ready ? "opacity-50 pointer-events-none" : ""} aria-disabled={!ready}>
+          <button
+            type="button"
+            disabled={!ready}
+            data-testid="whatsapp-test-btn"
+            title={disabledTip}
+          >
+            Testar conexão
+          </button>
+        </div>
+      </section>
+    </Gate>
   );
 }
 export default function SettingsPage() {
@@ -354,10 +385,14 @@ export default function SettingsPage() {
     };
   }, [selected]);
 
-  const showCalendar = canUse(org, 'calendar', 'calendar');
-  const showFacebook = canUse(org, 'facebook', 'facebook_pages');
-  const showInstagram = canUse(org, 'instagram', 'instagram_accounts');
-  const showWhatsApp = canUse(org, 'whatsapp', 'wa_numbers');
+  if (!org) {
+    return <div role="status" data-testid="settings-skeleton">Carregando…</div>;
+  }
+
+  const showCalendar = canUse(org, 'calendar', limitKeyFor('calendar'));
+  const showFacebook = canUse(org, 'facebook', limitKeyFor('facebook'));
+  const showInstagram = canUse(org, 'instagram', limitKeyFor('instagram'));
+  const showWhatsApp = canUse(org, 'whatsapp', limitKeyFor('whatsapp'));
 
   return (
     <div className="p-4 space-y-8">
@@ -371,7 +406,7 @@ export default function SettingsPage() {
         <InstagramSection data-testid="settings-instagram-section" />
       ) : null}
       {showWhatsApp ? (
-        <WhatsAppSection data-testid="settings-whatsapp-section" />
+        <WhatsAppSection org={org} data-testid="settings-whatsapp-section" />
       ) : null}
     </div>
   );

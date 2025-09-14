@@ -19,3 +19,9 @@
 - Inbox com filtros (nome, telefone, categoria)
 - Diferenciação de canal (WhatsApp/Instagram/Facebook)
 - TailwindCSS
+
+## Feature gates
+- Seção visível somente se `feature` estiver habilitada **e** `limit > 0` ou `-1`.
+- Mapeamento `feature → limitKey` centralizado em `featureLimitMap`.
+- APIs mock: usar `__setFeatures`, `__setLimits`.
+- Rotas e Sidebar também obedecem ao gate.
