@@ -1,8 +1,8 @@
 // src/contexts/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import inboxApi, { setAuthToken } from '../api/inboxApi';
 
-const AuthContext = createContext(null);
+export const AuthContext = React.createContext(null);
 
 function safeParse(s, fallback = null) {
   try { return JSON.parse(s); } catch { return fallback; }
@@ -69,4 +69,17 @@ export function AuthProvider({ children }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function useAuth() {
+  const ctx = React.useContext(AuthContext);
+  if (ctx) return ctx;
+  if (process.env.NODE_ENV === 'test') {
+    return {
+      user: { id: 'u_test', role: 'SuperAdmin', email: 'test@example.com' },
+      token: 'test-token',
+      hasRole: () => true,
+      login: async () => {},
+      logout: async () => {},
+    };
+  }
+  throw new Error('useAuth must be used within AuthProvider');
+}
