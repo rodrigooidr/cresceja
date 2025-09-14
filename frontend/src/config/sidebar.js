@@ -27,6 +27,7 @@ const sidebar = [
     items: [
       { label: 'Lists', to: '/app/marketing/lists', minRole: 'Agent' },
       { label: 'Templates', to: '/app/marketing/templates', minRole: 'Agent' },
+      { label: 'Calendário de Conteúdo', to: '/app/marketing/calendar', minRole: 'Agent' },
       { label: 'Campaigns', to: '/app/marketing/campaigns', minRole: 'Manager' },
       { label: 'Automations', to: '/app/marketing/automations', minRole: 'Manager' }
     ]
