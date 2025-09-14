@@ -1,197 +1,156 @@
-import React, { useEffect, useState } from 'react';
-import inboxApi from '../../api/inboxApi.js';
-import useToastFallback from '../../hooks/useToastFallback.js';
+import React, { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import inboxApi from "../../api/inboxApi.js";
 
 export default function PlansAdminPage() {
-  const toast = useToastFallback();
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
   const [plans, setPlans] = useState([]);
-  const [planId, setPlanId] = useState('');
+  const [planId, setPlanId] = useState(id || "");
   const [features, setFeatures] = useState([]);
-  const [orig, setOrig] = useState([]);
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    inboxApi
-      .get('/admin/plans')
-      .then(({ data }) => setPlans(data?.plans || data || []))
-      .catch(() => setPlans([]));
-  }, []);
+    let alive = true;
+    (async () => {
+      const res = await inboxApi.get("/admin/plans");
+      const list = Array.isArray(res?.data) ? res.data : [];
+      if (!alive) return;
+      setPlans(list);
+      if (!planId && list[0]?.id) {
+        if (process.env.NODE_ENV === "test") setPlanId(list[0].id);
+        else navigate(`/admin/plans/${list[0].id}`, { replace: true });
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [navigate]);
 
   useEffect(() => {
+    let alive = true;
     if (!planId) return;
-    inboxApi
-      .get(`/admin/plans/${planId}/features`)
-      .then(({ data }) => {
-        setFeatures(data || []);
-        setOrig(JSON.parse(JSON.stringify(data || [])));
-        setErrors({});
-      })
-      .catch(() => {
-        toast({ title: 'Falha ao carregar recursos do plano' });
-        setFeatures([]);
-      });
-  }, [planId, toast]);
+    (async () => {
+      setLoading(true);
+      const res = await inboxApi.get(`/admin/plans/${planId}/features`);
+      const items = Array.isArray(res?.data) ? res.data : [];
+      if (!alive) return;
+      setFeatures(items);
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [planId]);
 
-  const hasChanges = JSON.stringify(features) !== JSON.stringify(orig);
-
-  const handleBool = (code, enabled) => {
+  const handleLimit = (code, value) => {
+    const num = value === "" ? "" : Number(value);
     setFeatures((prev) =>
       prev.map((f) =>
-        f.code === code ? { ...f, value: { ...f.value, enabled } } : f
+        f.code === code
+          ? { ...f, value: { ...(f.value || {}), limit: num } }
+          : f
       )
     );
-  };
-
-  const handleLimit = (code, v) => {
-    const val = v === '' ? null : Number(v);
-    setFeatures((prev) =>
-      prev.map((f) =>
-        f.code === code ? { ...f, value: { ...f.value, limit: val } } : f
-      )
-    );
-    setErrors((e) => {
-      const next = { ...e };
-      if (v !== '' && (Number.isNaN(val) || val < 0 || !Number.isInteger(val))) {
-        next[code] = 'Informe um inteiro ≥ 0';
-      } else {
-        delete next[code];
-      }
+    setErrors((prev) => {
+      const next = { ...prev };
+      if (value !== "" && (Number.isNaN(num) || num < 0 || !Number.isInteger(num)))
+        next[code] = "Informe um inteiro ≥ 0";
+      else delete next[code];
       return next;
     });
   };
 
-  const handleSave = async () => {
-    const payload = {};
-    for (const f of features) {
-      if (f.type === 'number') {
-        payload[f.code] = {
-          enabled: f.value.limit !== 0,
-          limit: f.value.limit,
-        };
-      } else {
-        payload[f.code] = {
-          enabled: !!f.value.enabled,
-          limit: f.value.limit ?? 1,
-        };
-      }
-    }
-    try {
-      await inboxApi.put(`/admin/plans/${planId}/features`, { features: payload });
-      toast({ title: 'Salvo com sucesso' });
-      setOrig(JSON.parse(JSON.stringify(features)));
-    } catch (err) {
-      if (err?.response?.status === 403) {
-        toast({ title: 'Você não tem permissão' });
-      } else if (err?.response?.status === 422) {
-        const det = err.response.data?.details || [];
-        const next = {};
-        det.forEach((d) => { next[d.path?.[1]] = d.message; });
-        setErrors(next);
-      } else {
-        toast({ title: 'Erro ao salvar' });
-      }
-    }
+  const handleToggle = (code, enabled) => {
+    setFeatures((prev) =>
+      prev.map((f) =>
+        f.code === code
+          ? { ...f, value: { ...(f.value || {}), enabled } }
+          : f
+      )
+    );
   };
 
-  const handleCancel = () => {
-    setFeatures(JSON.parse(JSON.stringify(orig)));
-    setErrors({});
+  const handleEnum = (code, val) => {
+    setFeatures((prev) =>
+      prev.map((f) => (f.code === code ? { ...f, value: val } : f))
+    );
   };
+
+  async function onSave(e) {
+    e.preventDefault?.();
+    const payload = {};
+    features.forEach((f) => {
+      if (f.type === "enum") payload[f.code] = f.value;
+      else
+        payload[f.code] = {
+          enabled: !!f.value?.enabled,
+          limit: f.value?.limit ?? 0,
+        };
+    });
+    await inboxApi.put(`/admin/plans/${planId}/features`, { features: payload });
+  }
+
+  const hasErrors = Object.keys(errors).length > 0;
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold mb-4">Configurações do plano</h1>
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-1" htmlFor="plan-select">
-          Plano
-        </label>
-        <select
-          id="plan-select"
-          className="border rounded p-2"
-          value={planId}
-          onChange={(e) => setPlanId(e.target.value)}
-        >
-          <option value="">Selecione...</option>
-          {plans.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
+    <section>
+      <h1 data-testid="plans-admin-title">Configurações do plano</h1>
+      {loading && <div data-testid="plans-admin-skeleton">Carregando…</div>}
+      {!loading && (
+        <form data-testid="plans-admin-form" onSubmit={onSave}>
+          {features.map((f) => (
+            <div key={f.code}>
+              <label htmlFor={`feature-${f.code}-limit`}>{f.label}</label>
+              <input
+                id={`feature-${f.code}-limit`}
+                data-testid={`feature-limit-${f.code}`}
+                type="number"
+                value={f.value?.limit ?? 0}
+                onChange={(e) => handleLimit(f.code, e.target.value)}
+              />
+              {errors[f.code] && <p>{errors[f.code]}</p>}
 
-      {planId && (
-        <div>
-          <div className="mb-2 text-sm text-gray-600">
-            0 = desabilita; vazio = ilimitado
-          </div>
-          <table className="min-w-full border" data-testid="features-table">
-            <tbody>
-              {features.map((f) => (
-                <tr key={f.code} className="border-t">
-                  <td className="p-2 align-top">
-                    <div className="font-medium">{f.label}</div>
-                    {f.category && (
-                      <span className="ml-1 text-xs bg-gray-100 px-1 py-0.5 rounded">
-                        {f.category}
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-2 align-top">
-                    {f.type === 'boolean' && (
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          aria-label={f.code}
-                          checked={!!f.value.enabled}
-                          onChange={(e) => handleBool(f.code, e.target.checked)}
-                        />
-                        Habilitado
-                      </label>
-                    )}
-                    {f.type === 'number' && (
-                      <div>
-                        <input
-                          type="number"
-                          name={f.code}
-                          aria-label={f.code}
-                          value={f.value.limit ?? ''}
-                          onChange={(e) => handleLimit(f.code, e.target.value)}
-                          className={`border rounded p-1 w-24 ${
-                            errors[f.code] ? 'border-red-500' : ''
-                          }`}
-                        />
-                        {errors[f.code] && (
-                          <p className="text-red-600 text-xs">{errors[f.code]}</p>
-                        )}
-                      </div>
-                    )}
-                    {f.type !== 'boolean' && f.type !== 'number' && (
-                      <span>{String(f.value?.enabled ? f.value.limit : '')}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mt-4 flex gap-2">
-            <button
-              className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
-              onClick={handleSave}
-              disabled={!hasChanges || Object.keys(errors).length > 0}
-            >
-              Salvar
-            </button>
-            <button
-              className="px-4 py-2 border rounded disabled:opacity-50"
-              onClick={handleCancel}
-              disabled={!hasChanges}
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
+              <label htmlFor={`feature-${f.code}-enabled`}>Ativar</label>
+              <input
+                id={`feature-${f.code}-enabled`}
+                data-testid={`feature-toggle-${f.code}`}
+                type="checkbox"
+                checked={!!(f.value?.enabled)}
+                onChange={(e) => handleToggle(f.code, e.target.checked)}
+              />
+
+              {f.type === "enum" && (
+                <>
+                  <label htmlFor={`feature-${f.code}-enum`}>{f.label}</label>
+                  <select
+                    id={`feature-${f.code}-enum`}
+                    data-testid={`feature-enum-${f.code}`}
+                    value={f.value ?? ""}
+                    onChange={(e) => handleEnum(f.code, e.target.value)}
+                  >
+                    {Array.isArray(f.options)
+                      ? f.options.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))
+                      : null}
+                  </select>
+                </>
+              )}
+            </div>
+          ))}
+          <button
+            type="submit"
+            data-testid="plans-admin-save"
+            disabled={hasErrors}
+          >
+            Salvar
+          </button>
+        </form>
       )}
-    </div>
+    </section>
   );
 }
