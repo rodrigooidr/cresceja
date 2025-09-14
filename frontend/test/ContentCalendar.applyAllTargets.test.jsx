@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 
 jest.mock('react-big-calendar', () => ({
@@ -27,7 +27,9 @@ test('Todos IG applies targets in suggested', async () => {
 
   await screen.findByText('Camp');
   await screen.findByText('Todos Instagram');
-  fireEvent.click(screen.getByText('Todos Instagram'));
+  await act(async () => {
+    fireEvent.click(screen.getByText('Todos Instagram'));
+  });
 
   await waitFor(() => {
     expect(mockApi.patch).toHaveBeenCalledWith(

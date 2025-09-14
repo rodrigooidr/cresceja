@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import ContentEditor from '../src/pages/marketing/ContentEditor.jsx';
 
@@ -39,9 +39,12 @@ test('saves asset and patches suggestion', async () => {
   );
 
   const file = new File(['img'], 'test.jpg', { type:'image/jpeg' });
+  await screen.findByTestId('file-input');
   fireEvent.change(screen.getByTestId('file-input'), { target:{ files:[file] } });
 
-  fireEvent.click(screen.getByText('Salvar'));
+  await act(async () => {
+    fireEvent.click(screen.getByText('Salvar'));
+  });
 
   await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/uploads/sign', expect.any(Object)));
   expect(mockApi.post).toHaveBeenCalledWith('/orgs/org1/assets', expect.any(Object));

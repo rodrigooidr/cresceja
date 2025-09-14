@@ -12,10 +12,13 @@ module.exports = {
     '^hooks/(.*)$': '<rootDir>/src/hooks/$1',
     '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
-    '\\.(css|less|sass|scss)$': 'identity-obj-proxy',
+    '\\.(css|less|sass|scss)$': '<rootDir>/test/__mocks__/styleMock.js',
     '\\.(svg|png|jpg|jpeg|gif|webp|mp4|mp3)$': '<rootDir>/test/__mocks__/fileMock.js',
   },
   transform: { '^.+\\.[jt]sx?$': 'babel-jest' },
-  transformIgnorePatterns: ['/node_modules/(?!(@testing-library|nanoid)/)'],
+  // ⚠️ Permite transformar pacotes ESM usados no front
+  transformIgnorePatterns: [
+    '/node_modules/(?!(luxon|react-big-calendar|date-arithmetic|@internationalized/date|@testing-library|nanoid)/)',
+  ],
   testPathIgnorePatterns: ['/node_modules/', '/dist/', '/build/', '/e2e/'],
 };

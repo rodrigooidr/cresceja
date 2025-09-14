@@ -1,9 +1,9 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import ContentEditor from '../src/pages/marketing/ContentEditor.jsx';
 
-const mockApi = { post: jest.fn(), patch: jest.fn() };
+const mockApi = { post: jest.fn(), patch: jest.fn(), get: jest.fn() };
 jest.mock('../src/contexts/useApi.js', () => ({ useApi: () => mockApi }));
 jest.mock('../src/hooks/useActiveOrg.js', () => () => ({ activeOrg: 'org1' }));
 const mockToast = jest.fn();
@@ -29,7 +29,10 @@ test('generates image with IA and inserts', async () => {
       </Routes>
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByText('Gerar com IA'));
+  await screen.findByText('Gerar com IA');
+  await act(async () => {
+    fireEvent.click(screen.getByText('Gerar com IA'));
+  });
   await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/orgs/org1/ai/images/generate', expect.any(Object)));
   expect(imgMock._src).toBe('http://ai.img');
 });
@@ -46,6 +49,9 @@ test('shows error when quota reached', async () => {
       </Routes>
     </MemoryRouter>
   );
-  fireEvent.click(screen.getByText('Gerar com IA'));
+  await screen.findByText('Gerar com IA');
+  await act(async () => {
+    fireEvent.click(screen.getByText('Gerar com IA'));
+  });
   await waitFor(() => expect(mockToast).toHaveBeenCalledWith({ title:'Limite do plano atingido', status:'error' }));
 });

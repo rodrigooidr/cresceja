@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import ContentEditor from '../src/pages/marketing/ContentEditor.jsx';
 
@@ -35,8 +35,11 @@ test('saves variant with logo', async () => {
     </MemoryRouter>
   );
   const file = new File(['img'], 't.jpg', { type:'image/jpeg' });
+  await screen.findByTestId('logo-input');
   fireEvent.change(screen.getByTestId('logo-input'), { target:{ files:[file] } });
-  fireEvent.click(screen.getByText('Salvar variação'));
+  await act(async () => {
+    fireEvent.click(screen.getByText('Salvar variação'));
+  });
   await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/orgs/org1/assets', expect.any(Object), expect.any(Object)));
   const patchCall = mockApi.patch.mock.calls[0];
   expect(patchCall[1].asset_refs).toHaveLength(2);

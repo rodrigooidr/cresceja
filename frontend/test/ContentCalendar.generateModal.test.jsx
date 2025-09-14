@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 
 jest.mock('luxon', () => ({ DateTime: { fromJSDate: () => ({ toISODate: () => '2024-01-01', toFormat: () => '', plus: () => ({ toJSDate: () => new Date() }), toJSDate: () => new Date() }), fromISO: () => ({ startOf: () => ({ toISODate: () => '2024-01-01' }) }) } }));
@@ -16,8 +16,13 @@ beforeEach(() => { mockApi.post.mockReset(); });
 
 test('opens modal and posts generate', async () => {
   render(<ContentCalendar />);
-  fireEvent.click(screen.getByText('Gerar Campanha (IA)'));
+  await screen.findByText('Gerar Campanha (IA)');
+  await act(async () => {
+    fireEvent.click(screen.getByText('Gerar Campanha (IA)'));
+  });
   fireEvent.change(screen.getByPlaceholderText('Título'), { target:{ value:'Camp' } });
-  fireEvent.click(screen.getByText('Gerar'));
+  await act(async () => {
+    fireEvent.click(screen.getByText('Gerar'));
+  });
   await waitFor(() => expect(mockApi.post).toHaveBeenCalled());
 });

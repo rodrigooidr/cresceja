@@ -1,5 +1,17 @@
 require('@testing-library/jest-dom');
 
+// TZ e Luxon
+process.env.TZ = 'America/Sao_Paulo';
+try {
+  const { Settings } = require('luxon');
+  Settings.defaultZone = 'America/Sao_Paulo';
+} catch {}
+
+// Polyfills comuns em JSDOM
+const { TextEncoder, TextDecoder } = require('util');
+global.TextEncoder = TextEncoder;
+global.TextDecoder = TextDecoder;
+
 jest.mock('../src/api/inboxApi.js', () => {
   const mock = {
     get: jest.fn(() => Promise.resolve({ data: { items: [] } })),
@@ -22,6 +34,10 @@ jest.mock('../src/contexts/AuthContext', () => {
     AuthProvider: ({ children }) => children,
   };
 });
+
+jest.mock('../src/auth/useAuth.js', () => ({
+  useAuth: () => ({ user: { permissions: ['CAN_MANAGE_CAMPAIGNS'] } })
+}));
 
 // Mock do contexto de organizações para os testes
 jest.mock('../src/contexts/OrgContext.jsx', () => {
@@ -47,9 +63,6 @@ jest.mock('../src/contexts/OrgContext.jsx', () => {
 });
 
 // Polyfills que costumam faltar
-global.ResizeObserver = global.ResizeObserver ||
-  class { observe() {} unobserve() {} disconnect() {} };
-
 class MockIntersectionObserver {
   constructor() {}
   observe() {}
@@ -58,19 +71,27 @@ class MockIntersectionObserver {
 }
 global.IntersectionObserver = MockIntersectionObserver;
 
-// matchMedia polyfill para jsdom
-if (!window.matchMedia) {
-  Object.defineProperty(window, 'matchMedia', {
-    writable: true,
-    value: jest.fn().mockImplementation((query) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: jest.fn(),             // legacy
-      removeListener: jest.fn(),          // legacy
-      addEventListener: jest.fn(),
-      removeEventListener: jest.fn(),
-      dispatchEvent: jest.fn(),
-    })),
+if (!global.ResizeObserver) {
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
+if (!global.window.matchMedia) {
+  global.window.matchMedia = () => ({
+    matches: false,
+    media: '',
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() { return false; },
   });
+}
+
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = function () {};
 }
