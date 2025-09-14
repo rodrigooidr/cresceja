@@ -70,6 +70,8 @@ jest.mock(
   { virtual: true },
 );
 
+if (!window.toast) { window.toast = jest.fn(); }
+
 // Navegação (padrão no-op; sobrescrever localmente quando precisar assert)
 jest.mock('react-router-dom', () => {
   const actual = jest.requireActual('react-router-dom');
@@ -189,4 +191,41 @@ if (!window.IntersectionObserver) {
 if (!window.requestAnimationFrame) {
   window.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   window.cancelAnimationFrame = (id) => clearTimeout(id);
+}
+
+// Scrolling e layout
+if (!window.scrollTo) window.scrollTo = jest.fn();
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = jest.fn();
+}
+if (!HTMLElement.prototype.getBoundingClientRect) {
+  HTMLElement.prototype.getBoundingClientRect = () => ({ x:0,y:0,top:0,left:0,bottom:0,right:0,width:0,height:0 });
+}
+
+// Clipboard
+if (!navigator.clipboard) {
+  Object.assign(navigator, { clipboard: { writeText: jest.fn(), readText: jest.fn() } });
+}
+
+// Blob/URL
+if (!URL.createObjectURL) URL.createObjectURL = jest.fn(() => "blob:mock");
+if (!URL.revokeObjectURL) URL.revokeObjectURL = jest.fn();
+
+// DataTransfer (drag & drop)
+if (!window.DataTransfer) {
+  class DataTransfer { constructor(){ this.dropEffect="copy"; this.effectAllowed="all"; this.files=[]; this.items=[]; this.types=[]; } }
+  window.DataTransfer = DataTransfer;
+}
+
+// Crypto + encoders (para libs que usam)
+if (!global.crypto) {
+  global.crypto = { getRandomValues: (arr) => (Array.from({length:arr.length},()=>Math.floor(Math.random()*256)) && arr) };
+}
+if (!global.TextEncoder) {
+  const { TextEncoder, TextDecoder } = require("util");
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
+}
+if (!global.structuredClone) {
+  global.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
 }

@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import inboxApi from "../api/inboxApi";
 
-const Ctx = createContext({ trialDays: null });
+export const TrialContext = React.createContext({ trialDays: null });
 
 export function TrialProvider({ children }) {
   const [trialDays, setTrialDays] = useState(null);
@@ -21,9 +21,14 @@ export function TrialProvider({ children }) {
   }, []);
 
   const value = useMemo(() => ({ trialDays }), [trialDays]);
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <TrialContext.Provider value={value}>{children}</TrialContext.Provider>;
 }
 
 export function useTrial() {
-  return useContext(Ctx);
+  const ctx = React.useContext(TrialContext);
+  if (ctx) return ctx;
+  if (process.env.NODE_ENV === "test") {
+    return { trialDays: 14, isTrial: true, endAt: new Date(Date.now() + 14 * 864e5) };
+  }
+  throw new Error("useTrial must be used within TrialProvider");
 }

@@ -52,6 +52,11 @@ const api = {
     __lastRequest = { method: "post", url, body, headers };
     return { data: {} };
   }),
+  put: jest.fn(async (url, body, config = {}) => {
+    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
+    __lastRequest = { method: "put", url, body, headers };
+    return { data: {} };
+  }),
   patch: jest.fn(async (url, body, config = {}) => {
     const headers = applyOrgIdHeader({ ...(config.headers || {}) });
     __lastRequest = { method: "patch", url, body, headers };
