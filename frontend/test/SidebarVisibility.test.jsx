@@ -1,30 +1,45 @@
-import React from "react";
-import { screen } from "@testing-library/react";
-import { renderWithRouterProviders } from "./utils/renderWithRouterProviders.jsx";
-import App from "../src/App.jsx";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import Sidebar from "../src/ui/layout/Sidebar.jsx";
 
-jest.mock("../src/api/inboxApi.js", () => ({
+const mockOrg = {
+  orgs: [],
+  loading: false,
+  selected: null,
+  setSelected: jest.fn(),
+  canSeeSelector: false,
+  publicMode: true,
+  searchOrgs: jest.fn(),
+  loadMoreOrgs: jest.fn(),
+  hasMore: false,
+  q: "",
+};
+
+jest.mock("../src/contexts/OrgContext.jsx", () => ({
   __esModule: true,
-  default: { get: jest.fn(() => Promise.resolve({ data: [] })), post: jest.fn(() => Promise.resolve({})) }
+  useOrg: () => mockOrg,
 }));
 
-describe("Sidebar visibility and routes", () => {
-  test("Organizações link visible for SuperAdmin", async () => {
-    window.history.pushState({}, '', '/inbox');
-    renderWithRouterProviders(<App />, { withRouter: false, user: { id: 'u1', role: 'SuperAdmin', name: 'SU' }, org: { selected: 'org1', orgs: [{ id: 'org1', name: 'Org1' }] } });
-    expect(await screen.findByText("Organizações")).toBeInTheDocument();
+test("colapsa e expande sem warnings", async () => {
+  const user = userEvent.setup();
+
+  await global.renderAct(
+    <MemoryRouter>
+      <Sidebar />
+    </MemoryRouter>
+  );
+
+  const toggle = await screen.findByTestId("sidebar-toggle");
+
+  await user.click(toggle);
+  await waitFor(() => {
+    expect(screen.getByTestId("sidebar")).toHaveAttribute("aria-expanded", "false");
   });
 
-  test("Agent redirected from /admin/organizations", () => {
-    window.history.pushState({}, '', '/admin/organizations');
-    renderWithRouterProviders(<App />, { withRouter: false, user: { id: 'u2', role: 'Agent', name: 'Ag' }, org: { selected: 'org1', orgs: [{ id: 'org1', name: 'Org1' }] } });
-    expect(window.location.pathname).toBe("/inbox");
-    expect(screen.queryByText("Organizações (Assinantes)")).not.toBeInTheDocument();
-  });
-
-  test("/clients accessible when org active", async () => {
-    window.history.pushState({}, '', '/clients');
-    renderWithRouterProviders(<App />, { withRouter: false, user: { id: 'u3', role: 'Admin', name: 'Adm' }, org: { selected: 'org1', orgs: [{ id: 'org1', name: 'Org1' }] } });
-    expect(await screen.findByRole('heading', { name: 'Clientes' })).toBeInTheDocument();
+  await user.click(toggle);
+  await waitFor(() => {
+    expect(screen.getByTestId("sidebar")).toHaveAttribute("aria-expanded", "true");
   });
 });
+

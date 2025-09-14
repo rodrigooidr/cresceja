@@ -1,8 +1,22 @@
-import React from "react";
-import { Navigate } from "react-router-dom";
-import { canUse, limitKeyFor } from "../utils/featureGate";
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { canUse } from "../utils/featureGate";
 
-export default function FeatureRoute({ org, feature, element, redirect = "/upgrade" }) {
-  return canUse(org, feature, limitKeyFor(feature)) ? element : <Navigate to={redirect} replace />;
+export default function FeatureRoute({
+  org,
+  featureKey,
+  limitKey,
+  fallback = "/app",
+  children,
+}) {
+  const allowed = canUse(org, featureKey, limitKey);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!allowed) navigate(fallback, { replace: true });
+  }, [allowed, navigate, fallback]);
+
+  if (!allowed) return null;
+  return children;
 }
 

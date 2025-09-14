@@ -1,11 +1,13 @@
 // frontend/src/ui/layout/Sidebar.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { NavLink } from "react-router-dom";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 import { useAuth } from "../../contexts/AuthContext";
 import { CAN_EDIT_CLIENTS, CAN_VIEW_ORGANIZATIONS_ADMIN } from "../../auth/roles";
 import inboxApi from "../../api/inboxApi.js";
 import { canUse, limitKeyFor } from "../../utils/featureGate.js";
+
+const LS_KEY = "sidebar:collapsed";
 
 function Item({ to, children, disabled, title, collapsed }) {
   const label = typeof children === "string" ? children : "";
@@ -105,7 +107,7 @@ export default function Sidebar() {
   }, [selected]);
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem("sidebar.collapsed") === "1";
+      return localStorage.getItem(LS_KEY) === "1";
     } catch {
       return false;
     }
@@ -113,30 +115,36 @@ export default function Sidebar() {
 
   useEffect(() => {
     try {
-      localStorage.setItem("sidebar.collapsed", collapsed ? "1" : "0");
+      localStorage.setItem(LS_KEY, collapsed ? "1" : "0");
     } catch {}
   }, [collapsed]);
 
   // auto-colapse em telas menores
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 1200px)');
-    const apply = () => setCollapsed(true);
-    if (mq.matches) apply();
-    mq.addEventListener?.('change', apply);
-    return () => mq.removeEventListener?.('change', apply);
+    const onResize = () =>
+      setCollapsed((prev) => (window.innerWidth < 1024 ? true : prev));
+    const id = requestAnimationFrame(onResize);
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(id);
+      window.removeEventListener("resize", onResize);
+    };
   }, []);
+
+  const toggle = useCallback(() => setCollapsed((c) => !c), []);
 
   return (
     <nav
       className={`h-full flex flex-col ${collapsed ? "w-16" : "w-72"}`}
       data-testid="sidebar"
+      aria-expanded={!collapsed}
     >
       <div className="flex items-center justify-between p-2 border-b">
         <span className="font-semibold text-sm">{collapsed ? "" : "Menu"}</span>
         <button
-          data-testid="collapse-toggle"
+          data-testid="sidebar-toggle"
           className="btn btn-ghost btn-xs"
-          onClick={() => setCollapsed((c) => !c)}
+          onClick={toggle}
         >
           {collapsed ? ">>" : "<<"}
         </button>
@@ -199,7 +207,7 @@ export default function Sidebar() {
             <NavLink
               key={i.key}
               to={i.to}
-              data-testid={`sb-${i.key}`}
+              data-testid={`nav-${i.key}`}
               className={`block px-3 py-2 rounded hover:bg-gray-100 ${collapsed ? "text-center" : ""}`}
             >
               {i.label}
