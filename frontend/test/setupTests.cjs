@@ -26,22 +26,16 @@ jest.mock('../src/api/inboxApi.js', () => {
 
 jest.mock('../src/contexts/AuthContext', () => {
   const React = require('react');
-  return {
-    __esModule: true,
-    useAuth: () => ({
-      user: { id: 'u_test', role: 'SuperAdmin', email: 'test@x.com' },
-      isAuthenticated: true,
-      login: jest.fn(),
-      logout: jest.fn(),
-    }),
-    AuthContext: React.createContext(null),
-    AuthProvider: ({ children }) => children,
-  };
+  const AuthContext = React.createContext({
+    user: { id: 'u_test', role: 'SuperAdmin', email: 'test@x.com' },
+    isAuthenticated: true,
+    login: jest.fn(),
+    logout: jest.fn(),
+    loading: false,
+  });
+  const useAuth = () => React.useContext(AuthContext);
+  return { __esModule: true, AuthContext, useAuth };
 });
-
-jest.mock('../src/auth/useAuth.js', () => ({
-  useAuth: () => ({ user: { permissions: ['CAN_MANAGE_CAMPAIGNS'] } })
-}));
 
 // Mock do contexto de organizações para os testes
 jest.mock('../src/contexts/OrgContext.jsx', () => {
@@ -66,6 +60,16 @@ jest.mock('../src/contexts/OrgContext.jsx', () => {
     OrgProvider: ({ children }) => children,
   };
 });
+
+jest.mock(
+  'react-hot-toast',
+  () => ({
+    __esModule: true,
+    default: { success: jest.fn(), error: jest.fn() },
+    toast: { success: jest.fn(), error: jest.fn() },
+  }),
+  { virtual: true }
+);
 
 // Polyfills que costumam faltar
 class MockIntersectionObserver {

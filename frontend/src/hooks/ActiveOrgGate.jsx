@@ -2,11 +2,10 @@
 import React from "react";
 import { Outlet } from "react-router-dom";
 import useActiveOrgGate from "./useActiveOrgGate";
-import { ROLES } from "../auth/roles";
 
 export default function ActiveOrgGate() {
   const { allowed, hasOrg } = useActiveOrgGate({
-    minRole: ROLES.Agent,
+    minRole: 'Agent',
     mode: "silent",
   });
 

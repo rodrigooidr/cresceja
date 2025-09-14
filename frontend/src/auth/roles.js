@@ -1,34 +1,17 @@
-// Papéis usados no projeto (alinhado com seu OrgContext)
-export const ROLES = {
-  SuperAdmin: "SuperAdmin",
-  Support: "Support",
-  OrgOwner: "OrgOwner",
-  OrgAdmin: "OrgAdmin",
-  Manager: "Manager",
-  Agent: "Agent",
-  Billing: "Billing",
-  ReadOnly: "ReadOnly",
-};
+export const ROLES = ['Agent','OrgAdmin','OrgOwner','Support','SuperAdmin'];
 
-// Ordem hierárquica simples p/ comparação
-const ROLE_ORDER = [
-  ROLES.ReadOnly,
-  ROLES.Billing,
-  ROLES.Agent,
-  ROLES.Manager,
-  ROLES.OrgAdmin,
-  ROLES.OrgOwner,
-  ROLES.Support,
-  ROLES.SuperAdmin,
-];
+export function hasRoleAtLeast(userRole, minRole) {
+  const a = ROLES.indexOf(String(userRole || ''));
+  const b = ROLES.indexOf(String(minRole || ''));
+  return a >= 0 && b >= 0 && a >= b;
+}
 
-// ← helper que o hook está tentando importar
-export const hasRoleAtLeast = (userRole, minRole) =>
-  ROLE_ORDER.indexOf(userRole) >= ROLE_ORDER.indexOf(minRole);
+// Capacidades
+export const CAN_MANAGE_CAMPAIGNS = (user) =>
+  !!user && hasRoleAtLeast(user.role, 'OrgAdmin');
 
-// Helpers existentes/úteis
-export const CAN_VIEW_ORGANIZATIONS_ADMIN = (role) =>
-  [ROLES.SuperAdmin, ROLES.Support].includes(role);
+export const CAN_VIEW_ORGANIZATIONS_ADMIN = (user) =>
+  !!user && hasRoleAtLeast(user.role, 'SuperAdmin');
 
-export const CAN_EDIT_CLIENTS = (role) =>
-  [ROLES.SuperAdmin, ROLES.Support, ROLES.OrgOwner, ROLES.OrgAdmin, ROLES.Manager, ROLES.Agent].includes(role);
+export const CAN_EDIT_CLIENTS = (user) =>
+  !!user && hasRoleAtLeast(user.role, 'Agent'); // ajuste se necessário
