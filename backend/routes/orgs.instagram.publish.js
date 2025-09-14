@@ -38,6 +38,25 @@ router.post('/api/orgs/:id/instagram/accounts/:accountId/publish', requireFeatur
     const igUserId = acc?.ig_user_id;
     if (!igUserId) return res.status(404).json({ error: 'not_found' });
 
+    // Check official publishing quota before proceeding
+    try {
+      const qRes = await fetch(`https://graph.facebook.com/v20.0/${igUserId}/content_publishing_limit?access_token=${tok.access_token}`);
+      if (qRes.status === 401) throw new Error('unauthorized');
+      const qData = await qRes.json();
+      const info = Array.isArray(qData.data) ? qData.data[0] : null;
+      const used = info?.quota_usage ?? 0;
+      const limit = info?.config?.quota ?? Infinity;
+      if (used >= limit) throw new Error('quota');
+    } catch (err) {
+      if (err.message === 'unauthorized') {
+        return res.status(401).json({ error: 'reauth_required' });
+      }
+      if (err.message === 'quota') {
+        return res.status(409).json({ error: 'ig_quota_reached' });
+      }
+      throw err;
+    }
+
     const payload = { type, caption, media, scheduleAt: scheduleAt || null };
     const clientKey = createHash('md5').update(JSON.stringify(payload)).digest('hex');
 

@@ -30,13 +30,15 @@ const mockQuery = jest.fn((sql, params) => {
 
 let router;
 let worker;
+let fetchMock;
 
 beforeAll(async () => {
   jest.resetModules();
   process.env.GOOGLE_TOKEN_ENC_KEY = '12345678901234567890123456789012';
   jest.unstable_mockModule('#db', () => ({ query: (sql, params) => mockQuery(sql, params) }));
   jest.unstable_mockModule('../services/instagramTokens.js', () => ({ refreshIfNeeded: jest.fn().mockResolvedValue({ access_token:'tok' }) }));
-  global.fetch = jest.fn(() => Promise.resolve({ ok:true, json: () => Promise.resolve({ id:'mid' }) }));
+  fetchMock = jest.fn();
+  global.fetch = fetchMock;
   ({ default: router } = await import('../routes/orgs.instagram.publish.js'));
   ({ processPending: worker } = await import('../queues/instagram.publish.worker.js'));
 });
@@ -50,6 +52,11 @@ function app() {
 }
 
 test('publish now image returns done and saves id', async () => {
+  fetchMock.mockReset();
+  fetchMock
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ data:[{ quota_usage:0, config:{ quota:25 } }] }) })
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ id:'mid' }) })
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ id:'mid' }) });
   const res = await request(app()).post('/api/orgs/o1/instagram/accounts/acc1/publish').set('X-Org-Id','o1').send({ type:'image', media:{ url:'http://i' } });
   expect(res.statusCode).toBe(200);
   expect(res.body.published_media_id).toBe('mid');
@@ -57,8 +64,18 @@ test('publish now image returns done and saves id', async () => {
 
 test('schedule creates pending job and worker publishes', async () => {
   listJobs.length = 0;
+  fetchMock.mockReset();
+  fetchMock
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ data:[{ quota_usage:0, config:{ quota:25 } }] }) })
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ id:'mid' }) })
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ id:'mid' }) });
   await request(app()).post('/api/orgs/o1/instagram/accounts/acc1/publish').set('X-Org-Id','o1').send({ type:'image', media:{ url:'http://i' }, scheduleAt:new Date(Date.now()+1000).toISOString() });
   expect(listJobs[0].status).toBe('pending');
+  fetchMock.mockReset();
+  fetchMock
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ data:[{ quota_usage:0, config:{ quota:25 } }] }) })
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ id:'mid' }) })
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ id:'mid' }) });
   await worker();
   expect(listJobs[0].status).toBe('done');
 });
@@ -66,4 +83,13 @@ test('schedule creates pending job and worker publishes', async () => {
 test('ownership check returns 404', async () => {
   const res = await request(app()).post('/api/orgs/o1/instagram/accounts/other/publish').set('X-Org-Id','o1').send({ type:'image', media:{ url:'http://i' } });
   expect(res.statusCode).toBe(404);
+});
+
+test('quota exceeded returns 409', async () => {
+  fetchMock.mockReset();
+  fetchMock
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ data:[{ quota_usage:10, config:{ quota:10 } }] }) });
+  const res = await request(app()).post('/api/orgs/o1/instagram/accounts/acc1/publish').set('X-Org-Id','o1').send({ type:'image', media:{ url:'http://i' } });
+  expect(res.statusCode).toBe(409);
+  expect(res.body.error).toBe('ig_quota_reached');
 });

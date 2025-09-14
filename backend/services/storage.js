@@ -9,7 +9,10 @@ const useS3 = !!process.env.S3_BUCKET;
 const s3 = useS3
   ? new S3Client({
       region: process.env.S3_REGION || 'us-east-1',
-      forcePathStyle: !!process.env.S3_FORCE_PATH_STYLE,
+      // `S3_USE_PATH_STYLE` is the preferred flag but keep backwards compat
+      // with the previous `S3_FORCE_PATH_STYLE` env.
+      forcePathStyle: !!process.env.S3_USE_PATH_STYLE ||
+        !!process.env.S3_FORCE_PATH_STYLE,
       endpoint: process.env.S3_ENDPOINT || undefined,
       credentials: process.env.S3_ACCESS_KEY_ID
         ? {
