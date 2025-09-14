@@ -1,14 +1,23 @@
 import crypto from 'crypto';
 
-const secret = process.env.GOOGLE_TOKEN_ENC_KEY || '';
+// Prefer the new CRESCEJA_ENC_KEY, but allow legacy GOOGLE_TOKEN_ENC_KEY
+// for backward compatibility. A warning is emitted when falling back.
+const legacyKey = process.env.GOOGLE_TOKEN_ENC_KEY;
+const secret = process.env.CRESCEJA_ENC_KEY || legacyKey || '';
+
+if (!process.env.CRESCEJA_ENC_KEY && legacyKey) {
+  console.warn('GOOGLE_TOKEN_ENC_KEY is deprecated; use CRESCEJA_ENC_KEY');
+}
+
 const key = Buffer.from(secret, 'utf8');
+
 if (process.env.NODE_ENV === 'production') {
   if (key.length !== 32) {
-    console.error('GOOGLE_TOKEN_ENC_KEY must be 32 bytes');
+    console.error('CRESCEJA_ENC_KEY must be 32 bytes');
     process.exit(1);
   }
 } else if (key.length !== 32) {
-  console.warn('GOOGLE_TOKEN_ENC_KEY must be 32 bytes');
+  console.warn('CRESCEJA_ENC_KEY must be 32 bytes');
 }
 
 export function encrypt(data) {
