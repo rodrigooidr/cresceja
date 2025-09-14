@@ -1,76 +1,65 @@
 import { applyOrgIdHeader, setOrgIdHeaderProvider } from "../orgHeader.js";
 
 let __lastRequest = null;
-
-const __state = {
-  org: {
-    id: "org_test",
-    name: "Org Test",
-    features: { calendar: true, facebook: true, instagram: true, whatsapp: true },
-    plan: { limits: { calendar: 1, facebook_pages: 1, instagram_accounts: 1, wa_numbers: 1 } },
-  },
-};
-
-export function __setFeatures(next = {}) {
-  __state.org.features = { ...__state.org.features, ...next };
-}
-export function __setLimits(next = {}) {
-  __state.org.plan.limits = { ...__state.org.plan.limits, ...next };
-}
-export function __setOrg(partial = {}) {
-  __state.org = { ...__state.org, ...partial };
-}
-
-function buildFeaturesResponse() {
-  const { features, plan: { limits } } = __state.org;
-  return {
-    google_calendar_accounts: { enabled: !!features.calendar, limit: limits.calendar, used: 0 },
-    facebook_pages: { enabled: !!features.facebook, limit: limits.facebook_pages, used: 0 },
-    instagram_accounts: { enabled: !!features.instagram, limit: limits.instagram_accounts, used: 0 },
-    whatsapp_numbers: { enabled: !!features.whatsapp, limit: limits.wa_numbers, used: 0 },
-  };
-}
-
 export function __getLastRequest() {
   return __lastRequest;
 }
 
-const api = {
-  get: jest.fn(async (url, config = {}) => {
-    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
-    __lastRequest = { method: "get", url, headers };
-    if (url.includes('/orgs/current')) return { data: __state.org };
-    if (url.includes('/plans/current')) return { data: __state.org.plan };
-    if (/\/orgs\/[^/]+\/features$/.test(url)) return { data: buildFeaturesResponse() };
-    if (url.includes('/calendar/accounts')) return { data: [] };
-    if (url.includes('/facebook/pages')) return { data: [] };
-    if (url.includes('/instagram/accounts')) return { data: [] };
-    return { data: {} };
-  }),
-  post: jest.fn(async (url, body, config = {}) => {
-    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
-    __lastRequest = { method: "post", url, body, headers };
-    return { data: {} };
-  }),
-  put: jest.fn(async (url, body, config = {}) => {
-    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
-    __lastRequest = { method: "put", url, body, headers };
-    return { data: {} };
-  }),
-  patch: jest.fn(async (url, body, config = {}) => {
-    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
-    __lastRequest = { method: "patch", url, body, headers };
-    return { data: {} };
-  }),
-  delete: jest.fn(async (url, config = {}) => {
-    const headers = applyOrgIdHeader({ ...(config.headers || {}) });
-    __lastRequest = { method: "delete", url, headers };
-    return { data: {} };
-  }),
-  defaults: { headers: { common: {} } },
-  interceptors: { request: { use: () => {} }, response: { use: () => {} } },
+// 🔧 Registry de rotas: permita que testes registrem respostas específicas
+const handlers = { GET: [], POST: [], PUT: [], PATCH: [], DELETE: [] };
+export function __mockRoute(method, matcher, responder) {
+  const m = String(method || "GET").toUpperCase();
+  handlers[m].push([matcher, responder]);
+}
+export function __resetMockApi() {
+  Object.keys(handlers).forEach(k => {
+    handlers[k] = [];
+  });
+  __lastRequest = null;
+}
+function matchHandler(method, url) {
+  for (const [matcher, responder] of handlers[method]) {
+    if (typeof matcher === "string" && matcher === url) return responder;
+    if (matcher instanceof RegExp && matcher.test(url)) return responder;
+  }
+  return null;
+}
+
+// 🧩 Respostas default (formatos que os componentes esperam)
+function defaults(method, url, body, headers) {
+  const org = globalThis.__TEST_ORG__ || { id: "1", plan: { limits: {} }, features: {} };
+  if (url.includes("/orgs/current")) return { data: org };
+  if (url.includes("/plans/current")) return { data: org.plan || { limits: {} } };
+  if (url.includes("/features")) return { data: org.features || {} };
+  if (url.includes("/clients")) return { data: { items: [], total: 0 } };
+  if (url.includes("/conversations")) return { data: { items: [], total: 0 } };
+  if (url.includes("/snippets")) return { data: { items: [] } };
+  if (url.includes("/channels/facebook"))
+    return { data: org.channels?.facebook || { connected: false, pages: [], permissions: [] } };
+  if (url.includes("/channels/instagram"))
+    return { data: org.channels?.instagram || { connected: false, accounts: [], permissions: [] } };
+  if (url.includes("/channels/calendar"))
+    return { data: org.channels?.calendar || { connected: false, calendars: [], scopes: [] } };
+  return { data: {} };
+}
+
+function capture(method, url, body, config = {}) {
+  const headers = applyOrgIdHeader({ ...(config.headers || {}) });
+  __lastRequest = { method, url, body, headers };
+
+  const responder = matchHandler(method, url);
+  if (responder) return Promise.resolve(responder({ url, method, body, headers }));
+
+  return Promise.resolve(defaults(method, url, body, headers));
+}
+
+export default {
+  get: jest.fn((url, c) => capture("GET", url, undefined, c)),
+  post: jest.fn((url, b, c) => capture("POST", url, b, c)),
+  put: jest.fn((url, b, c) => capture("PUT", url, b, c)),
+  patch: jest.fn((url, b, c) => capture("PATCH", url, b, c)),
+  delete: jest.fn((url, c) => capture("DELETE", url, undefined, c)),
 };
 
-export default api;
-export const setActiveOrg = () => {};
 export { setOrgIdHeaderProvider };
+
