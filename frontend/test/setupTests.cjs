@@ -117,3 +117,40 @@ afterEach(() => {
   jest.runOnlyPendingTimers();
   jest.useRealTimers();
 });
+
+// Estado default de org para testes (pode ajustar conforme seu domínio)
+globalThis.__TEST_ORG__ = {
+  id: "org_test",
+  name: "Org Test",
+  features: { calendar: true, facebook: true, instagram: true, whatsapp: true },
+  plan: {
+    limits: {
+      calendar: 1,
+      facebook_pages: 1,
+      instagram_accounts: 1,
+      wa_numbers: 1,
+    },
+  },
+  channels: {
+    facebook: { connected: false, pages: [], permissions: [] },
+    instagram: { connected: false, accounts: [], permissions: [] },
+    calendar: { connected: false, calendars: [], scopes: [] },
+    whatsapp: { connected: false },
+  },
+};
+
+// Helpers para os testes ajustarem feature/limit rapidamente
+global.setTestOrg = (partial = {}) => {
+  globalThis.__TEST_ORG__ = { ...globalThis.__TEST_ORG__, ...partial };
+};
+global.setFeatureGate = (features = {}, limits = {}) => {
+  const curr = globalThis.__TEST_ORG__;
+  globalThis.__TEST_ORG__ = {
+    ...curr,
+    features: { ...(curr.features || {}), ...features },
+    plan: {
+      ...(curr.plan || {}),
+      limits: { ...((curr.plan && curr.plan.limits) || {}), ...limits },
+    },
+  };
+};

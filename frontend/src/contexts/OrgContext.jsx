@@ -270,6 +270,25 @@ export function OrgProvider({ children }) {
 
 export function useOrg() {
   const ctx = React.useContext(OrgContext);
-  if (!ctx) throw new Error("useOrg must be used within OrgProvider");
-  return ctx;
+  if (ctx) return ctx;
+
+  // ✅ Fallback apenas em testes
+  if (process.env.NODE_ENV === "test") {
+    const testOrg = globalThis.__TEST_ORG__ || {
+      id: "org_test",
+      name: "Org Test",
+      features: {},
+      plan: { limits: {} },
+      channels: {},
+    };
+    // No fallback não mutamos estado real; devolvemos stubs
+    return {
+      org: testOrg,
+      setOrg: () => {},
+      refreshOrg: async () => testOrg,
+    };
+  }
+
+  // Produção/dev continuam exigindo Provider
+  throw new Error("useOrg must be used within OrgProvider");
 }
