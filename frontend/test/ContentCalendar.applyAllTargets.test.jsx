@@ -1,39 +1,39 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
+import { renderWithProviders, mockFeatureGate } from './utils/renderWithProviders.jsx';
 
-jest.mock('react-big-calendar', () => ({
-  Calendar: ({ events, components }) => <div>{events.map(ev => <div key={ev.id}>{components.event({ event: ev })}</div>)}</div>,
-  luxonLocalizer: () => ({})
-}));
-jest.mock('react-big-calendar/lib/addons/dragAndDrop', () => (Comp) => (props) => <Comp {...props} />);
-jest.mock('../src/ui/feature/FeatureGate.jsx', () => ({ children }) => <>{children}</>);
+jest.mock('../src/api');
+import api from '../src/api';
+import { campaignsFixture } from './fixtures/calendar.fixtures.js';
 
-const mockApi = { get: jest.fn(), patch: jest.fn(), post: jest.fn() };
-jest.mock('../src/contexts/useApi.js', () => ({ useApi: () => mockApi }));
-jest.mock('../src/hooks/useActiveOrg.js', () => () => ({ activeOrg: '1' }));
-const mockToast = jest.fn();
-jest.mock('../src/hooks/useToastFallback.js', () => () => mockToast);
+mockFeatureGate();
+
+beforeEach(() => {
+  jest.resetAllMocks();
+  api.get.mockImplementation((url) => {
+    if (url.includes('/campaigns/') && url.endsWith('/suggestions')) {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (url.includes('/campaigns')) {
+      return Promise.resolve({ data: { items: campaignsFixture() } });
+    }
+    return Promise.resolve({ data: {} });
+  });
+  api.post.mockResolvedValue({ data: { ok: true } });
+  api.patch.mockResolvedValue({ data: { ok: true } });
+});
 
 test('Todos IG applies targets in suggested', async () => {
-  mockApi.get.mockImplementation((url) => {
-    if (url === '/orgs/1/campaigns') return Promise.resolve({ data: { data: [{ id: '10', title: 'Camp' }] } });
-    if (url === '/orgs/1/campaigns/10/suggestions') return Promise.resolve({ data: { data: [] } });
-    return Promise.resolve({ data: { data: [] } });
-  });
-  mockApi.patch.mockResolvedValue({});
-
-  render(<ContentCalendar />);
-
-  await screen.findByText('Camp');
-  await screen.findByText('Todos Instagram');
+  renderWithProviders(<ContentCalendar />);
+  await screen.findByText('Outubro • Loja XYZ');
+  const btn = await screen.findByTestId('btn-apply-ig');
   await act(async () => {
-    fireEvent.click(screen.getByText('Todos Instagram'));
+    fireEvent.click(btn);
   });
-
   await waitFor(() => {
-    expect(mockApi.patch).toHaveBeenCalledWith(
-      '/orgs/1/campaigns/10/suggestions/apply-targets',
+    expect(api.patch).toHaveBeenCalledWith(
+      '/orgs/org-1/campaigns/camp-1/suggestions/apply-targets',
       { ig: { enabled: true }, onlyStatus: ['suggested'] }
     );
   });

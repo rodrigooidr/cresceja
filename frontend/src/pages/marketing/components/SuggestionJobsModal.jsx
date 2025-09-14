@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import api from '../../../api/index.js';
 import { DateTime } from 'luxon';
-import { useApi } from '../../../contexts/useApi.js';
 import useToastFallback from '../../../hooks/useToastFallback.js';
 import { mapApiErrorToForm } from '../../../ui/errors/mapApiError.js';
 
 export default function SuggestionJobsModal({ orgId, suggestionId, onClose, onChanged }) {
-  const api = useApi();
   const toast = useToastFallback();
   const [loading, setLoading] = useState(true);
   const [jobs, setJobs] = useState(null);
