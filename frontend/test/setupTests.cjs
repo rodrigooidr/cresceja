@@ -12,17 +12,24 @@ const { TextEncoder, TextDecoder } = require('util');
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
-jest.mock('../src/api/inboxApi.js', () => {
-  const mock = {
-    create: () => mock,
-    get: jest.fn(() => Promise.resolve({ data: { items: [] } })),
-    post: jest.fn(),
-    put: jest.fn(),
-    delete: jest.fn(),
-    defaults: {},
+jest.mock('react-router-dom', () => {
+  const actual = jest.requireActual('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => jest.fn(),
   };
-  return { __esModule: true, default: mock };
 });
+
+jest.mock('../src/api');
+jest.mock('../src/api/inboxApi.js');
+jest.mock('../src/ui/feature/FeatureGate.jsx', () => ({
+  __esModule: true,
+  default: ({ children }) => children,
+}));
+jest.mock('../src/ui/feature/FeatureGate', () => ({
+  __esModule: true,
+  default: ({ children }) => children,
+}));
 
 jest.mock('../src/contexts/AuthContext', () => {
   const React = require('react');
@@ -104,3 +111,9 @@ if (!global.window.matchMedia) {
 if (!HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView = function () {};
 }
+
+jest.useFakeTimers();
+afterEach(() => {
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+});
