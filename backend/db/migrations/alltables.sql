@@ -915,3 +915,297 @@ BEGIN
     FOR EACH ROW EXECUTE PROCEDURE touch_updated_at();
   END IF;
 END$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_plan_features_plan_code
+  ON plan_features(plan_id, feature_code);
+  
+  CREATE TABLE IF NOT EXISTS google_calendar_accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  google_user_id text NOT NULL,
+  email text,
+  display_name text,
+  is_active boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, google_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_gcal_accounts_org ON google_calendar_accounts(org_id);
+
+INSERT INTO feature_defs (code, label, type, unit, category, sort_order, is_public, show_as_tick)
+VALUES
+  ('whatsapp_numbers', 'WhatsApp – Quantidade de números', 'number', NULL, 'whatsapp', 10, true, false),
+  ('google_calendar_accounts', 'Google Calendar – Contas conectadas', 'number', NULL, 'google', 20, true, false),
+  ('whatsapp_mode_baileys', 'WhatsApp – Baileys habilitado', 'boolean', NULL, 'whatsapp', 30, false, false)
+ON CONFLICT (code) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS google_oauth_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES google_calendar_accounts(id) ON DELETE CASCADE,
+  access_token text NOT NULL,
+  refresh_token text,
+  expiry timestamptz,
+  scopes text[],
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS facebook_pages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  page_id text NOT NULL,
+  name text,
+  category text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, page_id)
+);
+
+CREATE TABLE IF NOT EXISTS facebook_oauth_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  page_id uuid NOT NULL REFERENCES facebook_pages(id) ON DELETE CASCADE,
+  access_token text NOT NULL,   -- criptografado com AES-256-GCM (mesmo util já usado)
+  enc_ver int2 NOT NULL DEFAULT 1,
+  scopes text[],
+  expiry timestamptz,           -- se houver; page tokens podem ser long-lived
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (page_id)
+);
+
+CREATE TABLE IF NOT EXISTS instagram_accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  ig_user_id text NOT NULL,
+  username text,
+  name text,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, ig_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_ig_accounts_org ON instagram_accounts(org_id);
+
+CREATE TABLE IF NOT EXISTS instagram_oauth_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  account_id uuid NOT NULL REFERENCES instagram_accounts(id) ON DELETE CASCADE,
+  access_token text NOT NULL,         -- cifrado (AES-256-GCM)
+  enc_ver int2 NOT NULL DEFAULT 1,
+  scopes text[],
+  expiry timestamptz,                 -- quando aplicável
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (account_id)
+);
+
+INSERT INTO feature_defs (code, label, type, unit, category, sort_order, is_public)
+VALUES ('instagram_publish_daily_quota','Instagram – Publicações por dia','number','count','social',32,true)
+ON CONFLICT (code) DO UPDATE SET label=EXCLUDED.label, type=EXCLUDED.type, unit=EXCLUDED.unit, category=EXCLUDED.category, sort_order=EXCLUDED.sort_order, is_public=EXCLUDED.is_public;
+
+-- Exemplo de seed de quotas (ajuste conforme seus planos)
+WITH data(plan_name, feature_code, val) AS (
+  VALUES
+  ('Free','instagram_publish_daily_quota','{"enabled": true, "limit": 1}'),
+  ('Starter','instagram_publish_daily_quota','{"enabled": true, "limit": 5}'),
+  ('Pro','instagram_publish_daily_quota','{"enabled": true, "limit": 20}')
+)
+INSERT INTO plan_features (plan_id, feature_code, value)
+SELECT p.id, d.feature_code, d.val::jsonb
+FROM data d JOIN plans p ON p.name ILIKE d.plan_name
+ON CONFLICT (plan_id, feature_code) DO UPDATE SET value = EXCLUDED.value, updated_at=now();
+
+CREATE TABLE IF NOT EXISTS instagram_publish_jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  account_id uuid NOT NULL REFERENCES instagram_accounts(id) ON DELETE CASCADE,
+  type text NOT NULL CHECK (type IN ('image','carousel','video')),
+  caption text,
+  media jsonb NOT NULL,               -- [{url:"..."},{...}] ou {url:"..."}
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','creating','ready','publishing','done','failed','canceled')),
+  error text,
+  scheduled_at timestamptz,           -- null = publicar agora
+  creation_id text,                   -- id do container
+  published_media_id text,            -- id do post publicado
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_ig_jobs_org_sch ON instagram_publish_jobs(org_id, scheduled_at);
+CREATE INDEX IF NOT EXISTS ix_ig_jobs_status ON instagram_publish_jobs(status);
+
+ALTER TABLE instagram_publish_jobs
+  ADD COLUMN IF NOT EXISTS client_dedupe_key text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_ig_jobs_dedupe
+  ON instagram_publish_jobs(org_id, account_id, client_dedupe_key)
+  WHERE status IN ('pending','creating','publishing');
+
+
+UPDATE instagram_publish_jobs
+   SET status='creating', updated_at=now()
+ WHERE id IN (
+   SELECT id FROM instagram_publish_jobs
+    WHERE status='pending' AND scheduled_at <= now()
+    ORDER BY scheduled_at ASC
+    FOR UPDATE SKIP LOCKED
+    LIMIT 20
+ )
+ RETURNING *;
+
+CREATE TABLE IF NOT EXISTS facebook_publish_jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  page_id uuid NOT NULL REFERENCES facebook_pages(id) ON DELETE CASCADE,
+  type text NOT NULL CHECK (type IN ('text','link','image','multi_image','video')),
+  message text,                      -- legenda/texto
+  link text,                         -- opcional p/ posts de link
+  media jsonb,                       -- image: {url}, multi: [{url},{...}], video: {url}
+  status text NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending','creating','ready','publishing','done','failed','canceled')),
+  error text,
+  scheduled_at timestamptz,          -- null = publicar agora
+  published_post_id text,            -- id do post publicado
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  client_dedupe_key text             -- para idempotência
+);
+
+CREATE INDEX IF NOT EXISTS ix_fb_jobs_org_sched ON facebook_publish_jobs(org_id, scheduled_at);
+CREATE INDEX IF NOT EXISTS ix_fb_jobs_status ON facebook_publish_jobs(status);
+
+-- idempotência (mesma ideia do Instagram)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_fb_jobs_dedupe
+  ON facebook_publish_jobs(org_id, page_id, client_dedupe_key)
+  WHERE status IN ('pending','creating','publishing');
+
+INSERT INTO feature_defs (code, label, type, unit, category, sort_order, is_public)
+VALUES ('facebook_publish_daily_quota','Facebook – Publicações por dia','number','count','social',33,true)
+ON CONFLICT (code) DO UPDATE SET label=EXCLUDED.label, type=EXCLUDED.type, unit=EXCLUDED.unit,
+  category=EXCLUDED.category, sort_order=EXCLUDED.sort_order, is_public=EXCLUDED.is_public;
+
+-- seeds exemplo (ajuste aos seus planos)
+WITH data(plan_name, feature_code, val) AS (
+  VALUES
+  ('Free','facebook_publish_daily_quota','{"enabled": true, "limit": 1}'),
+  ('Starter','facebook_publish_daily_quota','{"enabled": true, "limit": 5}'),
+  ('Pro','facebook_publish_daily_quota','{"enabled": true, "limit": 20}')
+)
+INSERT INTO plan_features (plan_id, feature_code, value)
+SELECT p.id, d.feature_code, d.val::jsonb
+FROM data d JOIN plans p ON p.name ILIKE d.plan_name
+ON CONFLICT (plan_id, feature_code) DO UPDATE SET value=EXCLUDED.value, updated_at=now();
+
+UPDATE facebook_publish_jobs
+   SET status='creating', updated_at=now()
+ WHERE id IN (
+   SELECT id FROM facebook_publish_jobs
+   WHERE status='pending' AND scheduled_at <= now()
+   ORDER BY scheduled_at ASC
+   FOR UPDATE SKIP LOCKED
+   LIMIT 20
+ )
+ RETURNING *;
+
+CREATE TABLE IF NOT EXISTS content_campaigns (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  month_ref date NOT NULL,                 -- usar primeiro dia do mês (ex.: 2025-10-01)
+  default_targets jsonb NOT NULL DEFAULT '{}'::jsonb, -- ex: {"ig":true,"fb":false}
+  strategy_json jsonb,                     -- persona, tom, metas, etc.
+  created_by uuid,                         -- user_id
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_campaigns_org_month ON content_campaigns(org_id, month_ref);
+
+CREATE TYPE suggestion_status AS ENUM ('suggested','approved','scheduled','published','rejected');
+
+CREATE TABLE IF NOT EXISTS content_suggestions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id uuid NOT NULL REFERENCES content_campaigns(id) ON DELETE CASCADE,
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  date date NOT NULL,
+  time time with time zone,                -- horário sugerido
+  channel_targets jsonb NOT NULL DEFAULT '{}'::jsonb, -- {"ig":true,"fb":false}
+  status suggestion_status NOT NULL DEFAULT 'suggested',
+  copy_json jsonb,                         -- {headline, caption, hashtags[], cta, variants[]}
+  asset_refs jsonb,                        -- [{asset_id, url, type}] (opcional)
+  ai_prompt_json jsonb,                    -- prompt/params usados
+  reasoning_json jsonb,                    -- opcional para auditoria
+  approved_by uuid,                        -- user_id
+  approved_at timestamptz,
+  published_at timestamptz,                -- quando TODOS os destinos forem publicados
+  jobs_map jsonb DEFAULT '{}'::jsonb,      -- {"ig": "<job_id>", "fb":"<job_id>"}
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_suggestions_campaign ON content_suggestions(campaign_id);
+CREATE INDEX IF NOT EXISTS ix_suggestions_org_date ON content_suggestions(org_id, date);
+
+
+CREATE TYPE suggestion_status AS ENUM ('suggested','approved','scheduled','published','rejected');
+
+CREATE TABLE IF NOT EXISTS content_suggestions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id uuid NOT NULL REFERENCES content_campaigns(id) ON DELETE CASCADE,
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  date date NOT NULL,
+  time time with time zone,                -- horário sugerido
+  channel_targets jsonb NOT NULL DEFAULT '{}'::jsonb, -- {"ig":true,"fb":false}
+  status suggestion_status NOT NULL DEFAULT 'suggested',
+  copy_json jsonb,                         -- {headline, caption, hashtags[], cta, variants[]}
+  asset_refs jsonb,                        -- [{asset_id, url, type}] (opcional)
+  ai_prompt_json jsonb,                    -- prompt/params usados
+  reasoning_json jsonb,                    -- opcional para auditoria
+  approved_by uuid,                        -- user_id
+  approved_at timestamptz,
+  published_at timestamptz,                -- quando TODOS os destinos forem publicados
+  jobs_map jsonb DEFAULT '{}'::jsonb,      -- {"ig": "<job_id>", "fb":"<job_id>"}
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_suggestions_campaign ON content_suggestions(campaign_id);
+
+CREATE TABLE IF NOT EXISTS content_assets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  url text NOT NULL,                -- URL assinada (S3/MinIO) pós-upload
+  mime text NOT NULL,
+  width int,
+  height int,
+  meta_json jsonb,                  -- {palette, brand, license, ...}
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_assets_org ON content_assets(org_id);
+
+
+
+-- Instagram
+SELECT date_trunc('day', schedule_at AT TIME ZONE 'America/Sao_Paulo')::date AS d,
+       COUNT(*) AS ig_jobs
+FROM instagram_publish_jobs
+WHERE org_id = $1
+  AND status IN ('pending','creating','publishing','scheduled')
+  AND schedule_at >= $2::date
+  AND schedule_at <  ($2::date + INTERVAL '1 month')
+GROUP BY 1;
+
+-- Facebook
+SELECT date_trunc('day', schedule_at AT TIME ZONE 'America/Sao_Paulo')::date AS d,
+       COUNT(*) AS fb_jobs
+FROM facebook_publish_jobs
+WHERE org_id = $1
+  AND status IN ('pending','creating','publishing','scheduled')
+  AND schedule_at >= $2::date
+  AND schedule_at <  ($2::date + INTERVAL '1 month')
+GROUP BY 1;
+
