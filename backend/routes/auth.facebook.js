@@ -99,14 +99,16 @@ router.get('/api/auth/facebook/callback', async (req, res, next) => {
       [st.orgId, pageId, name, category]
     );
 
+    const enc = encrypt(pageToken);
     await query(
-      `INSERT INTO facebook_oauth_tokens (page_id, access_token, scopes)
-         VALUES ($1,$2,$3)
+      `INSERT INTO facebook_oauth_tokens (page_id, access_token, enc_ver, scopes)
+         VALUES ($1,$2,$3,$4)
          ON CONFLICT (page_id) DO UPDATE
             SET access_token=EXCLUDED.access_token,
+                enc_ver=EXCLUDED.enc_ver,
                 scopes=EXCLUDED.scopes,
                 updated_at=now()`,
-      [row.id, encrypt(pageToken), ['pages_show_list','pages_read_engagement','pages_read_user_content']]
+      [row.id, enc.c, enc.v, ['pages_show_list','pages_read_engagement','pages_read_user_content']]
     );
 
     const redirectTo = st.returnTo.includes('?') ? `${st.returnTo}&fb_connected=1` : `${st.returnTo}?fb_connected=1`;

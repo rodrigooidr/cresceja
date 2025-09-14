@@ -7,10 +7,10 @@ export async function upsertChannel(db, { org_id, type, mode, credentials = null
   if (type === 'instagram' && credentials) {
     console.log('[channels] encrypting Instagram credentials for org', org_id);
   }
-  const enc = credentials ? encrypt(credentials) : null;
+  const enc = credentials ? encrypt(JSON.stringify(credentials)) : null;
   const sql = `
     INSERT INTO channels (id, org_id, type, mode, status, credentials_json, webhook_secret, created_at, updated_at)
-    VALUES (uuid_generate_v4(), $1, $2, $3, $4, to_jsonb($5::text), $6, now(), now())
+    VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5::jsonb, $6, now(), now())
     ON CONFLICT (org_id, type)
     DO UPDATE SET mode = EXCLUDED.mode, status = EXCLUDED.status, credentials_json = EXCLUDED.credentials_json, webhook_secret = EXCLUDED.webhook_secret, updated_at = now()
     RETURNING *
@@ -19,7 +19,7 @@ export async function upsertChannel(db, { org_id, type, mode, credentials = null
   const { rows } = await q(db)(sql, params);
   const row = rows[0];
   if (row && row.credentials_json) {
-    row.credentials = decrypt(row.credentials_json);
+    row.credentials = JSON.parse(decrypt(row.credentials_json));
     delete row.credentials_json;
   }
   return row;
@@ -30,7 +30,7 @@ export async function getChannel(db, org_id, type) {
   const row = rows[0];
   if (!row) return null;
   if (row.credentials_json) {
-    row.credentials = decrypt(row.credentials_json);
+    row.credentials = JSON.parse(decrypt(row.credentials_json));
     delete row.credentials_json;
   }
   return row;

@@ -15,8 +15,8 @@ export async function loadTokens(db, accountId, orgId=null){
   const { rows:[row] = [] } = await q(db)(sql, params);
   if(!row) return null;
   return {
-    access_token: decrypt(row.access_token),
-    refresh_token: decrypt(row.refresh_token),
+    access_token: decrypt({ c: row.access_token }),
+    refresh_token: row.refresh_token ? decrypt({ c: row.refresh_token }) : null,
     expiry: row.expiry ? new Date(row.expiry) : null,
     scopes: row.scopes || []
   };
@@ -40,7 +40,7 @@ export async function saveTokens(db, accountId, tokens){
               expiry=EXCLUDED.expiry,
               scopes=EXCLUDED.scopes,
               updated_at=now()`,
-    [accountId, access, refresh, expiry, scopes]
+    [accountId, access.c, refresh ? refresh.c : null, expiry, scopes]
   );
 }
 

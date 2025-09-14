@@ -31,14 +31,14 @@ router.get('/api/orgs/:id/facebook/pages/:pageId/posts', async (req, res, next) 
     const pageId = req.params.pageId;
     const limit = parseInt(req.query.limit, 10) || 20;
     const { rows: [row] = [] } = await req.db.query(
-      `SELECT p.page_id, t.access_token
+      `SELECT p.page_id, t.access_token, t.enc_ver
          FROM facebook_pages p
          JOIN facebook_oauth_tokens t ON t.page_id = p.id
         WHERE p.org_id=$1 AND p.id=$2`,
       [orgId, pageId]
     );
     if (!row) return res.status(404).json({ error: 'not_found' });
-    const token = decrypt(row.access_token);
+    const token = decrypt({ c: row.access_token, v: row.enc_ver });
     const url = new URL(`https://graph.facebook.com/v19.0/${row.page_id}/posts`);
     url.searchParams.set('fields', 'id,message,created_time,permalink_url');
     url.searchParams.set('limit', String(limit));

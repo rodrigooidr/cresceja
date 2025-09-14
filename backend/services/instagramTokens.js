@@ -6,15 +6,15 @@ const q = (db) => (db && db.query ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p)
 export async function getTokenRow(db, accountId, orgId=null){
   const params = orgId ? [orgId, accountId] : [accountId];
   const sql = orgId
-    ? `SELECT t.access_token, t.scopes, t.expiry
+    ? `SELECT t.access_token, t.enc_ver, t.scopes, t.expiry
          FROM instagram_oauth_tokens t
          JOIN instagram_accounts a ON a.id=t.account_id
         WHERE a.org_id=$1 AND a.id=$2`
-    : `SELECT access_token, scopes, expiry FROM instagram_oauth_tokens WHERE account_id=$1`;
+    : `SELECT access_token, enc_ver, scopes, expiry FROM instagram_oauth_tokens WHERE account_id=$1`;
   const { rows:[row] = [] } = await q(db)(sql, params);
   if(!row) return null;
   return {
-    access_token: decrypt(row.access_token),
+    access_token: decrypt({ c: row.access_token, v: row.enc_ver }),
     scopes: row.scopes || [],
     expiry: row.expiry ? new Date(row.expiry) : null
   };
@@ -25,14 +25,15 @@ export async function saveTokens(db, accountId, tokens){
   const expiry = tokens.expiry ? new Date(tokens.expiry).toISOString() : null;
   const scopes = tokens.scopes || [];
   await q(db)(
-    `INSERT INTO instagram_oauth_tokens (account_id, access_token, scopes, expiry)
-       VALUES ($1,$2,$3,$4)
+    `INSERT INTO instagram_oauth_tokens (account_id, access_token, enc_ver, scopes, expiry)
+       VALUES ($1,$2,$3,$4,$5)
        ON CONFLICT (account_id) DO UPDATE
          SET access_token=EXCLUDED.access_token,
+             enc_ver=EXCLUDED.enc_ver,
              scopes=EXCLUDED.scopes,
              expiry=EXCLUDED.expiry,
              updated_at=now()`,
-    [accountId, access, scopes, expiry]
+    [accountId, access.c, access.v, scopes, expiry]
   );
 }
 

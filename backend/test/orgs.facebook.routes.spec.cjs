@@ -15,7 +15,7 @@ test('invalid token causes reauth_required and deactivates', async () => {
   const db = {
     query: jest.fn((sql) => {
       if (sql.startsWith('SELECT p.page_id')) {
-        return Promise.resolve({ rows: [{ page_id: 'pg1', access_token: enc }] });
+        return Promise.resolve({ rows: [{ page_id: 'pg1', access_token: enc.c, enc_ver: enc.v }] });
       }
       if (sql.startsWith('UPDATE facebook_pages SET is_active=false')) {
         updateCalled = true;
