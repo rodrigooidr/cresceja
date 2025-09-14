@@ -21,6 +21,7 @@ import CalendarPage from "./pages/CalendarPage.jsx";
 import FacebookPage from "./pages/FacebookPage.jsx";
 import MarketingPage from "./pages/MarketingPage.jsx";
 import InstagramPublisher from "./pages/marketing/InstagramPublisher.jsx";
+import FacebookPublisher from "./pages/marketing/FacebookPublisher.jsx";
 import AdminOrganizationsPage from "./pages/admin/organizations/AdminOrganizationsPage.jsx";
 import OrgDetailsPage from "./pages/admin/OrgDetailsPage.jsx"; // ← detalhe da org
 import PlansAdminPage from "./pages/admin/PlansAdminPage.jsx";
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/facebook" element={<FacebookPage />} />
               <Route path="/marketing/instagram" element={<InstagramPublisher />} />
+              <Route path="/marketing/facebook" element={<FacebookPublisher />} />
             </Route>
 
             {/* rotas que não dependem da org ativa */}

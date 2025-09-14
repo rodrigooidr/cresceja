@@ -175,6 +175,9 @@ export default function Sidebar() {
         <Item to="/marketing/instagram" disabled={needsOrg} collapsed={collapsed}>
           Instagram Publisher
         </Item>
+        <Item to="/marketing/facebook" disabled={needsOrg} collapsed={collapsed}>
+          Facebook Publisher
+        </Item>
 
         {CAN_VIEW_ORGANIZATIONS_ADMIN(user?.role) && (
           <>
