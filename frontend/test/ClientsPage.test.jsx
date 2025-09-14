@@ -3,6 +3,9 @@ import { screen } from "@testing-library/react";
 import ClientsPage from "../src/pages/clients/ClientsPage.jsx";
 import { renderWithRouterProviders } from "./utils/renderWithRouterProviders";
 
+jest.mock('../src/auth/RequireAuth.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
+jest.mock('../src/hooks/ActiveOrgGate.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
+
 let mockConnected = true;
 jest.mock("../src/hooks/useWhatsApp.js", () => ({
   __esModule: true,

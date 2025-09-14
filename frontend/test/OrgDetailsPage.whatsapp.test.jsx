@@ -1,12 +1,14 @@
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { screen } from '@testing-library/react';
+import { Routes, Route } from 'react-router-dom';
 import OrgDetailsPage from '../src/pages/admin/OrgDetailsPage.jsx';
+import { renderWithRouterProviders } from './utils/renderWithRouterProviders';
 
 jest.mock('../src/api/inboxApi', () => ({
   get: jest.fn(),
   post: jest.fn(),
 }));
-jest.mock('../src/hooks/useActiveOrgGate', () => () => ({ allowed: true }));
+jest.mock('../src/auth/RequireAuth.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
+jest.mock('../src/hooks/ActiveOrgGate.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
 
 const inboxApi = require('../src/api/inboxApi');
 
@@ -15,12 +17,11 @@ function renderPage(status) {
     if (url.includes('/whatsapp/status')) return Promise.resolve({ data: status });
     return Promise.resolve({ data: {} });
   });
-  return render(
-    <MemoryRouter initialEntries={['/1?tab=whatsapp']}>
-      <Routes>
-        <Route path='/:orgId' element={<OrgDetailsPage />} />
-      </Routes>
-    </MemoryRouter>
+  return renderWithRouterProviders(
+    <Routes>
+      <Route path='/:orgId' element={<OrgDetailsPage />} />
+    </Routes>,
+    { route: '/1?tab=whatsapp' }
   );
 }
 

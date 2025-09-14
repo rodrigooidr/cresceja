@@ -90,7 +90,7 @@ function GoogleCalendarSection() {
         <div className="mt-3 rounded border p-3 text-sm">
           Nenhuma conta conectada.
           <div className="mt-2">
-            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving} data-testid="calendar-connect">
               {saving ? 'Redirecionando…' : 'Conectar conta'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600">Limite do plano atingido</span>}
@@ -116,7 +116,7 @@ function GoogleCalendarSection() {
             </div>
           ))}
           <div className="pt-2">
-            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving} data-testid="calendar-connect">
               {saving ? 'Redirecionando…' : 'Adicionar outra conta'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600 text-sm">Limite do plano atingido</span>}
@@ -200,7 +200,7 @@ function FacebookSection() {
         <div className="mt-3 rounded border p-3 text-sm">
           Nenhuma página conectada.
           <div className="mt-2">
-            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving} data-testid="facebook-connect">
               {saving ? 'Redirecionando…' : 'Conectar página'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600">Limite do plano atingido</span>}
@@ -223,7 +223,7 @@ function FacebookSection() {
             </div>
           ))}
           <div className="pt-2">
-            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving} data-testid="facebook-connect">
               {saving ? 'Redirecionando…' : 'Adicionar outra página'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600 text-sm">Limite do plano atingido</span>}
@@ -300,7 +300,7 @@ function InstagramSection() {
         <div className="mt-3 rounded border p-3 text-sm">
           Nenhuma conta conectada.
           <div className="mt-2">
-            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving} data-testid="instagram-connect">
               {saving ? 'Redirecionando…' : 'Conectar conta'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600">Limite do plano atingido</span>}
@@ -321,7 +321,7 @@ function InstagramSection() {
             </div>
           ))}
           <div className="pt-2">
-            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving}>
+            <button className="btn btn-primary" onClick={handleConnect} disabled={!canAdd || saving} data-testid="instagram-connect">
               {saving ? 'Redirecionando…' : 'Adicionar outra conta'}
             </button>
             {!canAdd && <span className="ml-2 text-red-600 text-sm">Limite do plano atingido</span>}

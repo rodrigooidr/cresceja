@@ -1,15 +1,6 @@
 import React from "react";
 import { screen } from "@testing-library/react";
-import { renderWithProviders } from "./utils/renderWithProviders.jsx";
-jest.mock("../src/contexts/AuthContext.jsx", () => ({
-  __esModule: true,
-  useAuth: () => ({ user: { role: "SuperAdmin" }, isAuthenticated: true }),
-}));
-jest.mock("../src/contexts/OrgContext.jsx", () => ({
-  __esModule: true,
-  useOrg: () => ({ selected: null, setSelected: () => {} }),
-  OrgProvider: ({ children }) => <>{children}</>,
-}));
+import { renderWithRouterProviders } from "./utils/renderWithRouterProviders.jsx";
 jest.mock("../src/api/inboxApi.js", () => ({
   __esModule: true,
   default: { get: jest.fn() }
@@ -19,7 +10,8 @@ import App from "../src/App.jsx";
 
 test("Sidebar aparece em /admin/plans", async () => {
   inboxApi.get.mockResolvedValue({ data: [] });
-  renderWithProviders(<App />, { route: "/admin/plans" });
+  window.history.pushState({}, '', '/admin/plans');
+  renderWithRouterProviders(<App />, { withRouter: false });
   expect(screen.getByTestId("sidebar")).toBeInTheDocument();
   expect(
     await screen.findByRole("heading", { name: /Configurações do plano/i })

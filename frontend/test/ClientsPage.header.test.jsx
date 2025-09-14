@@ -1,16 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react';
-jest.mock('../src/api/inboxApi.js', () => jest.requireActual('../src/api/inboxApi.js'));
+import React from 'react';
+import { screen, waitFor } from '@testing-library/react';
 import ClientsPage from '../src/pages/clients/ClientsPage.jsx';
+import { renderWithRouterProviders } from './utils/renderWithRouterProviders';
+
+jest.mock('../src/api/inboxApi.js', () => jest.requireActual('../src/api/inboxApi.js'));
 import inboxApi from '../src/api/inboxApi.js';
 
-let mockSelected = '1';
-jest.mock('../src/contexts/OrgContext.jsx', () => ({
-  useOrg: () => ({ selected: mockSelected }),
-  OrgProvider: ({ children }) => <>{children}</>,
-}));
-jest.mock('../src/auth/useAuth.js', () => ({
-  useAuth: () => ({ user: { role: 'Admin' } }),
-}));
+jest.mock('../src/auth/RequireAuth.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
+jest.mock('../src/hooks/ActiveOrgGate.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
 jest.mock('../src/hooks/useWhatsApp.js', () => ({
   __esModule: true,
   default: () => ({ connected: true }),
@@ -25,15 +22,14 @@ test('with selected sends X-Org-Id header', async () => {
     captured = h['X-Org-Id'] || h['x-org-id'] || (typeof h.get === 'function' ? h.get('X-Org-Id') : undefined);
     return Promise.resolve({ data: [] });
   };
-  render(<ClientsPage />);
+  renderWithRouterProviders(<ClientsPage />, { org: { selected: '1', orgs: [{ id: '1', name: 'Org One' }] } });
   await waitFor(() => expect(captured).toBe('1'));
   inboxApi.defaults.adapter = original;
 });
 
-test('without selected shows callout', () => {
-  mockSelected = null;
+test('without selected shows callout', async () => {
   localStorage.removeItem('active_org_id');
-  render(<ClientsPage />);
-  expect(screen.getByText('Selecione uma organização')).toBeInTheDocument();
+  renderWithRouterProviders(<ClientsPage />, { org: { selected: null, orgs: [] } });
+  expect(await screen.findByText('Selecione uma organização')).toBeInTheDocument();
 });
 

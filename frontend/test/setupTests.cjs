@@ -1,35 +1,44 @@
-const { Settings, DateTime } = require('luxon');
 process.env.TZ = 'America/Sao_Paulo';
-Settings.defaultZone = 'America/Sao_Paulo';
-const fixedNow = DateTime.fromISO('2025-10-01T12:00:00-03:00', { setZone: true }).toMillis();
-Settings.now = () => fixedNow;
+try {
+  const { Settings, DateTime } = require('luxon');
+  if (Settings) {
+    Settings.defaultZone = 'America/Sao_Paulo';
+    const fixedNow = DateTime.fromISO('2025-10-01T12:00:00-03:00', { setZone: true }).toMillis();
+    Settings.now = () => fixedNow;
+  }
+} catch {}
 
-// jest-dom
 require('@testing-library/jest-dom');
 
-// Polyfills comuns em JSDOM
 const { TextEncoder, TextDecoder } = require('util');
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
 
-jest.mock('react-router-dom', () => {
-  const actual = jest.requireActual('react-router-dom');
-  return {
-    ...actual,
-    useNavigate: () => jest.fn(),
-  };
-});
+// Canvas e fabric
+require('jest-canvas-mock'); // provê getContext, toDataURL básico
+jest.mock(
+  'fabric',
+  () => {
+    class Obj { set(){} bringToFront(){} }
+    class Image extends Obj { static fromURL(_url, cb){ cb(new Image()); } }
+    class Textbox extends Obj {}
+    class Canvas {
+      constructor(){ this.width=1080; this.height=1080; }
+      setWidth(w){ this.width=w; }
+      setHeight(h){ this.height=h; }
+      add(){} remove(){} dispose(){} requestRenderAll(){}
+      toDataURL(){ return 'data:image/png;base64,AAAA'; }
+      getObjects(){ return []; }
+    }
+    return { Canvas, Image, Textbox };
+  },
+  { virtual:true }
+);
 
 jest.mock('../src/api');
 jest.mock('../src/api/inboxApi.js');
-jest.mock('../src/ui/feature/FeatureGate.jsx', () => ({
-  __esModule: true,
-  default: ({ children }) => children,
-}));
-jest.mock('../src/ui/feature/FeatureGate', () => ({
-  __esModule: true,
-  default: ({ children }) => children,
-}));
+jest.mock('../src/ui/feature/FeatureGate.jsx', () => ({ __esModule: true, default: ({children}) => children }));
+jest.mock('../src/ui/feature/FeatureGate', () => ({ __esModule: true, default: ({children}) => children }));
 
 jest.mock('../src/contexts/AuthContext', () => {
   const React = require('react');
@@ -45,29 +54,8 @@ jest.mock('../src/contexts/AuthContext', () => {
 });
 
 // Mock do contexto de organizações para os testes
-jest.mock('../src/contexts/OrgContext.jsx', () => {
-  const React = require('react');
-  return {
-    __esModule: true,
-    useOrg: () => ({
-      orgs: [{ id: 'org_test', name: 'Org Teste' }],
-      selected: 'org_test', // padrão: há uma org ativa
-      setSelected: jest.fn(),
-      loading: false,
-      hasMore: false,
-      searchOrgs: jest.fn(),
-      loadMoreOrgs: jest.fn(),
-      canSeeSelector: true,
-      q: '',
-      publicMode: false,
-      hasActive: true,
-      activeOrgName: 'Org Teste',
-    }),
-    OrgContext: React.createContext(null),
-    OrgProvider: ({ children }) => children,
-  };
-});
 
+// Toasts
 jest.mock(
   'react-hot-toast',
   () => ({
@@ -75,44 +63,46 @@ jest.mock(
     default: { success: jest.fn(), error: jest.fn() },
     toast: { success: jest.fn(), error: jest.fn() },
   }),
-  { virtual: true }
+  { virtual: true },
 );
 
-// Polyfills que costumam faltar
-class MockIntersectionObserver {
-  constructor() {}
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-global.IntersectionObserver = MockIntersectionObserver;
+// Navegação (padrão no-op; sobrescrever localmente quando precisar assert)
+jest.mock('react-router-dom', () => {
+  const actual = jest.requireActual('react-router-dom');
+  return { ...actual, useNavigate: () => jest.fn() };
+});
 
-if (!global.ResizeObserver) {
-  global.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  };
-}
-
+// Observers e mídia
 if (!global.window.matchMedia) {
   global.window.matchMedia = () => ({
-    matches: false,
-    media: '',
-    onchange: null,
-    addListener() {},
-    removeListener() {},
-    addEventListener() {},
-    removeEventListener() {},
-    dispatchEvent() { return false; },
+    matches: false, media: '', onchange: null,
+    addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {}, dispatchEvent(){ return false; },
   });
 }
-
-if (!HTMLElement.prototype.scrollIntoView) {
-  HTMLElement.prototype.scrollIntoView = function () {};
+if (!global.ResizeObserver) {
+  global.ResizeObserver = class { observe(){} unobserve(){} disconnect(){} };
+}
+if (!global.IntersectionObserver) {
+  global.IntersectionObserver = class { observe(){} unobserve(){} disconnect(){} };
 }
 
-jest.useFakeTimers();
+// URL helpers
+if (!global.URL.createObjectURL) global.URL.createObjectURL = jest.fn(() => 'blob:mock');
+if (!HTMLCanvasElement.prototype.toBlob) {
+  HTMLCanvasElement.prototype.toBlob = function(cb){ cb(new Blob()); };
+}
+
+// requestAnimationFrame
+if (!global.requestAnimationFrame) global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+if (!global.cancelAnimationFrame) global.cancelAnimationFrame = (id) => clearTimeout(id);
+
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = function(){};
+}
+
+// Timers: manter consistência para polling
+beforeEach(() => jest.useFakeTimers());
 afterEach(() => {
   jest.runOnlyPendingTimers();
   jest.useRealTimers();

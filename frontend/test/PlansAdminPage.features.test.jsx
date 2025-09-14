@@ -1,23 +1,17 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PlansAdminPage from '../src/pages/admin/PlansAdminPage.jsx';
-
-jest.mock('../src/contexts/AuthContext.jsx', () => ({
-  __esModule: true,
-  useAuth: () => ({ user: { role: 'SuperAdmin' }, isAuthenticated: true }),
-}));
-jest.mock('../src/contexts/OrgContext.jsx', () => ({
-  __esModule: true,
-  useOrg: () => ({ selected: null, setSelected: () => {} }),
-  OrgProvider: ({ children }) => <>{children}</>,
-}));
+import { renderWithRouterProviders } from './utils/renderWithRouterProviders.jsx';
 
 jest.mock('../src/api/inboxApi.js', () => ({
   __esModule: true,
   default: { get: jest.fn(), put: jest.fn() }
 }));
 const inboxApi = require('../src/api/inboxApi.js').default;
+
+jest.mock('../src/auth/RequireAuth.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
+jest.mock('../src/hooks/ActiveOrgGate.jsx', () => ({ __esModule: true, default: ({ children }) => children }));
 
 function setupMocks() {
   inboxApi.get.mockResolvedValueOnce({ data: [{ id: 'plan1', name: 'Plano 1' }] });
@@ -32,7 +26,7 @@ function setupMocks() {
 test('editar e salvar features', async () => {
   setupMocks();
   const user = userEvent.setup();
-  render(<PlansAdminPage />);
+  renderWithRouterProviders(<PlansAdminPage />);
   await user.selectOptions(await screen.findByRole('combobox'), 'plan1');
   const boolSwitch = await screen.findByRole('checkbox', { name: 'whatsapp_mode_baileys' });
   await user.click(boolSwitch);
@@ -52,7 +46,7 @@ test('editar e salvar features', async () => {
 test('validação de limite', async () => {
   setupMocks();
   const user = userEvent.setup();
-  render(<PlansAdminPage />);
+  renderWithRouterProviders(<PlansAdminPage />);
   await user.selectOptions(await screen.findByRole('combobox'), 'plan1');
   const numInput = await screen.findByRole('spinbutton', { name: 'whatsapp_numbers' });
   await user.clear(numInput);
