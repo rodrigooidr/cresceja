@@ -229,3 +229,60 @@ if (!global.TextEncoder) {
 if (!global.structuredClone) {
   global.structuredClone = (obj) => JSON.parse(JSON.stringify(obj));
 }
+
+// Canvas
+if (!HTMLCanvasElement.prototype.getContext) {
+  HTMLCanvasElement.prototype.getContext = () => ({
+    // mínimos usados por libs
+    measureText: () => ({ width: 0 }),
+    fillRect: () => {}, clearRect: () => {}, drawImage: () => {},
+    getImageData: () => ({ data: [] }), putImageData: () => {},
+    createImageData: () => [], setTransform: () => {}, save: () => {}, restore: () => {},
+    beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, closePath: () => {},
+    stroke: () => {}, fill: () => {}, rotate: () => {}, scale: () => {}, translate: () => {},
+    arc: () => {}, fillText: () => {}, strokeText: () => {},
+  });
+}
+
+// MutationObserver
+if (!global.MutationObserver) {
+  global.MutationObserver = class { constructor(){ } observe(){} disconnect(){} takeRecords(){ return []; } };
+}
+
+// File / FileReader
+if (!global.File) {
+  class File extends Blob { constructor(chunks, name, opts={}) { super(chunks, opts); this.name = name; this.lastModified = Date.now(); } }
+  global.File = File;
+}
+if (!global.FileReader) {
+  global.FileReader = class {
+    onload = null; onerror = null; onloadend = null;
+    readAsDataURL(file) { setTimeout(() => { this.result = "data:,"; this.onload && this.onload({ target: this }); this.onloadend && this.onloadend({ target: this }); }, 0); }
+    readAsText(file)    { setTimeout(() => { this.result = "";     this.onload && this.onload({ target: this }); this.onloadend && this.onloadend({ target: this }); }, 0); }
+  };
+}
+
+// fetch (quando necessário por testes)
+if (!global.fetch) {
+  const cf = require("cross-fetch");
+  global.fetch = cf.default || cf;
+  global.Headers = cf.Headers; global.Request = cf.Request; global.Response = cf.Response;
+}
+
+// FormData (alguns ambientes do JSDOM falham em upload)
+if (typeof global.FormData === "undefined") {
+  global.FormData = require("form-data");
+}
+
+// Date estável (evita flakes por “hoje/agora”)
+const FIXED_NOW = new Date("2025-01-01T12:00:00Z").valueOf();
+beforeEach(() => {
+  jest.spyOn(Date, "now").mockReturnValue(FIXED_NOW);
+});
+afterEach(() => {
+  Date.now.mockRestore?.();
+});
+
+// Utilitário opcional: garantir idioma e tz
+Object.defineProperty(navigator, "language", { value: "pt-BR", configurable: true });
+process.env.TZ = "America/Sao_Paulo";
