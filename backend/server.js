@@ -56,6 +56,9 @@ import orgsFacebookJobsRouter from './routes/orgs.facebook.jobs.js';
 import orgsInstagramRouter from './routes/orgs.instagram.js';
 import orgsInstagramPublishRouter from './routes/orgs.instagram.publish.js';
 import orgsInstagramJobsRouter from './routes/orgs.instagram.jobs.js';
+import orgsCampaignsGenerateRouter from './routes/orgs.campaigns.generate.js';
+import orgsCampaignsRouter from './routes/orgs.campaigns.js';
+import orgsCampaignsApproveRouter from './routes/orgs.campaigns.approve.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
@@ -243,6 +246,9 @@ async function init() {
   app.use('/', orgsInstagramRouter);
   app.use('/', orgsInstagramPublishRouter);
   app.use('/', orgsInstagramJobsRouter);
+  app.use('/', orgsCampaignsGenerateRouter);
+  app.use('/', orgsCampaignsRouter);
+  app.use('/', orgsCampaignsApproveRouter);
 
   // Integrações (rotas base + sub-rotas específicas)
   app.use('/api/integrations', integrationsRouter);                          // ex.: /api/integrations/status
