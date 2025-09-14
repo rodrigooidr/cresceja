@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 
 jest.mock('react-big-calendar', () => ({
@@ -27,8 +27,10 @@ test('approve shows badge and opens jobs modal', async () => {
 
   render(<ContentCalendar />);
 
-  await screen.findByText('Sugestão');
-  fireEvent.click(screen.getByText('Aprovar'));
+  const approveBtn = await screen.findByText('Aprovar');
+  await act(async () => {
+    fireEvent.click(approveBtn);
+  });
 
   await waitFor(() => expect(mockApi.post).toHaveBeenCalledWith('/orgs/1/suggestions/s1/approve'));
 
