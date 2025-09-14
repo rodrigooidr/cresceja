@@ -3,12 +3,19 @@ import { query as rootQuery } from '#db';
 import { refreshIfNeeded } from '../services/instagramTokens.js';
 
 async function processPending() {
-  const { rows } = await rootQuery(
-    `SELECT j.id, j.org_id, j.account_id, j.type, j.caption, j.media, a.ig_user_id
-       FROM instagram_publish_jobs j
-       JOIN instagram_accounts a ON a.id=j.account_id
-      WHERE j.status='pending' AND (j.scheduled_at IS NULL OR j.scheduled_at <= now())
-      LIMIT 10`);
+  const claimSql = `UPDATE instagram_publish_jobs j
+       SET status='creating', updated_at=now()
+     FROM instagram_accounts a
+    WHERE j.id IN (
+      SELECT id FROM instagram_publish_jobs
+       WHERE status='pending' AND scheduled_at <= now()
+       ORDER BY scheduled_at ASC
+       FOR UPDATE SKIP LOCKED
+       LIMIT 20
+    )
+      AND a.id = j.account_id
+    RETURNING j.id, j.org_id, j.account_id, j.type, j.caption, j.media, a.ig_user_id`;
+  const { rows } = await rootQuery(claimSql);
   for (const job of rows) {
     try {
       const tok = await refreshIfNeeded(null, job.account_id, job.org_id);

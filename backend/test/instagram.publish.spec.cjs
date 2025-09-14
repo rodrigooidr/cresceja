@@ -7,16 +7,18 @@ const mockQuery = jest.fn((sql, params) => {
   if (sql.includes('SELECT plan_id FROM organizations')) return { rows:[{ plan_id:'p1' }] };
   if (sql.includes('FROM plan_features')) return { rows:[{ enabled:true, limit:10 }] };
   if (sql.includes('FROM instagram_publish_jobs') && sql.includes("status='done'")) return { rows:[{ used:0 }] };
-  if (sql.includes('FROM instagram_publish_jobs j') && sql.includes("j.status='pending'")) {
-    return { rows: listJobs.map(j => ({ ...j, ig_user_id: 'igid', media: j.media, caption: '' })) };
-  }
   if (sql.startsWith('SELECT 1 FROM instagram_accounts')) return { rowCount: params[1] === 'acc1' ? 1 : 0 };
   if (sql.startsWith('SELECT ig_user_id FROM instagram_accounts')) return { rows:[{ ig_user_id:'igid' }] };
   if (sql.startsWith('INSERT INTO instagram_publish_jobs')) {
-    const status = sql.includes('scheduled_at') ? 'pending' : 'done';
-    const job = { id:'job'+(listJobs.length+1), status, account_id:params[1], org_id:params[0], media: JSON.parse(params[4]) };
+    const status = sql.includes('scheduled_at') ? 'pending' : 'creating';
+    const job = { id:'job'+(listJobs.length+1), status, account_id:params[1], org_id:params[0], media: JSON.parse(params[4]), client_dedupe_key: params[params.length-1] };
     listJobs.push(job);
     return { rows:[{ id: job.id, status: job.status }] };
+  }
+  if (sql.startsWith('UPDATE instagram_publish_jobs j') && sql.includes('SKIP LOCKED')) {
+    const rows = listJobs.filter(j=>j.status==='pending').slice(0,20).map(j=>({ ...j, ig_user_id:'igid', caption:'', media:j.media }));
+    rows.forEach(j=> j.status='creating');
+    return { rows };
   }
   if (sql.startsWith("UPDATE instagram_publish_jobs SET status='done'")) {
     const job = listJobs.find(j=>j.id===params[0]);
