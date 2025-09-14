@@ -53,6 +53,7 @@ import orgsCalendarRouter from './routes/orgs.calendar.js';
 import orgsFacebookRouter from './routes/orgs.facebook.js';
 import orgsInstagramRouter from './routes/orgs.instagram.js';
 import orgsInstagramPublishRouter from './routes/orgs.instagram.publish.js';
+import orgsInstagramJobsRouter from './routes/orgs.instagram.jobs.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
@@ -237,6 +238,7 @@ async function init() {
   app.use('/', orgsFacebookRouter);
   app.use('/', orgsInstagramRouter);
   app.use('/', orgsInstagramPublishRouter);
+  app.use('/', orgsInstagramJobsRouter);
 
   // Integrações (rotas base + sub-rotas específicas)
   app.use('/api/integrations', integrationsRouter);                          // ex.: /api/integrations/status

@@ -27,6 +27,24 @@ async function processPending() {
       if (r1.status === 401) throw new Error('unauthorized');
       const data1 = await r1.json();
       const creationId = data1.id;
+      await rootQuery(`UPDATE instagram_publish_jobs SET creation_id=$2, updated_at=now() WHERE id=$1`, [job.id, creationId]);
+      if (job.type === 'video') {
+        const delays = [2000, 4000, 8000, 16000, 30000];
+        let statusCode = 'IN_PROGRESS';
+        let videoStatus = '';
+        for (const d of delays) {
+          const rs = await fetch(`https://graph.facebook.com/v20.0/${creationId}?fields=status_code,video_status&access_token=${tok.access_token}`);
+          if (rs.status === 401) throw new Error('unauthorized');
+          const ds = await rs.json();
+          statusCode = ds.status_code;
+          videoStatus = ds.video_status;
+          if (statusCode === 'FINISHED') break;
+          if (statusCode === 'ERROR') throw new Error(videoStatus || 'error');
+          await new Promise(r => setTimeout(r, d));
+        }
+        if (statusCode !== 'FINISHED') throw new Error(videoStatus || 'timeout');
+      }
+      await rootQuery(`UPDATE instagram_publish_jobs SET status='publishing', updated_at=now() WHERE id=$1`, [job.id]);
       const r2 = await fetch(`https://graph.facebook.com/v20.0/${job.ig_user_id}/media_publish?creation_id=${creationId}&access_token=${tok.access_token}`, { method: 'POST' });
       if (r2.status === 401) throw new Error('unauthorized');
       const data2 = await r2.json();

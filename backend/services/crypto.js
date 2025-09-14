@@ -5,8 +5,8 @@ const currentRaw = process.env.CRESCEJA_ENC_KEY || '';
 // Legado (deprecado): mantém só para ler dados antigos
 const legacyRaw  = process.env.GOOGLE_TOKEN_ENC_KEY || '';
 
-// Loga aviso se estiver caindo no legado
-if (!currentRaw && legacyRaw) {
+// Loga aviso se estiver caindo no legado (somente fora de produção)
+if (!currentRaw && legacyRaw && process.env.NODE_ENV !== 'production') {
   console.warn('[crypto] GOOGLE_TOKEN_ENC_KEY is deprecated; use CRESCEJA_ENC_KEY');
 }
 

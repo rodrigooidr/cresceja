@@ -62,6 +62,15 @@ test('publish now image returns done and saves id', async () => {
   expect(res.body.published_media_id).toBe('mid');
 });
 
+test('publish now video returns 202 and job id', async () => {
+  fetchMock.mockReset();
+  fetchMock
+    .mockResolvedValueOnce({ status:200, json:()=>Promise.resolve({ data:[{ quota_usage:0, config:{ quota:25 } }] }) });
+  const res = await request(app()).post('/api/orgs/o1/instagram/accounts/acc1/publish').set('X-Org-Id','o1').send({ type:'video', media:{ url:'http://v' } });
+  expect(res.statusCode).toBe(202);
+  expect(res.body.job_id).toBeDefined();
+});
+
 test('schedule creates pending job and worker publishes', async () => {
   listJobs.length = 0;
   fetchMock.mockReset();
