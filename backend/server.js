@@ -51,6 +51,8 @@ import orgFeaturesRouter from './routes/orgs.features.js';
 import orgWhatsappRouter from './routes/orgs.whatsapp.js';
 import orgsCalendarRouter from './routes/orgs.calendar.js';
 import orgsFacebookRouter from './routes/orgs.facebook.js';
+import orgsFacebookPublishRouter from './routes/orgs.facebook.publish.js';
+import orgsFacebookJobsRouter from './routes/orgs.facebook.jobs.js';
 import orgsInstagramRouter from './routes/orgs.instagram.js';
 import orgsInstagramPublishRouter from './routes/orgs.instagram.publish.js';
 import orgsInstagramJobsRouter from './routes/orgs.instagram.jobs.js';
@@ -236,6 +238,8 @@ async function init() {
   app.use('/', orgWhatsappRouter);
   app.use('/', orgsCalendarRouter);
   app.use('/', orgsFacebookRouter);
+  app.use('/', orgsFacebookPublishRouter);
+  app.use('/', orgsFacebookJobsRouter);
   app.use('/', orgsInstagramRouter);
   app.use('/', orgsInstagramPublishRouter);
   app.use('/', orgsInstagramJobsRouter);
