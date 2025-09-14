@@ -1,5 +1,6 @@
 // src/api/inboxApi.js
 import axios from "axios";
+import { applyOrgIdHeader, computeOrgId } from "./orgHeader.js";
 
 export const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:4000/api";
@@ -104,7 +105,10 @@ try {
 } catch {}
 
 try {
-  const savedOrg = typeof window !== "undefined" ? localStorage.getItem("active_org_id") : null;
+  const savedOrg =
+    typeof window !== "undefined"
+      ? localStorage.getItem("activeOrgId") ?? localStorage.getItem("active_org_id")
+      : null;
   if (savedOrg) {
     inboxApi.defaults.headers.common["X-Org-Id"] = savedOrg;
   }
@@ -118,10 +122,11 @@ inboxApi.interceptors.request.use((config) => {
 
   const isGlobal = config.meta?.scope === "global";
   const noAuth = !!config.meta?.noAuth || path.startsWith("/auth/");
-  const isPublic = path.startsWith("/public/")
-    || path.startsWith("/webhooks")
-    || path === "/health"
-    || path === "/ping";
+  const isPublic =
+    path.startsWith("/public/") ||
+    path.startsWith("/webhooks") ||
+    path === "/health" ||
+    path === "/ping";
 
   // Authorization
   if (noAuth) {
@@ -142,17 +147,16 @@ inboxApi.interceptors.request.use((config) => {
 
   // X-Org-Id: NÃO enviar para auth/health/public/global
   try {
-    const orgId = localStorage.getItem("active_org_id");
     if (isGlobal || noAuth || isPublic) {
       delHeader(config, "X-Org-Id");
-    } else if (orgId) {
-      setHeader(config, "X-Org-Id", orgId);
+    } else {
+      config.headers = applyOrgIdHeader(config.headers || {});
     }
   } catch {}
 
   // active channel header
   try {
-    const orgId = localStorage.getItem('active_org_id');
+    const orgId = computeOrgId();
     const key = orgId ? `active_channel_id::${orgId}` : null;
     const ch = key ? localStorage.getItem(key) : null;
     if (ch) setHeader(config, 'X-Channel-Id', ch);
@@ -302,3 +306,4 @@ export function setImpersonateOrgId(orgId) {
 }
 
 export default inboxApi;
+export { setOrgIdHeaderProvider } from "./orgHeader.js";
