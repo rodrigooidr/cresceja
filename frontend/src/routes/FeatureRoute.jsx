@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { canUse } from "../utils/featureGate";
 
 export default function FeatureRoute({
@@ -10,13 +9,8 @@ export default function FeatureRoute({
   children,
 }) {
   const allowed = canUse(org, featureKey, limitKey);
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!allowed) navigate(fallback, { replace: true });
-  }, [allowed, navigate, fallback]);
-
-  if (!allowed) return null;
+  if (!allowed) return <Navigate to={fallback} replace />;
   return children;
 }
 
