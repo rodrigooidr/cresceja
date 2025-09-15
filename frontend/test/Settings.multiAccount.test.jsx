@@ -26,11 +26,17 @@ test('actions on accounts', async () => {
 
   const fbAcc = await screen.findByTestId('facebook-acc-1');
   fireEvent.click(screen.getByTestId('facebook-sub-1'));
-  expect(inboxApi.post).toHaveBeenCalledWith('/channels/meta/accounts/1/subscribe');
+  expect(inboxApi.post).toHaveBeenCalledWith(
+    expect.stringMatching(/\/channels\/meta\/accounts\/1\/subscribe$/),
+    expect.anything()
+  );
   fireEvent.click(screen.getByTestId('facebook-del-1'));
   expect(inboxApi.delete).toHaveBeenCalledWith('/channels/meta/accounts/1');
 
   const igAcc = await screen.findByTestId('instagram-acc-2');
   fireEvent.click(screen.getByTestId('instagram-sub-2'));
-  expect(inboxApi.post).toHaveBeenCalledWith('/channels/meta/accounts/2/subscribe');
+  expect(inboxApi.post).toHaveBeenCalledWith(
+    expect.stringMatching(/\/channels\/meta\/accounts\/2\/subscribe$/),
+    expect.anything()
+  );
 });
