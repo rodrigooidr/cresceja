@@ -264,7 +264,7 @@ async function init() {
   app.use('/api/debug', debugRouter);
 
   // Inbox (após auth/pgRlsContext)
-  app.use('/api/inbox', inboxRoutes);
+  inboxRoutes(app);
 
   // 404 apenas para /api/*
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
