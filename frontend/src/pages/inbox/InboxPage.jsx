@@ -29,7 +29,7 @@ export default function InboxPage({ addToast: addToastProp }) {
   const [filters, setFilters] = useState(() => ({
     q: searchParams.get("q") || "",
     status: searchParams.get("status") || "open",
-    channel: searchParams.get("channel") || "all",
+    channel: searchParams.get("channel") || "",
     accountId: searchParams.get("accountId") || "",
     tags: searchParams.getAll("tag") || [],
   }));
@@ -38,7 +38,7 @@ export default function InboxPage({ addToast: addToastProp }) {
     const params = new URLSearchParams();
     if (filters.q) params.set("q", filters.q);
     if (filters.status) params.set("status", filters.status);
-    if (filters.channel && filters.channel !== "all")
+    if (filters.channel)
       params.set("channel", filters.channel);
     if (filters.accountId)
       params.set("accountId", filters.accountId);
@@ -73,7 +73,7 @@ export default function InboxPage({ addToast: addToastProp }) {
       const data = await listConversations({
         q: filters.q || undefined,
         status: filters.status || undefined,
-        channel: filters.channel !== "all" ? filters.channel : undefined,
+        channel: filters.channel || undefined,
         accountId: filters.accountId || undefined,
         tags: filters.tags && filters.tags.length ? filters.tags : undefined,
         limit: 50,

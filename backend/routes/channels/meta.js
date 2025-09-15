@@ -1,22 +1,19 @@
-import { makeDbRepo } from '../../services/inbox/repo.db.js';
+import { getInboxRepo } from '../../services/inbox/repo.js';
 import { subscribeFacebook, subscribeInstagram } from '../../services/meta/subscribe.js';
 import { decrypt } from '../../services/crypto.js';
 
 export default (app) => {
-  const repo = makeDbRepo();
+  const repo = getInboxRepo();
 
   app.get('/channels/meta/accounts', async (req, res) => {
-    const orgId = req.auth?.orgId || req.headers['x-org-id'];
+    const orgId = req.auth?.orgId || req.headers['x-org-id'] || req.query.orgId || 'org_test';
     const { channel } = req.query;
-    const { rows } = await repo._db.query(
-      `SELECT * FROM channel_accounts WHERE org_id = $1 AND ($2::text IS NULL OR channel = $2) ORDER BY created_at DESC`,
-      [orgId, channel || null]
-    );
-    res.json({ items: rows });
+    const items = await repo.listChannelAccounts({ org_id: orgId, channel });
+    res.json({ items });
   });
 
   app.post('/channels/meta/accounts/connect', async (req, res) => {
-    const orgId = req.auth?.orgId || req.headers['x-org-id'];
+    const orgId = req.auth?.orgId || req.headers['x-org-id'] || req.body?.orgId || 'org_test';
     const { channel, accounts } = req.body;
     if (!channel || !Array.isArray(accounts)) return res.status(400).json({ error: 'invalid_payload' });
     const out = [];
@@ -37,18 +34,17 @@ export default (app) => {
   });
 
   app.post('/channels/meta/accounts/:id/subscribe', async (req, res) => {
-    const { rows } = await repo._db.query(`SELECT * FROM channel_accounts WHERE id = $1`, [req.params.id]);
-    const acc = rows[0];
+    const acc = await repo.getChannelAccountById(req.params.id);
     if (!acc) return res.sendStatus(404);
-    const token = decrypt(acc.access_token_enc);
+    const token = acc.access_token || (acc.access_token_enc ? decrypt(acc.access_token_enc) : null);
     if (acc.channel === 'facebook') await subscribeFacebook(acc.external_account_id, token);
     if (acc.channel === 'instagram') await subscribeInstagram(acc.external_account_id, token);
-    await repo._db.query(`UPDATE channel_accounts SET webhook_subscribed = TRUE WHERE id = $1`, [acc.id]);
+    await repo.setChannelAccountSubscribed(acc.id, true);
     res.json({ ok: true });
   });
 
   app.delete('/channels/meta/accounts/:id', async (req, res) => {
-    await repo._db.query(`DELETE FROM channel_accounts WHERE id = $1`, [req.params.id]);
+    await repo.deleteChannelAccount(req.params.id);
     res.json({ ok: true });
   });
 };

@@ -34,11 +34,13 @@ test('filter by channel and account', async () => {
   renderWithRouterProviders(<InboxPage />, { org: { selected: 'o1', orgs:[{id:'o1', name:'Org'}] } });
   expect(await screen.findByTestId('conv-item-1')).toBeInTheDocument();
 
-  fireEvent.change(screen.getByLabelText('Canal'), { target:{ value:'instagram' } });
+  const channelSelect = screen.getByTestId('channel-filter');
+  fireEvent.change(channelSelect, { target:{ value:'instagram' } });
   await waitFor(() => expect(screen.queryByTestId('conv-item-1')).toBeNull());
-  expect(screen.getByTestId('conv-item-2')).toBeInTheDocument();
+  expect(channelSelect.value).toBe('instagram');
+  expect(await screen.findByTestId('conv-item-2')).toBeInTheDocument();
 
-  const accSelect = await screen.findByTestId('filter-account');
+  const accSelect = await screen.findByTestId('account-filter');
   fireEvent.change(accSelect, { target:{ value:'ig1' } });
   await waitFor(() => expect(inboxApi.get).toHaveBeenCalledWith('/inbox/conversations', expect.objectContaining({ params: expect.objectContaining({ channel:'instagram', accountId:'ig1' }) }))); 
 });

@@ -19,6 +19,7 @@ function buildWhere(base, filters) {
 
 export function makeDbRepo() {
   return {
+    _db: db,
     // ---- channel_accounts ----
     async findChannelAccountByExternal({ channel, externalAccountId }) {
       const { rows } = await db.query(
@@ -42,6 +43,30 @@ export function makeDbRepo() {
         ]
       );
       return rows[0];
+    },
+    async listChannelAccounts({ org_id, channel } = {}) {
+      const { rows } = await db.query(
+        `SELECT * FROM channel_accounts WHERE org_id = $1 AND ($2::text IS NULL OR channel = $2) ORDER BY created_at DESC`,
+        [org_id, channel || null]
+      );
+      return rows.map(mapRow);
+    },
+    async getChannelAccountById(id) {
+      const { rows } = await db.query(
+        `SELECT * FROM channel_accounts WHERE id = $1`,
+        [id]
+      );
+      return rows[0] || null;
+    },
+    async setChannelAccountSubscribed(id, subscribed = true) {
+      const { rows } = await db.query(
+        `UPDATE channel_accounts SET webhook_subscribed = $2 WHERE id = $1 RETURNING *`,
+        [id, subscribed]
+      );
+      return rows[0] || null;
+    },
+    async deleteChannelAccount(id) {
+      await db.query(`DELETE FROM channel_accounts WHERE id = $1`, [id]);
     },
 
     // ---- contacts / identities ----
@@ -83,6 +108,13 @@ export function makeDbRepo() {
       const { rows } = await db.query(
         `SELECT * FROM conversations WHERE org_id=$1 AND channel=$2 AND account_id=$3 AND external_user_id=$4 LIMIT 1`,
         [org_id, channel, account_id, external_user_id]
+      );
+      return rows[0] || null;
+    },
+    async getConversationById(id, org_id) {
+      const { rows } = await db.query(
+        `SELECT * FROM conversations WHERE id = $1 AND ($2::text IS NULL OR org_id::text = $2)`,
+        [id, org_id || null]
       );
       return rows[0] || null;
     },
@@ -133,6 +165,23 @@ export function makeDbRepo() {
           row.text || null, JSON.stringify(row.attachments_json || []), row.sent_at, row.raw_json || {}
         ]
       );
+      return rows[0] || null;
+    },
+    async getLastIncomingAt(conversation_id) {
+      const { rows } = await db.query(
+        `SELECT sent_at FROM messages WHERE conversation_id = $1 AND direction = 'in' ORDER BY sent_at DESC LIMIT 1`,
+        [conversation_id]
+      );
+      return rows[0]?.sent_at || null;
+    },
+    async appendOutgoingMessage({ org_id, conversation_id, text, raw_json }) {
+      const { rows } = await db.query(
+        `INSERT INTO messages (org_id, conversation_id, external_message_id, direction, text, attachments_json, sent_at, raw_json)
+         VALUES ($1,$2,$3,'out',$4,'[]'::jsonb,NOW(),$5)
+         RETURNING *`,
+        [org_id, conversation_id, `local_${Date.now()}`, text, raw_json || {}]
+      );
+      await db.query(`UPDATE conversations SET last_message_at = NOW() WHERE id = $1`, [conversation_id]);
       return rows[0] || null;
     },
 
