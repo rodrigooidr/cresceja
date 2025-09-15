@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { makeDbRepo } from './repo.db.js';
 
 export function makeMemoryRepo() {
   const channelAccounts = new Map(); // key: channel|external_account_id -> { id, org_id, ... }
@@ -85,6 +86,6 @@ export function makeMemoryRepo() {
   };
 }
 
-let currentRepo = makeMemoryRepo();
+let currentRepo = (process.env.INBOX_REPO === 'db') ? makeDbRepo() : makeMemoryRepo();
 export function setInboxRepo(repo) { currentRepo = repo; }
 export function getInboxRepo() { return currentRepo; }

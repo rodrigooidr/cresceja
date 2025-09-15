@@ -1,0 +1,165 @@
+// backend/services/inbox/repo.db.js
+// Adapted to use the project's pg wrapper (imported via #db alias)
+import db from '#db';
+
+function mapRow(row) { return row; }
+
+function buildWhere(base, filters) {
+  const conds = [];
+  const args = [];
+  let idx = 1;
+  for (const [k, v] of Object.entries(filters)) {
+    if (v === undefined || v === null) continue;
+    conds.push(`${k} = $${idx++}`);
+    args.push(v);
+  }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  return { sql: `${base} ${where}`, args };
+}
+
+export function makeDbRepo() {
+  return {
+    // ---- channel_accounts ----
+    async findChannelAccountByExternal({ channel, externalAccountId }) {
+      const { rows } = await db.query(
+        `SELECT * FROM channel_accounts WHERE channel = $1 AND external_account_id = $2 LIMIT 1`,
+        [channel, externalAccountId]
+      );
+      return rows[0] || null;
+    },
+    async seedChannelAccount(row) {
+      const { rows } = await db.query(
+        `INSERT INTO channel_accounts (org_id, channel, external_account_id, name, username, access_token_enc, token_expires_at, webhook_subscribed, permissions_json)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,false),COALESCE($9,'[]'::jsonb))
+         ON CONFLICT (org_id, channel, external_account_id)
+         DO UPDATE SET name = EXCLUDED.name, username = EXCLUDED.username, access_token_enc = EXCLUDED.access_token_enc,
+                       token_expires_at = EXCLUDED.token_expires_at, webhook_subscribed = EXCLUDED.webhook_subscribed,
+                       permissions_json = EXCLUDED.permissions_json
+         RETURNING *`,
+        [
+          row.org_id, row.channel, row.external_account_id, row.name || null, row.username || null,
+          row.access_token_enc || null, row.token_expires_at || null, row.webhook_subscribed || false, row.permissions_json || []
+        ]
+      );
+      return rows[0];
+    },
+
+    // ---- contacts / identities ----
+    async findContactIdByIdentity({ org_id, channel, account_id, identity }) {
+      const { rows } = await db.query(
+        `SELECT contact_id FROM contact_identities WHERE org_id = $1 AND channel = $2 AND account_id = $3 AND identity = $4 LIMIT 1`,
+        [org_id, channel, account_id, identity]
+      );
+      return rows[0]?.contact_id || null;
+    },
+    async createContactWithIdentity({ org_id, name = '—', channel, account_id, identity }) {
+      // transaction
+      const client = await db.getClient();
+      try {
+        await client.query('BEGIN');
+        const { rows: cRows } = await client.query(
+          `INSERT INTO contacts (org_id, name) VALUES ($1,$2) RETURNING *`,
+          [org_id, name]
+        );
+        const contact = cRows[0];
+        await client.query(
+          `INSERT INTO contact_identities (org_id, channel, account_id, identity, contact_id)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (org_id, channel, account_id, identity) DO NOTHING`,
+          [org_id, channel, account_id, identity, contact.id]
+        );
+        await client.query('COMMIT');
+        return contact;
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
+    },
+
+    // ---- conversations ----
+    async findConversation({ org_id, channel, account_id, external_user_id }) {
+      const { rows } = await db.query(
+        `SELECT * FROM conversations WHERE org_id=$1 AND channel=$2 AND account_id=$3 AND external_user_id=$4 LIMIT 1`,
+        [org_id, channel, account_id, external_user_id]
+      );
+      return rows[0] || null;
+    },
+    async createConversation(row) {
+      const { rows } = await db.query(
+        `INSERT INTO conversations (org_id, channel, account_id, external_user_id, external_thread_id, contact_id, last_message_at, unread_count, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,0),COALESCE($9,'open'))
+         RETURNING *`,
+        [
+          row.org_id, row.channel, row.account_id, row.external_user_id, row.external_thread_id || null,
+          row.contact_id, row.last_message_at, row.unread_count || 0, row.status || 'open'
+        ]
+      );
+      return rows[0];
+    },
+    async updateConversation(id, patch) {
+      const fields = [];
+      const args = [];
+      let i = 1;
+      for (const [k, v] of Object.entries(patch)) {
+        fields.push(`${k} = $${i++}`);
+        args.push(v);
+      }
+      args.push(id);
+      const { rows } = await db.query(
+        `UPDATE conversations SET ${fields.join(', ')} WHERE id = $${i} RETURNING *`,
+        args
+      );
+      return rows[0] || null;
+    },
+
+    // ---- messages ----
+    async findMessageByExternalId({ org_id, external_message_id }) {
+      const { rows } = await db.query(
+        `SELECT * FROM messages WHERE org_id=$1 AND external_message_id=$2 LIMIT 1`,
+        [org_id, external_message_id]
+      );
+      return rows[0] || null;
+    },
+    async createMessage(row) {
+      const { rows } = await db.query(
+        `INSERT INTO messages (org_id, conversation_id, external_message_id, direction, text, attachments_json, sent_at, raw_json)
+         VALUES ($1,$2,$3,$4,$5,COALESCE($6,'[]'::jsonb),$7,$8)
+         ON CONFLICT (org_id, external_message_id) DO NOTHING
+         RETURNING *`,
+        [
+          row.org_id, row.conversation_id, row.external_message_id, row.direction,
+          row.text || null, JSON.stringify(row.attachments_json || []), row.sent_at, row.raw_json || {}
+        ]
+      );
+      return rows[0] || null;
+    },
+
+    // ---- queries p/ endpoints ----
+    async listConversations({ org_id, channel, account_id, limit = 50, offset = 0 }) {
+      const filters = { org_id, channel, account_id };
+      const base = `SELECT * FROM conversations`;
+      const { sql, args } = buildWhere(base, filters);
+      const { rows } = await db.query(
+        `${sql} ORDER BY last_message_at DESC LIMIT $${args.length + 1} OFFSET $${args.length + 2}`,
+        [...args, limit, offset]
+      );
+      const { rows: countRows } = await db.query(`SELECT COUNT(1) AS c FROM conversations ${sql.slice(base.length)}`, args);
+      return { items: rows.map(mapRow), total: Number(countRows[0].c) };
+    },
+    async listMessages({ conversation_id, limit = 50, offset = 0 }) {
+      const { rows } = await db.query(
+        `SELECT * FROM messages WHERE conversation_id=$1 ORDER BY sent_at ASC LIMIT $2 OFFSET $3`,
+        [conversation_id, limit, offset]
+      );
+      const { rows: countRows } = await db.query(
+        `SELECT COUNT(1) AS c FROM messages WHERE conversation_id=$1`,
+        [conversation_id]
+      );
+      return { items: rows.map(mapRow), total: Number(countRows[0].c) };
+    },
+  };
+}
+
+export default { makeDbRepo };
