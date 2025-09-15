@@ -1,5 +1,6 @@
 import useFeatureGate from "../../utils/useFeatureGate";
 import { isNonEmpty, hasAllScopes, disabledProps } from "../../utils/readyHelpers";
+import { openOAuth } from "../../utils/oauthDriver";
 
 const GCAL_READ = "https://www.googleapis.com/auth/calendar.readonly";
 const GCAL_WRITE = "https://www.googleapis.com/auth/calendar.events";
@@ -27,6 +28,18 @@ export default function CalendarSection({ org }) {
 
   const dp = disabledProps(ready, tip);
 
+  function toArray(v){ if(Array.isArray(v)) return v; if(v && Array.isArray(v.items)) return v.items; return []; }
+
+  async function onConnect() {
+    await openOAuth({
+      provider: "google_calendar",
+      url: "/oauth/google",
+      onSuccess: (res) => {
+        // ex.: setCal({ connected: true, scopes: res.scopes, selectedCalendarId: "primary", calendars: [{id:"primary", summary:"Agenda principal"}] })
+      },
+    });
+  }
+
   return (
     <section data-testid="settings-calendar-section">
       <header className="mb-2">
@@ -40,13 +53,13 @@ export default function CalendarSection({ org }) {
       )}
 
       <div className="flex gap-8 items-end">
-        <button data-testid="gcal-connect-btn" type="button">
+        <button data-testid="gcal-connect-btn" type="button" onClick={onConnect}>
           {connected ? "Reconectar Google" : "Conectar Google"}
         </button>
 
         <select data-testid="gcal-select-calendar" defaultValue={calendarId}>
           <option value="primary">Agenda principal</option>
-          {(cal?.calendars || []).map((c) => (
+          {toArray(cal?.calendars).map((c) => (
             <option key={c.id} value={c.id}>{c.summary}</option>
           ))}
         </select>

@@ -1,11 +1,39 @@
 export async function openOAuth({ provider, url, onSuccess, onError }) {
   if (process.env.NODE_ENV === "test") {
-    const payload = {
-      provider,
-      connected: true,
-      scopes: ["pages_manage_posts", "pages_read_engagement"],
-      account: { id: "fb_test_acc", name: "FB Test Page" },
-    };
+    let payload;
+    switch (provider) {
+      case "facebook":
+        payload = {
+          provider,
+          connected: true,
+          scopes: ["pages_manage_posts", "pages_read_engagement"],
+          account: { id: "fb_test_acc", name: "FB Test Page" },
+        };
+        break;
+      case "instagram":
+        payload = {
+          provider,
+          connected: true,
+          // ajuste se seus testes exigirem mais escopos
+          scopes: ["instagram_content_publish", "pages_show_list", "instagram_basic"],
+          account: { id: "ig_test_acc", name: "IG Test Account" },
+        };
+        break;
+      case "google":
+      case "google_calendar":
+        payload = {
+          provider: "google",
+          connected: true,
+          scopes: [
+            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/calendar.events",
+          ],
+          account: { id: "google_test", name: "Google Test" },
+        };
+        break;
+      default:
+        payload = { provider, connected: true, scopes: [], account: { id: "acc_test", name: "Test" } };
+    }
     onSuccess?.(payload);
     return { close: () => {} };
   }
