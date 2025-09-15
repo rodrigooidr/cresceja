@@ -2,6 +2,7 @@
 // garantindo compatibilidade com importações diretas de `src/api/inboxApi`
 import api, {
   __mockRoute, __resetMockApi, __getLastRequest, __setFeatures, __setLimits,
+  __setProgressScenario,
   searchOrgs, searchClients, getPlanFeatures, savePlanFeatures,
 } from "./index";
 
@@ -10,10 +11,11 @@ api.__resetMockApi = __resetMockApi;
 api.__getLastRequest = __getLastRequest;
 api.__setFeatures = __setFeatures;
 api.__setLimits = __setLimits;
+api.__setProgressScenario = __setProgressScenario;
 
 export default api;
 export {
-  __mockRoute, __resetMockApi, __getLastRequest, __setFeatures, __setLimits,
+  __mockRoute, __resetMockApi, __getLastRequest, __setFeatures, __setLimits, __setProgressScenario,
   searchOrgs, searchClients, getPlanFeatures, savePlanFeatures,
 };
 

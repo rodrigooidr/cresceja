@@ -51,6 +51,41 @@ function __setLimits(limits = {}) {
   globalThis.__TEST_ORG__ = org;
 }
 
+// ===== Instagram video progress scenarios =====
+const __progressScenarios = new Map(); // key: jobKey -> { steps: number[], i: number }
+
+function __setProgressScenario(jobKey, steps = [0, 25, 60, 100]) {
+  const safe = (Array.isArray(steps) && steps.length ? steps : [0, 100])
+    .map(n => Math.max(0, Math.min(100, Number(n) || 0)));
+  __progressScenarios.set(String(jobKey || "default"), { steps: safe, i: 0 });
+}
+
+function nextProgressFor(jobKey) {
+  const key = String(jobKey || "default");
+  if (!__progressScenarios.has(key)) {
+    __progressScenarios.set(key, { steps: [0, 25, 60, 100], i: 0 });
+  }
+  const s = __progressScenarios.get(key);
+  const value = s.steps[Math.min(s.i, s.steps.length - 1)];
+  if (s.i < s.steps.length - 1) s.i += 1;
+  const done = value >= 100;
+  const status = done ? "done" : "processing";
+  return { progress: value, status };
+}
+
+function extractJobKey(url, params) {
+  // tenta ?jobId=xxx
+  if (params && params.jobId) return params.jobId;
+  // tenta path /.../:jobId/progress
+  const m = url.match(/\/([A-Za-z0-9_-]{6,})\/progress(\?|$)/i);
+  if (m) return m[1];
+  // tenta /jobId=xxx em query crua
+  const mq = url.match(/[?&]jobId=([^&]+)/i);
+  if (mq) return decodeURIComponent(mq[1]);
+  // fallback: a própria URL
+  return url;
+}
+
 // 🔧 Registry de rotas: permita que testes registrem respostas específicas
 const handlers = { GET: [], POST: [], PUT: [], PATCH: [], DELETE: [] };
 function __mockRoute(method, matcher, responder) {
@@ -62,6 +97,7 @@ function __resetMockApi() {
     handlers[k] = [];
   });
   __lastRequest = null;
+  __progressScenarios.clear?.();
 }
 function matchHandler(method, url) {
   for (const [matcher, responder] of handlers[method]) {
@@ -128,6 +164,17 @@ function capture(method, url, body, config = {}) {
   const headers = applyOrgIdHeader({ ...(config.headers || {}) });
   __lastRequest = { method, url, body, headers, params: config.params || undefined };
 
+  // 🎯 Instagram video progress (aceita vários formatos)
+  if (
+    method === "GET" &&
+    /instagram/i.test(url) &&
+    /(progress|videoProgress)/i.test(url)
+  ) {
+    const jobKey = extractJobKey(url, config.params);
+    const payload = nextProgressFor(jobKey);
+    return Promise.resolve({ data: payload });
+  }
+
   const responder = matchHandler(method, url);
   if (responder) {
     const raw = responder({ url, method, body, headers, params: config.params });
@@ -152,7 +199,7 @@ const api = {
 };
 
 export default api;
-export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __getLastRequest, __setFeatures, __setLimits };
+export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __getLastRequest, __setFeatures, __setLimits, __setProgressScenario };
 
 // ✅ Adicione os utilitários também no *default* para testes que fazem inboxApi.__mockRoute(...)
 api.__mockRoute = __mockRoute;
@@ -160,6 +207,7 @@ api.__resetMockApi = __resetMockApi;
 api.__getLastRequest = __getLastRequest;
 api.__setFeatures = __setFeatures;
 api.__setLimits = __setLimits;
+api.__setProgressScenario = __setProgressScenario;
 
 // === Named exports esperados por testes ===
 // Observação: eles apenas delegam para o mock default (GET/POST etc.)
