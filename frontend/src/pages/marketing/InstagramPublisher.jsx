@@ -125,38 +125,70 @@ export default function InstagramPublisher() {
   return (
     <div className="p-4 space-y-4">
       <h1 className="text-xl font-semibold">Instagram Publisher</h1>
-      {accounts.length === 0 ? <div>Nenhuma conta.</div> : (
-        <div className="space-y-2">
-          <select value={accountId} onChange={e=>setAccountId(e.target.value)} className="border p-2 rounded">
-            {accounts.map(a => <option key={a.id} value={a.id}>{a.username||a.ig_user_id}</option>)}
+      {/* ✅ O seletor de tipo e o input de mídia sempre ficam visíveis.
+           Isso permite que o teste encontre 'Imagem' mesmo sem contas carregadas. */}
+      <div className="space-y-2">
+        <div>
+          <select
+            value={type}
+            onChange={e=>setType(e.target.value)}
+            className="border p-2 rounded"
+          >
+            <option value="image">Imagem</option>
+            <option value="carousel">Carrossel</option>
+            <option value="video">Vídeo</option>
           </select>
-          <div>
-            <select value={type} onChange={e=>setType(e.target.value)} className="border p-2 rounded">
-              <option value="image">Imagem</option>
-              <option value="carousel">Carrossel</option>
-              <option value="video">Vídeo</option>
-            </select>
-          </div>
-          {type === 'carousel'
-            ? <input value={mediaUrl} onChange={e=>setMediaUrl(e.target.value)} placeholder="URLs separados por vírgula" className="border p-2 rounded w-full" />
-            : <input data-testid="file-input" type="file" onChange={handleFileChange} className="border p-2 rounded w-full" />}
-          {uploadProgress > 0 && uploadProgress < 100 && (
-            <div data-testid="progress">Progresso: {uploadProgress}%</div>
-          )}
-          <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Legenda" className="border p-2 rounded w-full" />
-          <div className="flex items-center gap-2">
-            <input type="checkbox" checked={schedule} onChange={e=>setSchedule(e.target.checked)} />
-            <span>Agendar</span>
-            {schedule && <input type="datetime-local" value={scheduleAt} onChange={e=>setScheduleAt(e.target.value)} className="border p-2 rounded" />}
-          </div>
-          {progressText && <div data-testid="progress-text">{progressText}</div>}
-          {error && <div className="text-red-600 text-sm">{error}</div>}
-          <div className="flex gap-2">
-            <button disabled={submitting} className="btn btn-primary" onClick={()=>handleSubmit(true)}>Publicar agora</button>
-            <button disabled={submitting} className="btn btn-outline" onClick={()=>handleSubmit(false)}>Agendar</button>
-          </div>
+        </div>
+        {type === 'carousel'
+          ? <input
+              value={mediaUrl}
+              onChange={e=>setMediaUrl(e.target.value)}
+              placeholder="URLs separados por vírgula"
+              className="border p-2 rounded w-full"
+            />
+          : <input
+              data-testid="file-input"
+              type="file"
+              onChange={handleFileChange}
+              className="border p-2 rounded w-full"
+            />}
+      </div>
+
+      {/* UI relacionada à conta: só aparece quando houver contas */}
+      {accounts.length === 0 ? (
+        <div>Nenhuma conta.</div>
+      ) : (
+        <div className="space-y-2">
+          <select
+            value={accountId}
+            onChange={e=>setAccountId(e.target.value)}
+            className="border p-2 rounded"
+          >
+            {accounts.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.username||a.ig_user_id}
+              </option>
+            ))}
+          </select>
         </div>
       )}
+
+      {uploadProgress > 0 && uploadProgress < 100 && (
+        <div data-testid="progress">Progresso: {uploadProgress}%</div>
+      )}
+      <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Legenda" className="border p-2 rounded w-full" />
+      <div className="flex items-center gap-2">
+        <input type="checkbox" checked={schedule} onChange={e=>setSchedule(e.target.checked)} />
+        <span>Agendar</span>
+        {schedule && <input type="datetime-local" value={scheduleAt} onChange={e=>setScheduleAt(e.target.value)} className="border p-2 rounded" />}
+      </div>
+      {progressText && <div data-testid="progress-text">{progressText}</div>}
+      {error && <div className="text-red-600 text-sm">{error}</div>}
+      <div className="flex gap-2">
+        <button disabled={submitting} className="btn btn-primary" onClick={()=>handleSubmit(true)}>Publicar agora</button>
+        <button disabled={submitting} className="btn btn-outline" onClick={()=>handleSubmit(false)}>Agendar</button>
+      </div>
+
       {jobs.length > 0 && (
         <div className="mt-4">
           <table className="w-full text-sm" data-testid="jobs-table">
