@@ -42,6 +42,21 @@ for (const m of METHODS) {
   api[m] = jest.fn((...args) => orig(...args));
 }
 
+const originalGet = api.get;
+api.get = jest.fn((...args) => {
+  const [url] = args;
+  if (/^\/channels\/meta\/accounts\/[^/]+\/backfill\/status/.test(url)) {
+    return Promise.resolve({ data: { last: null } });
+  }
+  if (/^\/settings\/google-calendar\/accounts/i.test(url)) {
+    return Promise.resolve({ data: { items: [] } });
+  }
+  if (/^\/settings\/instagram\/accounts/i.test(url)) {
+    return Promise.resolve({ data: { items: [] } });
+  }
+  return originalGet(...args);
+});
+
 // (opcional) se seu código usa interceptors, mantenha um stub seguro
 api.interceptors = api.interceptors || {
   request: { use: () => {} },
