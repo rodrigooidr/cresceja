@@ -1,7 +1,10 @@
 import useFeatureGate from "../../utils/useFeatureGate";
 import { isNonEmpty, hasAllScopes, disabledProps } from "../../utils/readyHelpers";
+import { openOAuth } from "../../utils/oauthDriver";
 
 const IG_REQUIRED_SCOPES = ["instagram_content_publish"];
+
+function toArray(v){ if(Array.isArray(v)) return v; if(v && Array.isArray(v.items)) return v.items; return []; }
 
 export default function InstagramSection({ org }) {
   const { allowed } = useFeatureGate(org, "instagram", "instagram_accounts");
@@ -24,6 +27,17 @@ export default function InstagramSection({ org }) {
 
   const dp = disabledProps(ready, tip);
 
+  async function onConnect() {
+    await openOAuth({
+      provider: "instagram",
+      url: "/oauth/instagram",
+      onSuccess: (res) => {
+        // atualize seu estado local conforme sua estrutura
+        // por ex: setIg({ connected: true, permissions: res.scopes, accountId: res.account.id, accounts: [{id: res.account.id, name: res.account.name}] })
+      },
+    });
+  }
+
   return (
     <section data-testid="settings-instagram-section">
       <header className="mb-2">
@@ -37,13 +51,13 @@ export default function InstagramSection({ org }) {
       )}
 
       <div className="flex gap-8 items-end">
-        <button data-testid="ig-connect-btn" type="button">
+        <button data-testid="ig-connect-btn" type="button" onClick={onConnect}>
           {connected ? "Reconectar" : "Conectar Instagram"}
         </button>
 
         <select data-testid="ig-select-account" defaultValue={ig?.accountId || ""}>
           <option value="">Selecione a Conta…</option>
-          {(ig?.accounts || []).map((a) => (
+          {toArray(ig?.accounts).map((a) => (
             <option key={a.id} value={a.id}>{a.name || a.username}</option>
           ))}
         </select>

@@ -30,6 +30,7 @@ function defaults(method, url, body, headers) {
   const org = globalThis.__TEST_ORG__ || { id: "1", plan: { limits: {} }, features: {}, channels: {} };
   const waDefault = { connected: false, provider: "", phone: "", numbers: [], templates: [] };
   const emptyList = { items: [], total: 0 };
+  const ok = { data: { ok: true } };
 
   if (url.includes("/orgs/current"))       return { data: org };
   if (url.includes("/plans/current"))      return { data: org.plan || { limits: {} } };
@@ -39,14 +40,18 @@ function defaults(method, url, body, headers) {
   if (url.includes("/snippets"))           return { data: { items: [] } };
   if (url.includes("/channels/facebook"))  return { data: org.channels?.facebook  || { connected:false, pages:[], permissions:[] } };
   if (url.includes("/channels/instagram")) return { data: org.channels?.instagram || { connected:false, accounts:[], permissions:[] } };
-  if (url.includes("/channels/calendar"))  return { data: org.channels?.calendar  || { connected:false, calendars:[], scopes:[] } };
+  if (url.includes("/channels/calendar"))  return { data: org.channels?.calendar  || { connected:false, calendars:[{id:"primary", summary:"Agenda principal"}], scopes:[] } };
   if (url.includes("/channels/whatsapp"))  return { data: org.channels?.whatsapp  || waDefault };
   if (url.includes("/whatsapp"))           return { data: { items: [] } };
+  // OAuth genérico usado nas seções
+  if (url.includes("/oauth/facebook")) return ok;
+  if (url.includes("/oauth/instagram")) return ok;
+  if (url.includes("/oauth/google")) return ok;
+  if (url.includes("/oauth/state")) return ok;
   // comuns em testes de mídia/marketing
   if (url.includes("/media") || url.includes("/uploads")) return { data: { id: "upload_test", url: "/mock.png" } };
   if (url.includes("/images")) return { data: emptyList };
   if (url.includes("/marketing/instagram/publish/progress")) return { data: { progress: 100, status: "done" } };
-  if (url.includes("/oauth/state")) return { data: { ok: true } };
   return { data: {} };
 }
 

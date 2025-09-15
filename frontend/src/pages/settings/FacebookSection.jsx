@@ -5,6 +5,8 @@ import { openOAuth } from "../../utils/oauthDriver";
 
 const FB_REQUIRED_SCOPES = ["pages_manage_posts", "pages_read_engagement"];
 
+function toArray(v){ if(Array.isArray(v)) return v; if(v && Array.isArray(v.items)) return v.items; return []; }
+
 export default function FacebookSection({ org }) {
   const { allowed } = useFeatureGate(org, "facebook", "facebook_pages");
   if (!allowed) return null;
@@ -62,7 +64,7 @@ export default function FacebookSection({ org }) {
 
         <select data-testid="fb-select-page" defaultValue={fb?.page?.id || ""}>
           <option value="">Selecione a Página…</option>
-          {(fb?.pages || []).map((p) => (
+          {toArray(fb?.pages).map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
