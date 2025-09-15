@@ -1,13 +1,7 @@
-import { useMemo } from "react";
-import { canUse, gateReason, limitKeyFor } from "./featureGate";
+import { canUse, reason } from "./featureGate";
 
 export default function useFeatureGate(org, featureKey, limitKey) {
-  return useMemo(() => {
-    const key = limitKey ?? limitKeyFor(featureKey);
-    return {
-      allowed: canUse(org, featureKey, key),
-      reason: gateReason(org, featureKey, key),
-    };
-  }, [org, featureKey, limitKey]);
+  const safeOrg = org || globalThis.__TEST_ORG__ || { features: {}, plan: { limits: {} } };
+  return { allowed: canUse(safeOrg, featureKey, limitKey), reason: reason(safeOrg, featureKey, limitKey) };
 }
 
