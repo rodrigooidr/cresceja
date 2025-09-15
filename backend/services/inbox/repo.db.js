@@ -2,7 +2,34 @@
 // Adapted to use the project's pg wrapper (imported via #db alias)
 import db from '#db';
 
-function mapRow(row) { return row; }
+function parseAccessTokenEnc(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value === 'string') {
+    try { return JSON.parse(value); } catch { return null; }
+  }
+  return null;
+}
+
+function encodeAccessTokenEnc(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); } catch { return null; }
+}
+
+function mapRow(row) {
+  if (!row) return row;
+  const perms = Array.isArray(row.permissions_json)
+    ? row.permissions_json
+    : typeof row.permissions_json === 'string'
+      ? (() => { try { return JSON.parse(row.permissions_json); } catch { return []; } })()
+      : [];
+  return {
+    ...row,
+    permissions_json: perms,
+    access_token_enc: parseAccessTokenEnc(row.access_token_enc),
+  };
+}
 
 function buildWhere(base, filters) {
   const conds = [];
@@ -31,7 +58,7 @@ export function makeDbRepo() {
     async seedChannelAccount(row) {
       const { rows } = await db.query(
         `INSERT INTO channel_accounts (org_id, channel, external_account_id, name, username, access_token_enc, token_expires_at, webhook_subscribed, permissions_json)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,false),COALESCE($9,'[]'::jsonb))
+         VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8,false),COALESCE($9::jsonb,'[]'::jsonb))
          ON CONFLICT (org_id, channel, external_account_id)
          DO UPDATE SET name = EXCLUDED.name, username = EXCLUDED.username, access_token_enc = EXCLUDED.access_token_enc,
                        token_expires_at = EXCLUDED.token_expires_at, webhook_subscribed = EXCLUDED.webhook_subscribed,
@@ -39,10 +66,13 @@ export function makeDbRepo() {
          RETURNING *`,
         [
           row.org_id, row.channel, row.external_account_id, row.name || null, row.username || null,
-          row.access_token_enc || null, row.token_expires_at || null, row.webhook_subscribed || false, row.permissions_json || []
+          encodeAccessTokenEnc(row.access_token_enc) || null,
+          row.token_expires_at || null,
+          row.webhook_subscribed || false,
+          JSON.stringify(row.permissions_json || []),
         ]
       );
-      return rows[0];
+      return mapRow(rows[0]);
     },
     async listChannelAccounts({ org_id, channel } = {}) {
       const { rows } = await db.query(
@@ -56,14 +86,21 @@ export function makeDbRepo() {
         `SELECT * FROM channel_accounts WHERE id = $1`,
         [id]
       );
-      return rows[0] || null;
+      return mapRow(rows[0]) || null;
     },
     async setChannelAccountSubscribed(id, subscribed = true) {
       const { rows } = await db.query(
         `UPDATE channel_accounts SET webhook_subscribed = $2 WHERE id = $1 RETURNING *`,
         [id, subscribed]
       );
-      return rows[0] || null;
+      return mapRow(rows[0]) || null;
+    },
+    async markAccountSubscribed(id) {
+      const { rows } = await db.query(
+        `UPDATE channel_accounts SET webhook_subscribed = TRUE WHERE id = $1 RETURNING *`,
+        [id]
+      );
+      return mapRow(rows[0]) || null;
     },
     async deleteChannelAccount(id) {
       await db.query(`DELETE FROM channel_accounts WHERE id = $1`, [id]);

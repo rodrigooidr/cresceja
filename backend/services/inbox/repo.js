@@ -42,6 +42,9 @@ export function makeMemoryRepo() {
       channelAccounts.set(`${next.channel}|${next.external_account_id}`, next);
       return next;
     },
+    async markAccountSubscribed(id) {
+      return this.setChannelAccountSubscribed(id, true);
+    },
     async deleteChannelAccount(id) {
       const rec = channelAccountsById.get(id);
       if (rec) {

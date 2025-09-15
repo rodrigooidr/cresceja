@@ -13,22 +13,14 @@ beforeEach(() => {
   openOAuth.mockReset();
 });
 
-test('connect accepts accounts payload from OAuth driver', async () => {
+test('connect real flow loads accounts and allows subscribing', async () => {
   openOAuth.mockImplementation(async ({ onSuccess }) => {
-    onSuccess({
-      accounts: [
-        {
-          external_account_id: 'manual_page',
-          name: 'Manual Page',
-          access_token: 'MANUAL_ACCESS',
-        },
-      ],
-    });
+    onSuccess({ userAccessToken: 'REAL_USER_TOKEN' });
     return { close: () => {} };
   });
 
   renderWithRouterProviders(<FacebookSection />, {
-    org: { selected: 'org_manual', orgs: [{ id: 'org_manual', name: 'Org Manual' }] },
+    org: { selected: 'org_test', orgs: [{ id: 'org_test', name: 'Org' }] },
   });
 
   const connectBtn = await screen.findByTestId('facebook-connect-btn');
@@ -38,15 +30,14 @@ test('connect accepts accounts payload from OAuth driver', async () => {
     expect(openOAuth).toHaveBeenCalled();
   });
   await waitFor(() => {
-    expect(inboxApi.post).toHaveBeenCalledWith('/channels/meta/accounts/connect', {
-      accounts: [
-        {
-          external_account_id: 'manual_page',
-          name: 'Manual Page',
-          access_token: 'MANUAL_ACCESS',
-          channel: 'facebook',
-        },
-      ],
-    });
+    expect(inboxApi.post).toHaveBeenCalledWith('/channels/meta/accounts/connect', { userAccessToken: 'REAL_USER_TOKEN' });
+  });
+
+  await screen.findByTestId('facebook-acc-fb1');
+
+  const subscribeBtn = screen.getByTestId('facebook-sub-fb1');
+  fireEvent.click(subscribeBtn);
+  await waitFor(() => {
+    expect(inboxApi.post).toHaveBeenCalledWith('/channels/meta/accounts/fb1/subscribe');
   });
 });

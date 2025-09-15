@@ -14,7 +14,10 @@ beforeAll(async () => {
     subscribeFacebook: (...a) => fbSub(...a),
     subscribeInstagram: (...a) => igSub(...a),
   }));
-  await jest.unstable_mockModule('../services/crypto.js', () => ({ decrypt: () => 'TOKEN' }));
+  await jest.unstable_mockModule('../services/crypto.js', () => ({
+    decrypt: () => 'TOKEN',
+    encrypt: (value) => value,
+  }));
   ({ default: router } = await import('../routes/channels/meta.js'));
   ({ setInboxRepo, makeMemoryRepo, getInboxRepo } = await import('../services/inbox/repo.js'));
 });
