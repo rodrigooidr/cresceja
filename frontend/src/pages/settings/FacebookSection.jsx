@@ -1,5 +1,7 @@
 import useFeatureGate from "../../utils/useFeatureGate";
 import { isNonEmpty, hasAllScopes, disabledProps } from "../../utils/readyHelpers";
+import { useState } from "react";
+import { openOAuth } from "../../utils/oauthDriver";
 
 const FB_REQUIRED_SCOPES = ["pages_manage_posts", "pages_read_engagement"];
 
@@ -7,7 +9,7 @@ export default function FacebookSection({ org }) {
   const { allowed } = useFeatureGate(org, "facebook", "facebook_pages");
   if (!allowed) return null;
 
-  const fb = org?.channels?.facebook || {};
+  const [fb, setFb] = useState(() => org?.channels?.facebook || {});
   const connected = !!fb.connected;
   const pageSelected = isNonEmpty(fb?.page?.id);
   const permsOk = hasAllScopes(FB_REQUIRED_SCOPES, fb?.permissions);
@@ -25,6 +27,22 @@ export default function FacebookSection({ org }) {
 
   const dp = disabledProps(ready, tip);
 
+  async function onConnect() {
+    await openOAuth({
+      provider: "facebook",
+      url: "/oauth/facebook",
+      onSuccess: (res) => {
+        setFb({
+          connected: true,
+          permissions: res.scopes,
+          page: { id: res.account.id, name: res.account.name },
+          pages: fb.pages || [],
+        });
+      },
+      onError: () => {},
+    });
+  }
+
   return (
     <section data-testid="settings-facebook-section">
       <header className="mb-2">
@@ -38,7 +56,7 @@ export default function FacebookSection({ org }) {
       )}
 
       <div className="flex gap-8 items-end">
-        <button data-testid="fb-connect-btn" type="button">
+        <button data-testid="fb-connect-btn" type="button" onClick={onConnect}>
           {connected ? "Reconectar" : "Conectar Facebook"}
         </button>
 
