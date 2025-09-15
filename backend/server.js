@@ -35,6 +35,7 @@ import aiCreditsRouter from './routes/aiCreditsRoutes.js';
 import onboardingRouter from './routes/onboarding.js';
 import conversationsRouter from './routes/conversations.js';
 import attachmentsRouter from './routes/attachments.js';
+import mediaRoutes from './routes/media.js';
 import reportsRouter from './routes/reports.js';
 import subscriptionRouter from './routes/subscription.js';
 import whatsappRouter from './routes/whatsapp.js';
@@ -269,6 +270,7 @@ async function init() {
   inboxRoutes(app);
   inboxSendRoutes(app);
   metaChannelsRoutes(app);
+  mediaRoutes(app);
 
   // 404 apenas para /api/*
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));

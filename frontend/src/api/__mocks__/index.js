@@ -273,6 +273,17 @@ const api = {
       __metaAccounts = __metaAccounts.map(a => (a.id === id ? { ...a, webhook_subscribed: true } : a));
       return Promise.resolve({ data: { ok: true } });
     }
+    const backfillMatch = url.match(/^\/channels\/meta\/accounts\/([^/]+)\/backfill/);
+    if (backfillMatch) {
+      __lastRequest = {
+        method: 'POST',
+        url,
+        body,
+        headers: applyOrgIdHeader({ ...(cfg.headers || {}) }),
+        params: cfg.params || undefined,
+      };
+      return Promise.resolve({ data: { imported: { conversations: 1, messages: 1 } } });
+    }
     return capture("POST", url, body, cfg);
   }),
   put: jest.fn((url, body = {}, cfg = {}) => capture("PUT", url, body, cfg)),

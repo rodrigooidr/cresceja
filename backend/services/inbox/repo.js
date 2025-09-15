@@ -104,6 +104,16 @@ export function makeMemoryRepo() {
       msgExtIdx.set(`${row.org_id}|${row.external_message_id}`, id);
       return rec;
     },
+    async updateMessageAttachments(id, attachments) {
+      const rec = messages.get(id);
+      if (!rec) return null;
+      const next = { ...rec, attachments_json: attachments };
+      messages.set(id, next);
+      return next;
+    },
+    async getMessageById(id) {
+      return messages.get(id) || null;
+    },
     async getLastIncomingAt(conversation_id) {
       const arr = Array.from(messages.values()).filter(
         (m) => m.conversation_id === conversation_id && m.direction === 'in'

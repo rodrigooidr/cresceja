@@ -1,5 +1,15 @@
 // src/inbox/normalizeMessage.js
 import { normalizeDirection, isMineMessage } from './message.helpers';
+import { apiUrl } from '../api/inboxApi.js';
+
+const API_BASE = (apiUrl || '').replace(/\/$/, '');
+
+function mediaEndpoint(messageId, index) {
+  const encodedId = encodeURIComponent(String(messageId || ''));
+  const path = `/media/${encodedId}/${index}`;
+  if (API_BASE) return `${API_BASE}${path}`;
+  return `/api${path}`;
+}
 
 function deduceSender(raw, dir /* 'in' | 'out' | null */) {
   // 1) explícito
@@ -47,15 +57,29 @@ export default function normalizeMessage(raw = {}) {
   const direction = normalizedDir ?? (sender === 'agent' ? 'out' : 'in');
 
   // padroniza anexos
-  const attachments = Array.isArray(raw.attachments)
-    ? raw.attachments.map((a) => ({
-        id: a.id || a.asset_id || a.url,
-        url: a.url,
-        thumb_url: a.thumb_url || null,
-        filename: a.filename || a.name,
-        mime: a.mime || a.mime_type || a.content_type,
-      }))
-    : [];
+  const rawAttachments = Array.isArray(raw.attachments)
+    ? raw.attachments
+    : Array.isArray(raw.attachments_json)
+      ? raw.attachments_json.map((a, index) => ({ ...a, _index: index }))
+      : [];
+
+  const attachments = rawAttachments.map((a, idx) => {
+    const index = typeof a._index === 'number' ? a._index : idx;
+    const storageKey = a.storage_key || null;
+    let url = a.url || a.remote_url || null;
+    if (storageKey && raw.id) {
+      url = mediaEndpoint(raw.id, index);
+    }
+    return {
+      id: a.id || a.asset_id || `${raw.id || 'att'}_${index}`,
+      url,
+      thumb_url: a.thumb_url || a.preview_url || null,
+      filename: a.filename || a.name || a.title || null,
+      mime: a.mime || a.mime_type || a.content_type || null,
+      storage_key: storageKey,
+      remote_url: a.remote_url || a.url || null,
+    };
+  });
 
   const msg = {
     id: String(raw.id ?? raw.message_id ?? `${Date.now()}-${Math.random()}`),
