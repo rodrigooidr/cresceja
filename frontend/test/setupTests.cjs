@@ -19,6 +19,33 @@ const { renderAct, actTick } = require('./utils/actUtils.js');
 global.renderAct = renderAct;
 global.actTick = actTick;
 
+// Raiz para Portals usados por pickers/modais
+beforeAll(() => {
+  const div = document.createElement('div');
+  div.id = 'portal-root';
+  document.body.appendChild(div);
+});
+
+// Exec command e seleção básicas para libs de editor
+if (!document.execCommand) document.execCommand = jest.fn();
+
+if (!global.Range) {
+  global.Range = class {
+    setStart(){}
+    setEnd(){}
+    collapse(){}
+    getClientRects(){ return []; }
+    getBoundingClientRect(){ return { x:0,y:0,width:0,height:0,top:0,left:0,bottom:0,right:0 }; }
+  };
+}
+if (!window.getSelection) {
+  window.getSelection = () => ({
+    removeAllRanges(){},
+    addRange(){},
+    getRangeAt(){ return new Range(); }
+  });
+}
+
 // Canvas e fabric
 require('jest-canvas-mock'); // provê getContext, toDataURL básico
 jest.mock(
