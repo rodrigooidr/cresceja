@@ -1,17 +1,17 @@
 import { applyOrgIdHeader, setOrgIdHeaderProvider } from "../orgHeader.js";
 
 let __lastRequest = null;
-export function __getLastRequest() {
+function __getLastRequest() {
   return __lastRequest;
 }
 
 // 🔧 Registry de rotas: permita que testes registrem respostas específicas
 const handlers = { GET: [], POST: [], PUT: [], PATCH: [], DELETE: [] };
-export function __mockRoute(method, matcher, responder) {
+function __mockRoute(method, matcher, responder) {
   const m = String(method || "GET").toUpperCase();
   handlers[m].push([matcher, responder]);
 }
-export function __resetMockApi() {
+function __resetMockApi() {
   Object.keys(handlers).forEach(k => {
     handlers[k] = [];
   });
@@ -31,6 +31,20 @@ function defaults(method, url, body, headers) {
   const waDefault = { connected: false, provider: "", phone: "", numbers: [], templates: [] };
   const emptyList = { items: [], total: 0 };
   const ok = { data: { ok: true } };
+
+  // ---- BUSCAS / LISTAGENS GENÉRICAS ----
+  // Orgs
+  if (/\/admin\/orgs(\?.*)?$/i.test(url) || /\/orgs\/search/i.test(url) || /\/organizations\/search/i.test(url)) {
+    return { data: { items: [{ id: "org1", name: "Org 1" }, { id: "org2", name: "Org 2" }], total: 2 } };
+  }
+  // Clients
+  if (/\/admin\/clients(\?.*)?$/i.test(url) || /\/clients\/search/i.test(url)) {
+    return { data: { items: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Bob" }], total: 2 } };
+  }
+  // Usuários (caso algum teste busque)
+  if (/\/admin\/users(\?.*)?$/i.test(url) || /\/users\/search/i.test(url)) {
+    return { data: { items: [{ id: "u1", email: "test@example.com" }], total: 1 } };
+  }
 
   if (url.includes("/orgs/current"))       return { data: org };
   if (url.includes("/plans/current"))      return { data: org.plan || { limits: {} } };
@@ -61,10 +75,10 @@ function defaults(method, url, body, headers) {
 
 function capture(method, url, body, config = {}) {
   const headers = applyOrgIdHeader({ ...(config.headers || {}) });
-  __lastRequest = { method, url, body, headers };
+  __lastRequest = { method, url, body, headers, params: config.params || undefined };
 
   const responder = matchHandler(method, url);
-  if (responder) return Promise.resolve(responder({ url, method, body, headers }));
+  if (responder) return Promise.resolve(responder({ url, method, body, headers, params: config.params }));
 
   const def = defaults(method, url, body, headers);
   if (process.env.NODE_ENV === "test" && (!def || (def && Object.keys(def.data || {}).length === 0))) {
@@ -84,10 +98,25 @@ const api = {
 };
 
 export default api;
-export { setOrgIdHeaderProvider };
+export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __getLastRequest };
 
 // ✅ Adicione os utilitários também no *default* para testes que fazem inboxApi.__mockRoute(...)
 api.__mockRoute = __mockRoute;
 api.__resetMockApi = __resetMockApi;
 api.__getLastRequest = __getLastRequest;
+
+// === Named exports esperados por testes ===
+// Observação: eles apenas delegam para o mock default (GET/POST etc.)
+export async function searchOrgs(query = "", opts = {}) {
+  return api.get("/admin/orgs", { ...(opts || {}), params: { q: query, ...(opts?.params || {}) } });
+}
+export async function searchClients(query = "", opts = {}) {
+  return api.get("/admin/clients", { ...(opts || {}), params: { q: query, ...(opts?.params || {}) } });
+}
+export async function getPlanFeatures(planId, opts = {}) {
+  return api.get(`/admin/plans/${planId}/features`, opts);
+}
+export async function savePlanFeatures(planId, payload, opts = {}) {
+  return api.put(`/admin/plans/${planId}/features`, payload, opts);
+}
 
