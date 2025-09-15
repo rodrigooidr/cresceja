@@ -23,7 +23,7 @@ function useOutsideClose(ref, onClose, deps = []) {
   }, deps);
 }
 
-export default function MessageComposer({ onSend, sel, onFiles }) {
+export default function MessageComposer({ onSend, sel, onFiles, disabled = false, disabledReason = '' }) {
   const convId = sel?.id || sel?.conversation_id || null;
 
   const [text, setText] = useState("");
@@ -137,7 +137,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
 
   // ---------- Envio ----------
   const doSend = async () => {
-    if (isSending) return;
+    if (isSending || disabled) return;
     const trimmed = text.trim();
     if (!trimmed) return;
     setIsSending(true);
@@ -157,7 +157,7 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
     }
   };
 
-  const disabled = isSending || !text.trim();
+  const sendDisabled = disabled || isSending || !text.trim();
 
   return (
     <div
@@ -177,6 +177,8 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           value={text}
           onChange={(e) => setTextAndDraft(e.target.value)}
           onKeyDown={handleKeyDown}
+          disabled={disabled}
+          title={disabled ? disabledReason : undefined}
         />
 
         <div className="flex items-center gap-2">
@@ -298,9 +300,10 @@ export default function MessageComposer({ onSend, sel, onFiles }) {
           <button
             type="button"
             data-testid="btn-send"
-            className={`px-4 py-2 rounded-lg text-white ${disabled ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}
+            className={`px-4 py-2 rounded-lg text-white ${sendDisabled ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}
             onClick={doSend}
-            disabled={disabled}
+            disabled={sendDisabled}
+            title={disabled ? disabledReason : undefined}
           >
             {isSending ? "Enviando..." : "Enviar"}
           </button>

@@ -1,7 +1,7 @@
 // src/pages/inbox/components/SidebarFilters.jsx
 import React from "react";
 
-export default function SidebarFilters({ value, onChange, channelIconBySlug }) {
+export default function SidebarFilters({ value, onChange, channelIconBySlug, accounts = [] }) {
   const handleChange = (field, newValue) => {
     onChange({ ...value, [field]: newValue });
   };
@@ -51,9 +51,26 @@ export default function SidebarFilters({ value, onChange, channelIconBySlug }) {
           <option value="whatsapp">WhatsApp</option>
           <option value="instagram">Instagram</option>
           <option value="facebook">Facebook</option>
-          <option value="email">E-mail</option>
         </select>
       </div>
+
+      {/* Conta */}
+      {(value.channel === 'instagram' || value.channel === 'facebook') && (
+        <div>
+          <label className="block text-xs font-semibold mb-1">Conta</label>
+          <select
+            data-testid="filter-account"
+            className="w-full px-3 py-2 border rounded-lg text-sm"
+            value={value.accountId || ''}
+            onChange={(e) => handleChange('accountId', e.target.value)}
+          >
+            <option value="">Todas</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.name || a.username || a.external_account_id}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Tags (exemplo simples, pode vir da API no futuro) */}
       <div>
