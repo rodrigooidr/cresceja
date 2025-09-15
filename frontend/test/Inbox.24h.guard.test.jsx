@@ -18,13 +18,20 @@ beforeEach(() => {
 });
 
 test('composer disables when outside 24h', async () => {
-  inboxApi.post.mockRejectedValueOnce({ response:{ data:{ error:'outside_24h' } } });
+  inboxApi.post.mockImplementation((url, body) => {
+    if (url === '/inbox/messages' || url?.includes('/inbox/messages')) {
+      return Promise.reject({ response:{ data:{ error:'outside_24h' } } });
+    }
+    return Promise.resolve({ data:{} });
+  });
   renderWithRouterProviders(<InboxPage />, { org: { selected:'o1', orgs:[{id:'o1', name:'Org'}] } });
   const row = await screen.findByTestId('conv-item-1');
   fireEvent.click(row);
   await screen.findByTestId('composer-text');
   fireEvent.change(screen.getByTestId('composer-text'), { target:{ value:'hi' } });
-  fireEvent.click(screen.getByTestId('btn-send'));
+  fireEvent.click(screen.getByTestId('composer-send'));
+  await waitFor(() => expect(inboxApi.post).toHaveBeenCalled());
   await waitFor(() => expect(screen.getByTestId('composer-text')).toBeDisabled());
-  expect(screen.getByTestId('btn-send')).toBeDisabled();
+  const lockedButton = screen.getByTestId('composer-locked');
+  expect(lockedButton).toBeDisabled();
 });

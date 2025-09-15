@@ -157,6 +157,7 @@ export default function MessageComposer({ onSend, sel, onFiles, disabled = false
     }
   };
 
+  const locked = Boolean(disabled);
   const sendDisabled = disabled || isSending || !text.trim();
 
   return (
@@ -299,11 +300,11 @@ export default function MessageComposer({ onSend, sel, onFiles, disabled = false
           {/* Enviar */}
           <button
             type="button"
-            data-testid="btn-send"
+            data-testid={locked ? "composer-locked" : "composer-send"}
             className={`px-4 py-2 rounded-lg text-white ${sendDisabled ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"}`}
             onClick={doSend}
             disabled={sendDisabled}
-            title={disabled ? disabledReason : undefined}
+            title={locked ? (disabledReason || "Respostas permitidas até 24h após a última mensagem") : undefined}
           >
             {isSending ? "Enviando..." : "Enviar"}
           </button>

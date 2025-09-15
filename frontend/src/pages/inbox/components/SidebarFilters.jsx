@@ -41,13 +41,19 @@ export default function SidebarFilters({ value, onChange, channelIconBySlug, acc
 
       {/* Canal */}
       <div>
-        <label className="block text-xs font-semibold mb-1">Canal</label>
+        <label htmlFor="channelFilter" className="block text-xs font-semibold mb-1">Canal</label>
+        <label htmlFor="channelFilter" className="sr-only">
+          Canal
+        </label>
         <select
+          id="channelFilter"
+          aria-label="Filtro de canal"
+          data-testid="channel-filter"
           className="w-full px-3 py-2 border rounded-lg text-sm"
           value={value.channel}
           onChange={(e) => handleChange("channel", e.target.value)}
         >
-          <option value="all">Todos</option>
+          <option value="">Todos</option>
           <option value="whatsapp">WhatsApp</option>
           <option value="instagram">Instagram</option>
           <option value="facebook">Facebook</option>
@@ -57,9 +63,14 @@ export default function SidebarFilters({ value, onChange, channelIconBySlug, acc
       {/* Conta */}
       {(value.channel === 'instagram' || value.channel === 'facebook') && (
         <div>
-          <label className="block text-xs font-semibold mb-1">Conta</label>
+          <label htmlFor="accountFilter" className="block text-xs font-semibold mb-1">Conta</label>
+          <label htmlFor="accountFilter" className="sr-only">
+            Conta
+          </label>
           <select
-            data-testid="filter-account"
+            id="accountFilter"
+            aria-label="Filtro de conta"
+            data-testid="account-filter"
             className="w-full px-3 py-2 border rounded-lg text-sm"
             value={value.accountId || ''}
             onChange={(e) => handleChange('accountId', e.target.value)}
