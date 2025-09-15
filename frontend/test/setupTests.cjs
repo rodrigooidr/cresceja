@@ -246,8 +246,12 @@ if (!window.DataTransfer) {
 }
 
 // Crypto + encoders (para libs que usam)
-if (!global.crypto) {
-  global.crypto = { getRandomValues: (arr) => (Array.from({length:arr.length},()=>Math.floor(Math.random()*256)) && arr) };
+if (!global.crypto) global.crypto = {};
+if (!global.crypto.getRandomValues) {
+  global.crypto.getRandomValues = (arr) => (Array.from({ length: arr.length }, () => Math.floor(Math.random() * 256)), arr);
+}
+if (!global.crypto.subtle) {
+  global.crypto.subtle = { digest: async () => new ArrayBuffer(0) };
 }
 if (!global.TextEncoder) {
   const { TextEncoder, TextDecoder } = require("util");

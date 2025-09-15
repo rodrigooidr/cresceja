@@ -52,6 +52,10 @@ function defaults(method, url, body, headers) {
   if (url.includes("/media") || url.includes("/uploads")) return { data: { id: "upload_test", url: "/mock.png" } };
   if (url.includes("/images")) return { data: emptyList };
   if (url.includes("/marketing/instagram/publish/progress")) return { data: { progress: 100, status: "done" } };
+  // Listagens/consultas genéricas usadas por Settings
+  if (/facebook.*pages/i.test(url))   return { data: { items: [{ id: "fbp1", name: "Minha Página" }] } };
+  if (/instagram.*accounts/i.test(url)) return { data: { items: [{ id: "iga1", name: "Minha Conta IG" }] } };
+  if (/calendar.*calendars/i.test(url)) return { data: { items: [{ id: "primary", summary: "Agenda principal" }] } };
   return { data: {} };
 }
 
