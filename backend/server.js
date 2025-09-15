@@ -36,6 +36,7 @@ import onboardingRouter from './routes/onboarding.js';
 import conversationsRouter from './routes/conversations.js';
 import attachmentsRouter from './routes/attachments.js';
 import mediaRoutes from './routes/media.js';
+import metaStatusRouter from './routes/channels/meta.status.js';
 import reportsRouter from './routes/reports.js';
 import subscriptionRouter from './routes/subscription.js';
 import whatsappRouter from './routes/whatsapp.js';
@@ -89,6 +90,8 @@ const logger = pino({
   transport: process.env.NODE_ENV === 'production' ? undefined : { target: 'pino-pretty' },
 });
 
+export const app = express();
+
 // ---------- Helpers ----------
 const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
   .split(',')
@@ -101,18 +104,24 @@ function applyCommonHeadersForApi(_req, res, next) {
   next();
 }
 
-// ============ App factory ============
-async function init() {
-  // Checagem do banco antes de subir
-  try {
-    await healthcheck();
-    logger.info('DB healthcheck OK');
-  } catch (err) {
-    logger.error({ err }, 'DB healthcheck FAILED');
-    process.exit(1);
-  }
+const ALLOWED_ORIGINS = corsOrigins;
+const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
+const ALLOWED_HEADERS = [
+  'Authorization',
+  'Content-Type',
+  'X-Org-Id',
+  'X-Impersonate-Org-Id',
+  'Cache-Control',
+  'Pragma',
+  'Expires',
+  'Accept',
+  'X-Requested-With',
+];
 
-  const app = express();
+let configured = false;
+function configureApp() {
+  if (configured) return;
+  configured = true;
 
   // Configs base
   app.set('etag', false);
@@ -120,23 +129,8 @@ async function init() {
   app.disable('x-powered-by');
 
   // ---------- CORS (sempre antes de qualquer rota/middleware que lide com body) ----------
-  const ALLOWED_ORIGINS = corsOrigins;
-  const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
-  const ALLOWED_HEADERS = [
-    'Authorization',
-    'Content-Type',
-    'X-Org-Id',
-    'X-Impersonate-Org-Id',
-    'Cache-Control', // <- necessário para seu caso
-    'Pragma',
-    'Expires',
-    'Accept',
-    'X-Requested-With',
-  ];
-
   const corsOptions = {
     origin: (origin, cb) => {
-      // permite ferramentas como curl/postman (sem origin)
       if (!origin) return cb(null, true);
       return cb(null, ALLOWED_ORIGINS.includes(origin));
     },
@@ -149,7 +143,6 @@ async function init() {
   };
 
   app.use(cors(corsOptions));
-  // responde preflight para QUALQUER rota
   app.options('*', (req, res) => {
     res.header('Access-Control-Allow-Origin', req.headers.origin || '');
     res.header('Vary', 'Origin');
@@ -171,9 +164,7 @@ async function init() {
   app.use(rateLimit({ windowMs: 60_000, max: 300 }));
 
   // ---------- Webhooks (os que exigem RAW vêm antes do express.json) ----------
-  // Meta (Facebook/Instagram) com assinatura X-Hub-Signature-256 precisa de raw body
   app.use('/api/webhooks/meta', express.raw({ type: '*/*' }), metaWebhookRouter);
-  // Demais webhooks (sem necessidade de raw body)
   app.use('/api/webhooks/instagram', igRouter);
   app.use('/api/webhooks/messenger', fbRouter);
   app.use('/api/webhooks/whatsapp', waWebhookRouter);
@@ -188,7 +179,7 @@ async function init() {
 
   // Injeta utilidades por request
   app.use((req, _res, next) => {
-    req.pool = pool; // acesso ao Pool (se algum repo precisar)
+    req.pool = pool;
     next();
   });
 
@@ -205,7 +196,7 @@ async function init() {
 
   // ---------- Rotas públicas ----------
   app.use('/api/public', publicRouter);
-  app.use('/api/auth', authRouter); // login é público
+  app.use('/api/auth', authRouter);
   app.use(authGoogleRouter);
   app.use(authFacebookRouter);
   app.use(authInstagramRouter);
@@ -256,26 +247,23 @@ async function init() {
   app.use('/', orgsCampaignsApproveRouter);
   app.use('/', orgsAssetsRouter);
 
-  // Integrações (rotas base + sub-rotas específicas)
-  app.use('/api/integrations', integrationsRouter);                          // ex.: /api/integrations/status
-  app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);     // ex.: /api/integrations/whatsapp/cloud/status
-  app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter); // ex.: /api/integrations/whatsapp/session/status
-  app.use('/api/integrations/meta', metaOauthIntegrationRouter);             // ex.: /api/integrations/meta/pages
+  app.use('/api/integrations', integrationsRouter);
+  app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);
+  app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter);
+  app.use('/api/integrations/meta', metaOauthIntegrationRouter);
   app.use('/api', googleCalendarRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
 
-  // Inbox (após auth/pgRlsContext)
   inboxRoutes(app);
   inboxSendRoutes(app);
   metaChannelsRoutes(app);
   mediaRoutes(app);
+  app.use(metaStatusRouter);
 
-  // 404 apenas para /api/*
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
-  // ---------- Error handler ----------
   /* eslint-disable no-unused-vars */
   app.use((err, req, res, _next) => {
     req.log?.error({ err }, 'Unhandled error');
@@ -288,18 +276,64 @@ async function init() {
   });
   /* eslint-enable no-unused-vars */
 
-  // ---------- HTTP + Socket.io ----------
-  const httpServer = http.createServer(app);
+  app.get('/', (_req, res) => res.json({ name: 'CresceJá API', status: 'ok' }));
+}
 
-  const io = new IOServer(httpServer, {
+configureApp();
+
+let httpServer = null;
+let io = null;
+let started = false;
+let shutdownRegistered = false;
+
+async function ensureHealthcheck() {
+  try {
+    await healthcheck();
+    logger.info('DB healthcheck OK');
+  } catch (err) {
+    logger.error({ err }, 'DB healthcheck FAILED');
+    throw err;
+  }
+}
+
+function registerShutdownHooks() {
+  if (shutdownRegistered) return;
+  shutdownRegistered = true;
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('unhandledRejection', (reason) => logger.error({ reason }, 'unhandledRejection'));
+  process.on('uncaughtException', (err) => logger.error({ err }, 'uncaughtException'));
+}
+
+async function shutdown(signal) {
+  try {
+    logger.info({ signal }, 'Shutting down…');
+    if (httpServer) {
+      await new Promise((resolve) => {
+        httpServer.close(() => {
+          logger.info('HTTP server closed');
+          resolve();
+        });
+      });
+    }
+    if (io) io.close();
+    await pool.end();
+    logger.info('DB pool closed');
+    process.exit(0);
+  } catch (e) {
+    logger.error({ e }, 'Error during shutdown');
+    process.exit(1);
+  }
+}
+
+function setupSocketServer() {
+  io = new IOServer(httpServer, {
     path: '/socket.io',
     cors: { origin: ALLOWED_ORIGINS, credentials: true },
   });
 
-  // Disponibiliza io para rotas (req.app.get('io'))
   app.set('io', io);
 
-  // Autenticação no handshake do WS (ajuste se usar outro segredo/claim)
   io.use((socket, next) => {
     try {
       const token =
@@ -330,42 +364,39 @@ async function init() {
     socket.on('wa:session:ping', () => socket.emit('wa:session:pong', { ok: true }));
     socket.on('disconnect', () => {});
   });
+}
 
-  // Raiz simples (pública)
-  app.get('/', (_req, res) => res.json({ name: 'CresceJá API', status: 'ok' }));
+export async function start() {
+  if (started) return httpServer;
 
-  // ---------- Boot ----------
-  const PORT = Number(process.env.PORT || 4000);
-  httpServer.listen(PORT, () => logger.info(`CresceJá backend + WS listening on :${PORT}`));
+  await ensureHealthcheck();
+
+  httpServer = http.createServer(app);
+  setupSocketServer();
+
+  const port = Number(process.env.PORT || 4000);
+  await new Promise((resolve) => {
+    httpServer.listen(port, () => {
+      logger.info(`CresceJá backend + WS listening on :${port}`);
+      resolve();
+    });
+  });
 
   if (process.env.RUN_WORKERS !== '0') {
     startCampaignsSyncWorker();
   }
 
-  // ---------- Shutdown gracioso ----------
-  const shutdown = async (signal) => {
-    try {
-      logger.info({ signal }, 'Shutting down…');
-      httpServer.close(() => logger.info('HTTP server closed'));
-      io.close();
-      await pool.end();
-      logger.info('DB pool closed');
-      process.exit(0);
-    } catch (e) {
-      logger.error({ e }, 'Error during shutdown');
-      process.exit(1);
-    }
-  };
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('unhandledRejection', (reason) => logger.error({ reason }, 'unhandledRejection'));
-  process.on('uncaughtException', (err) => logger.error({ err }, 'uncaughtException'));
+  registerShutdownHooks();
+  started = true;
+  return httpServer;
 }
 
-// Executa
-init().catch((e) => {
-  // Se algo falhar no init (ex.: DB), encerra com log
-  // eslint-disable-next-line no-console
-  console.error('Fatal during init:', e);
-  process.exit(1);
-});
+if (process.env.NODE_ENV !== 'test') {
+  start().catch((e) => {
+    // eslint-disable-next-line no-console
+    console.error('Fatal during init:', e);
+    process.exit(1);
+  });
+}
+
+export default app;
