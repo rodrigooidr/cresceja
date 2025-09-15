@@ -13,7 +13,7 @@ function normalizeDataShape(data) {
 
   // Clona raso e normaliza chaves comuns de “lista”
   const out = { ...data };
-  const listKeys = ["items", "pages", "accounts", "calendars", "numbers", "templates", "results", "list"];
+  const listKeys = ["items", "pages", "accounts", "calendars", "numbers", "templates", "results", "list", "types"];
   for (const k of listKeys) {
     if (k in out && !Array.isArray(out[k])) {
       out[k] = normalizeListLike(out[k]);
@@ -150,12 +150,45 @@ function defaults(method, url, body, headers) {
   if (url.includes("/marketing/instagram/publish/progress")) return { data: { progress: 100, status: "done" } };
   // Rotas comuns que às vezes aparecem em Settings e adjacências
   if (/facebook.*pages/i.test(url))   return { data: [{ id: "fbp1", name: "Minha Página" }] };
-  if (/instagram.*accounts/i.test(url)) return { data: [{ id: "iga1", name: "Minha Conta IG" }] };
+  if (/instagram.*accounts/i.test(url) && !/\/orgs\/[^/]+\/instagram\/accounts/i.test(url)) {
+    return { data: [{ id: "iga1", name: "Minha Conta IG" }] };
+  }
   if (/calendar.*calendars/i.test(url)) return { data: [{ id: "primary", summary: "Agenda principal" }] };
   if (/calendar.*accounts/i.test(url))  return { data: [{ id: "primary", summary: "Agenda principal" }] };
 
   // “search genérico” que alguns componentes usam
   if (/\/search(\?|$)/i.test(url)) return { data: { items: [], total: 0 } };
+
+  // ===== Instagram Publisher (org-scoped) =====
+  // Contas vinculadas da org (garante que a UI não mostre "Nenhuma conta.")
+  if (/\/orgs\/[^/]+\/instagram\/accounts(\?.*)?$/i.test(url)) {
+    return { data: { items: [{ id: "iga1", name: "IG Test Account", username: "@igtest" }] } };
+  }
+  // Jobs da org (lista inicial)
+  if (/\/orgs\/[^/]+\/instagram\/jobs(\?.*)?$/i.test(url)) {
+    return { data: { items: [] } };
+  }
+  // Criar publicação (imagem/vídeo)
+  if (/\/orgs\/[^/]+\/instagram(?:\/accounts\/[^/]+)?\/publish(\?.*)?$/i.test(url) && method === "POST") {
+    const jobId = "job_ig_123";
+    return { data: { id: jobId, jobId, status: "queued" } };
+  }
+  // Cancelar job
+  if (/\/orgs\/[^/]+\/instagram\/jobs\/[^/]+\/cancel(\?.*)?$/i.test(url) && method !== "GET") {
+    return { data: { ok: true } };
+  }
+
+  // Tipos/opções de publicação (para o select "Imagem"/"Vídeo")
+  if (/instagram.*publish.*(types|options)/i.test(url)) {
+    return {
+      data: {
+        types: [
+          { value: "image", label: "Imagem" },
+          { value: "video", label: "Vídeo" },
+        ],
+      },
+    };
+  }
 
   return { data: {} };
 }
