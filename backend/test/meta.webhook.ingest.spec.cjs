@@ -1,29 +1,40 @@
 const request = require('supertest');
 const express = require('express');
 const crypto = require('crypto');
+
 let router;
-let setIngest;
-let ingestMock;
+let setInboxRepo;
+let makeMemoryRepo;
+let inboxRoutes;
 
 beforeAll(async () => {
-  ({ default: router, _setIngestFn: setIngest } = await import('../routes/webhooks/meta.js'));
+  ({ default: router } = await import('../routes/webhooks/meta.js'));
+  ({ setInboxRepo, makeMemoryRepo } = await import('../services/inbox/repo.js'));
+  ({ default: inboxRoutes } = await import('../routes/inbox.js'));
 });
 
-function app() {
+function makeApp() {
   const app = express();
   app.use('/api/webhooks/meta', express.raw({ type: '*/*' }), router);
+  app.use(express.json());
+  inboxRoutes(app);
   return app;
 }
 
-test('messenger webhook triggers ingest', async () => {
-  ingestMock = jest.fn().mockResolvedValue();
-  setIngest(ingestMock);
+beforeEach(async () => {
+  const repo = makeMemoryRepo();
+  setInboxRepo(repo);
+  await repo.seedChannelAccount({ org_id: 'org_test', channel: 'instagram', external_account_id: 'IG_USER_ID', name: 'IG A' });
+  await repo.seedChannelAccount({ org_id: 'org_test', channel: 'facebook', external_account_id: 'PAGE_ID', name: 'FB A' });
+});
+
+test('messenger webhook persists conversation', async () => {
   process.env.META_APP_SECRET = 'secret';
   const bodyObj = {
     object: 'page',
     entry: [
       {
-        id: 'p1',
+        id: 'PAGE_ID',
         messaging: [
           {
             sender: { id: 'u1' },
@@ -36,25 +47,33 @@ test('messenger webhook triggers ingest', async () => {
   };
   const body = JSON.stringify(bodyObj);
   const sig = 'sha256=' + crypto.createHmac('sha256', 'secret').update(body).digest('hex');
-  const res = await request(app())
+  const app = makeApp();
+  const res = await request(app)
     .post('/api/webhooks/meta')
     .set('X-Hub-Signature-256', sig)
     .set('Content-Type', 'application/json')
     .send(body);
   expect(res.statusCode).toBe(200);
-  expect(ingestMock).toHaveBeenCalledTimes(1);
-  expect(ingestMock.mock.calls[0][0]).toMatchObject({ channel: 'facebook' });
+
+  const list = await request(app).get('/inbox/conversations?orgId=org_test');
+  expect(list.statusCode).toBe(200);
+  expect(list.body.total).toBe(1);
+  const conv = list.body.items[0];
+  expect(conv.channel).toBe('facebook');
+
+  const msgs = await request(app).get(`/inbox/conversations/${conv.id}/messages`);
+  expect(msgs.statusCode).toBe(200);
+  expect(msgs.body.total).toBe(1);
+  expect(msgs.body.items[0]).toMatchObject({ text: 'hello', direction: 'in' });
 });
 
-test('instagram webhook triggers ingest', async () => {
-  ingestMock = jest.fn().mockResolvedValue();
-  setIngest(ingestMock);
+test('instagram webhook persists conversation', async () => {
   process.env.META_APP_SECRET = 'secret';
   const bodyObj = {
     object: 'instagram',
     entry: [
       {
-        id: 'ig1',
+        id: 'IG_USER_ID',
         changes: [
           {
             value: {
@@ -71,12 +90,22 @@ test('instagram webhook triggers ingest', async () => {
   };
   const body = JSON.stringify(bodyObj);
   const sig = 'sha256=' + crypto.createHmac('sha256', 'secret').update(body).digest('hex');
-  const res = await request(app())
+  const app = makeApp();
+  const res = await request(app)
     .post('/api/webhooks/meta')
     .set('X-Hub-Signature-256', sig)
     .set('Content-Type', 'application/json')
     .send(body);
   expect(res.statusCode).toBe(200);
-  expect(ingestMock).toHaveBeenCalledTimes(1);
-  expect(ingestMock.mock.calls[0][0]).toMatchObject({ channel: 'instagram' });
+
+  const list = await request(app).get('/inbox/conversations?orgId=org_test');
+  expect(list.statusCode).toBe(200);
+  expect(list.body.total).toBe(1);
+  const conv = list.body.items[0];
+  expect(conv.channel).toBe('instagram');
+
+  const msgs = await request(app).get(`/inbox/conversations/${conv.id}/messages`);
+  expect(msgs.statusCode).toBe(200);
+  expect(msgs.body.total).toBe(1);
+  expect(msgs.body.items[0]).toMatchObject({ text: 'hi', direction: 'in' });
 });
