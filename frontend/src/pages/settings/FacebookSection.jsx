@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import inboxApi from '../../api/inboxApi.js';
 import FeatureGate from '../../ui/feature/FeatureGate.jsx';
 import { openOAuth } from '../../utils/oauthDriver.js';
+import useToastFallback from '../../hooks/useToastFallback.js';
 
 const CHANNEL_LABEL = {
   facebook: 'Facebook',
@@ -45,6 +46,7 @@ export function MetaAccounts({ channel }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const toast = useToastFallback();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -117,6 +119,22 @@ export function MetaAccounts({ channel }) {
     }
   }, [load]);
 
+  const backfill = useCallback(async (id, hours = 24) => {
+    setSaving(true);
+    try {
+      await inboxApi.post(`/channels/meta/accounts/${id}/backfill`, null, { params: { hours } });
+      toast({ title: 'Backfill iniciado', description: `Importando ${hours}h de mensagens…` });
+    } catch (err) {
+      toast({
+        title: 'Falha ao iniciar backfill',
+        description: err?.response?.data?.error || err.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [toast]);
+
   const rows = useMemo(() => items.map((acc) => ({
     ...acc,
     messaging_ok: hasMessagingPerm(acc.channel || channel, acc.permissions_json),
@@ -171,6 +189,15 @@ export function MetaAccounts({ channel }) {
                   <td className="px-3 py-2 align-middle">{formatBoolean(acc.messaging_ok)}</td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        data-testid={`${channel}-backfill-${acc.id}`}
+                        onClick={() => backfill(acc.id, 24)}
+                        disabled={saving}
+                      >
+                        Backfill (24h)
+                      </button>
                       <button
                         type="button"
                         className="btn btn-outline"

@@ -44,9 +44,9 @@ function renderMessageBody(m) {
       <div className="flex flex-col gap-2">
         {m.attachments.map((att) =>
           att.mime && att.mime.startsWith("image/") ? (
-            <a key={att.id} href={att.url} target="_blank" rel="noopener noreferrer">
+            <a key={att.id} href={att.url || att.remote_url} target="_blank" rel="noopener noreferrer">
               <img
-                src={att.thumb_url || att.url}
+                src={att.thumb_url || att.url || att.remote_url}
                 alt={att.filename || "imagem"}
                 className="rounded-md max-h-72 object-contain"
               />
@@ -54,7 +54,7 @@ function renderMessageBody(m) {
           ) : (
             <a
               key={att.id}
-              href={att.url}
+              href={att.url || att.remote_url}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-2 py-1 rounded-md bg-white text-blue-700 border"

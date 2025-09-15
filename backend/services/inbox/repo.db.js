@@ -204,6 +204,20 @@ export function makeDbRepo() {
       );
       return rows[0] || null;
     },
+    async updateMessageAttachments(id, attachments) {
+      const { rows } = await db.query(
+        `UPDATE messages SET attachments_json = COALESCE($2::jsonb, '[]'::jsonb) WHERE id = $1 RETURNING *`,
+        [id, JSON.stringify(attachments || [])]
+      );
+      return rows[0] || null;
+    },
+    async getMessageById(id) {
+      const { rows } = await db.query(
+        `SELECT * FROM messages WHERE id = $1`,
+        [id]
+      );
+      return rows[0] || null;
+    },
     async getLastIncomingAt(conversation_id) {
       const { rows } = await db.query(
         `SELECT sent_at FROM messages WHERE conversation_id = $1 AND direction = 'in' ORDER BY sent_at DESC LIMIT 1`,
