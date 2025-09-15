@@ -14,8 +14,14 @@ try { jest.mock("src/api/inboxApi.js", bridge); } catch {}
 try { jest.mock("@/api/inboxApi", bridge); } catch {}
 try { jest.mock("@/api/inboxApi.js", bridge); } catch {}
 
+const inboxApiModule = require("../src/api/inboxApi.js");
+const inboxApi = inboxApiModule.default || inboxApiModule;
+const { __mockMetaReset } = inboxApiModule;
+
 beforeEach(() => {
   jest.clearAllMocks();
+  // zera o estado do mock de contas Meta a cada teste
+  if (typeof __mockMetaReset === "function") __mockMetaReset();
 });
 process.env.TZ = 'America/Sao_Paulo';
 try {
@@ -123,7 +129,7 @@ jest.mock('react-router-dom', () => {
   return { ...actual, useNavigate: () => jest.fn() };
 });
 
-const api = require('../src/api/inboxApi').default || require('../src/api/inboxApi');
+const api = inboxApi;
 global.setFeatureGate = (features = {}, limits = {}) => {
   if (api.__setFeatures) api.__setFeatures(features);
   if (api.__setLimits) api.__setLimits(limits);
@@ -183,7 +189,7 @@ global.setFeatureGate = (features = {}, limits = {}) => {
 };
 
 // ---- Reset consistente por teste ----
-const { setOrgIdHeaderProvider } = require("../src/api/inboxApi");
+const { setOrgIdHeaderProvider } = inboxApiModule;
 
 beforeEach(() => {
   // Limpando provider e storage para não vazar entre testes
@@ -341,8 +347,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // Reseta rotas mockadas entre testes (sem vazar handlers)
 beforeEach(() => {
   try {
-    const api = require("../src/api/inboxApi").default;
-    api.__resetMockApi?.();
+    inboxApi.__resetMockApi?.();
   } catch {}
 });
 

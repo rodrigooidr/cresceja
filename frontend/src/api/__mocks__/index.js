@@ -35,7 +35,18 @@ function normalizeResponse(method, url, res) {
 }
 
 let __lastRequest = null;
-function __getLastRequest() {
+// --- Estado em memória para o fluxo Meta (usado pelos testes de Settings.connect) ---
+let __metaAccounts = []; // { id, channel, external_account_id, name, username, webhook_subscribed }
+
+export function __resetMetaAccounts() { __metaAccounts = []; }
+export function __getMetaAccounts() { return __metaAccounts.slice(); }
+export function __seedMetaAccounts(list) {
+  __metaAccounts = Array.isArray(list)
+    ? list.map(x => ({ webhook_subscribed: false, ...x }))
+    : [];
+}
+
+export function __getLastRequest() {
   return __lastRequest;
 }
 
@@ -224,15 +235,63 @@ function capture(method, url, body, config = {}) {
 }
 
 const api = {
-  get: jest.fn((url, c) => capture("GET", url, undefined, c)),
-  post: jest.fn((url, b, c) => capture("POST", url, b, c)),
-  put: jest.fn((url, b, c) => capture("PUT", url, b, c)),
-  patch: jest.fn((url, b, c) => capture("PATCH", url, b, c)),
-  delete: jest.fn((url, c) => capture("DELETE", url, undefined, c)),
+  get: jest.fn((url, cfg = {}) => {
+    // --- Meta: listar contas conectadas ---
+    if (url.startsWith("/channels/meta/accounts")) {
+      const channel = cfg?.params?.channel;
+      const items = channel
+        ? __metaAccounts.filter(acc => acc.channel === channel)
+        : __metaAccounts;
+      return Promise.resolve({ data: { items } });
+    }
+    return capture("GET", url, undefined, cfg);
+  }),
+  post: jest.fn((url, body = {}, cfg = {}) => {
+    // --- Meta: conectar contas via OAuth (modo real de teste com token) ---
+    if (url === "/channels/meta/accounts/connect") {
+      // Se vier token, devolve duas contas fake; caso venha "accounts", persiste as fornecidas
+      if (body && body.userAccessToken) {
+        __metaAccounts = [
+          { id: "fb1", channel: "facebook", external_account_id: "p1", name: "Page One", username: null, webhook_subscribed: false },
+          { id: "ig1", channel: "instagram", external_account_id: "ig1", name: "IG One", username: "igone", webhook_subscribed: false },
+        ];
+      } else if (Array.isArray(body?.accounts)) {
+        const fallbackChannel = body.channel;
+        __metaAccounts = body.accounts.map(a => ({
+          id: a.id || a.external_account_id,
+          channel: a.channel || fallbackChannel || a?.category || null,
+          webhook_subscribed: false,
+          ...a,
+        }));
+      }
+      return Promise.resolve({ data: { items: __metaAccounts } });
+    }
+    // --- Meta: assinar webhooks de uma conta ---
+    const subMatch = url.match(/^\/channels\/meta\/accounts\/([^/]+)\/subscribe$/);
+    if (subMatch) {
+      const id = subMatch[1];
+      __metaAccounts = __metaAccounts.map(a => (a.id === id ? { ...a, webhook_subscribed: true } : a));
+      return Promise.resolve({ data: { ok: true } });
+    }
+    return capture("POST", url, body, cfg);
+  }),
+  put: jest.fn((url, body = {}, cfg = {}) => capture("PUT", url, body, cfg)),
+  patch: jest.fn((url, body = {}, cfg = {}) => capture("PATCH", url, body, cfg)),
+  delete: jest.fn((url, cfg = {}) => {
+    const delMatch = url.match(/^\/channels\/meta\/accounts\/([^/]+)$/);
+    if (delMatch) {
+      const id = delMatch[1];
+      __metaAccounts = __metaAccounts.filter(a => a.id !== id);
+      return Promise.resolve({ data: { ok: true } });
+    }
+    return capture("DELETE", url, undefined, cfg);
+  }),
 };
 
 export default api;
-export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __getLastRequest, __setFeatures, __setLimits, __setProgressScenario };
+export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __setFeatures, __setLimits, __setProgressScenario };
+
+export function __mockMetaReset() { __resetMetaAccounts(); }
 
 // ✅ Adicione os utilitários também no *default* para testes que fazem inboxApi.__mockRoute(...)
 api.__mockRoute = __mockRoute;
@@ -241,6 +300,10 @@ api.__getLastRequest = __getLastRequest;
 api.__setFeatures = __setFeatures;
 api.__setLimits = __setLimits;
 api.__setProgressScenario = __setProgressScenario;
+api.__resetMetaAccounts = __resetMetaAccounts;
+api.__getMetaAccounts = __getMetaAccounts;
+api.__seedMetaAccounts = __seedMetaAccounts;
+api.__mockMetaReset = __mockMetaReset;
 
 // === Named exports esperados por testes ===
 // Observação: eles apenas delegam para o mock default (GET/POST etc.)

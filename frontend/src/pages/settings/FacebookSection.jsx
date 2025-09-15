@@ -9,7 +9,11 @@ export function MetaAccounts({ channel }) {
   const load = async () => {
     try {
       const { data } = await inboxApi.get('/channels/meta/accounts', { params: { channel } });
-      setItems(Array.isArray(data?.items) ? data.items : []);
+      const list = Array.isArray(data?.items) ? data.items : [];
+      const filtered = list
+        .filter((acc) => !channel || acc.channel == null || acc.channel === channel)
+        .map((acc) => (acc.channel ? acc : { ...acc, channel }));
+      setItems(filtered);
     } catch {
       setItems([]);
     }
@@ -28,7 +32,8 @@ export function MetaAccounts({ channel }) {
   };
 
   const subscribe = async (id) => {
-    await inboxApi.post(`/channels/meta/accounts/${id}/subscribe`);
+    await inboxApi.post(`/channels/meta/accounts/${id}/subscribe`, { channel });
+    await load();
   };
   const remove = async (id) => {
     await inboxApi.delete(`/channels/meta/accounts/${id}`);
@@ -45,7 +50,14 @@ export function MetaAccounts({ channel }) {
         {items.map((acc) => (
           <li key={acc.id} data-testid={`${channel}-acc-${acc.id}`} className="flex items-center gap-2">
             <span className="flex-1 truncate">{acc.name || acc.username || acc.external_account_id}</span>
-            <button data-testid={`${channel}-sub-${acc.id}`} type="button" onClick={() => subscribe(acc.id)}>Assinar webhooks</button>
+            <button
+              data-testid={`${channel}-sub-${acc.id}`}
+              type="button"
+              onClick={() => subscribe(acc.id)}
+              disabled={acc.webhook_subscribed}
+            >
+              {acc.webhook_subscribed ? 'Assinado' : 'Assinar webhooks'}
+            </button>
             <button data-testid={`${channel}-reauth-${acc.id}`} type="button" onClick={connect}>Reautorizar</button>
             <button data-testid={`${channel}-del-${acc.id}`} type="button" onClick={() => remove(acc.id)}>Remover</button>
           </li>
