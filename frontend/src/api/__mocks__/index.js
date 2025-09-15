@@ -1,5 +1,39 @@
 import { applyOrgIdHeader, setOrgIdHeaderProvider } from "../orgHeader.js";
 
+function normalizeListLike(x) {
+  if (Array.isArray(x)) return x;
+  if (x && Array.isArray(x.items)) return x.items;    // aceita { items: [...] }
+  if (x && typeof x === "object" && Array.isArray(x.data)) return x.data; // { data: [...] }
+  return []; // qualquer outra coisa vira lista vazia
+}
+
+function normalizeDataShape(data) {
+  if (data == null) return {};
+  if (Array.isArray(data)) return data;
+
+  // Clona raso e normaliza chaves comuns de “lista”
+  const out = { ...data };
+  const listKeys = ["items", "pages", "accounts", "calendars", "numbers", "templates", "results", "list"];
+  for (const k of listKeys) {
+    if (k in out && !Array.isArray(out[k])) {
+      out[k] = normalizeListLike(out[k]);
+    }
+  }
+  return out;
+}
+
+function normalizeResponse(method, url, res) {
+  // Aceita responderes que devolvem { data: ... } ou direto um objeto
+  const payload = res && "data" in res ? res.data : res;
+  const normalized = normalizeDataShape(payload);
+  // Log leve para identificar o endpoint que veio torto (só em teste)
+  if (process.env.NODE_ENV === "test" && payload !== normalized) {
+    // eslint-disable-next-line no-console
+    console.warn("[mockApi] normalized list-like payload:", method, url);
+  }
+  return { data: normalized };
+}
+
 let __lastRequest = null;
 function __getLastRequest() {
   return __lastRequest;
@@ -79,10 +113,10 @@ function defaults(method, url, body, headers) {
   if (url.includes("/images")) return { data: emptyList };
   if (url.includes("/marketing/instagram/publish/progress")) return { data: { progress: 100, status: "done" } };
   // Rotas comuns que às vezes aparecem em Settings e adjacências
-  if (/facebook.*pages/i.test(url))   return { data: { items: [{ id: "fbp1", name: "Minha Página" }] } };
-  if (/instagram.*accounts/i.test(url)) return { data: { items: [{ id: "iga1", name: "Minha Conta IG" }] } };
-  if (/calendar.*calendars/i.test(url)) return { data: { items: [{ id: "primary", summary: "Agenda principal" }] } };
-  if (/calendar.*accounts/i.test(url))  return { data: { items: [{ id: "primary", summary: "Agenda principal" }] } };
+  if (/facebook.*pages/i.test(url))   return { data: [{ id: "fbp1", name: "Minha Página" }] };
+  if (/instagram.*accounts/i.test(url)) return { data: [{ id: "iga1", name: "Minha Conta IG" }] };
+  if (/calendar.*calendars/i.test(url)) return { data: [{ id: "primary", summary: "Agenda principal" }] };
+  if (/calendar.*accounts/i.test(url))  return { data: [{ id: "primary", summary: "Agenda principal" }] };
 
   // “search genérico” que alguns componentes usam
   if (/\/search(\?|$)/i.test(url)) return { data: { items: [], total: 0 } };
@@ -95,7 +129,10 @@ function capture(method, url, body, config = {}) {
   __lastRequest = { method, url, body, headers, params: config.params || undefined };
 
   const responder = matchHandler(method, url);
-  if (responder) return Promise.resolve(responder({ url, method, body, headers, params: config.params }));
+  if (responder) {
+    const raw = responder({ url, method, body, headers, params: config.params });
+    return Promise.resolve(normalizeResponse(method, url, raw));
+  }
 
   const def = defaults(method, url, body, headers);
   if (process.env.NODE_ENV === "test" && (!def || (def && Object.keys(def.data || {}).length === 0))) {
@@ -103,7 +140,7 @@ function capture(method, url, body, config = {}) {
     // eslint-disable-next-line no-console
     console.warn("[mockApi] fallback default vazio:", method, url);
   }
-  return Promise.resolve(def);
+  return Promise.resolve(normalizeResponse(method, url, def));
 }
 
 const api = {
