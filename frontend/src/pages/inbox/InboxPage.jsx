@@ -30,6 +30,7 @@ export default function InboxPage({ addToast: addToastProp }) {
     q: searchParams.get("q") || "",
     status: searchParams.get("status") || "open",
     channel: searchParams.get("channel") || "all",
+    accountId: searchParams.get("accountId") || "",
     tags: searchParams.getAll("tag") || [],
   }));
 
@@ -39,6 +40,8 @@ export default function InboxPage({ addToast: addToastProp }) {
     if (filters.status) params.set("status", filters.status);
     if (filters.channel && filters.channel !== "all")
       params.set("channel", filters.channel);
+    if (filters.accountId)
+      params.set("accountId", filters.accountId);
     (filters.tags || []).forEach((t) => params.append("tag", t));
     setSearchParams(params, { replace: true });
   }, [filters, setSearchParams]);
@@ -47,6 +50,7 @@ export default function InboxPage({ addToast: addToastProp }) {
   const [conversations, setConversations] = useState([]);
   const [loadingConvs, setLoadingConvs] = useState(false);
   const [selectedId, setSelectedId] = useState(() => searchParams.get("c") || null);
+  const [accounts, setAccounts] = useState([]);
   const [channelId, setChannelId] = useState(() => {
     try {
       if (!orgId) return null;
@@ -70,6 +74,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         q: filters.q || undefined,
         status: filters.status || undefined,
         channel: filters.channel !== "all" ? filters.channel : undefined,
+        accountId: filters.accountId || undefined,
         tags: filters.tags && filters.tags.length ? filters.tags : undefined,
         limit: 50,
       });
@@ -90,6 +95,23 @@ export default function InboxPage({ addToast: addToastProp }) {
   useEffect(() => {
     fetchConversations();
   }, [channelId, fetchConversations]);
+
+  useEffect(() => {
+    async function loadAccounts() {
+      if (filters.channel === 'instagram' || filters.channel === 'facebook') {
+        try {
+          const { data } = await inboxApi.get('/channels/meta/accounts', { params: { channel: filters.channel } });
+          setAccounts(Array.isArray(data?.items) ? data.items : []);
+        } catch {
+          setAccounts([]);
+        }
+      } else {
+        setAccounts([]);
+        setFilters((f) => ({ ...f, accountId: '' }));
+      }
+    }
+    loadAccounts();
+  }, [filters.channel]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -190,9 +212,10 @@ export default function InboxPage({ addToast: addToastProp }) {
   }, [socket, selectedId, setConversations]);
 
   // ===== ENVIAR =====
+  const [blocked, setBlocked] = useState(false);
   const handleSend = useCallback(
     async ({ text, file }) => {
-      if (!selectedId) return;
+      if (!selectedId || blocked) return;
       const optimistic = {
         id: `temp-${Date.now()}`,
         conversationId: selectedId,
@@ -209,12 +232,17 @@ export default function InboxPage({ addToast: addToastProp }) {
         setMessages((prev) =>
           prev.map((m) => (m.id === optimistic.id ? normalizeMessage(saved) : m))
         );
-      } catch {
+      } catch (err) {
+        if (err?.response?.data?.error === 'outside_24h') {
+          setBlocked(true);
+        }
         setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       }
     },
-    [selectedId]
+    [selectedId, blocked]
   );
+
+  useEffect(() => { setBlocked(false); }, [selectedId]);
 
   const handleFiles = useCallback(
     async (fileList) => {
@@ -314,6 +342,7 @@ export default function InboxPage({ addToast: addToastProp }) {
           <SidebarFilters
             value={filters}
             onChange={setFilters}
+            accounts={accounts}
             channelIconBySlug={channelIconBySlug}
           />
         </div>
@@ -341,7 +370,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         </div>
         <div className="border-t p-2">
           {/* Se seu MessageComposer espera prop `conversation`, troque `sel` por `conversation` */}
-          <MessageComposer sel={selectedConversation} onSend={handleSend} onFiles={handleFiles} />
+          <MessageComposer sel={selectedConversation} onSend={handleSend} onFiles={handleFiles} disabled={blocked} disabledReason="Só é possível responder até 24h após a última mensagem neste canal." />
         </div>
       </main>
 

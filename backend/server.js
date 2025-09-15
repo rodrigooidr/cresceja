@@ -63,6 +63,8 @@ import orgsAssetsRouter from './routes/orgs.assets.js';
 import channelsRouter from './routes/channels.js';
 import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
+import inboxSendRoutes from './routes/inbox.send.js';
+import metaChannelsRoutes from './routes/channels/meta.js';
 import funnelRouter from './routes/crm.funnel.js';
 import debugRouter from './routes/debug.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
@@ -265,6 +267,8 @@ async function init() {
 
   // Inbox (após auth/pgRlsContext)
   inboxRoutes(app);
+  inboxSendRoutes(app);
+  metaChannelsRoutes(app);
 
   // 404 apenas para /api/*
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));

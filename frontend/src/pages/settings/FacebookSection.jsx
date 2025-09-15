@@ -1,86 +1,64 @@
-import React, { useMemo, useState } from "react";
-import useFeatureGate from "../../utils/useFeatureGate";
-import { isNonEmpty, hasAllScopes, disabledProps } from "../../utils/readyHelpers";
-import { toArray } from "../../utils/arrayish";
-import { openOAuth } from "../../utils/oauthDriver";
+import React, { useEffect, useState } from 'react';
+import inboxApi from '../../api/inboxApi.js';
+import FeatureGate from '../../ui/feature/FeatureGate.jsx';
+import { openOAuth } from '../../utils/oauthDriver.js';
 
-const FB_REQUIRED_SCOPES = ["pages_manage_posts", "pages_read_engagement"];
-const DEFAULT_FB = { connected: false, pages: [], page: null, permissions: [] };
+export function MetaAccounts({ channel }) {
+  const [items, setItems] = useState([]);
 
-export default function FacebookSection({ org }) {
-  const { allowed } = useFeatureGate(org, "facebook", "facebook_pages");
-  if (!allowed) return null;
+  const load = async () => {
+    try {
+      const { data } = await inboxApi.get('/channels/meta/accounts', { params: { channel } });
+      setItems(Array.isArray(data?.items) ? data.items : []);
+    } catch {
+      setItems([]);
+    }
+  };
 
-  const initial = useMemo(() => ({ ...DEFAULT_FB, ...(org?.channels?.facebook || {}) }), [org]);
-  const [fb, setFb] = useState(initial);
+  useEffect(() => { load(); }, [channel]);
 
-  const pages = toArray(fb.pages);
-  const pageSelected = isNonEmpty(fb?.page?.id);
-  const permsOk = hasAllScopes(FB_REQUIRED_SCOPES, fb.permissions || []);
-  const connected = !!fb.connected;
+  const connect = async () => {
+    await openOAuth({ provider: channel, url: `/oauth/${channel}` , onSuccess: async (res)=> {
+      const accounts = res?.accounts || [];
+      if (accounts.length) {
+        await inboxApi.post('/channels/meta/accounts/connect', { channel, accounts });
+        await load();
+      }
+    }});
+  };
 
-  const ready = connected && pageSelected && permsOk;
-  const dp = disabledProps(ready,
-    !connected ? "Conecte sua conta do Facebook."
-    : !pageSelected ? "Selecione uma Página."
-    : !permsOk ? "Conceda pages_manage_posts e pages_read_engagement."
-    : ""
-  );
-
-  async function onConnect() {
-    await openOAuth({
-      provider: "facebook",
-      url: "/oauth/facebook",
-      onSuccess: (res) => {
-        const candidate = { id: res.account?.id, name: res.account?.name };
-        const nextPages = pages.length ? pages : (candidate.id ? [candidate] : []);
-        setFb({
-          connected: true,
-          permissions: res.scopes || [],
-          pages: nextPages,
-          page: nextPages[0] || null,
-        });
-      },
-    });
-  }
-
-  function onSelectPage(e) {
-    const id = e.target.value;
-    const p = pages.find((x) => String(x.id) === String(id)) || null;
-    setFb((s) => ({ ...s, page: p }));
-  }
+  const subscribe = async (id) => {
+    await inboxApi.post(`/channels/meta/accounts/${id}/subscribe`);
+  };
+  const remove = async (id) => {
+    await inboxApi.delete(`/channels/meta/accounts/${id}`);
+    await load();
+  };
 
   return (
-    <section data-testid="settings-facebook-section">
-      <header className="mb-2"><h3>Facebook</h3></header>
-
-      <div className="flex gap-8 items-end">
-        <button data-testid="fb-connect-btn" type="button" onClick={onConnect}>
-          {connected ? "Reconectar" : "Conectar Facebook"}
-        </button>
-
-        <div className="flex flex-col">
-          <label className="block text-sm font-medium text-gray-700" htmlFor="pageId">Página do Facebook</label>
-          <select
-            id="pageId"
-            name="pageId"
-            data-testid="fb-select-page"
-            value={fb?.page?.id || ""}
-            onChange={onSelectPage}
-          >
-            <option value="">Selecione a Página…</option>
-            {pages.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className={dp.wrapperClass} aria-disabled={dp.ariaDisabled} title={dp.buttonTitle}>
-          <button data-testid="fb-test-btn" type="button" disabled={dp.buttonDisabled}>
-            Testar conexão
-          </button>
-        </div>
-      </div>
+    <section data-testid={`settings-${channel}-section`} className="space-y-2">
+      <header className="flex items-center justify-between">
+        <h3>{channel === 'facebook' ? 'Facebook' : 'Instagram'}</h3>
+        <button data-testid={`${channel}-connect-btn`} type="button" onClick={connect}>Conectar nova conta</button>
+      </header>
+      <ul className="space-y-1">
+        {items.map((acc) => (
+          <li key={acc.id} data-testid={`${channel}-acc-${acc.id}`} className="flex items-center gap-2">
+            <span className="flex-1 truncate">{acc.name || acc.username || acc.external_account_id}</span>
+            <button data-testid={`${channel}-sub-${acc.id}`} type="button" onClick={() => subscribe(acc.id)}>Assinar webhooks</button>
+            <button data-testid={`${channel}-reauth-${acc.id}`} type="button" onClick={connect}>Reautorizar</button>
+            <button data-testid={`${channel}-del-${acc.id}`} type="button" onClick={() => remove(acc.id)}>Remover</button>
+          </li>
+        ))}
+      </ul>
     </section>
+  );
+}
+
+export default function FacebookSection() {
+  return (
+    <FeatureGate code="fb_messaging" fallback={null}>
+      <MetaAccounts channel="facebook" />
+    </FeatureGate>
   );
 }

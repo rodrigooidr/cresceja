@@ -6,11 +6,13 @@ import inboxApi from '../api/inboxApi';
  * Mantém os mesmos parâmetros e ordenação do seu código original.
  */
 export async function listConversations(
-  { status, channel, tags, q, limit = 50, cursor } = {}
+  { status, channel, accountId, account_id, tags, q, limit = 50, cursor } = {}
 ) {
   const params = {};
   if (status) params.status = status;
   if (channel) params.channel = channel;
+  const accId = accountId || account_id;
+  if (accId) params.accountId = accId;
   if (tags?.length) params.tags = tags.join(',');
   if (q) params.q = q;
   if (limit) params.limit = limit;
