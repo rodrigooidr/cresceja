@@ -1,10 +1,22 @@
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-// Garante que QUALQUER import de inboxApi aponte pro mock
-try { jest.mock("../src/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
-try { jest.mock("../../src/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
-try { jest.mock("src/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
-try { jest.mock("@/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
+// Bridge universal do inboxApi → mock, cobrindo variações de path/com extensão
+const bridge = () => {
+  const m = require("../src/api/__mocks__/inboxApi.js");
+  return m.default || m;
+};
+try { jest.mock("../src/api/inboxApi", bridge); } catch {}
+try { jest.mock("../src/api/inboxApi.js", bridge); } catch {}
+try { jest.mock("../../src/api/inboxApi", bridge); } catch {}
+try { jest.mock("../../src/api/inboxApi.js", bridge); } catch {}
+try { jest.mock("src/api/inboxApi", bridge); } catch {}
+try { jest.mock("src/api/inboxApi.js", bridge); } catch {}
+try { jest.mock("@/api/inboxApi", bridge); } catch {}
+try { jest.mock("@/api/inboxApi.js", bridge); } catch {}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 process.env.TZ = 'America/Sao_Paulo';
 try {
   const { Settings, DateTime } = require('luxon');
@@ -74,7 +86,6 @@ jest.mock(
 );
 
 jest.mock('../src/api');
-jest.mock('../src/api/inboxApi.js');
 jest.mock('../src/ui/feature/FeatureGate.jsx', () => ({ __esModule: true, default: ({children}) => children }));
 jest.mock('../src/ui/feature/FeatureGate', () => ({ __esModule: true, default: ({children}) => children }));
 
