@@ -1,4 +1,10 @@
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// Garante que QUALQUER import de inboxApi aponte pro mock
+try { jest.mock("../src/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
+try { jest.mock("../../src/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
+try { jest.mock("src/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
+try { jest.mock("@/api/inboxApi", () => require("../src/api/__mocks__/inboxApi.js")); } catch {}
 process.env.TZ = 'America/Sao_Paulo';
 try {
   const { Settings, DateTime } = require('luxon');

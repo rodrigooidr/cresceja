@@ -5,6 +5,18 @@ function __getLastRequest() {
   return __lastRequest;
 }
 
+function __setFeatures(features = {}) {
+  const org = globalThis.__TEST_ORG__ || { id: "1", plan: { limits: {} }, features: {}, channels: {} };
+  org.features = { ...(org.features || {}), ...(features || {}) };
+  globalThis.__TEST_ORG__ = org;
+}
+
+function __setLimits(limits = {}) {
+  const org = globalThis.__TEST_ORG__ || { id: "1", plan: { limits: {} }, features: {}, channels: {} };
+  org.plan = { ...(org.plan || {}), limits: { ...(org.plan?.limits || {}), ...(limits || {}) } };
+  globalThis.__TEST_ORG__ = org;
+}
+
 // 🔧 Registry de rotas: permita que testes registrem respostas específicas
 const handlers = { GET: [], POST: [], PUT: [], PATCH: [], DELETE: [] };
 function __mockRoute(method, matcher, responder) {
@@ -66,10 +78,15 @@ function defaults(method, url, body, headers) {
   if (url.includes("/media") || url.includes("/uploads")) return { data: { id: "upload_test", url: "/mock.png" } };
   if (url.includes("/images")) return { data: emptyList };
   if (url.includes("/marketing/instagram/publish/progress")) return { data: { progress: 100, status: "done" } };
-  // Listagens/consultas genéricas usadas por Settings
+  // Rotas comuns que às vezes aparecem em Settings e adjacências
   if (/facebook.*pages/i.test(url))   return { data: { items: [{ id: "fbp1", name: "Minha Página" }] } };
   if (/instagram.*accounts/i.test(url)) return { data: { items: [{ id: "iga1", name: "Minha Conta IG" }] } };
   if (/calendar.*calendars/i.test(url)) return { data: { items: [{ id: "primary", summary: "Agenda principal" }] } };
+  if (/calendar.*accounts/i.test(url))  return { data: { items: [{ id: "primary", summary: "Agenda principal" }] } };
+
+  // “search genérico” que alguns componentes usam
+  if (/\/search(\?|$)/i.test(url)) return { data: { items: [], total: 0 } };
+
   return { data: {} };
 }
 
@@ -98,12 +115,14 @@ const api = {
 };
 
 export default api;
-export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __getLastRequest };
+export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __getLastRequest, __setFeatures, __setLimits };
 
 // ✅ Adicione os utilitários também no *default* para testes que fazem inboxApi.__mockRoute(...)
 api.__mockRoute = __mockRoute;
 api.__resetMockApi = __resetMockApi;
 api.__getLastRequest = __getLastRequest;
+api.__setFeatures = __setFeatures;
+api.__setLimits = __setLimits;
 
 // === Named exports esperados por testes ===
 // Observação: eles apenas delegam para o mock default (GET/POST etc.)
