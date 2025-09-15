@@ -27,19 +27,26 @@ function matchHandler(method, url) {
 
 // 🧩 Respostas default (formatos que os componentes esperam)
 function defaults(method, url, body, headers) {
-  const org = globalThis.__TEST_ORG__ || { id: "1", plan: { limits: {} }, features: {} };
-  if (url.includes("/orgs/current")) return { data: org };
-  if (url.includes("/plans/current")) return { data: org.plan || { limits: {} } };
-  if (url.includes("/features")) return { data: org.features || {} };
-  if (url.includes("/clients")) return { data: { items: [], total: 0 } };
-  if (url.includes("/conversations")) return { data: { items: [], total: 0 } };
-  if (url.includes("/snippets")) return { data: { items: [] } };
-  if (url.includes("/channels/facebook"))
-    return { data: org.channels?.facebook || { connected: false, pages: [], permissions: [] } };
-  if (url.includes("/channels/instagram"))
-    return { data: org.channels?.instagram || { connected: false, accounts: [], permissions: [] } };
-  if (url.includes("/channels/calendar"))
-    return { data: org.channels?.calendar || { connected: false, calendars: [], scopes: [] } };
+  const org = globalThis.__TEST_ORG__ || { id: "1", plan: { limits: {} }, features: {}, channels: {} };
+  const waDefault = { connected: false, provider: "", phone: "", numbers: [], templates: [] };
+  const emptyList = { items: [], total: 0 };
+
+  if (url.includes("/orgs/current"))       return { data: org };
+  if (url.includes("/plans/current"))      return { data: org.plan || { limits: {} } };
+  if (url.includes("/features"))           return { data: org.features || {} };
+  if (url.includes("/clients"))            return { data: emptyList };
+  if (url.includes("/conversations"))      return { data: emptyList };
+  if (url.includes("/snippets"))           return { data: { items: [] } };
+  if (url.includes("/channels/facebook"))  return { data: org.channels?.facebook  || { connected:false, pages:[], permissions:[] } };
+  if (url.includes("/channels/instagram")) return { data: org.channels?.instagram || { connected:false, accounts:[], permissions:[] } };
+  if (url.includes("/channels/calendar"))  return { data: org.channels?.calendar  || { connected:false, calendars:[], scopes:[] } };
+  if (url.includes("/channels/whatsapp"))  return { data: org.channels?.whatsapp  || waDefault };
+  if (url.includes("/whatsapp"))           return { data: { items: [] } };
+  // comuns em testes de mídia/marketing
+  if (url.includes("/media") || url.includes("/uploads")) return { data: { id: "upload_test", url: "/mock.png" } };
+  if (url.includes("/images")) return { data: emptyList };
+  if (url.includes("/marketing/instagram/publish/progress")) return { data: { progress: 100, status: "done" } };
+  if (url.includes("/oauth/state")) return { data: { ok: true } };
   return { data: {} };
 }
 
@@ -50,7 +57,13 @@ function capture(method, url, body, config = {}) {
   const responder = matchHandler(method, url);
   if (responder) return Promise.resolve(responder({ url, method, body, headers }));
 
-  return Promise.resolve(defaults(method, url, body, headers));
+  const def = defaults(method, url, body, headers);
+  if (process.env.NODE_ENV === "test" && (!def || (def && Object.keys(def.data || {}).length === 0))) {
+    // ajuda a identificar os 1–2 endpoints finais sem mock
+    // eslint-disable-next-line no-console
+    console.warn("[mockApi] fallback default vazio:", method, url);
+  }
+  return Promise.resolve(def);
 }
 
 const api = {

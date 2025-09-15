@@ -325,3 +325,22 @@ beforeEach(() => {
     api.__resetMockApi?.();
   } catch {}
 });
+
+// idle callbacks (algumas libs usam)
+if (!global.requestIdleCallback) {
+  global.requestIdleCallback = (cb) => setTimeout(() => cb({ didTimeout: false, timeRemaining: () => 0 }), 0);
+  global.cancelIdleCallback = (id) => clearTimeout(id);
+}
+
+// window.open + postMessage (para fluxos OAuth/preview antigos)
+if (!window.open) {
+  window.open = () => ({ close: () => {}, postMessage: () => {} });
+}
+
+// Notification / Permissions
+if (!global.Notification) {
+  global.Notification = { permission: "granted", requestPermission: async () => "granted" };
+}
+if (!navigator.permissions) {
+  navigator.permissions = { query: async () => ({ state: "granted" }) };
+}
