@@ -18,7 +18,7 @@ test('cancel job action', async () => {
   renderWithOrg(<InstagramPublisher />);
   await screen.findByTestId('jobs-table');
   fireEvent.click(screen.getByText('Cancelar'));
-  expect(inboxApi.patch).toHaveBeenCalledWith('/orgs/org_test/instagram/jobs/j1', { status:'canceled' });
+  expect(inboxApi.patch).toHaveBeenCalledWith('/orgs/org1/instagram/jobs/j1', { status:'canceled' });
 });
 
 test('reschedule job action', async () => {
@@ -31,5 +31,5 @@ test('reschedule job action', async () => {
   renderWithOrg(<InstagramPublisher />);
   await screen.findByTestId('jobs-table');
   fireEvent.click(screen.getByText('Reagendar'));
-  expect(inboxApi.patch).toHaveBeenCalledWith('/orgs/org_test/instagram/jobs/j1', { scheduled_at: new Date('2025-01-01T00:00').toISOString() });
+  expect(inboxApi.patch).toHaveBeenCalledWith('/orgs/org1/instagram/jobs/j1', { scheduled_at: new Date('2025-01-01T00:00').toISOString() });
 });

@@ -3,6 +3,7 @@ import axios from 'axios';
 import inboxApi from '../../api/inboxApi.js';
 import { useOrg } from '../../contexts/OrgContext.jsx';
 import useToastFallback from '../../hooks/useToastFallback.js';
+import { toArray } from '../../utils/arrayish.js';
 
 export default function InstagramPublisher() {
   const { selected } = useOrg();
@@ -23,8 +24,9 @@ export default function InstagramPublisher() {
   useEffect(() => {
     if (!selected) return;
     inboxApi.get(`/orgs/${selected}/instagram/accounts`).then(r => {
-      setAccounts(r.data || []);
-      if (r.data?.length) setAccountId(r.data[0].id);
+      const list = toArray(r?.data?.items ?? r?.data);
+      setAccounts(list);
+      if (list.length) setAccountId(list[0].id);
     });
     refreshJobs();
   }, [selected]);
@@ -32,19 +34,20 @@ export default function InstagramPublisher() {
   async function refreshJobs() {
     if (!selected) return;
     const r = await inboxApi.get(`/orgs/${selected}/instagram/jobs`);
-    setJobs(r.data || []);
+    const list = toArray(r?.data?.items ?? r?.data);
+    setJobs(list);
   }
 
   async function handleSubmit(now) {
     setError('');
     setProgressText('');
     setSubmitting(true);
-    if (!mediaUrl && type !== 'carousel') { setError('Mídia obrigatória'); return; }
+    if (!mediaUrl && type !== 'carousel') { setError('Mídia obrigatória'); setSubmitting(false); return; }
     if (type === 'carousel') {
       const parts = mediaUrl.split(',').map(s=>s.trim()).filter(Boolean);
-      if (parts.length === 0 || parts.length > 10) { setError('Máx 10 itens'); return; }
+      if (parts.length === 0 || parts.length > 10) { setError('Máx 10 itens'); setSubmitting(false); return; }
     }
-    if (caption.length > 2200) { setError('Legenda muito longa'); return; }
+    if (caption.length > 2200) { setError('Legenda muito longa'); setSubmitting(false); return; }
     try {
       const body = { type, caption, media: type==='carousel'?mediaUrl.split(',').map(u=>({url:u.trim()})):{ url: mediaUrl } };
       if (!now && schedule && scheduleAt) body.scheduleAt = new Date(scheduleAt).toISOString();

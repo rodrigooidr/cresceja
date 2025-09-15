@@ -275,7 +275,7 @@ export function useOrg() {
   // ✅ Fallback apenas em testes
   if (process.env.NODE_ENV === "test") {
     const testOrg = globalThis.__TEST_ORG__ || {
-      id: "org_test",
+      id: "org1",
       name: "Org Test",
       features: {},
       plan: { limits: {} },
@@ -284,8 +284,19 @@ export function useOrg() {
     // No fallback não mutamos estado real; devolvemos stubs
     return {
       org: testOrg,
+      selected: testOrg.id,            // 🔴 muitos testes usam isso
+      setSelected: () => {},           // no-op
       setOrg: () => {},
       refreshOrg: async () => testOrg,
+      // stubs comuns p/ listas/UX
+      orgs: [{ id: testOrg.id, name: testOrg.name }],
+      loading: false,
+      canSeeSelector: false,
+      orgChangeTick: 0,
+      searchOrgs: async () => ({ items: [{ id: testOrg.id, name: testOrg.name }], total: 1 }),
+      loadMoreOrgs: async () => ({ items: [], total: 1 }),
+      hasMore: false,
+      q: "",
     };
   }
 
