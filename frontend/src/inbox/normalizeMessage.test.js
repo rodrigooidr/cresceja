@@ -10,7 +10,18 @@ describe('normalizeMessage', () => {
 
   it('maps attachments', () => {
     const msg = normalizeMessage({ id: '1', attachments: [{ id: 'a', url: '/f.png', filename: 'f.png', mime: 'image/png' }] });
-    expect(msg.attachments[0]).toEqual({ id: 'a', url: '/f.png', thumb_url: null, filename: 'f.png', mime: 'image/png' });
+    expect(msg.attachments[0]).toMatchObject({
+      id: 'a',
+      url: '/f.png',
+      thumb_url: null,
+      thumbUrl: null,
+      filename: 'f.png',
+      fileName: 'f.png',
+      mime: 'image/png',
+      sizeBytes: null,
+      storageProvider: null,
+      pathOrKey: null,
+    });
   });
 
   it('fills defaults', () => {

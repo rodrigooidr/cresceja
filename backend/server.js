@@ -259,7 +259,7 @@ function configureApp() {
   inboxRoutes(app);
   inboxSendRoutes(app);
   metaChannelsRoutes(app);
-  mediaRoutes(app);
+  app.use(mediaRoutes);
   app.use(metaStatusRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));

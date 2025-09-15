@@ -1,59 +1,59 @@
-import { getInboxRepo } from '../services/inbox/repo.js';
-import { getSignedMediaUrl, getLocalMediaStream, isS3Enabled } from '../services/media/store.js';
+import express from 'express';
+import pino from 'pino';
+import path from 'path';
+import fs from 'fs';
+import { getPresignedOrPublic } from '../services/media/store.js';
+import {
+  getAttachmentByMessageIdx,
+  userHasAccessToOrg,
+  getMessageOrg,
+} from '../services/inbox/repo.js';
 
-function resolveOrgId(req) {
-  return (
-    req.auth?.orgId ||
-    req.headers['x-org-id'] ||
-    req.query.orgId ||
-    null
-  );
-}
+const log = pino().child({ route: 'media' });
+const router = express.Router();
 
-export default (app) => {
-  app.get('/api/media/:messageId/:index', async (req, res) => {
-    const orgId = resolveOrgId(req);
-    const { messageId, index } = req.params;
-    const repo = getInboxRepo();
-    const message = await repo.getMessageById(messageId);
-    if (!message) return res.sendStatus(404);
-    if (message.org_id && orgId && String(message.org_id) !== String(orgId)) {
-      return res.sendStatus(404);
+router.get('/api/media/:messageId/:index', async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const idx = Number(req.params.index);
+    if (!Number.isInteger(idx) || idx < 0) {
+      return res.status(400).json({ error: 'invalid index' });
     }
 
-    const attachments = Array.isArray(message.attachments_json) ? message.attachments_json : [];
-    const idx = Number(index);
-    if (!Number.isInteger(idx) || idx < 0 || idx >= attachments.length) {
-      return res.sendStatus(404);
-    }
-    const attachment = attachments[idx];
-    if (!attachment) return res.sendStatus(404);
-
-    if (attachment.storage_key) {
-      if (isS3Enabled()) {
-        const signed = await getSignedMediaUrl(attachment.storage_key);
-        if (!signed) return res.sendStatus(404);
-        return res.redirect(signed);
-      }
-      try {
-        const payload = await getLocalMediaStream(attachment.storage_key);
-        if (!payload) return res.sendStatus(404);
-        if (attachment.mime) res.type(attachment.mime);
-        if (payload.size) res.setHeader('Content-Length', payload.size);
-        payload.stream.on('error', () => {
-          if (!res.headersSent) res.sendStatus(404);
-          else res.destroy();
-        });
-        payload.stream.pipe(res);
-        return;
-      } catch {
-        return res.sendStatus(404);
-      }
+    const userId = req.user?.id;
+    const orgIdHeader = req.header('X-Org-Id');
+    if (!userId || !orgIdHeader) {
+      return res.status(401).json({ error: 'unauthorized' });
     }
 
-    const remote = attachment.remote_url || attachment.url;
-    if (remote) return res.redirect(remote);
+    const messageOrg = await getMessageOrg(messageId);
+    if (!messageOrg) return res.status(404).json({ error: 'message not found' });
+    if (messageOrg !== orgIdHeader) return res.status(403).json({ error: 'forbidden' });
 
-    return res.sendStatus(404);
-  });
-};
+    const ok = await userHasAccessToOrg(userId, messageOrg);
+    if (!ok) return res.status(403).json({ error: 'forbidden' });
+
+    const att = await getAttachmentByMessageIdx(messageId, idx);
+    if (!att) return res.status(404).json({ error: 'attachment not found' });
+
+    if (att.storage_provider === 's3') {
+      const url = await getPresignedOrPublic({ pathOrKey: att.path_or_key, expiresSec: 300 });
+      if (!url) return res.status(500).json({ error: 's3 not configured' });
+      return res.redirect(302, url);
+    }
+
+    // local
+    const base = path.resolve(process.env.MEDIA_LOCAL_DIR || './storage');
+    const file = path.resolve(path.join(base, 'blobs', att.path_or_key.replace(/^blobs\//, '')));
+    if (!file.startsWith(base)) return res.status(403).json({ error: 'forbidden' }); // anti path traversal
+    if (!fs.existsSync(file)) return res.status(404).json({ error: 'file not found' });
+
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.sendFile(file);
+  } catch (err) {
+    log.error({ err }, 'media-route-error');
+    return res.status(500).json({ error: 'internal' });
+  }
+});
+
+export default router;

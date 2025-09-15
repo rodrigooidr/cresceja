@@ -59,24 +59,50 @@ export default function normalizeMessage(raw = {}) {
   // padroniza anexos
   const rawAttachments = Array.isArray(raw.attachments)
     ? raw.attachments
-    : Array.isArray(raw.attachments_json)
-      ? raw.attachments_json.map((a, index) => ({ ...a, _index: index }))
-      : [];
+    : Array.isArray(raw.message_attachments)
+      ? raw.message_attachments
+      : Array.isArray(raw.attachments_json)
+        ? raw.attachments_json.map((a, index) => ({ ...a, _index: index }))
+        : [];
 
   const attachments = rawAttachments.map((a, idx) => {
     const index = typeof a._index === 'number' ? a._index : idx;
-    const storageKey = a.storage_key || null;
+    const storageKey = a.storage_key ?? a.path_or_key ?? a.pathOrKey ?? null;
+    const pathOrKey = a.pathOrKey ?? a.path_or_key ?? storageKey ?? null;
+    const fileName = a.fileName ?? a.file_name ?? a.filename ?? a.name ?? a.title ?? null;
+    const mimeType = a.mime ?? a.mime_type ?? a.content_type ?? null;
+    const sizeBytes = a.sizeBytes ?? a.size_bytes ?? a.size ?? null;
+    const width = a.width ?? null;
+    const height = a.height ?? null;
+    const durationMs = a.durationMs ?? a.duration_ms ?? null;
+    const storageProvider = a.storageProvider ?? a.storage_provider ?? null;
+    const thumbnailKey = a.thumbnailKey ?? a.thumbnail_key ?? null;
+    const posterKey = a.posterKey ?? a.poster_key ?? null;
+
     let url = a.url || a.remote_url || null;
-    if (storageKey && raw.id) {
+    if (!url && pathOrKey && raw.id) {
       url = mediaEndpoint(raw.id, index);
     }
+    const thumbUrl = a.thumbUrl || a.thumb_url || a.preview_url || null;
+
     return {
-      id: a.id || a.asset_id || `${raw.id || 'att'}_${index}`,
+      id: a.id || a.asset_id || a.attachment_id || `${raw.id || 'att'}_${index}`,
       url,
-      thumb_url: a.thumb_url || a.preview_url || null,
-      filename: a.filename || a.name || a.title || null,
-      mime: a.mime || a.mime_type || a.content_type || null,
+      thumb_url: thumbUrl,
+      thumbUrl,
+      filename: fileName,
+      fileName,
+      mime: mimeType,
+      sizeBytes,
+      width,
+      height,
+      durationMs,
+      storageProvider,
+      pathOrKey,
       storage_key: storageKey,
+      storageKey,
+      thumbnailKey,
+      posterKey,
       remote_url: a.remote_url || a.url || null,
     };
   });
