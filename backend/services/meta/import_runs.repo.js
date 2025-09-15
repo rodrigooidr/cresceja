@@ -1,45 +1,46 @@
-import { pool } from '#db';
+import db from '../../db/index.js';
 
-const SQL_LAST_IMPORT_RUN = `
-  SELECT *
-  FROM meta_import_runs
-  WHERE org_id = $1 AND account_id = $2
-  ORDER BY started_at DESC NULLS LAST, created_at DESC NULLS LAST
-  LIMIT 1
-`;
+export async function createImportRun({ orgId, channelAccountId, windowStart, windowEnd }) {
+  const { rows } = await db.query(
+    `INSERT INTO import_runs (org_id, channel_account_id, window_start, window_end)
+     VALUES ($1,$2,$3,$4)
+     RETURNING *`,
+    [orgId, channelAccountId, windowStart, windowEnd]
+  );
+  return rows[0];
+}
 
-function parseMaybeJson(value) {
-  if (value == null) return value;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
+export async function bumpImportCounters(runId, { messages = 0, attachments = 0 }) {
+  await db.query(
+    `UPDATE import_runs
+       SET messages_imported = messages_imported + $1,
+           attachments_imported = attachments_imported + $2
+     WHERE id=$3`,
+    [messages, attachments, runId]
+  );
+}
+
+export async function finishImportRun(runId, errorOrNull) {
+  if (errorOrNull) {
+    await db.query(
+      `UPDATE import_runs
+          SET finished_at = now(),
+              errors = errors || $2::jsonb
+        WHERE id=$1`,
+      [runId, JSON.stringify([String(errorOrNull.message || errorOrNull)])]
+    );
+  } else {
+    await db.query(`UPDATE import_runs SET finished_at = now() WHERE id=$1`, [runId]);
   }
 }
 
-function normalizeRow(row) {
-  if (!row) return null;
-  const normalized = { ...row };
-  const stats =
-    parseMaybeJson(row.stats_json ?? row.stats ?? row.metadata ?? row.details ?? null) ?? null;
-  if (stats !== null) {
-    normalized.stats = stats;
-    if ('stats_json' in normalized) normalized.stats_json = stats;
-    if ('metadata' in normalized) normalized.metadata = stats;
-    if ('details' in normalized) normalized.details = stats;
-  }
-  return normalized;
+export async function getLastImportRun(orgId, channelAccountId) {
+  const { rows } = await db.query(
+    `SELECT * FROM import_runs
+      WHERE org_id=$1 AND channel_account_id=$2
+   ORDER BY finished_at DESC NULLS LAST, started_at DESC
+      LIMIT 1`,
+    [orgId, channelAccountId]
+  );
+  return rows[0] || null;
 }
-
-export async function getLastImportRun(orgId, accountId) {
-  if (!orgId || !accountId) return null;
-  try {
-    const { rows } = await pool.query(SQL_LAST_IMPORT_RUN, [orgId, accountId]);
-    return normalizeRow(rows?.[0]) || null;
-  } catch (err) {
-    return null;
-  }
-}
-
-export default { getLastImportRun };

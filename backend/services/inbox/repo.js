@@ -163,3 +163,11 @@ export function makeMemoryRepo() {
 let currentRepo = (process.env.INBOX_REPO === 'db') ? makeDbRepo() : makeMemoryRepo();
 export function setInboxRepo(repo) { currentRepo = repo; }
 export function getInboxRepo() { return currentRepo; }
+
+export {
+  upsertMessage,
+  upsertAttachmentByIdx,
+  getAttachmentByMessageIdx,
+  getMessageOrg,
+  userHasAccessToOrg,
+} from './repo.db.js';

@@ -262,4 +262,73 @@ export function makeDbRepo() {
   };
 }
 
+export async function upsertMessage({ orgId, platform, threadId, externalMessageId, payload }) {
+  const sql = `
+    INSERT INTO messages (org_id, platform, thread_id, external_message_id)
+    VALUES ($1,$2,$3,$4)
+    ON CONFLICT (platform, thread_id, external_message_id)
+    DO UPDATE SET org_id = EXCLUDED.org_id
+    RETURNING id, org_id
+  `;
+  const { rows } = await db.query(sql, [orgId, platform, threadId, externalMessageId]);
+  return rows[0];
+}
+
+export async function upsertAttachmentByIdx({
+  orgId, messageId, idx,
+  fileName, mime, sizeBytes, width, height, durationMs,
+  checksumSha256, storageProvider, pathOrKey, thumbnailKey, posterKey
+}) {
+  const sql = `
+    INSERT INTO message_attachments (
+      org_id, message_id, idx, file_name, mime, size_bytes, width, height, duration_ms,
+      checksum_sha256, storage_provider, path_or_key, thumbnail_key, poster_key
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+    )
+    ON CONFLICT (message_id, idx)
+    DO UPDATE SET
+      file_name = EXCLUDED.file_name,
+      mime = EXCLUDED.mime,
+      size_bytes = EXCLUDED.size_bytes,
+      width = EXCLUDED.width,
+      height = EXCLUDED.height,
+      duration_ms = EXCLUDED.duration_ms,
+      checksum_sha256 = EXCLUDED.checksum_sha256,
+      storage_provider = EXCLUDED.storage_provider,
+      path_or_key = EXCLUDED.path_or_key,
+      thumbnail_key = EXCLUDED.thumbnail_key,
+      poster_key = EXCLUDED.poster_key
+    RETURNING id
+  `;
+  const params = [
+    orgId, messageId, idx,
+    fileName, mime, sizeBytes, width, height, durationMs,
+    checksumSha256, storageProvider, pathOrKey, thumbnailKey, posterKey
+  ];
+  const { rows } = await db.query(sql, params);
+  return rows[0];
+}
+
+export async function getAttachmentByMessageIdx(messageId, idx) {
+  const { rows } = await db.query(
+    `SELECT * FROM message_attachments WHERE message_id=$1 AND idx=$2`,
+    [messageId, idx]
+  );
+  return rows[0] || null;
+}
+
+export async function getMessageOrg(messageId) {
+  const { rows } = await db.query(`SELECT org_id FROM messages WHERE id=$1`, [messageId]);
+  return rows[0]?.org_id || null;
+}
+
+export async function userHasAccessToOrg(userId, orgId) {
+  const { rows } = await db.query(
+    `SELECT 1 FROM user_orgs WHERE user_id=$1 AND org_id=$2 LIMIT 1`,
+    [userId, orgId]
+  );
+  return !!rows[0];
+}
+
 export default { makeDbRepo };

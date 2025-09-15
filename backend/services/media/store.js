@@ -1,125 +1,102 @@
-import axios from 'axios';
-import { randomBytes } from 'crypto';
+import crypto from 'crypto';
+import fs from 'fs';
+import fsp from 'fs/promises';
 import path from 'path';
-import fs from 'fs/promises';
-import { createReadStream } from 'fs';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import fetch from 'node-fetch';
+import mime from 'mime-types';
 
-const MEDIA_ROOT = path.join(process.cwd(), 'uploads', 'media');
-const useS3 = Boolean(process.env.S3_BUCKET);
+let sharp;
+try { sharp = (await import('sharp')).default; } catch {}
 
-const s3 = useS3
-  ? new S3Client({
-      region: process.env.S3_REGION || 'us-east-1',
-      forcePathStyle: Boolean(process.env.S3_USE_PATH_STYLE || process.env.S3_FORCE_PATH_STYLE),
-      endpoint: process.env.S3_ENDPOINT || undefined,
-      credentials: process.env.S3_ACCESS_KEY_ID
-        ? {
-            accessKeyId: process.env.S3_ACCESS_KEY_ID,
-            secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-          }
-        : undefined,
-    })
-  : null;
+const PROVIDER = process.env.MEDIA_STORAGE_PROVIDER || 'local';
+const LOCAL_DIR = process.env.MEDIA_LOCAL_DIR || './storage';
+const MAX_MB = parseInt(process.env.MAX_MEDIA_SIZE_MB || '20', 10);
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 
-function safeOrg(orgId) {
-  return String(orgId || 'org')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9_-]/g, '');
+let s3, getSignedUrl, S3Client, PutObjectCommand, GetObjectCommand;
+if (PROVIDER === 's3') {
+  const mod = await import('@aws-sdk/client-s3');
+  S3Client = mod.S3Client; PutObjectCommand = mod.PutObjectCommand; GetObjectCommand = mod.GetObjectCommand;
+  ({ getSignedUrl } = await import('@aws-sdk/s3-request-presigner'));
+  s3 = new S3Client({ region: process.env.AWS_REGION });
 }
 
-function extFromMime(mime) {
-  if (!mime) return '';
-  if (mime === 'image/jpeg') return 'jpg';
-  if (mime === 'image/png') return 'png';
-  if (mime === 'image/gif') return 'gif';
-  if (mime === 'image/webp') return 'webp';
-  if (mime === 'video/mp4') return 'mp4';
-  if (mime === 'video/mpeg') return 'mpeg';
-  if (mime === 'audio/mpeg') return 'mp3';
-  if (mime === 'audio/ogg') return 'ogg';
-  if (mime === 'application/pdf') return 'pdf';
-  const parts = mime.split('/');
-  if (parts.length === 2 && parts[1]) return parts[1].replace(/[^a-z0-9]/gi, '');
-  return '';
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const ensureDir = async (p) => fsp.mkdir(p, { recursive: true });
+
+async function fetchBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+  const len = parseInt(res.headers.get('content-length') || '0', 10);
+  if (len && len > MAX_BYTES) throw new Error(`File too large: ${len} > ${MAX_BYTES}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.length > MAX_BYTES) throw new Error(`File too large: ${buf.length} > ${MAX_BYTES}`);
+  return { buf, headers: res.headers };
 }
 
-function makeStorageKey(orgId, mime) {
-  const org = safeOrg(orgId);
-  const day = new Date().toISOString().slice(0, 10);
-  const ext = extFromMime(mime);
-  const rand = randomBytes(12).toString('hex');
-  return `${org}/${day}/${rand}${ext ? `.${ext}` : ''}`;
+async function maybeThumb(buf, mimeType) {
+  if (!sharp || !/^image\//.test(mimeType)) return { width: null, height: null, thumb: null };
+  const img = sharp(buf);
+  const meta = await img.metadata();
+  const resized = await img.resize({ width: 960, height: 960, fit: 'inside', withoutEnlargement: true }).toBuffer();
+  return { width: meta.width || null, height: meta.height || null, thumb: resized };
 }
 
-function resolveLocalPath(key) {
-  const base = path.resolve(MEDIA_ROOT);
-  const target = path.resolve(base, key);
-  if (!target.startsWith(base)) {
-    throw new Error('invalid_storage_key');
-  }
-  return target;
+async function storeLocal(key, buf, mimeType) {
+  const base = path.join(LOCAL_DIR, key.split('/')[0]);
+  await ensureDir(base);
+  const file = path.join(LOCAL_DIR, key);
+  await ensureDir(path.dirname(file));
+  await fsp.writeFile(file, buf);
+  return { storageProvider: 'local', pathOrKey: key, mime: mimeType, sizeBytes: buf.length };
 }
 
-export async function fetchAndStore(url, token, orgId) {
-  const headers = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
+async function storeS3(key, buf, mimeType) {
+  const Bucket = process.env.AWS_S3_BUCKET;
+  await s3.send(new PutObjectCommand({ Bucket, Key: key, Body: buf, ContentType: mimeType }));
+  return { storageProvider: 's3', pathOrKey: key, mime: mimeType, sizeBytes: buf.length };
+}
 
-  const response = await axios.get(url, { responseType: 'arraybuffer', headers });
-  const buffer = Buffer.from(response.data);
-  const mime = response.headers['content-type'] || null;
-  const size = Number(response.headers['content-length']) || buffer.length;
-  const key = makeStorageKey(orgId, mime);
+export async function getPresignedOrPublic({ pathOrKey, expiresSec = 300 }) {
+  if (PROVIDER !== 's3') return null;
+  const Bucket = process.env.AWS_S3_BUCKET;
+  const publicRead = /^true$/i.test(process.env.S3_PUBLIC_READ || 'false');
+  if (publicRead) return `https://${Bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${encodeURIComponent(pathOrKey)}`;
+  const cmd = new GetObjectCommand({ Bucket, Key: pathOrKey });
+  return await getSignedUrl(s3, cmd, { expiresIn: expiresSec });
+}
 
-  if (useS3) {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: process.env.S3_BUCKET,
-        Key: key,
-        Body: buffer,
-        ContentType: mime || undefined,
-      })
-    );
+export async function fetchAndStore({ url }) {
+  const { buf, headers } = await fetchBuffer(url);
+  const mimeType = (headers.get('content-type') || mime.lookup(url) || 'application/octet-stream').split(';')[0];
+  const sum = sha256(buf);
+
+  const blobKey = `blobs/${sum}.${mime.extension(mimeType) || 'bin'}`;
+  if (PROVIDER === 'local') {
+    const file = path.join(LOCAL_DIR, blobKey);
+    if (!fs.existsSync(file)) await storeLocal(blobKey, buf, mimeType);
   } else {
-    const dest = resolveLocalPath(key);
-    await fs.mkdir(path.dirname(dest), { recursive: true });
-    await fs.writeFile(dest, buffer);
+    await storeS3(blobKey, buf, mimeType);
   }
 
-  return { storage_key: key, mime, size };
-}
+  const { width, height, thumb } = await maybeThumb(buf, mimeType);
+  let thumbnailKey = null;
+  if (thumb) {
+    const tKey = `thumbs/${sum}.jpg`;
+    if (PROVIDER === 'local') await storeLocal(tKey, thumb, 'image/jpeg');
+    else await storeS3(tKey, thumb, 'image/jpeg');
+    thumbnailKey = tKey;
+  }
 
-export function isS3Enabled() {
-  return useS3;
-}
-
-export async function getSignedMediaUrl(storageKey, { expiresIn = 300 } = {}) {
-  if (!useS3 || !storageKey) return null;
-  const command = new GetObjectCommand({
-    Bucket: process.env.S3_BUCKET,
-    Key: storageKey,
-  });
-  return getSignedUrl(s3, command, { expiresIn });
-}
-
-export async function getLocalMediaStream(storageKey) {
-  if (useS3) return null;
-  const file = resolveLocalPath(storageKey);
-  const stats = await fs.stat(file);
   return {
-    stream: createReadStream(file),
-    size: stats.size,
+    checksum: sum,
+    storageProvider: PROVIDER,
+    pathOrKey: blobKey,
+    mime: mimeType,
+    sizeBytes: buf.length,
+    width, height,
+    durationMs: null,
+    thumbnailKey,
+    posterKey: null
   };
 }
-
-export { MEDIA_ROOT as MEDIA_STORAGE_DIR };
-
-export default {
-  fetchAndStore,
-  getSignedMediaUrl,
-  getLocalMediaStream,
-  isS3Enabled,
-  MEDIA_STORAGE_DIR: MEDIA_ROOT,
-};
