@@ -6,10 +6,20 @@ import { AuthContext } from "../../src/contexts/AuthContext";
 import { TrialContext } from "../../src/contexts/TrialContext";
 
 export function renderApp(ui, { route = "/", org, user } = {}) {
+  const defaultOrg = org || globalThis.__TEST_ORG__;
   const orgVal = {
-    org: org || globalThis.__TEST_ORG__,
+    org: defaultOrg,
+    orgs: defaultOrg ? [defaultOrg] : [],
+    selected: defaultOrg ? defaultOrg.id : null,
+    loading: false,
+    canSeeSelector: true,
+    publicMode: false,
     setOrg: () => {},
-    refreshOrg: async () => globalThis.__TEST_ORG__,
+    refreshOrg: async () => defaultOrg,
+    searchOrgs: () => {},
+    loadMoreOrgs: () => {},
+    hasMore: false,
+    q: "",
   };
   const authVal = {
     user: user || { id: "u_test", role: "SuperAdmin" },

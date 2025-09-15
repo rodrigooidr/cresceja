@@ -296,9 +296,8 @@ if (!global.FileReader) {
 
 // fetch (quando necessário por testes)
 if (!global.fetch) {
-  const cf = require("cross-fetch");
-  global.fetch = cf.default || cf;
-  global.Headers = cf.Headers; global.Request = cf.Request; global.Response = cf.Response;
+  // polyfill global fetch and related classes
+  require("whatwg-fetch");
 }
 
 // FormData (alguns ambientes do JSDOM falham em upload)
