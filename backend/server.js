@@ -169,7 +169,7 @@ async function init() {
 
   // ---------- Webhooks (os que exigem RAW vêm antes do express.json) ----------
   // Meta (Facebook/Instagram) com assinatura X-Hub-Signature-256 precisa de raw body
-  app.use('/api/webhooks', express.raw({ type: 'application/json' }), metaWebhookRouter);
+  app.use('/api/webhooks/meta', express.raw({ type: '*/*' }), metaWebhookRouter);
   // Demais webhooks (sem necessidade de raw body)
   app.use('/api/webhooks/instagram', igRouter);
   app.use('/api/webhooks/messenger', fbRouter);
