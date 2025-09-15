@@ -22,7 +22,11 @@ function GoogleCalendarSection(props) {
         inboxApi.get(`/orgs/${selected}/calendar/accounts`, { meta: { scope: 'global' } }),
         inboxApi.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } }),
       ]);
-      setItems(list.data || []);
+      const accounts =
+        Array.isArray(list?.data?.items) ? list.data.items
+        : Array.isArray(list?.data) ? list.data
+        : [];
+      setItems(accounts);
       const f = features.data?.google_calendar_accounts || {};
       setLimitInfo({ used: f.used ?? 0, limit: f.limit ?? null });
     } finally {
@@ -47,6 +51,11 @@ function GoogleCalendarSection(props) {
   }, [toast, load]);
 
   const canAdd = limitInfo.limit == null || limitInfo.used < limitInfo.limit;
+  const normalizedItems = Array.isArray(items)
+    ? items
+    : Array.isArray(items?.items)
+      ? items.items
+      : [];
 
   function handleConnect() {
     setSaving(true);
@@ -88,7 +97,7 @@ function GoogleCalendarSection(props) {
 
       {loading ? (
         <div className="mt-3 text-sm opacity-70">Carregando...</div>
-      ) : items.length === 0 ? (
+      ) : normalizedItems.length === 0 ? (
         <div className="mt-3 rounded border p-3 text-sm">
           Nenhuma conta conectada.
           <div className="mt-2">
@@ -100,7 +109,7 @@ function GoogleCalendarSection(props) {
         </div>
       ) : (
         <div className="mt-3 space-y-2">
-          {items.map(acc => (
+          {normalizedItems.map(acc => (
             <div key={acc.id} className="flex items-center justify-between rounded border p-3">
               <div>
                 <div className="font-medium">{acc.display_name || acc.email || acc.google_user_id}</div>
@@ -144,7 +153,11 @@ function FacebookSection(props) {
         inboxApi.get(`/orgs/${selected}/facebook/pages`, { meta: { scope: 'global' } }),
         inboxApi.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } }),
       ]);
-      setItems(list.data || []);
+      const pages =
+        Array.isArray(list?.data?.items) ? list.data.items
+        : Array.isArray(list?.data) ? list.data
+        : [];
+      setItems(pages);
       const f = features.data?.facebook_pages || {};
       setLimitInfo({ used: f.used ?? 0, limit: f.limit ?? null });
     } finally {
@@ -169,6 +182,11 @@ function FacebookSection(props) {
   }, [toast, load]);
 
   const canAdd = limitInfo.limit == null || limitInfo.used < limitInfo.limit;
+  const normalizedItems = Array.isArray(items)
+    ? items
+    : Array.isArray(items?.items)
+      ? items.items
+      : [];
 
   function handleConnect() {
     setSaving(true);
@@ -198,7 +216,7 @@ function FacebookSection(props) {
 
       {loading ? (
         <div className="mt-3 text-sm opacity-70">Carregando...</div>
-      ) : items.length === 0 ? (
+      ) : normalizedItems.length === 0 ? (
         <div className="mt-3 rounded border p-3 text-sm">
           Nenhuma página conectada.
           <div className="mt-2">
@@ -210,7 +228,7 @@ function FacebookSection(props) {
         </div>
       ) : (
         <div className="mt-3 space-y-2">
-          {items.map((p) => (
+          {normalizedItems.map((p) => (
             <div key={p.id} className="flex items-center justify-between rounded border p-3">
               <div>
                 <div className="font-medium">{p.name || p.page_id}</div>
@@ -251,7 +269,11 @@ function InstagramSection(props) {
         inboxApi.get(`/orgs/${selected}/instagram/accounts`, { meta: { scope: 'global' } }),
         inboxApi.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } }),
       ]);
-      setItems(list.data || []);
+      const accounts =
+        Array.isArray(list?.data?.items) ? list.data.items
+        : Array.isArray(list?.data) ? list.data
+        : [];
+      setItems(accounts);
       const f = features.data?.instagram_accounts || {};
       setLimitInfo({ used: f.used ?? 0, limit: f.limit ?? null });
     } finally {
@@ -273,6 +295,11 @@ function InstagramSection(props) {
   }, [toast, load]);
 
   const canAdd = limitInfo.limit == null || limitInfo.used < limitInfo.limit;
+  const normalizedItems = Array.isArray(items)
+    ? items
+    : Array.isArray(items?.items)
+      ? items.items
+      : [];
 
   function handleConnect() {
     setSaving(true);
@@ -298,7 +325,7 @@ function InstagramSection(props) {
       </div>
       {loading ? (
         <div className="mt-3 text-sm opacity-70">Carregando...</div>
-      ) : items.length === 0 ? (
+      ) : normalizedItems.length === 0 ? (
         <div className="mt-3 rounded border p-3 text-sm">
           Nenhuma conta conectada.
           <div className="mt-2">
@@ -310,7 +337,7 @@ function InstagramSection(props) {
         </div>
       ) : (
         <div className="mt-3 space-y-2">
-          {items.map(acc => (
+          {normalizedItems.map(acc => (
             <div key={acc.id} className="flex items-center justify-between rounded border p-3">
               <div>
                 <div className="font-medium">{acc.username || acc.ig_user_id}</div>
