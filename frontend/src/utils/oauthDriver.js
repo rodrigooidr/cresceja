@@ -8,6 +8,7 @@ export async function openOAuth({ provider, url, onSuccess, onError }) {
           connected: true,
           scopes: ["pages_manage_posts", "pages_read_engagement"],
           account: { id: "fb_test_acc", name: "FB Test Page" },
+          userAccessToken: "test_facebook_user_token",
         };
         break;
       case "instagram":
@@ -17,6 +18,7 @@ export async function openOAuth({ provider, url, onSuccess, onError }) {
           // ajuste se seus testes exigirem mais escopos
           scopes: ["instagram_content_publish", "pages_show_list", "instagram_basic"],
           account: { id: "ig_test_acc", name: "IG Test Account" },
+          userAccessToken: "test_instagram_user_token",
         };
         break;
       case "google":
