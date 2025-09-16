@@ -591,6 +591,72 @@ api.__mock = {
   waState() {
     return { chats: __waChats };
   },
+  waInjectIncoming({
+    chatId,
+    from,
+    text = "olá",
+    type = "text",
+    media = null,
+    context = null,
+  } = {}) {
+    if (!chatId) {
+      throw new Error("waInjectIncoming requer chatId");
+    }
+    const bus = api.__mock.waBus();
+    const now = Date.now();
+    const author = typeof from === "undefined" ? chatId : from;
+    const msg = {
+      id: `wai-${now}-${Math.random().toString(36).slice(2)}`,
+      chatId,
+      from: author,
+      to: "me",
+      direction: "in",
+      type,
+      text,
+      media,
+      context,
+      timestamp: now,
+      status: "sent",
+    };
+    const store = __waChats.get(chatId) || { messages: [] };
+    store.messages.push(msg);
+    __waChats.set(chatId, store);
+    setTimeout(() => {
+      bus.emit("wa:message", { ...msg });
+    }, 0);
+    setTimeout(() => {
+      bus.emit("wa:status", {
+        chatId,
+        messageId: msg.id,
+        status: "delivered",
+        timestamp: Date.now(),
+      });
+    }, __waOpts.autoDeliverMs);
+    if (__waOpts.readReceipts) {
+      setTimeout(() => {
+        bus.emit("wa:status", {
+          chatId,
+          messageId: msg.id,
+          status: "read",
+          timestamp: Date.now(),
+        });
+      }, __waOpts.autoReadMs);
+    }
+    return msg;
+  },
+  waTyping({ chatId, from, state = "composing" } = {}) {
+    if (!chatId) {
+      throw new Error("waTyping requer chatId");
+    }
+    const bus = api.__mock.waBus();
+    const author = typeof from === "undefined" ? chatId : from;
+    bus.emit("wa:typing", {
+      chatId,
+      from: author,
+      state,
+      timestamp: Date.now(),
+    });
+  },
   logs() {
     return __auditLogs.slice();
   },
