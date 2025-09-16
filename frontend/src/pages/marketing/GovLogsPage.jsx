@@ -79,7 +79,7 @@ export default function GovLogsPage({ defaultLimit = 100 }) {
         "actorRole",
       ],
     });
-    downloadCSV("gov-logs.csv", csv);
+    downloadCSV(null, csv);
   }
 
   return (

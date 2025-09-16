@@ -18,6 +18,12 @@ export function toCSV(rows, { headers } = {}) {
 /** Dispara download no browser (no Jest apenas retorna o blob/url). */
 export function downloadCSV(filename, csv) {
   try {
+    if (!filename) {
+      try {
+        const iso = new Date().toISOString().replace(/[:.]/g, "-");
+        filename = `gov-logs-${iso}.csv`;
+      } catch {}
+    }
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
