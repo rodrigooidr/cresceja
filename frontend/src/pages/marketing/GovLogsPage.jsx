@@ -10,6 +10,14 @@ const EVENT_OPTIONS = [
   { value: "marketing.approve.abort", label: "Aprovação Abortada" },
   { value: "marketing.revert.success", label: "Undo OK" },
   { value: "marketing.revert.error", label: "Undo Erro" },
+  // WhatsApp
+  { value: "whatsapp.incoming.message", label: "WA Inbound" },
+  { value: "whatsapp.status.update", label: "WA Status" },
+  { value: "whatsapp.typing", label: "WA Typing" },
+  { value: "whatsapp.send.attempt", label: "WA Send Attempt" },
+  { value: "whatsapp.send.success", label: "WA Send OK" },
+  { value: "whatsapp.send.error", label: "WA Send Erro" },
+  { value: "whatsapp.send.abort", label: "WA Send Abort" },
 ];
 
 function fmtTs(ts) {
