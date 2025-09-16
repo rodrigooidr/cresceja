@@ -34,6 +34,15 @@ test('approve opens jobs modal', async () => {
   await act(async () => {
     fireEvent.click(approveBtn);
   });
-  await waitFor(() => expect(api.post).toHaveBeenCalledWith('/orgs/org-1/suggestions/sug-1/approve'));
+  await waitFor(() =>
+    expect(api.post).toHaveBeenCalledWith(
+      '/orgs/org-1/suggestions/sug-1/approve',
+      undefined,
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': expect.any(String) }),
+        signal: expect.any(Object),
+      })
+    )
+  );
   await screen.findByText('Jobs da Sugestão');
 });

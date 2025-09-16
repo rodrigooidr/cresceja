@@ -132,15 +132,62 @@ let postHandler = defaultPost;
 let delayMs = 0;
 let failMatchers = [];
 
-function withDelay(promiseFactory) {
+function createAbortError() {
+  try {
+    return new DOMException('Aborted', 'AbortError');
+  } catch {
+    const err = new Error('Aborted');
+    err.name = 'AbortError';
+    return err;
+  }
+}
+
+function withDelay(promiseFactory, config = {}) {
+  const signal = config?.signal;
+  if (signal?.aborted) {
+    return Promise.reject(createAbortError());
+  }
   if (!delayMs) return promiseFactory();
   return new Promise((resolve, reject) => {
-    setTimeout(() => {
+    let finished = false;
+    let timer;
+
+    function cleanup() {
+      if (signal && typeof signal.removeEventListener === 'function') {
+        signal.removeEventListener('abort', onAbort);
+      }
+    }
+
+    function finish(exec) {
+      if (finished) return;
+      finished = true;
+      cleanup();
+      exec();
+    }
+
+    function onAbort() {
+      if (timer) clearTimeout(timer);
+      finish(() => reject(createAbortError()));
+    }
+
+    timer = setTimeout(() => {
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
       Promise.resolve()
         .then(promiseFactory)
-        .then(resolve)
-        .catch(reject);
+        .then((value) => finish(() => resolve(value)))
+        .catch((error) => finish(() => reject(error)));
     }, delayMs);
+
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
   });
 }
 
@@ -159,24 +206,38 @@ function shouldFail(url) {
   });
 }
 
-api.get = jest.fn((...args) => withDelay(() => getHandler(...args)));
-api.post = jest.fn((...args) =>
-  withDelay(() => {
-    const [url] = args;
+api.get = jest.fn((...args) => {
+  const config = args[1];
+  return withDelay(() => getHandler(...args), config);
+});
+api.post = jest.fn((...args) => {
+  const [url] = args;
+  const config = args.length > 2 ? args[2] : args[1];
+  return withDelay(() => {
     if (shouldFail(url)) return Promise.reject(new Error(`forced fail: ${url}`));
+    if (config?.signal?.aborted) {
+      return Promise.reject(createAbortError());
+    }
     return postHandler(...args);
-  })
-);
+  }, config);
+});
 
 const applyHandlers = () => {
-  api.get.mockImplementation((...args) => withDelay(() => getHandler(...args)));
-  api.post.mockImplementation((...args) =>
-    withDelay(() => {
-      const [url] = args;
+  api.get.mockImplementation((...args) => {
+    const config = args[1];
+    return withDelay(() => getHandler(...args), config);
+  });
+  api.post.mockImplementation((...args) => {
+    const [url] = args;
+    const config = args.length > 2 ? args[2] : args[1];
+    return withDelay(() => {
       if (shouldFail(url)) return Promise.reject(new Error(`forced fail: ${url}`));
+      if (config?.signal?.aborted) {
+        return Promise.reject(createAbortError());
+      }
       return postHandler(...args);
-    })
-  );
+    }, config);
+  });
 };
 
 applyHandlers();
