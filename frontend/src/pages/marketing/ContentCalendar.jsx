@@ -16,6 +16,7 @@ import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
 import CampaignApproveModal from './components/CampaignApproveModal.jsx';
 import { suggestionTitle } from './lib/suggestionTitle';
 import useApproval from './hooks/useApproval.js';
+import BulkApprovalBar from './components/BulkApprovalBar.jsx';
 import { canApprove } from '../../auth/perm.js';
 
 const localizer = luxonLocalizer(DateTime);
@@ -47,7 +48,7 @@ export default function ContentCalendar(props = {}) {
     }
     return null;
   }, [activeOrg]);
-  const { currentUser, t: providedT, onApproved } = props;
+  const { currentUser, t: providedT, onApproved, bulkConcurrency } = props;
   const toast = useToastFallback();
   const { user: authUser } = useAuth?.() ?? { user: null };
   const user = currentUser ?? authUser;
@@ -74,11 +75,123 @@ export default function ContentCalendar(props = {}) {
   const [showGenerate, setShowGenerate] = useState(false);
   const [approveJobs, setApproveJobs] = useState([]);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [selected, setSelected] = useState(() => new Map());
+  const [bulkProg, setBulkProg] = useState(null);
+  const [lastRemoved, setLastRemoved] = useState(null);
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [hasNavigated, setHasNavigated] = useState(false);
-  const { approving, state: approvalState, approve: approveRequest, retryApprove } = useApproval();
+  const { approving, bulkApproving, state: approvalState, approve: approveRequest, retryApprove, approveMany } = useApproval();
   const lastAttemptRef = useRef(null);
+  const bulkAbortRef = useRef(null);
   const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+
+  // === Seleção de itens (jobId -> suggestionId) ===
+  const toggleSelect = useCallback((jobId, suggestionId) => {
+    if (!jobId) return;
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (next.has(jobId)) {
+        next.delete(jobId);
+      } else {
+        next.set(jobId, suggestionId ?? null);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const jobsMap = new Map((approveJobs || []).map((job) => [job.id, job.suggestionId ?? null]));
+    setSelected((prev) => {
+      if (prev.size === 0) {
+        return prev;
+      }
+      let changed = false;
+      const next = new Map();
+      prev.forEach((value, key) => {
+        if (!jobsMap.has(key)) {
+          changed = true;
+          return;
+        }
+        const newSuggestion = jobsMap.get(key);
+        if (newSuggestion !== value) {
+          changed = true;
+        }
+        next.set(key, newSuggestion);
+      });
+      if (!changed && next.size === prev.size) {
+        return prev;
+      }
+      return next;
+    });
+  }, [approveJobs]);
+
+  useEffect(() => {
+    if (!lastRemoved) return;
+    if (!(approveJobs || []).some((job) => job.id === lastRemoved.jobId)) {
+      setLastRemoved(null);
+    }
+  }, [approveJobs, lastRemoved]);
+
+  const undoLastRemoved = useCallback(() => {
+    if (!lastRemoved) return;
+    const jobId = lastRemoved.jobId;
+    const storedSuggestion = lastRemoved.suggestionId;
+    const latestSuggestion = (approveJobs || []).find((job) => job.id === jobId)?.suggestionId ?? storedSuggestion ?? null;
+    setSelected((current) => {
+      const next = new Map(current);
+      next.set(jobId, latestSuggestion ?? null);
+      return next;
+    });
+    setLastRemoved(null);
+  }, [lastRemoved, approveJobs]);
+
+  useEffect(() => {
+    if (!lastRemoved) return;
+    const toastFn = typeof window !== 'undefined' ? window.toast : undefined;
+    if (typeof toastFn === 'function') {
+      toastFn({
+        title: 'Aprovado',
+        action: { label: 'Desfazer', onClick: undoLastRemoved },
+      });
+    }
+  }, [lastRemoved, undoLastRemoved]);
+
+  const bulkStart = useCallback(() => {
+    if (!allowed || selected.size === 0 || bulkApproving) return;
+    const items = Array.from(selected.entries()).map(([jobId, suggestionId]) => ({ jobId, suggestionId }));
+    setBulkProg({ done: 0, total: items.length, ok: 0, partial: 0, fail: 0 });
+    const { promise, abort } = approveMany({
+      items,
+      concurrency: bulkConcurrency ?? 3,
+      onProgress: (progress) => setBulkProg(progress),
+      onItem: ({ jobId, suggestionId, result }) => {
+        if (result?.ok) {
+          setSelected((prev) => {
+            if (!prev.has(jobId)) return prev;
+            const next = new Map(prev);
+            next.delete(jobId);
+            return next;
+          });
+          setLastRemoved({ jobId, suggestionId });
+        }
+        if (typeof onApproved === 'function') {
+          onApproved({ jobId, suggestionId, result });
+        }
+      },
+    });
+    bulkAbortRef.current = abort;
+    if (promise?.finally) {
+      promise.finally(() => {
+        setBulkProg(null);
+        bulkAbortRef.current = null;
+      });
+    }
+  }, [allowed, selected, bulkApproving, approveMany, bulkConcurrency, onApproved]);
+
+  const bulkCancel = useCallback(() => {
+    const abort = bulkAbortRef.current;
+    abort?.();
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -462,6 +575,28 @@ export default function ContentCalendar(props = {}) {
           </PermissionGate>
         )}
       </div>
+      {allowed && approveJobs.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1" data-testid="bulk-select-list">
+          {approveJobs.map((job) => {
+            const suggestionId = job?.suggestionId ?? job?.suggestion_id ?? null;
+            const labelValue = job?.title || job?.name || job?.id || 'Job';
+            const label = String(labelValue);
+            return (
+              <label key={job.id || suggestionId || label} className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  data-testid={job.id ? `job-checkbox-${job.id}` : undefined}
+                  checked={job?.id ? selected.has(job.id) : false}
+                  onChange={() => job?.id && toggleSelect(job.id, suggestionId)}
+                  disabled={bulkApproving}
+                  aria-label={`Selecionar ${label}`}
+                />
+                <span>{label}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
       <div role="status" aria-live="polite" aria-atomic="true" style={{ position: 'absolute', left: -9999 }}>
         {approving ? t.approving : ''}
       </div>
@@ -477,6 +612,16 @@ export default function ContentCalendar(props = {}) {
             {t.retry}
           </button>
         </div>
+      )}
+      {allowed && (
+        <BulkApprovalBar
+          count={selected.size}
+          running={!!bulkApproving}
+          progress={bulkProg}
+          onStart={bulkStart}
+          onCancel={bulkCancel}
+          t={{ start: t.approve, cancel: 'Cancelar', running: t.approving }}
+        />
       )}
       <DnDCalendar
         localizer={localizer}
