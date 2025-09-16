@@ -18,6 +18,7 @@ import { suggestionTitle } from './lib/suggestionTitle';
 import useApproval from './hooks/useApproval.js';
 import BulkApprovalBar from './components/BulkApprovalBar.jsx';
 import { canApprove } from '../../auth/perm.js';
+import inboxApi from '../../api/inboxApi.js';
 import useListSelection from './hooks/useListSelection.js';
 
 const localizer = luxonLocalizer(DateTime);
@@ -77,7 +78,10 @@ export default function ContentCalendar(props = {}) {
   const [approveJobs, setApproveJobs] = useState(() => (Array.isArray(props.jobs) ? props.jobs : []));
   const [approveOpen, setApproveOpen] = useState(false);
   const [bulkProg, setBulkProg] = useState(null);
-  const [lastRemoved, setLastRemoved] = useState(null);
+  const [lastRemoved, setLastRemoved] = useState(null); // { jobId, suggestionId }
+  const lastRemovedRef = useRef(null);
+  const undoTimerRef = useRef(null);
+  const UNDO_TTL = props?.undoTtlMs ?? 5000;
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [hasNavigated, setHasNavigated] = useState(false);
   const { approving, bulkApproving, state: approvalState, approve: approveRequest, retryApprove, approveMany } = useApproval();
@@ -89,6 +93,10 @@ export default function ContentCalendar(props = {}) {
     if (!Array.isArray(props.jobs)) return;
     setApproveJobs(props.jobs);
   }, [props.jobs]);
+
+  useEffect(() => {
+    lastRemovedRef.current = lastRemoved;
+  }, [lastRemoved]);
 
   const selectionItems = useMemo(
     () =>
@@ -162,25 +170,57 @@ export default function ContentCalendar(props = {}) {
     if (!lastRemoved) return;
     if (!(approveJobs || []).some((job) => job.id === lastRemoved.jobId)) {
       setLastRemoved(null);
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
     }
   }, [approveJobs, lastRemoved]);
 
-  const undoLastRemoved = useCallback(() => {
-    if (!lastRemoved) return;
-    const jobId = lastRemoved.jobId;
-    const storedSuggestion = lastRemoved.suggestionId;
-    const latestSuggestion =
-      (approveJobs || []).find((job) => job.id === jobId)?.suggestionId ?? storedSuggestion ?? null;
-    setSelectedMap((current) => {
-      const next = new Map(current);
-      next.set(jobId, latestSuggestion ?? null);
-      return next;
-    });
-    setLastRemoved(null);
-  }, [lastRemoved, approveJobs, setSelectedMap]);
+  const undoLastRemoved = useCallback(async () => {
+    const removal = lastRemovedRef.current;
+    if (!removal) return;
+    const jobId = removal.jobId;
+    const storedSuggestion = removal.suggestionId;
+    const toastFn = typeof window !== 'undefined' ? window.toast : undefined;
+
+    try {
+      await inboxApi.post(
+        '/marketing/revert',
+        { jobId, suggestionId: storedSuggestion },
+        {}
+      );
+
+      const jobExists = (approveJobs || []).some((job) => job.id === jobId);
+      if (jobId && jobExists) {
+        const latestSuggestion =
+          (approveJobs || []).find((job) => job.id === jobId)?.suggestionId ?? storedSuggestion ?? null;
+        setSelectedMap((current) => {
+          const next = new Map(current);
+          next.set(jobId, latestSuggestion ?? null);
+          return next;
+        });
+      }
+
+      if (typeof toastFn === 'function') {
+        toastFn({ title: 'Ação desfeita.', variant: 'success' });
+      }
+    } catch (error) {
+      if (typeof toastFn === 'function') {
+        toastFn({ title: 'Falha ao desfazer.', variant: 'destructive' });
+      }
+    } finally {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
+      lastRemovedRef.current = null;
+      setLastRemoved(null);
+    }
+  }, [approveJobs, setSelectedMap]);
 
   useEffect(() => {
-    if (!lastRemoved) return;
+    if (!lastRemoved) return undefined;
     const toastFn = typeof window !== 'undefined' ? window.toast : undefined;
     if (typeof toastFn === 'function') {
       toastFn({
@@ -188,7 +228,24 @@ export default function ContentCalendar(props = {}) {
         action: { label: 'Desfazer', onClick: undoLastRemoved },
       });
     }
-  }, [lastRemoved, undoLastRemoved]);
+
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+
+    undoTimerRef.current = setTimeout(() => {
+      lastRemovedRef.current = null;
+      setLastRemoved(null);
+      undoTimerRef.current = null;
+    }, UNDO_TTL);
+
+    return () => {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
+    };
+  }, [lastRemoved, undoLastRemoved, UNDO_TTL]);
 
   const bulkStart = useCallback(() => {
     if (!allowed || selectedCount === 0 || bulkApproving) return;
@@ -226,6 +283,20 @@ export default function ContentCalendar(props = {}) {
     const abort = bulkAbortRef.current;
     abort?.();
   }, []);
+
+  const handleShortcutClear = useCallback(() => {
+    clearAllVisible();
+    if (bulkApproving) {
+      bulkCancel();
+    }
+  }, [clearAllVisible, bulkApproving, bulkCancel]);
+
+  useCalendarShortcuts({
+    enabled: allowed,
+    onSelectAll: selectAllVisible,
+    onClear: handleShortcutClear,
+    onBulkStart: bulkStart,
+  });
 
   useEffect(() => {
     if (Array.isArray(props.jobs)) {
@@ -730,4 +801,36 @@ export default function ContentCalendar(props = {}) {
       )}
     </div>
   );
+}
+
+function useCalendarShortcuts({ enabled, onSelectAll, onClear, onBulkStart }) {
+  useEffect(() => {
+    if (!enabled || typeof document === 'undefined') return undefined;
+
+    function isEditable(el) {
+      const tag = (el?.tagName || '').toLowerCase();
+      return ['input', 'textarea', 'select'].includes(tag) || Boolean(el?.isContentEditable);
+    }
+
+    function onKey(ev) {
+      if (isEditable(ev.target)) return;
+      const key = typeof ev.key === 'string' ? ev.key.toLowerCase() : ev.key;
+      const ctrl = ev.ctrlKey || ev.metaKey;
+
+      if (ctrl && key === 'a') {
+        ev.preventDefault();
+        onSelectAll?.();
+      } else if (key === 'escape') {
+        onClear?.();
+      } else if (ctrl && key === 'enter') {
+        ev.preventDefault();
+        onBulkStart?.();
+      }
+    }
+
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [enabled, onSelectAll, onClear, onBulkStart]);
 }
