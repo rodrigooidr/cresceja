@@ -15,9 +15,8 @@ import { CAN_MANAGE_CAMPAIGNS } from '../../auth/roles.js';
 import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
 import CampaignApproveModal from './components/CampaignApproveModal.jsx';
 import { suggestionTitle } from './lib/suggestionTitle';
-import { newIdempotencyKey } from '../../lib/idempotency.js';
-import { track } from '../../lib/analytics.js';
-import { retry } from '../../lib/retry.js';
+import useApproval from './hooks/useApproval.js';
+import { canApprove } from '../../auth/perm.js';
 
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -51,6 +50,7 @@ export default function ContentCalendar() {
   const toast = useToastFallback();
   const { user } = useAuth?.() ?? { user: null };
   const canManage = CAN_MANAGE_CAMPAIGNS(user);
+  const allowed = canApprove?.(user) ?? true;
   const [campaigns, setCampaigns] = useState([]);
   const [campaignId, setCampaignId] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -60,25 +60,9 @@ export default function ContentCalendar() {
   const [approveOpen, setApproveOpen] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [hasNavigated, setHasNavigated] = useState(false);
-  const [approving, setApproving] = useState(false);
-  const [approvalState, setApprovalState] = useState({ job: 'idle', suggestion: 'idle', error: null });
-  const [lastAttempt, setLastAttempt] = useState(null);
+  const { approving, state: approvalState, approve: approveRequest, retryApprove } = useApproval();
+  const lastAttemptRef = useRef(null);
   const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-  const isMountedRef = useRef(true);
-  const inflightRef = useRef(null);
-
-  useEffect(
-    () => () => {
-      isMountedRef.current = false;
-      if (inflightRef.current) {
-        try {
-          inflightRef.current.abort();
-        } catch {}
-        inflightRef.current = null;
-      }
-    },
-    []
-  );
 
   useEffect(() => {
     let alive = true;
@@ -138,166 +122,73 @@ export default function ContentCalendar() {
     };
   }
 
+  const handleApprovalOutcome = useCallback((result, context = {}) => {
+    if (!result || result.reason === 'no-last-attempt') return result;
+    const { suggestionId, shouldApproveSuggestion } = context;
+
+    if (result.ok) {
+      if (shouldApproveSuggestion && suggestionId) {
+        setJobsModal({ open: true, suggestionId });
+      }
+      setApproveOpen(true);
+      toast({ title: 'Jobs aprovados com sucesso.' });
+    } else if (result.partial) {
+      if (result.jobStatus === 'err' && result.suggestionStatus !== 'err') {
+        const status = Number(result.status);
+        const title = status === 429
+          ? 'Muitas tentativas agora — aguarde e tente novamente.'
+          : 'Não foi possível aprovar. Tente novamente.';
+        toast({ title, status: 'error' });
+      } else {
+        toast({ title: 'Aprovação parcial: tente novamente.', status: 'error' });
+      }
+    } else if (result.reason === 'error') {
+      const status = Number(result.status);
+      const title = status === 429
+        ? 'Muitas tentativas agora — aguarde e tente novamente.'
+        : 'Não foi possível aprovar. Tente novamente.';
+      toast({ title, status: 'error' });
+    }
+
+    return result;
+  }, [toast, setApproveOpen, setJobsModal]);
+
   async function executeApproval(attemptInput) {
-    if (!isMountedRef.current) return;
     const client = typeof jobsClient?.post === 'function' ? jobsClient : api;
     const attempt = attemptInput ?? buildApprovalAttempt();
     const jobIds = Array.isArray(attempt?.jobIds) ? attempt.jobIds : [];
     const suggestionId = attempt?.suggestionId ?? null;
     const normalizedOrgId = attempt?.normalizedOrgId ?? null;
+
     const shouldApproveJobs = jobIds.length > 0 && typeof client?.post === 'function';
     const shouldApproveSuggestion = Boolean(normalizedOrgId && suggestionId);
 
-    if (!isMountedRef.current) return;
+    const jobRequest = shouldApproveJobs
+      ? ({ signal, headers }) =>
+          client.post('/marketing/content/approve', { ids: jobIds }, { signal, headers })
+      : null;
 
-    if (inflightRef.current) {
-      try {
-        inflightRef.current.abort();
-      } catch {}
-    }
-    const controller = new AbortController();
-    inflightRef.current = controller;
-    const idempotencyKey = newIdempotencyKey();
+    const suggestionRequest = shouldApproveSuggestion
+      ? ({ signal, headers }) =>
+          api.post(
+            `/orgs/${normalizedOrgId}/suggestions/${suggestionId}/approve`,
+            undefined,
+            { signal, headers }
+          )
+      : null;
+
     const analyticsPayload = { jobIds, suggestionId, normalizedOrgId };
-    const makeConfig = () => ({
-      signal: controller.signal,
-      headers: { 'Idempotency-Key': idempotencyKey },
-    });
-    const classifyRetry = (error) => {
-      const status = Number(error?.status ?? error?.response?.status);
-      if (error?.name === 'AbortError') return false;
-      return [429, 502, 503, 504].includes(status);
-    };
+    const attemptContext = { jobIds, suggestionId, normalizedOrgId, shouldApproveJobs, shouldApproveSuggestion };
+    lastAttemptRef.current = attemptContext;
 
-    setApproving(true);
-    setLastAttempt({ jobIds, suggestionId, normalizedOrgId });
-    setApprovalState({
-      job: shouldApproveJobs ? 'pending' : 'idle',
-      suggestion: shouldApproveSuggestion ? 'pending' : 'idle',
-      error: null,
+    const result = await approveRequest({
+      job: jobRequest ? { request: jobRequest } : null,
+      suggestion: suggestionRequest ? { request: suggestionRequest } : null,
+      trackPayload: analyticsPayload,
+      jobIds,
     });
 
-    track('marketing_approve_click', analyticsPayload);
-
-    try {
-      const jobPromise = shouldApproveJobs
-        ? retry(
-            () => client.post('/marketing/content/approve', { ids: jobIds }, makeConfig()),
-            {
-              retries: 3,
-              baseMs: 250,
-              maxMs: 2000,
-              factor: 2,
-              jitter: true,
-              signal: controller.signal,
-              classify: classifyRetry,
-              onAttempt: (attempt) =>
-                track('marketing_approve_job_attempt', { ...analyticsPayload, attempt }),
-            }
-          )
-        : Promise.resolve({ ok: true });
-      const suggestionPromise = shouldApproveSuggestion
-        ? retry(
-            () =>
-              api.post(
-                `/orgs/${normalizedOrgId}/suggestions/${suggestionId}/approve`,
-                undefined,
-                makeConfig()
-              ),
-            {
-              retries: 3,
-              baseMs: 250,
-              maxMs: 2000,
-              factor: 2,
-              jitter: true,
-              signal: controller.signal,
-              classify: classifyRetry,
-              onAttempt: (attempt) =>
-                track('marketing_approve_suggestion_attempt', {
-                  ...analyticsPayload,
-                  attempt,
-                }),
-            }
-          )
-        : Promise.resolve({ ok: true });
-
-      const [jobRes, suggestionRes] = await Promise.allSettled([jobPromise, suggestionPromise]);
-      const results = [jobRes, suggestionRes];
-      const aborted = results.some(
-        (res) => res?.status === 'rejected' && res.reason?.name === 'AbortError'
-      );
-      if (aborted) {
-        track('marketing_approve_abort', analyticsPayload);
-        return;
-      }
-      if (!isMountedRef.current || inflightRef.current !== controller) {
-        return;
-      }
-
-      const jobStatus = shouldApproveJobs ? (jobRes.status === 'fulfilled' ? 'ok' : 'err') : 'idle';
-      const suggestionStatus = shouldApproveSuggestion
-        ? (suggestionRes.status === 'fulfilled' ? 'ok' : 'err')
-        : 'idle';
-
-      const statuses = [];
-      if (shouldApproveJobs) statuses.push(jobStatus);
-      if (shouldApproveSuggestion) statuses.push(suggestionStatus);
-      let errorType = null;
-      if (statuses.some((status) => status === 'err')) {
-        errorType = statuses.every((status) => status === 'err') ? 'full' : 'partial';
-      }
-
-      if (isMountedRef.current && inflightRef.current === controller) {
-        setApprovalState({ job: jobStatus, suggestion: suggestionStatus, error: errorType });
-      }
-
-      if (!isMountedRef.current || inflightRef.current !== controller) return;
-
-      if (!errorType) {
-        if (shouldApproveSuggestion && suggestionId) {
-          setJobsModal({ open: true, suggestionId });
-        }
-        setApproveOpen(true);
-        toast({ title: 'Jobs aprovados com sucesso.' });
-        track('marketing_approve_success', analyticsPayload);
-      } else if (errorType === 'partial') {
-        toast({ title: 'Aprovação parcial: tente novamente.', status: 'error' });
-        track('marketing_approve_partial', analyticsPayload);
-      } else {
-        const hasRateLimitError = results.some((res) => {
-          if (res?.status !== 'rejected') return false;
-          const status = Number(res.reason?.status ?? res.reason?.response?.status);
-          return status === 429;
-        });
-        const title = hasRateLimitError
-          ? 'Muitas tentativas agora — aguarde e tente novamente.'
-          : 'Não foi possível aprovar. Tente novamente.';
-        toast({ title, status: 'error' });
-        track('marketing_approve_error', analyticsPayload);
-      }
-    } catch (err) {
-      if (err?.name === 'AbortError') {
-        track('marketing_approve_abort', analyticsPayload);
-      } else {
-        console.error(err);
-        if (isMountedRef.current && inflightRef.current === controller) {
-          setApprovalState((state) => ({ ...state, error: 'full' }));
-          const status = Number(err?.status ?? err?.response?.status);
-          const title = status === 429
-            ? 'Muitas tentativas agora — aguarde e tente novamente.'
-            : 'Não foi possível aprovar. Tente novamente.';
-          toast({ title, status: 'error' });
-        }
-        track('marketing_approve_error', analyticsPayload);
-      }
-    } finally {
-      if (inflightRef.current === controller) {
-        inflightRef.current = null;
-        if (isMountedRef.current) {
-          setApproving(false);
-        }
-      }
-    }
+    return handleApprovalOutcome(result, attemptContext);
   }
 
   async function onApproveClick(event) {
@@ -306,10 +197,11 @@ export default function ContentCalendar() {
     await executeApproval(attempt);
   }
 
-  function handleRetry() {
-    if (!lastAttempt) return;
-    executeApproval({ ...lastAttempt });
-  }
+  const handleRetry = useCallback(async () => {
+    if (!lastAttemptRef.current) return;
+    const result = await retryApprove();
+    return handleApprovalOutcome(result, lastAttemptRef.current);
+  }, [retryApprove, handleApprovalOutcome]);
 
   const fetchCampaigns = useCallback(async () => {
     if (!orgId) return;
@@ -516,19 +408,24 @@ export default function ContentCalendar() {
             Todos Facebook
           </button>
         </PermissionGate>
-        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
-          <button
-            className="border px-2 py-1"
-            data-testid="btn-approve"
-            onClick={onApproveClick}
-            disabled={approving}
-            aria-busy={approving ? 'true' : 'false'}
-            aria-disabled={approving ? 'true' : 'false'}
-            type="button"
-          >
-            {approving ? 'Aprovando…' : 'Aprovar'}
-          </button>
-        </PermissionGate>
+        {allowed && (
+          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+            <button
+              className="border px-2 py-1"
+              data-testid="btn-approve"
+              onClick={onApproveClick}
+              disabled={approving}
+              aria-busy={approving ? 'true' : 'false'}
+              aria-disabled={approving ? 'true' : 'false'}
+              type="button"
+            >
+              {approving ? 'Aprovando…' : 'Aprovar'}
+            </button>
+          </PermissionGate>
+        )}
+      </div>
+      <div role="status" aria-live="polite" aria-atomic="true" style={{ position: 'absolute', left: -9999 }}>
+        {approving ? 'Aprovando…' : ''}
       </div>
       {approvalState.error === 'partial' && (
         <div role="alert" className="cc-alert cc-alert-error mb-2 flex items-center gap-2">
