@@ -325,9 +325,14 @@ export default function WhatsAppInbox({ transport = "cloud" }) {
   }, [client]);
 
   return (
-    <div className="flex h-[600px] border rounded overflow-hidden" data-testid="wa-inbox">
+    <div className="relative flex h-[600px] border rounded overflow-hidden" data-testid="wa-inbox">
       <ConversationList convs={convs} active={active} onOpen={openChat} />
       <ChatWindow conv={active ? convs.get(active) : null} onSend={sendText} onSendMedia={sendMedia} onTyping={setTyping} />
+      {process?.env?.NODE_ENV !== "production" && (
+        <div className="absolute bottom-2 right-2 text-xs">
+          <a href="/settings/governanca">Governança &amp; Logs</a>
+        </div>
+      )}
     </div>
   );
 }
