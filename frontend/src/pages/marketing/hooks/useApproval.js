@@ -24,6 +24,13 @@ function getErrorStatus(result) {
 }
 
 export default function useApproval({ api = inboxApi } = {}) {
+  /**
+   * @typedef {Object} ApproveResult
+   * @property {boolean} ok
+   * @property {boolean} [partial]
+   * @property {'busy'|'abort'|'error'|'circuit-open'|'no-last-attempt'} [reason]
+   * @property {number} [status]
+   */
   const [approving, setApproving] = useState(false);
   const [state, setState] = useState({ job: 'idle', suggestion: 'idle', error: null });
   const lastAttempt = useRef(null);
@@ -36,6 +43,11 @@ export default function useApproval({ api = inboxApi } = {}) {
     inflight.current?.abort?.();
   }, []);
 
+  /**
+   * Executa a aprovação de um par (jobId, suggestionId).
+   * @param {{ jobId?: string, suggestionId?: string, trackPayload?: any, jobIds?: string[], job?: any, suggestion?: any }} config
+   * @returns {Promise<ApproveResult>}
+   */
   const approve = useCallback(async (config = {}) => {
     if (approving) {
       return { ok: false, partial: false, reason: 'busy', jobStatus: 'idle', suggestionStatus: 'idle' };
