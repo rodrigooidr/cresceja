@@ -59,48 +59,65 @@ const marketingJobs = [
 ];
 
 const originalGet = api.get;
-api.get = jest.fn((...args) => {
+const originalPost = api.post;
+
+function handleGet(...args) {
   const [url] = args;
-  if (url === "/marketing/content/jobs" || url === "/marketing/calendar/jobs") {
-    return Promise.resolve({ data: { items: marketingJobs } });
-  }
-  if (url === "/marketing/content/events" || url === "/marketing/calendar/events") {
-    const start = new Date();
-    const end = new Date(start.getTime() + 60 * 60 * 1000);
-    return Promise.resolve({
-      data: {
-        items: [
-          {
-            id: "evt-1",
-            start: start.toISOString(),
-            end: end.toISOString(),
-            title: "Sugestão IG/FB #1",
-            channel: "instagram",
-          },
-        ],
-      },
-    });
-  }
-  if (/^\/channels\/meta\/accounts\/[^/]+\/backfill\/status/.test(url)) {
-    return Promise.resolve({ data: { last: null } });
-  }
-  if (/^\/settings\/google-calendar\/accounts/i.test(url)) {
-    return Promise.resolve({ data: { items: [] } });
-  }
-  if (/^\/settings\/instagram\/accounts/i.test(url)) {
-    return Promise.resolve({ data: { items: [] } });
+  if (typeof url === "string") {
+    if (/\/marketing\/content\/jobs/.test(url) || /\/marketing\/calendar\/jobs/.test(url)) {
+      return Promise.resolve({ data: { items: marketingJobs } });
+    }
+    if (/\/marketing\/(?:calendar|content)\/events/.test(url)) {
+      const start = new Date();
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      return Promise.resolve({
+        data: {
+          items: [
+            {
+              id: "evt-1",
+              start: start.toISOString(),
+              end: end.toISOString(),
+              title: "Sugestão IG/FB #1",
+              channel: "instagram",
+            },
+          ],
+        },
+      });
+    }
+    if (/^\/channels\/meta\/accounts\/[^/]+\/backfill\/status/.test(url)) {
+      return Promise.resolve({ data: { last: null } });
+    }
+    if (/^\/channels\/meta\/accounts/.test(url)) {
+      return Promise
+        .resolve(originalGet(...args))
+        .then((res) => {
+          const items = Array.isArray(res?.data?.items) ? res.data.items : [];
+          return { data: { items } };
+        })
+        .catch(() => ({ data: { items: [] } }));
+    }
+    if (/^\/settings\/google-calendar\/accounts/i.test(url)) {
+      return Promise.resolve({ data: { items: [] } });
+    }
+    if (/^\/settings\/instagram\/accounts/i.test(url)) {
+      return Promise.resolve({ data: { items: [] } });
+    }
   }
   return originalGet(...args);
-});
+}
 
-const originalPost = api.post;
-api.post = jest.fn((...args) => {
-  const [url] = args;
-  if (url === "/marketing/content/approve" || url === "/marketing/calendar/approve") {
-    return Promise.resolve({ data: { ok: true } });
+function handlePost(...args) {
+  const [url, body] = args;
+  if (typeof url === "string") {
+    if (/\/marketing\/content\/approve/.test(url) || /\/marketing\/calendar\/approve/.test(url)) {
+      return Promise.resolve({ data: { ok: true, received: body || null } });
+    }
   }
   return originalPost(...args);
-});
+}
+
+api.get = jest.fn((...args) => handleGet(...args));
+api.post = jest.fn((...args) => handlePost(...args));
 
 // (opcional) se seu código usa interceptors, mantenha um stub seguro
 api.interceptors = api.interceptors || {
