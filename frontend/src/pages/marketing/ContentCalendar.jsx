@@ -17,6 +17,7 @@ import CampaignApproveModal from './components/CampaignApproveModal.jsx';
 import { suggestionTitle } from './lib/suggestionTitle';
 import { newIdempotencyKey } from '../../lib/idempotency.js';
 import { track } from '../../lib/analytics.js';
+import { retry } from '../../lib/retry.js';
 
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -162,6 +163,11 @@ export default function ContentCalendar() {
       signal: controller.signal,
       headers: { 'Idempotency-Key': idempotencyKey },
     });
+    const classifyRetry = (error) => {
+      const status = Number(error?.status ?? error?.response?.status);
+      if (error?.name === 'AbortError') return false;
+      return [429, 502, 503, 504].includes(status);
+    };
 
     setApproving(true);
     setLastAttempt({ jobIds, suggestionId, normalizedOrgId });
@@ -175,10 +181,44 @@ export default function ContentCalendar() {
 
     try {
       const jobPromise = shouldApproveJobs
-        ? client.post('/marketing/content/approve', { ids: jobIds }, makeConfig())
+        ? retry(
+            () => client.post('/marketing/content/approve', { ids: jobIds }, makeConfig()),
+            {
+              retries: 3,
+              baseMs: 250,
+              maxMs: 2000,
+              factor: 2,
+              jitter: true,
+              signal: controller.signal,
+              classify: classifyRetry,
+              onAttempt: (attempt) =>
+                track('marketing_approve_job_attempt', { ...analyticsPayload, attempt }),
+            }
+          )
         : Promise.resolve({ ok: true });
       const suggestionPromise = shouldApproveSuggestion
-        ? api.post(`/orgs/${normalizedOrgId}/suggestions/${suggestionId}/approve`, undefined, makeConfig())
+        ? retry(
+            () =>
+              api.post(
+                `/orgs/${normalizedOrgId}/suggestions/${suggestionId}/approve`,
+                undefined,
+                makeConfig()
+              ),
+            {
+              retries: 3,
+              baseMs: 250,
+              maxMs: 2000,
+              factor: 2,
+              jitter: true,
+              signal: controller.signal,
+              classify: classifyRetry,
+              onAttempt: (attempt) =>
+                track('marketing_approve_suggestion_attempt', {
+                  ...analyticsPayload,
+                  attempt,
+                }),
+            }
+          )
         : Promise.resolve({ ok: true });
 
       const [jobRes, suggestionRes] = await Promise.allSettled([jobPromise, suggestionPromise]);
@@ -224,7 +264,15 @@ export default function ContentCalendar() {
         toast({ title: 'Aprovação parcial: tente novamente.', status: 'error' });
         track('marketing_approve_partial', analyticsPayload);
       } else {
-        toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
+        const hasRateLimitError = results.some((res) => {
+          if (res?.status !== 'rejected') return false;
+          const status = Number(res.reason?.status ?? res.reason?.response?.status);
+          return status === 429;
+        });
+        const title = hasRateLimitError
+          ? 'Muitas tentativas agora — aguarde e tente novamente.'
+          : 'Não foi possível aprovar. Tente novamente.';
+        toast({ title, status: 'error' });
         track('marketing_approve_error', analyticsPayload);
       }
     } catch (err) {
@@ -234,7 +282,11 @@ export default function ContentCalendar() {
         console.error(err);
         if (isMountedRef.current && inflightRef.current === controller) {
           setApprovalState((state) => ({ ...state, error: 'full' }));
-          toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
+          const status = Number(err?.status ?? err?.response?.status);
+          const title = status === 429
+            ? 'Muitas tentativas agora — aguarde e tente novamente.'
+            : 'Não foi possível aprovar. Tente novamente.';
+          toast({ title, status: 'error' });
         }
         track('marketing_approve_error', analyticsPayload);
       }
