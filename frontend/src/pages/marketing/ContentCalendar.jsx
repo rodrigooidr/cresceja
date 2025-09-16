@@ -18,6 +18,7 @@ import { suggestionTitle } from './lib/suggestionTitle';
 import useApproval from './hooks/useApproval.js';
 import BulkApprovalBar from './components/BulkApprovalBar.jsx';
 import { canApprove } from '../../auth/perm.js';
+import useListSelection from './hooks/useListSelection.js';
 
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -73,9 +74,8 @@ export default function ContentCalendar(props = {}) {
   const [suggestions, setSuggestions] = useState([]);
   const [jobsModal, setJobsModal] = useState({ open: false, suggestionId: null });
   const [showGenerate, setShowGenerate] = useState(false);
-  const [approveJobs, setApproveJobs] = useState([]);
+  const [approveJobs, setApproveJobs] = useState(() => (Array.isArray(props.jobs) ? props.jobs : []));
   const [approveOpen, setApproveOpen] = useState(false);
-  const [selected, setSelected] = useState(() => new Map());
   const [bulkProg, setBulkProg] = useState(null);
   const [lastRemoved, setLastRemoved] = useState(null);
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -85,24 +85,57 @@ export default function ContentCalendar(props = {}) {
   const bulkAbortRef = useRef(null);
   const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
-  // === Seleção de itens (jobId -> suggestionId) ===
-  const toggleSelect = useCallback((jobId, suggestionId) => {
-    if (!jobId) return;
-    setSelected((prev) => {
-      const next = new Map(prev);
-      if (next.has(jobId)) {
-        next.delete(jobId);
-      } else {
-        next.set(jobId, suggestionId ?? null);
-      }
-      return next;
-    });
-  }, []);
+  useEffect(() => {
+    if (!Array.isArray(props.jobs)) return;
+    setApproveJobs(props.jobs);
+  }, [props.jobs]);
+
+  const selectionItems = useMemo(
+    () =>
+      (approveJobs || [])
+        .filter((job) => job?.id)
+        .map((job) => ({
+          id: job.id,
+          suggestionId: job?.suggestionId ?? job?.suggestion_id ?? null,
+        })),
+    [approveJobs]
+  );
+
+  const {
+    selectedMap,
+    selectedCount,
+    isSelected,
+    toggle,
+    selectAllVisible,
+    clearAllVisible,
+    setSelectedMap,
+  } = useListSelection({
+    items: selectionItems,
+    getKey: props?.getSelectionKey,
+  });
+  const totalSelectable = selectionItems.length;
+
+  const toggleSelect = useCallback(
+    (jobId, suggestionId, eventLike) => {
+      if (!jobId) return;
+      const evt = eventLike && typeof eventLike === 'object' ? eventLike : undefined;
+      const shiftKey = !!(
+        evt?.shiftKey ||
+        (evt?.nativeEvent && typeof evt.nativeEvent === 'object' && evt.nativeEvent.shiftKey)
+      );
+      toggle(jobId, suggestionId ?? null, { shiftKey });
+    },
+    [toggle]
+  );
 
   useEffect(() => {
-    const jobsMap = new Map((approveJobs || []).map((job) => [job.id, job.suggestionId ?? null]));
-    setSelected((prev) => {
-      if (prev.size === 0) {
+    if (!selectionItems.length) {
+      setSelectedMap((prev) => (prev.size > 0 ? new Map() : prev));
+      return;
+    }
+    const jobsMap = new Map(selectionItems.map((item) => [item.id, item.suggestionId ?? null]));
+    setSelectedMap((prev) => {
+      if (!prev || prev.size === 0) {
         return prev;
       }
       let changed = false;
@@ -123,7 +156,7 @@ export default function ContentCalendar(props = {}) {
       }
       return next;
     });
-  }, [approveJobs]);
+  }, [selectionItems, setSelectedMap]);
 
   useEffect(() => {
     if (!lastRemoved) return;
@@ -136,14 +169,15 @@ export default function ContentCalendar(props = {}) {
     if (!lastRemoved) return;
     const jobId = lastRemoved.jobId;
     const storedSuggestion = lastRemoved.suggestionId;
-    const latestSuggestion = (approveJobs || []).find((job) => job.id === jobId)?.suggestionId ?? storedSuggestion ?? null;
-    setSelected((current) => {
+    const latestSuggestion =
+      (approveJobs || []).find((job) => job.id === jobId)?.suggestionId ?? storedSuggestion ?? null;
+    setSelectedMap((current) => {
       const next = new Map(current);
       next.set(jobId, latestSuggestion ?? null);
       return next;
     });
     setLastRemoved(null);
-  }, [lastRemoved, approveJobs]);
+  }, [lastRemoved, approveJobs, setSelectedMap]);
 
   useEffect(() => {
     if (!lastRemoved) return;
@@ -157,8 +191,8 @@ export default function ContentCalendar(props = {}) {
   }, [lastRemoved, undoLastRemoved]);
 
   const bulkStart = useCallback(() => {
-    if (!allowed || selected.size === 0 || bulkApproving) return;
-    const items = Array.from(selected.entries()).map(([jobId, suggestionId]) => ({ jobId, suggestionId }));
+    if (!allowed || selectedCount === 0 || bulkApproving) return;
+    const items = Array.from(selectedMap.entries()).map(([jobId, suggestionId]) => ({ jobId, suggestionId }));
     setBulkProg({ done: 0, total: items.length, ok: 0, partial: 0, fail: 0 });
     const { promise, abort } = approveMany({
       items,
@@ -166,7 +200,7 @@ export default function ContentCalendar(props = {}) {
       onProgress: (progress) => setBulkProg(progress),
       onItem: ({ jobId, suggestionId, result }) => {
         if (result?.ok) {
-          setSelected((prev) => {
+          setSelectedMap((prev) => {
             if (!prev.has(jobId)) return prev;
             const next = new Map(prev);
             next.delete(jobId);
@@ -186,7 +220,7 @@ export default function ContentCalendar(props = {}) {
         bulkAbortRef.current = null;
       });
     }
-  }, [allowed, selected, bulkApproving, approveMany, bulkConcurrency, onApproved]);
+  }, [allowed, selectedCount, selectedMap, bulkApproving, approveMany, bulkConcurrency, onApproved, setSelectedMap]);
 
   const bulkCancel = useCallback(() => {
     const abort = bulkAbortRef.current;
@@ -194,6 +228,10 @@ export default function ContentCalendar(props = {}) {
   }, []);
 
   useEffect(() => {
+    if (Array.isArray(props.jobs)) {
+      return undefined;
+    }
+
     let alive = true;
     if (typeof jobsClient?.get !== 'function') {
       setApproveJobs([]);
@@ -232,7 +270,7 @@ export default function ContentCalendar(props = {}) {
     return () => {
       alive = false;
     };
-  }, [jobsClient, isTestEnv]);
+  }, [jobsClient, isTestEnv, props.jobs]);
 
   function buildApprovalAttempt() {
     const suggestionCandidate =
@@ -577,18 +615,47 @@ export default function ContentCalendar(props = {}) {
       </div>
       {allowed && approveJobs.length > 0 && (
         <div className="mb-2 flex flex-col gap-1" data-testid="bulk-select-list">
-          {approveJobs.map((job) => {
+          <label className="inline-flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              data-testid="master-checkbox"
+              aria-label="Selecionar tudo"
+              onChange={() => {
+                const allSelected = totalSelectable > 0 && selectedCount >= totalSelectable;
+                if (allSelected) {
+                  clearAllVisible();
+                } else {
+                  selectAllVisible();
+                }
+              }}
+              checked={totalSelectable > 0 && selectedCount >= totalSelectable}
+              disabled={bulkApproving || totalSelectable === 0}
+              ref={(el) => {
+                if (!el) return;
+                const isSome = selectedCount > 0 && selectedCount < totalSelectable;
+                el.indeterminate = isSome;
+              }}
+            />
+            <span>Selecionar todos</span>
+          </label>
+          {approveJobs.map((job, index) => {
             const suggestionId = job?.suggestionId ?? job?.suggestion_id ?? null;
             const labelValue = job?.title || job?.name || job?.id || 'Job';
             const label = String(labelValue);
+            const jobId = job?.id ?? null;
             return (
-              <label key={job.id || suggestionId || label} className="inline-flex items-center gap-2 text-sm">
+              <label key={jobId || suggestionId || label} className="inline-flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
-                  data-testid={job.id ? `job-checkbox-${job.id}` : undefined}
-                  checked={job?.id ? selected.has(job.id) : false}
-                  onChange={() => job?.id && toggleSelect(job.id, suggestionId)}
-                  disabled={bulkApproving}
+                  data-testid={jobId ? `job-checkbox-${jobId}` : undefined}
+                  data-index={jobId ? index : undefined}
+                  checked={jobId ? isSelected(jobId) : false}
+                  onClick={(ev) => {
+                    if (!jobId) return;
+                    toggleSelect(jobId, suggestionId, ev);
+                  }}
+                  onChange={() => {}}
+                  disabled={bulkApproving || !jobId}
                   aria-label={`Selecionar ${label}`}
                 />
                 <span>{label}</span>
@@ -615,7 +682,7 @@ export default function ContentCalendar(props = {}) {
       )}
       {allowed && (
         <BulkApprovalBar
-          count={selected.size}
+          count={selectedCount}
           running={!!bulkApproving}
           progress={bulkProg}
           onStart={bulkStart}
