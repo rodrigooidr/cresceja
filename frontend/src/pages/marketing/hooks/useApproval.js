@@ -32,6 +32,7 @@ export default function useApproval({ api = inboxApi } = {}) {
    * @property {number} [status]
    */
   const [approving, setApproving] = useState(false);
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [state, setState] = useState({ job: 'idle', suggestion: 'idle', error: null });
   const lastAttempt = useRef(null);
   const inflight = useRef(null);
@@ -42,6 +43,107 @@ export default function useApproval({ api = inboxApi } = {}) {
     mounted.current = false;
     inflight.current?.abort?.();
   }, []);
+
+  const approveOne = useCallback(async ({ jobId, suggestionId, signal }) => {
+    const controller = new AbortController();
+    const forwardAbort = () => controller.abort();
+    signal?.addEventListener?.('abort', forwardAbort, { once: true });
+    if (signal?.aborted) {
+      controller.abort();
+    }
+    try {
+      const headers = { 'Idempotency-Key': newIdempotencyKey() };
+      const classifyRetry = (err) => {
+        const status = Number(err?.status ?? err?.response?.status);
+        return err?.name !== 'AbortError' && [429, 502, 503, 504].includes(status);
+      };
+
+      const callJob = () => api.post(
+        `/marketing/jobs/${jobId}/approve`,
+        { jobId },
+        { signal: controller.signal, headers }
+      );
+
+      const callSuggestion = () => api.post(
+        `/marketing/suggestions/${suggestionId}/approve`,
+        { suggestionId },
+        { signal: controller.signal, headers }
+      );
+
+      track('marketing_approve_click', { jobId, suggestionId, mode: 'single-or-bulk' });
+
+      const jobPromise = jobId
+        ? retry(() => callJob(), {
+            ...RETRY_DEFAULTS,
+            signal: controller.signal,
+            classify: classifyRetry,
+            onAttempt: (attempt) =>
+              track('marketing_approve_job_attempt', { jobId, attempt, bulk: !!signal }),
+          })
+        : Promise.resolve({ ok: true });
+
+      const suggestionPromise = suggestionId
+        ? retry(() => callSuggestion(), {
+            ...RETRY_DEFAULTS,
+            signal: controller.signal,
+            classify: classifyRetry,
+            onAttempt: (attempt) =>
+              track('marketing_approve_suggestion_attempt', { suggestionId, attempt, bulk: !!signal }),
+          })
+        : Promise.resolve({ ok: true });
+
+      const [jobRes, suggestionRes] = await Promise.allSettled([jobPromise, suggestionPromise]);
+
+      const aborted = [jobRes, suggestionRes].some(
+        (result) => result.status === 'rejected' && result.reason?.name === 'AbortError'
+      );
+
+      if (aborted) {
+        track('marketing_approve_abort', { jobId, suggestionId, bulk: !!signal });
+        return { ok: false, partial: false, reason: 'abort', jobStatus: 'idle', suggestionStatus: 'idle' };
+      }
+
+      const jobStatus = jobId ? toStatus(jobRes, true) : 'idle';
+      const suggestionStatus = suggestionId ? toStatus(suggestionRes, true) : 'idle';
+      const statuses = [jobStatus, suggestionStatus].filter((value) => value !== 'idle');
+
+      if (statuses.every((value) => value === 'ok')) {
+        track('marketing_approve_success', { jobId, suggestionId, test: !!isTestEnv, bulk: !!signal });
+        return { ok: true, partial: false, jobStatus, suggestionStatus };
+      }
+
+      if (statuses.some((value) => value === 'err')) {
+        if (statuses.every((value) => value === 'err')) {
+          const status = getErrorStatus(jobRes) ?? getErrorStatus(suggestionRes);
+          track('marketing_approve_error', { jobId, suggestionId, status, bulk: !!signal });
+          return { ok: false, partial: false, reason: 'error', status, jobStatus, suggestionStatus };
+        }
+
+        track('marketing_approve_partial', { jobId, suggestionId, bulk: !!signal });
+        return { ok: false, partial: true, jobStatus, suggestionStatus };
+      }
+
+      return { ok: true, partial: false, jobStatus, suggestionStatus };
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        track('marketing_approve_abort', { jobId, suggestionId, bulk: !!signal });
+        return { ok: false, partial: false, reason: 'abort', jobStatus: 'idle', suggestionStatus: 'idle' };
+      }
+
+      const status = err?.status ?? err?.response?.status;
+      track('marketing_approve_error', { jobId, suggestionId, status, bulk: !!signal });
+      return {
+        ok: false,
+        partial: false,
+        reason: 'error',
+        status,
+        jobStatus: jobId ? 'err' : 'idle',
+        suggestionStatus: suggestionId ? 'err' : 'idle',
+      };
+    } finally {
+      signal?.removeEventListener?.('abort', forwardAbort);
+    }
+  }, [api, isTestEnv]);
 
   /**
    * Executa a aprovação de um par (jobId, suggestionId).
@@ -235,5 +337,80 @@ export default function useApproval({ api = inboxApi } = {}) {
     controller?.abort?.();
   }, []);
 
-  return { approving, state, approve, retryApprove, abort };
+  const approveMany = useCallback(({ items = [], concurrency = 3, onProgress, onItem } = {}) => {
+    if (!Array.isArray(items) || items.length === 0) {
+      return {
+        promise: Promise.resolve({ total: 0, ok: 0, partial: 0, fail: 0, aborted: false, results: [] }),
+        abort: () => {},
+      };
+    }
+
+    const bulkController = new AbortController();
+    let done = 0;
+    let ok = 0;
+    let partial = 0;
+    let fail = 0;
+    const results = [];
+
+    if (mounted.current) {
+      setBulkApproving(true);
+    }
+
+    const concurrencyValue = Number(concurrency);
+    const normalizedConcurrency = Number.isFinite(concurrencyValue) && concurrencyValue > 0
+      ? Math.max(1, Math.floor(concurrencyValue))
+      : 3;
+    const workerCount = Math.min(items.length, Math.max(1, normalizedConcurrency));
+    const stride = workerCount || 1;
+
+    track('marketing_bulk_approve_start', { total: items.length, concurrency: normalizedConcurrency });
+
+    const worker = async (startIndex) => {
+      for (let index = startIndex; index < items.length; index += stride) {
+        if (bulkController.signal.aborted) {
+          break;
+        }
+
+        const { jobId, suggestionId } = items[index] || {};
+        const result = await approveOne({ jobId, suggestionId, signal: bulkController.signal });
+        results[index] = { index, jobId, suggestionId, result };
+
+        if (result.ok) {
+          ok += 1;
+        } else if (result.partial) {
+          partial += 1;
+        } else {
+          fail += 1;
+        }
+
+        done += 1;
+        onItem?.(results[index]);
+        onProgress?.({ done, total: items.length, ok, partial, fail });
+      }
+    };
+
+    const promise = (async () => {
+      try {
+        await Promise.all(Array.from({ length: workerCount }, (_, workerIndex) => worker(workerIndex)));
+        const aborted = bulkController.signal.aborted;
+        track('marketing_bulk_approve_done', { total: items.length, ok, partial, fail, aborted });
+        return { total: items.length, ok, partial, fail, aborted, results };
+      } finally {
+        if (mounted.current) {
+          setBulkApproving(false);
+        }
+      }
+    })();
+
+    const cancel = () => {
+      if (!bulkController.signal.aborted) {
+        bulkController.abort();
+        track('marketing_bulk_approve_cancel', { total: items.length, done, ok, partial, fail });
+      }
+    };
+
+    return { promise, abort: cancel };
+  }, [approveOne]);
+
+  return { approving, bulkApproving, state, approve, retryApprove, abort, approveMany };
 }
