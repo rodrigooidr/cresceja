@@ -42,9 +42,22 @@ for (const m of METHODS) {
   api[m] = jest.fn((...args) => orig(...args));
 }
 
+const marketingJobs = [
+  {
+    id: "job-1",
+    channel: "instagram",
+    title: "Sugestão IG/FB #1",
+    caption: "Legenda 1",
+    status: "pending",
+  },
+];
+
 const originalGet = api.get;
 api.get = jest.fn((...args) => {
   const [url] = args;
+  if (url === "/marketing/content/jobs" || url === "/marketing/calendar/jobs") {
+    return Promise.resolve({ data: marketingJobs });
+  }
   if (/^\/channels\/meta\/accounts\/[^/]+\/backfill\/status/.test(url)) {
     return Promise.resolve({ data: { last: null } });
   }
@@ -55,6 +68,15 @@ api.get = jest.fn((...args) => {
     return Promise.resolve({ data: { items: [] } });
   }
   return originalGet(...args);
+});
+
+const originalPost = api.post;
+api.post = jest.fn((...args) => {
+  const [url] = args;
+  if (url === "/marketing/content/approve" || url === "/marketing/calendar/approve") {
+    return Promise.resolve({ data: { ok: true } });
+  }
+  return originalPost(...args);
 });
 
 // (opcional) se seu código usa interceptors, mantenha um stub seguro
