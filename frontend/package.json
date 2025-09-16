@@ -55,6 +55,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "cross-env NODE_OPTIONS=--max-old-space-size=4096 jest --maxWorkers=50% --detectOpenHandles --logHeapUsage",
+    "test:health": "jest test/ContentCalendar.health.test.jsx --config jest.config.cjs --runTestsByPath --silent --maxWorkers=1",
     "test:watch": "jest --watch",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",

@@ -1,10 +1,7 @@
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // Bridge universal do inboxApi → mock, cobrindo variações de path/com extensão
-const bridge = () => {
-  const m = require("../src/api/__mocks__/inboxApi.js");
-  return m.default || m;
-};
+const bridge = () => require("../src/api/__mocks__/inboxApi.js");
 try { jest.mock("../src/api/inboxApi", bridge); } catch {}
 try { jest.mock("../src/api/inboxApi.js", bridge); } catch {}
 try { jest.mock("../../src/api/inboxApi", bridge); } catch {}
@@ -126,7 +123,13 @@ if (!window.toast) { window.toast = jest.fn(); }
 // Navegação (padrão no-op; sobrescrever localmente quando precisar assert)
 jest.mock('react-router-dom', () => {
   const actual = jest.requireActual('react-router-dom');
-  return { ...actual, useNavigate: () => jest.fn() };
+  const React = require('react');
+  const SafeLink = React.forwardRef(({ children, to, href, ...rest }, ref) => {
+    const resolvedHref = href || (typeof to === 'string' ? to : to?.pathname || '#');
+    return React.createElement('a', { ...rest, href: resolvedHref, ref }, children);
+  });
+  SafeLink.displayName = 'MockLink';
+  return { ...actual, useNavigate: () => jest.fn(), Link: SafeLink };
 });
 
 const api = inboxApi;
