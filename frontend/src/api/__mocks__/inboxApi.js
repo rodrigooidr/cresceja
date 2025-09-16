@@ -64,6 +64,39 @@ const originalPost = api.post;
 function handleGet(...args) {
   const [url] = args;
   if (typeof url === "string") {
+    // CRM
+    if (url.startsWith("/crm/contacts")) {
+      try {
+        const u = new URL(`http://mock.local${url}`);
+        const phone = u.searchParams.get("phone");
+        if (phone) {
+          const contact = lookupContactByPhone(phone);
+          return Promise.resolve({ data: { found: Boolean(contact), contact } });
+        }
+        const id = u.searchParams.get("id");
+        if (id) {
+          const contact = __crm.contacts.get(id) || null;
+          return Promise.resolve({ data: { contact } });
+        }
+      } catch {}
+      return Promise.resolve({ data: { items: Array.from(__crm.contacts.values()) } });
+    }
+    if (url === "/crm/statuses") {
+      return Promise.resolve({ data: { items: __crm.statuses.slice() } });
+    }
+    // AI
+    if (url === "/ai/settings") {
+      return Promise.resolve({ data: { enabledAll: __ai.enabledAll } });
+    }
+    if (url.startsWith("/ai/perChat")) {
+      try {
+        const u = new URL(`http://mock.local${url}`);
+        const chatId = u.searchParams.get("chatId");
+        const enabled = typeof chatId === "string" ? __ai.perChat.get(chatId) ?? null : null;
+        return Promise.resolve({ data: { enabled } });
+      } catch {}
+      return Promise.resolve({ data: { enabled: null } });
+    }
     // WhatsApp history (cloud/baileys)
     if (url.startsWith("/whatsapp/cloud/history") || url.startsWith("/whatsapp/baileys/history")) {
       const u = new URL("http://x" + url);
@@ -141,6 +174,78 @@ function handlePost(...args) {
   const [url, body] = args;
   const config = args.length > 2 ? args[2] : undefined;
   if (typeof url === "string") {
+    // CRM create/update/tags
+    if (url === "/crm/contacts") {
+      const { name, phone, email, birthday, status = "", notes = "", channel = "whatsapp" } = body || {};
+      const emailOk = typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+      const normalizedPhone = typeof phone === "string" ? phone.replace(/\D/g, "") : "";
+      const phoneOk = normalizedPhone.length >= 8 && normalizedPhone.length <= 15;
+      const birthOk = typeof birthday === "string" && /^\d{4}-\d{2}-\d{2}$/.test(birthday);
+      if (!name || !emailOk || !phoneOk || !birthOk) {
+        const err = new Error("Bad Request");
+        err.status = 400;
+        throw err;
+      }
+      const id = String(__crm.nextId++);
+      const contact = {
+        id,
+        name,
+        phone,
+        email,
+        birthday,
+        status,
+        notes,
+        channel,
+        tags: [],
+      };
+      __crm.contacts.set(id, contact);
+      indexContact(contact);
+      return Promise.resolve({ data: { ok: true, contact } });
+    }
+    if (url === "/crm/update") {
+      const { id, patch } = body || {};
+      const contact = __crm.contacts.get(id);
+      if (!contact) {
+        const err = new Error("Not Found");
+        err.status = 404;
+        throw err;
+      }
+      Object.assign(contact, patch || {});
+      if (patch?.tags) {
+        contact.tags = Array.from(new Set([...(contact.tags || []), ...patch.tags]));
+      }
+      indexContact(contact);
+      return Promise.resolve({ data: { ok: true, contact } });
+    }
+    if (url === "/crm/tags") {
+      const { id, tag } = body || {};
+      const contact = __crm.contacts.get(id);
+      if (!contact) {
+        const err = new Error("Not Found");
+        err.status = 404;
+        throw err;
+      }
+      if (tag) {
+        contact.tags = Array.from(new Set([...(contact.tags || []), tag]));
+      }
+      return Promise.resolve({ data: { ok: true, contact } });
+    }
+    // AI settings
+    if (url === "/ai/settings") {
+      __ai.enabledAll = Boolean(body?.enabledAll);
+      return Promise.resolve({ data: { ok: true } });
+    }
+    if (url === "/ai/perChat") {
+      const { chatId, enabled } = body || {};
+      if (chatId) {
+        __ai.perChat.set(chatId, Boolean(enabled));
+      }
+      return Promise.resolve({ data: { ok: true } });
+    }
+    if (url === "/ai/transcribe") {
+      const text = body?.url ? "Transcrição simulada do áudio." : "";
+      return Promise.resolve({ data: { text } });
+    }
     // WhatsApp endpoints (cloud/baileys)
     if (/^\/whatsapp\/(cloud|baileys)\/send$/.test(url)) {
       const bus = api.__mock.waBus();
@@ -313,6 +418,52 @@ let __waBus = null;
 let __waChats = new Map(); // chatId -> { messages: [{...}] }
 let __waOpts = { readReceipts: true, autoDeliverMs: 40, autoReadMs: 80 };
 let __auditLogs = [];
+let __crm = {
+  contacts: new Map(),
+  byPhone: new Map(),
+  statuses: ["Lead", "Qualificado", "Proposta", "Fechado"],
+  nextId: 1,
+};
+let __ai = { enabledAll: true, perChat: new Map() };
+
+function normalizePhone(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/\D/g, "");
+}
+
+function indexContact(contact) {
+  if (!contact?.id) return;
+  for (const [key, value] of __crm.byPhone.entries()) {
+    if (value === contact.id) {
+      __crm.byPhone.delete(key);
+    }
+  }
+  const normalized = normalizePhone(contact.phone);
+  if (contact.phone) {
+    __crm.byPhone.set(contact.phone, contact.id);
+  }
+  if (normalized) {
+    __crm.byPhone.set(normalized, contact.id);
+  }
+}
+
+function lookupContactByPhone(phone) {
+  if (!phone) return null;
+  const normalized = normalizePhone(phone);
+  const idKey = __crm.byPhone.get(phone) || (normalized ? __crm.byPhone.get(normalized) : undefined);
+  if (idKey) {
+    return __crm.contacts.get(idKey) || null;
+  }
+  if (normalized) {
+    const match = Array.from(__crm.contacts.values()).find((entry) => {
+      const entryNorm = normalizePhone(entry.phone);
+      if (!entryNorm) return false;
+      return entryNorm === normalized || entryNorm.startsWith(normalized) || normalized.startsWith(entryNorm);
+    });
+    return match || null;
+  }
+  return null;
+}
 
 function createAbortError() {
   try {
@@ -497,6 +648,13 @@ api.__mock = {
     __waChats = new Map();
     __waBus = null;
     __waOpts = { readReceipts: true, autoDeliverMs: 40, autoReadMs: 80 };
+    __crm = {
+      contacts: new Map(),
+      byPhone: new Map(),
+      statuses: ["Lead", "Qualificado", "Proposta", "Fechado"],
+      nextId: 1,
+    };
+    __ai = { enabledAll: true, perChat: new Map() };
     api.get.mockClear();
     api.post.mockClear();
     applyHandlers();
@@ -587,6 +745,31 @@ api.__mock = {
   },
   waOptions(opts) {
     Object.assign(__waOpts, opts || {});
+  },
+  crmSeed(contact = {}) {
+    const id = String(__crm.nextId++);
+    const base = {
+      id,
+      name: "",
+      phone: "",
+      email: "",
+      birthday: "",
+      status: "",
+      notes: "",
+      channel: "whatsapp",
+      tags: [],
+    };
+    const c = { ...base, ...contact, id };
+    if (!c.phone) {
+      throw new Error("crmSeed requer phone");
+    }
+    c.tags = Array.isArray(c.tags) ? Array.from(new Set(c.tags)) : [];
+    __crm.contacts.set(id, c);
+    indexContact(c);
+    return c;
+  },
+  aiState() {
+    return { enabledAll: __ai.enabledAll, perChat: new Map(__ai.perChat) };
   },
   waState() {
     return { chats: __waChats };
