@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../../api/index.js';
 import { useApi } from '../../contexts/useApi';
 import useActiveOrg from '../../hooks/useActiveOrg.js';
@@ -58,7 +58,14 @@ export default function ContentCalendar() {
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [hasNavigated, setHasNavigated] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [approvalState, setApprovalState] = useState({ job: 'idle', suggestion: 'idle', error: null });
+  const [lastAttempt, setLastAttempt] = useState(null);
   const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const isMountedRef = useRef(true);
+
+  useEffect(() => () => {
+    isMountedRef.current = false;
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -101,36 +108,105 @@ export default function ContentCalendar() {
     };
   }, [jobsClient, isTestEnv]);
 
-  async function onApproveClick() {
+  function buildApprovalAttempt() {
+    const suggestionCandidate =
+      suggestions.find((item) => item?.status === 'suggested') || suggestions[0] || null;
+    let normalizedOrgId = null;
+    if (orgId && suggestionCandidate) {
+      normalizedOrgId =
+        process.env.NODE_ENV === 'test' && typeof orgId === 'string' && !orgId.startsWith('org-')
+          ? `org-${orgId}`
+          : orgId;
+    }
+    return {
+      jobIds: approveJobs.map((job) => job.id),
+      suggestionId: suggestionCandidate?.id ?? null,
+      normalizedOrgId,
+    };
+  }
+
+  async function executeApproval(attemptInput) {
+    if (!isMountedRef.current) return;
     if (approving) return;
     const client = typeof jobsClient?.post === 'function' ? jobsClient : api;
-    const suggestion = suggestions.find((item) => item?.status === 'suggested') || suggestions[0];
+    const attempt = attemptInput ?? buildApprovalAttempt();
+    const jobIds = Array.isArray(attempt?.jobIds) ? attempt.jobIds : [];
+    const suggestionId = attempt?.suggestionId ?? null;
+    const normalizedOrgId = attempt?.normalizedOrgId ?? null;
+    const shouldApproveJobs = jobIds.length > 0 && typeof client?.post === 'function';
+    const shouldApproveSuggestion = Boolean(normalizedOrgId && suggestionId);
+
+    if (!isMountedRef.current) return;
+
     setApproving(true);
+    setLastAttempt({ jobIds, suggestionId, normalizedOrgId });
+    setApprovalState({
+      job: shouldApproveJobs ? 'pending' : 'idle',
+      suggestion: shouldApproveSuggestion ? 'pending' : 'idle',
+      error: null,
+    });
+
     try {
-      if (approveJobs.length > 0 && typeof client?.post === 'function') {
-        await client.post('/marketing/content/approve', { ids: approveJobs.map((job) => job.id) });
+      const jobPromise = shouldApproveJobs
+        ? client.post('/marketing/content/approve', { ids: jobIds })
+        : Promise.resolve({ ok: true });
+      const suggestionPromise = shouldApproveSuggestion
+        ? api.post(`/orgs/${normalizedOrgId}/suggestions/${suggestionId}/approve`)
+        : Promise.resolve({ ok: true });
+
+      const [jobRes, suggestionRes] = await Promise.allSettled([jobPromise, suggestionPromise]);
+      const jobStatus = shouldApproveJobs ? (jobRes.status === 'fulfilled' ? 'ok' : 'err') : 'idle';
+      const suggestionStatus = shouldApproveSuggestion
+        ? (suggestionRes.status === 'fulfilled' ? 'ok' : 'err')
+        : 'idle';
+
+      const statuses = [];
+      if (shouldApproveJobs) statuses.push(jobStatus);
+      if (shouldApproveSuggestion) statuses.push(suggestionStatus);
+      let errorType = null;
+      if (statuses.some((status) => status === 'err')) {
+        errorType = statuses.every((status) => status === 'err') ? 'full' : 'partial';
       }
 
-      if (orgId && suggestion) {
-        const normalizedOrgId =
-          process.env.NODE_ENV === 'test' && typeof orgId === 'string' && !orgId.startsWith('org-')
-            ? `org-${orgId}`
-            : orgId;
-        await api.post(`/orgs/${normalizedOrgId}/suggestions/${suggestion.id}/approve`);
+      if (isMountedRef.current) {
+        setApprovalState({ job: jobStatus, suggestion: suggestionStatus, error: errorType });
       }
 
-      if (suggestion) {
-        setJobsModal({ open: true, suggestionId: suggestion.id });
+      if (!errorType) {
+        if (shouldApproveSuggestion && suggestionId && isMountedRef.current) {
+          setJobsModal({ open: true, suggestionId });
+        }
+        if (isMountedRef.current) {
+          setApproveOpen(true);
+        }
+        toast({ title: 'Jobs aprovados com sucesso.' });
+      } else if (errorType === 'partial') {
+        toast({ title: 'Aprovação parcial: tente novamente.', status: 'error' });
+      } else {
+        toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
       }
-
-      setApproveOpen(true);
-      toast({ title: 'Jobs aprovados com sucesso.' });
     } catch (err) {
       console.error(err);
+      if (isMountedRef.current) {
+        setApprovalState((state) => ({ ...state, error: 'full' }));
+      }
       toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
     } finally {
-      setApproving(false);
+      if (isMountedRef.current) {
+        setApproving(false);
+      }
     }
+  }
+
+  async function onApproveClick(event) {
+    event?.preventDefault?.();
+    const attempt = buildApprovalAttempt();
+    await executeApproval(attempt);
+  }
+
+  function handleRetry() {
+    if (!lastAttempt || approving) return;
+    executeApproval({ ...lastAttempt });
   }
 
   const fetchCampaigns = useCallback(async () => {
@@ -345,11 +421,26 @@ export default function ContentCalendar() {
             onClick={onApproveClick}
             disabled={approving}
             aria-busy={approving ? 'true' : 'false'}
+            aria-disabled={approving ? 'true' : 'false'}
+            type="button"
           >
             {approving ? 'Aprovando…' : 'Aprovar'}
           </button>
         </PermissionGate>
       </div>
+      {approvalState.error === 'partial' && (
+        <div role="alert" className="cc-alert cc-alert-error mb-2 flex items-center gap-2">
+          <span>Falha ao aprovar parte dos itens.</span>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="underline text-sm"
+            aria-label="Tentar novamente"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      )}
       <DnDCalendar
         localizer={localizer}
         events={events}
