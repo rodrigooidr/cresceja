@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import api from '../../api/index.js';
 import { useApi } from '../../contexts/useApi';
 import useActiveOrg from '../../hooks/useActiveOrg.js';
@@ -91,6 +92,7 @@ export default function ContentCalendar(props = {}) {
   const bulkAbortRef = useRef(null);
   const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
   const isDevEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+  const isProdEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'production';
 
   useEffect(() => {
     if (!Array.isArray(props.jobs)) return;
@@ -769,6 +771,13 @@ export default function ContentCalendar(props = {}) {
           onCancel={bulkCancel}
           t={{ start: t.approve, cancel: 'Cancelar', running: t.approving }}
         />
+      )}
+      {!isProdEnv && (
+        <div className="mt-2">
+          <Link to="/settings/governanca" data-testid="go-governanca">
+            Ver Governança &amp; Logs
+          </Link>
+        </div>
       )}
       <DnDCalendar
         localizer={localizer}
