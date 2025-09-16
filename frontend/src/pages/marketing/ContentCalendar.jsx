@@ -12,6 +12,7 @@ import { useAuth } from '../../auth/useAuth.js';
 import PermissionGate from '../../auth/PermissionGate.jsx';
 import { CAN_MANAGE_CAMPAIGNS } from '../../auth/roles.js';
 import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
+import suggestionTitle from './lib/suggestionTitle';
 
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -59,13 +60,13 @@ export default function ContentCalendar() {
   useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
 
   const events = useMemo(() => {
-    const toEvent = (s) => {
+    const toEvent = (s, index) => {
       const dt = DateTime.fromISO(`${s.date}T${s.time}`, { setZone: true });
       const start = dt.toJSDate();
       const end = dt.plus({ minutes: 30 }).toJSDate();
-      return { id: s.id, title: s.copy_json?.headline || 'Sugestão', resource: s, start, end, allDay: false };
+      return { id: s.id, title: suggestionTitle(s, index), resource: s, start, end, allDay: false };
     };
-    return suggestions.map(toEvent);
+    return suggestions.map((suggestion, index) => toEvent(suggestion, index));
   }, [suggestions]);
 
   const eventPropGetter = useCallback((event) => {
