@@ -33,7 +33,7 @@ export function isDnDEnabledForUser(user) {
   return CAN_MANAGE_CAMPAIGNS(user);
 }
 
-export default function ContentCalendar() {
+export default function ContentCalendar(props = {}) {
   const apiClient = useApi();
   const jobsClient = useMemo(
     () => (apiClient && typeof apiClient.get === 'function' ? apiClient : api),
@@ -47,10 +47,26 @@ export default function ContentCalendar() {
     }
     return null;
   }, [activeOrg]);
+  const { currentUser, t: providedT, onApproved } = props;
   const toast = useToastFallback();
-  const { user } = useAuth?.() ?? { user: null };
+  const { user: authUser } = useAuth?.() ?? { user: null };
+  const user = currentUser ?? authUser;
   const canManage = CAN_MANAGE_CAMPAIGNS(user);
   const allowed = canApprove?.(user) ?? true;
+  const t = useMemo(
+    () => ({
+      approve: 'Aprovar',
+      approving: 'Aprovando…',
+      approved_ok: 'Jobs aprovados com sucesso.',
+      partial_error: 'Aprovação parcial: tente novamente.',
+      rate_limited: 'Muitas tentativas agora — aguarde e tente novamente.',
+      full_error: 'Não foi possível aprovar. Tente novamente.',
+      partial_alert: 'Falha ao aprovar parte dos itens.',
+      retry: 'Tentar novamente',
+      ...(providedT || {}),
+    }),
+    [providedT]
+  );
   const [campaigns, setCampaigns] = useState([]);
   const [campaignId, setCampaignId] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -131,27 +147,43 @@ export default function ContentCalendar() {
         setJobsModal({ open: true, suggestionId });
       }
       setApproveOpen(true);
-      toast({ title: 'Jobs aprovados com sucesso.' });
+      toast({ title: t.approved_ok });
     } else if (result.partial) {
       if (result.jobStatus === 'err' && result.suggestionStatus !== 'err') {
         const status = Number(result.status);
         const title = status === 429
-          ? 'Muitas tentativas agora — aguarde e tente novamente.'
-          : 'Não foi possível aprovar. Tente novamente.';
+          ? t.rate_limited
+          : t.full_error;
         toast({ title, status: 'error' });
       } else {
-        toast({ title: 'Aprovação parcial: tente novamente.', status: 'error' });
+        toast({ title: t.partial_error, status: 'error' });
       }
     } else if (result.reason === 'error') {
       const status = Number(result.status);
       const title = status === 429
-        ? 'Muitas tentativas agora — aguarde e tente novamente.'
-        : 'Não foi possível aprovar. Tente novamente.';
+        ? t.rate_limited
+        : t.full_error;
       toast({ title, status: 'error' });
     }
 
     return result;
-  }, [toast, setApproveOpen, setJobsModal]);
+  }, [toast, setApproveOpen, setJobsModal, t]);
+
+  const emitApproved = useCallback(
+    (context, result) => {
+      if (typeof onApproved !== 'function') return;
+      const jobIds = Array.isArray(context?.jobIds) ? context.jobIds : undefined;
+      const jobId = context?.jobId ?? (jobIds ? jobIds[0] ?? null : null);
+      const payload = {
+        jobId: jobId ?? null,
+        suggestionId: context?.suggestionId ?? null,
+        result,
+      };
+      if (jobIds) payload.jobIds = jobIds;
+      onApproved(payload);
+    },
+    [onApproved]
+  );
 
   async function executeApproval(attemptInput) {
     const client = typeof jobsClient?.post === 'function' ? jobsClient : api;
@@ -178,7 +210,8 @@ export default function ContentCalendar() {
       : null;
 
     const analyticsPayload = { jobIds, suggestionId, normalizedOrgId };
-    const attemptContext = { jobIds, suggestionId, normalizedOrgId, shouldApproveJobs, shouldApproveSuggestion };
+    const jobId = jobIds[0] ?? null;
+    const attemptContext = { jobIds, jobId, suggestionId, normalizedOrgId, shouldApproveJobs, shouldApproveSuggestion };
     lastAttemptRef.current = attemptContext;
 
     const result = await approveRequest({
@@ -188,7 +221,9 @@ export default function ContentCalendar() {
       jobIds,
     });
 
-    return handleApprovalOutcome(result, attemptContext);
+    const handled = handleApprovalOutcome(result, attemptContext);
+    emitApproved(attemptContext, handled);
+    return handled;
   }
 
   async function onApproveClick(event) {
@@ -199,9 +234,12 @@ export default function ContentCalendar() {
 
   const handleRetry = useCallback(async () => {
     if (!lastAttemptRef.current) return;
+    const context = lastAttemptRef.current;
     const result = await retryApprove();
-    return handleApprovalOutcome(result, lastAttemptRef.current);
-  }, [retryApprove, handleApprovalOutcome]);
+    const handled = handleApprovalOutcome(result, context);
+    emitApproved(context, handled);
+    return handled;
+  }, [retryApprove, handleApprovalOutcome, emitApproved]);
 
   const fetchCampaigns = useCallback(async () => {
     if (!orgId) return;
@@ -419,24 +457,24 @@ export default function ContentCalendar() {
               aria-disabled={approving ? 'true' : 'false'}
               type="button"
             >
-              {approving ? 'Aprovando…' : 'Aprovar'}
+              {approving ? t.approving : t.approve}
             </button>
           </PermissionGate>
         )}
       </div>
       <div role="status" aria-live="polite" aria-atomic="true" style={{ position: 'absolute', left: -9999 }}>
-        {approving ? 'Aprovando…' : ''}
+        {approving ? t.approving : ''}
       </div>
       {approvalState.error === 'partial' && (
         <div role="alert" className="cc-alert cc-alert-error mb-2 flex items-center gap-2">
-          <span>Falha ao aprovar parte dos itens.</span>
+          <span>{t.partial_alert}</span>
           <button
             type="button"
             onClick={handleRetry}
             className="underline text-sm"
-            aria-label="Tentar novamente"
+            aria-label={t.retry}
           >
-            Tentar novamente
+            {t.retry}
           </button>
         </div>
       )}
