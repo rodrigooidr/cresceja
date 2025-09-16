@@ -64,6 +64,22 @@ const originalPost = api.post;
 function handleGet(...args) {
   const [url] = args;
   if (typeof url === "string") {
+    // WhatsApp history (cloud/baileys)
+    if (url.startsWith("/whatsapp/cloud/history") || url.startsWith("/whatsapp/baileys/history")) {
+      const u = new URL("http://x" + url);
+      const chatId = u.searchParams.get("chatId");
+      const limit = Number(u.searchParams.get("limit")) || 20;
+      const cursor = u.searchParams.get("cursor");
+      const store = __waChats.get(chatId) || { messages: [] };
+      let start = store.messages.length - limit;
+      if (cursor) {
+        const idx = store.messages.findIndex((m) => m.id === cursor);
+        start = Math.max(0, idx - limit);
+      }
+      const slice = store.messages.slice(Math.max(0, start));
+      const nextCursor = slice.length ? slice[0].id : null;
+      return Promise.resolve({ data: { items: slice, nextCursor } });
+    }
     if (url.startsWith("/gov/logs")) {
       try {
         const parsed = new URL(url, "http://mock.local");
@@ -123,7 +139,128 @@ function handleGet(...args) {
 
 function handlePost(...args) {
   const [url, body] = args;
+  const config = args.length > 2 ? args[2] : undefined;
   if (typeof url === "string") {
+    // WhatsApp endpoints (cloud/baileys)
+    if (/^\/whatsapp\/(cloud|baileys)\/send$/.test(url)) {
+      const bus = api.__mock.waBus();
+      const chatId = body.chatId || body.to;
+      const msg = {
+        id: `wam-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        chatId,
+        from: "me",
+        to: body.to,
+        direction: "out",
+        type: "text",
+        text: body.text || "",
+        media: null,
+        timestamp: Date.now(),
+        status: "sent",
+      };
+      const store = __waChats.get(chatId) || { messages: [] };
+      store.messages.push(msg);
+      __waChats.set(chatId, store);
+      setTimeout(() => {
+        bus.emit("wa:message", { ...msg });
+      }, 0);
+      setTimeout(() => {
+        msg.status = "delivered";
+        bus.emit("wa:status", {
+          chatId,
+          messageId: msg.id,
+          status: "delivered",
+          timestamp: Date.now(),
+        });
+      }, __waOpts.autoDeliverMs);
+      if (__waOpts.readReceipts) {
+        setTimeout(() => {
+          msg.status = "read";
+          bus.emit("wa:status", {
+            chatId,
+            messageId: msg.id,
+            status: "read",
+            timestamp: Date.now(),
+          });
+        }, __waOpts.autoReadMs);
+      }
+      return Promise.resolve({
+        data: {
+          ok: true,
+          message: msg,
+          idempotency: config?.headers?.["Idempotency-Key"] || null,
+        },
+      });
+    }
+    if (/^\/whatsapp\/(cloud|baileys)\/sendMedia$/.test(url)) {
+      const bus = api.__mock.waBus();
+      const chatId = body.chatId || body.to;
+      const msg = {
+        id: `wam-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        chatId,
+        from: "me",
+        to: body.to,
+        direction: "out",
+        type: body?.media?.type || "image",
+        text: body?.caption || "",
+        media: body.media || null,
+        timestamp: Date.now(),
+        status: "sent",
+      };
+      const store = __waChats.get(chatId) || { messages: [] };
+      store.messages.push(msg);
+      __waChats.set(chatId, store);
+      setTimeout(() => {
+        bus.emit("wa:message", { ...msg });
+      }, 0);
+      setTimeout(() => {
+        msg.status = "delivered";
+        bus.emit("wa:status", {
+          chatId,
+          messageId: msg.id,
+          status: "delivered",
+          timestamp: Date.now(),
+        });
+      }, __waOpts.autoDeliverMs);
+      if (__waOpts.readReceipts) {
+        setTimeout(() => {
+          msg.status = "read";
+          bus.emit("wa:status", {
+            chatId,
+            messageId: msg.id,
+            status: "read",
+            timestamp: Date.now(),
+          });
+        }, __waOpts.autoReadMs);
+      }
+      return Promise.resolve({ data: { ok: true, message: msg } });
+    }
+    if (/^\/whatsapp\/(cloud|baileys)\/markRead$/.test(url)) {
+      const bus = api.__mock.waBus();
+      setTimeout(() => {
+        const store = __waChats.get(body.chatId);
+        if (store) {
+          const entry = store.messages.find((m) => m.id === body.messageId);
+          if (entry) entry.status = "read";
+        }
+        bus.emit("wa:status", {
+          chatId: body.chatId,
+          messageId: body.messageId,
+          status: "read",
+          timestamp: Date.now(),
+        });
+      }, 10);
+      return Promise.resolve({ data: { ok: true } });
+    }
+    if (/^\/whatsapp\/(cloud|baileys)\/typing$/.test(url)) {
+      const bus = api.__mock.waBus();
+      bus.emit("wa:typing", {
+        chatId: body.chatId,
+        from: "me",
+        state: body.state,
+        timestamp: Date.now(),
+      });
+      return Promise.resolve({ data: { ok: true } });
+    }
     if (url === "/gov/logs") {
       const now = Date.now();
       const payload = body && typeof body === "object" ? body : {};
@@ -165,6 +302,10 @@ let delayMs = 0;
 let failMatchers = [];
 let typedFailures = [];
 let flakyFailures = [];
+// --- WhatsApp mock store ---
+let __waBus = null;
+let __waChats = new Map(); // chatId -> { messages: [{...}] }
+let __waOpts = { readReceipts: true, autoDeliverMs: 40, autoReadMs: 80 };
 let __auditLogs = [];
 
 function createAbortError() {
@@ -347,6 +488,9 @@ api.__mock = {
     typedFailures = [];
     flakyFailures = [];
     __auditLogs = [];
+    __waChats = new Map();
+    __waBus = null;
+    __waOpts = { readReceipts: true, autoDeliverMs: 40, autoReadMs: 80 };
     api.get.mockClear();
     api.post.mockClear();
     applyHandlers();
@@ -402,6 +546,44 @@ api.__mock = {
         count: 0,
       });
     }
+  },
+  // WhatsApp helpers
+  waBus() {
+    if (!__waBus) {
+      // bus minimalista compatível com integrations/whatsapp/events.js
+      const map = new Map();
+      __waBus = {
+        on(evt, cb) {
+          const arr = map.get(evt) || [];
+          arr.push(cb);
+          map.set(evt, arr);
+          return () => __waBus.off(evt, cb);
+        },
+        off(evt, cb) {
+          const arr = map.get(evt) || [];
+          const i = arr.indexOf(cb);
+          if (i >= 0) arr.splice(i, 1);
+          map.set(evt, arr);
+        },
+        emit(evt, payload) {
+          (map.get(evt) || []).forEach((cb) => {
+            try {
+              cb(payload);
+            } catch {}
+          });
+        },
+        clear() {
+          map.clear();
+        },
+      };
+    }
+    return __waBus;
+  },
+  waOptions(opts) {
+    Object.assign(__waOpts, opts || {});
+  },
+  waState() {
+    return { chats: __waChats };
   },
   logs() {
     return __auditLogs.slice();
