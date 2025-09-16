@@ -50,13 +50,36 @@ const marketingJobs = [
     caption: "Legenda 1",
     status: "pending",
   },
+  {
+    id: "job-2",
+    channel: "facebook",
+    title: "Sugestão IG/FB #2",
+    status: "pending",
+  },
 ];
 
 const originalGet = api.get;
 api.get = jest.fn((...args) => {
   const [url] = args;
   if (url === "/marketing/content/jobs" || url === "/marketing/calendar/jobs") {
-    return Promise.resolve({ data: marketingJobs });
+    return Promise.resolve({ data: { items: marketingJobs } });
+  }
+  if (url === "/marketing/content/events" || url === "/marketing/calendar/events") {
+    const start = new Date();
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    return Promise.resolve({
+      data: {
+        items: [
+          {
+            id: "evt-1",
+            start: start.toISOString(),
+            end: end.toISOString(),
+            title: "Sugestão IG/FB #1",
+            channel: "instagram",
+          },
+        ],
+      },
+    });
   }
   if (/^\/channels\/meta\/accounts\/[^/]+\/backfill\/status/.test(url)) {
     return Promise.resolve({ data: { last: null } });

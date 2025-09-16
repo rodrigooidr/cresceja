@@ -1,4 +1,4 @@
-export default function suggestionTitle(item, index) {
+export function suggestionTitle(item, index) {
   if (!item) {
     return typeof index === 'number' ? `Sugestão ${index + 1}` : 'Sugestão';
   }
@@ -17,3 +17,5 @@ export default function suggestionTitle(item, index) {
 
   return typeof index === 'number' ? `Sugestão ${index + 1}` : 'Sugestão';
 }
+
+export default suggestionTitle;
