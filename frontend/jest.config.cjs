@@ -23,4 +23,16 @@ module.exports = {
     '/node_modules/(?!(luxon|react-big-calendar|date-arithmetic|@internationalized/date)/)',
   ],
   testPathIgnorePatterns: ['/dist/', '/build/', '/node_modules/', '/e2e/'],
+  collectCoverageFrom: [
+    'src/pages/marketing/**/*.{js,jsx,ts,tsx}',
+    'src/lib/{retry,idempotency,analytics}.js',
+  ],
+  coverageThreshold: {
+    './src/pages/marketing/': {
+      branches: 70,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
+  },
 };

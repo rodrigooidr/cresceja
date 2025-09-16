@@ -131,6 +131,8 @@ let getHandler = defaultGet;
 let postHandler = defaultPost;
 let delayMs = 0;
 let failMatchers = [];
+let typedFailures = [];
+let flakyFailures = [];
 
 function createAbortError() {
   try {
@@ -191,19 +193,58 @@ function withDelay(promiseFactory, config = {}) {
   });
 }
 
+function matches(matcher, url) {
+  if (typeof url !== 'string') return false;
+  if (matcher instanceof RegExp) return matcher.test(url);
+  if (typeof matcher === 'string') {
+    try {
+      return new RegExp(matcher).test(url);
+    } catch {
+      return matcher === url;
+    }
+  }
+  return false;
+}
+
 function shouldFail(url) {
   if (typeof url !== 'string') return false;
-  return failMatchers.some((matcher) => {
-    if (matcher instanceof RegExp) return matcher.test(url);
-    if (typeof matcher === 'string') {
-      try {
-        return new RegExp(matcher).test(url);
-      } catch {
-        return matcher === url;
-      }
-    }
-    return false;
+  return failMatchers.some((matcher) => matches(matcher, url));
+}
+
+function findTypedFailure(url) {
+  if (typeof url !== 'string') return undefined;
+  return typedFailures.find((entry) => matches(entry.matcher, url));
+}
+
+function findFlakyFailure(url) {
+  if (typeof url !== 'string') return undefined;
+  return flakyFailures.find((entry) => {
+    if (!matches(entry.matcher, url)) return false;
+    if (typeof entry.count !== 'number') entry.count = 0;
+    const total = typeof entry.times === 'number' ? entry.times : 0;
+    return entry.count < total;
   });
+}
+
+function createHttpError(status = 500, message = 'Mock HTTP Error', extra = {}) {
+  const err = new Error(message);
+  err.name = 'HttpError';
+  err.status = status;
+  const response = {
+    status,
+    data: extra.data ?? null,
+  };
+  if (typeof extra.headers !== 'undefined') {
+    response.headers = extra.headers;
+  }
+  err.response = response;
+  err.isAxiosError = true;
+  err.__mock = { ...(extra || {}) };
+  return err;
+}
+
+function rejectHttp(status = 500, message = 'Mock HTTP Error', extra = {}) {
+  return Promise.reject(createHttpError(status, message, extra));
 }
 
 api.get = jest.fn((...args) => {
@@ -214,7 +255,18 @@ api.post = jest.fn((...args) => {
   const [url] = args;
   const config = args.length > 2 ? args[2] : args[1];
   return withDelay(() => {
-    if (shouldFail(url)) return Promise.reject(new Error(`forced fail: ${url}`));
+    if (shouldFail(url)) {
+      return rejectHttp(500, `forced fail: ${url}`);
+    }
+    const typed = findTypedFailure(url);
+    if (typed) {
+      return rejectHttp(typed.status ?? 500, typed.message ?? `forced fail: ${url}`, typed);
+    }
+    const flaky = findFlakyFailure(url);
+    if (flaky) {
+      flaky.count += 1;
+      return rejectHttp(flaky.status ?? 503, flaky.message ?? `flaky fail: ${url}`, flaky);
+    }
     if (config?.signal?.aborted) {
       return Promise.reject(createAbortError());
     }
@@ -231,7 +283,18 @@ const applyHandlers = () => {
     const [url] = args;
     const config = args.length > 2 ? args[2] : args[1];
     return withDelay(() => {
-      if (shouldFail(url)) return Promise.reject(new Error(`forced fail: ${url}`));
+      if (shouldFail(url)) {
+        return rejectHttp(500, `forced fail: ${url}`);
+      }
+      const typed = findTypedFailure(url);
+      if (typed) {
+        return rejectHttp(typed.status ?? 500, typed.message ?? `forced fail: ${url}`, typed);
+      }
+      const flaky = findFlakyFailure(url);
+      if (flaky) {
+        flaky.count += 1;
+        return rejectHttp(flaky.status ?? 503, flaky.message ?? `flaky fail: ${url}`, flaky);
+      }
       if (config?.signal?.aborted) {
         return Promise.reject(createAbortError());
       }
@@ -248,6 +311,8 @@ api.__mock = {
     postHandler = defaultPost;
     delayMs = 0;
     failMatchers = [];
+    typedFailures = [];
+    flakyFailures = [];
     api.get.mockClear();
     api.post.mockClear();
     applyHandlers();
@@ -268,6 +333,40 @@ api.__mock = {
       failMatchers.push(...matcher);
     } else if (matcher) {
       failMatchers.push(matcher);
+    }
+  },
+  failWith(matcher, opts = {}) {
+    const entries = Array.isArray(matcher) ? matcher : [matcher];
+    const parsedStatus = Number(opts.status);
+    const status = Number.isFinite(parsedStatus) ? parsedStatus : 500;
+    for (const entry of entries) {
+      if (!entry) continue;
+      typedFailures.push({
+        matcher: entry,
+        status,
+        message: opts.message,
+        data: opts.data,
+        headers: opts.headers,
+      });
+    }
+  },
+  failNTimes(matcher, times = 1, opts = {}) {
+    const entries = Array.isArray(matcher) ? matcher : [matcher];
+    const parsedTimes = Number(times);
+    const normalizedTimes = Number.isFinite(parsedTimes) ? Math.max(0, parsedTimes) : 0;
+    const parsedStatus = Number(opts.status);
+    const status = Number.isFinite(parsedStatus) ? parsedStatus : 503;
+    for (const entry of entries) {
+      if (!entry) continue;
+      flakyFailures.push({
+        matcher: entry,
+        times: normalizedTimes,
+        status,
+        message: opts.message,
+        data: opts.data,
+        headers: opts.headers,
+        count: 0,
+      });
     }
   },
 };
