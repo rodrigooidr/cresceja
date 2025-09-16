@@ -129,13 +129,54 @@ const defaultPost = handlePost;
 
 let getHandler = defaultGet;
 let postHandler = defaultPost;
+let delayMs = 0;
+let failMatchers = [];
 
-api.get = jest.fn((...args) => getHandler(...args));
-api.post = jest.fn((...args) => postHandler(...args));
+function withDelay(promiseFactory) {
+  if (!delayMs) return promiseFactory();
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      Promise.resolve()
+        .then(promiseFactory)
+        .then(resolve)
+        .catch(reject);
+    }, delayMs);
+  });
+}
+
+function shouldFail(url) {
+  if (typeof url !== 'string') return false;
+  return failMatchers.some((matcher) => {
+    if (matcher instanceof RegExp) return matcher.test(url);
+    if (typeof matcher === 'string') {
+      try {
+        return new RegExp(matcher).test(url);
+      } catch {
+        return matcher === url;
+      }
+    }
+    return false;
+  });
+}
+
+api.get = jest.fn((...args) => withDelay(() => getHandler(...args)));
+api.post = jest.fn((...args) =>
+  withDelay(() => {
+    const [url] = args;
+    if (shouldFail(url)) return Promise.reject(new Error(`forced fail: ${url}`));
+    return postHandler(...args);
+  })
+);
 
 const applyHandlers = () => {
-  api.get.mockImplementation((...args) => getHandler(...args));
-  api.post.mockImplementation((...args) => postHandler(...args));
+  api.get.mockImplementation((...args) => withDelay(() => getHandler(...args)));
+  api.post.mockImplementation((...args) =>
+    withDelay(() => {
+      const [url] = args;
+      if (shouldFail(url)) return Promise.reject(new Error(`forced fail: ${url}`));
+      return postHandler(...args);
+    })
+  );
 };
 
 applyHandlers();
@@ -144,6 +185,8 @@ api.__mock = {
   reset() {
     getHandler = defaultGet;
     postHandler = defaultPost;
+    delayMs = 0;
+    failMatchers = [];
     api.get.mockClear();
     api.post.mockClear();
     applyHandlers();
@@ -155,6 +198,16 @@ api.__mock = {
   setPost(fn) {
     postHandler = typeof fn === 'function' ? fn : defaultPost;
     applyHandlers();
+  },
+  setDelay(ms) {
+    delayMs = Number(ms) || 0;
+  },
+  failOn(matcher) {
+    if (Array.isArray(matcher)) {
+      failMatchers.push(...matcher);
+    } else if (matcher) {
+      failMatchers.push(matcher);
+    }
   },
 };
 
