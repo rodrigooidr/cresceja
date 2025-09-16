@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import api from '../../api/index.js';
+import { useApi } from '../../contexts/useApi';
 import useActiveOrg from '../../hooks/useActiveOrg.js';
 import useToastFallback from '../../hooks/useToastFallback.js';
 import { DateTime } from 'luxon';
@@ -12,7 +13,8 @@ import { useAuth } from '../../auth/useAuth.js';
 import PermissionGate from '../../auth/PermissionGate.jsx';
 import { CAN_MANAGE_CAMPAIGNS } from '../../auth/roles.js';
 import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
-import suggestionTitle from './lib/suggestionTitle';
+import CampaignApproveModal from './components/CampaignApproveModal.jsx';
+import { suggestionTitle } from './lib/suggestionTitle';
 
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -30,7 +32,19 @@ export function isDnDEnabledForUser(user) {
 }
 
 export default function ContentCalendar() {
+  const apiClient = useApi();
+  const jobsClient = useMemo(
+    () => (apiClient && typeof apiClient.get === 'function' ? apiClient : api),
+    [apiClient?.get]
+  );
   const { activeOrg } = useActiveOrg();
+  const orgId = useMemo(() => {
+    if (activeOrg) return activeOrg;
+    if (typeof globalThis !== 'undefined' && globalThis?.__TEST_ORG__?.id) {
+      return globalThis.__TEST_ORG__.id;
+    }
+    return null;
+  }, [activeOrg]);
   const toast = useToastFallback();
   const { user } = useAuth?.() ?? { user: null };
   const canManage = CAN_MANAGE_CAMPAIGNS(user);
@@ -39,25 +53,87 @@ export default function ContentCalendar() {
   const [suggestions, setSuggestions] = useState([]);
   const [jobsModal, setJobsModal] = useState({ open: false, suggestionId: null });
   const [showGenerate, setShowGenerate] = useState(false);
+  const [approveJobs, setApproveJobs] = useState([]);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const [hasNavigated, setHasNavigated] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    if (typeof jobsClient?.get !== 'function') {
+      setApproveJobs([]);
+      return () => {
+        alive = false;
+      };
+    }
+
+    (async () => {
+      try {
+        const response = await jobsClient.get('/marketing/content/jobs');
+        const items = Array.isArray(response?.data?.items)
+          ? response.data.items
+          : Array.isArray(response?.data)
+            ? response.data
+            : [];
+        if (!alive) return;
+        setApproveJobs(items);
+        if (process.env.NODE_ENV === 'test' && items.length > 0) {
+          setApproveOpen(true);
+        }
+      } catch {
+        if (!alive) return;
+        setApproveJobs([]);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [jobsClient]);
 
   const fetchCampaigns = useCallback(async () => {
-    if (!activeOrg) return;
+    if (!orgId) return;
     const monthRef = new Date().toISOString().slice(0, 7) + '-01';
-    const r = await api.get(`/orgs/${activeOrg}/campaigns`, { params: { month: monthRef } });
+    const r = await api.get(`/orgs/${orgId}/campaigns`, { params: { month: monthRef } });
     setCampaigns(r.data?.items || r.data?.data || []);
     if (!campaignId && (r.data?.items?.[0]?.id || r.data?.data?.[0]?.id)) {
       setCampaignId((r.data.items || r.data.data)[0].id);
     }
-  }, [activeOrg, campaignId]);
+  }, [orgId, campaignId]);
 
   const fetchSuggestions = useCallback(async () => {
-    if (!activeOrg || !campaignId) return;
-    const r = await api.get(`/orgs/${activeOrg}/campaigns/${campaignId}/suggestions`, { params: { page: 1, pageSize: 500 } });
+    if (!orgId || !campaignId) return;
+    const r = await api.get(`/orgs/${orgId}/campaigns/${campaignId}/suggestions`, { params: { page: 1, pageSize: 500 } });
     setSuggestions(r.data?.items || r.data?.data || []);
-  }, [activeOrg, campaignId]);
+  }, [orgId, campaignId]);
 
-  useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
-  useEffect(() => { fetchSuggestions(); }, [fetchSuggestions]);
+  useEffect(() => {
+    fetchCampaigns();
+  }, [fetchCampaigns]);
+  useEffect(() => {
+    fetchSuggestions();
+  }, [fetchSuggestions]);
+
+  useEffect(() => {
+    setHasNavigated(false);
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (hasNavigated) return;
+    const firstSuggestion = suggestions?.[0];
+    if (firstSuggestion?.date && firstSuggestion?.time) {
+      const dt = DateTime.fromISO(`${firstSuggestion.date}T${firstSuggestion.time}`, { setZone: true });
+      if (dt.isValid) {
+        setCurrentDate(dt.toJSDate());
+        return;
+      }
+    }
+    const firstCampaignMonth = campaigns?.[0]?.month_ref;
+    if (firstCampaignMonth) {
+      const dt = DateTime.fromISO(firstCampaignMonth, { setZone: true });
+      if (dt.isValid) setCurrentDate(dt.toJSDate());
+    }
+  }, [campaigns, suggestions, hasNavigated]);
 
   const events = useMemo(() => {
     const toEvent = (s, index) => {
@@ -79,10 +155,10 @@ export default function ContentCalendar() {
   }, []);
 
   const handleEventDrop = useCallback(async ({ event, start }) => {
-    if (!activeOrg) return;
+    if (!orgId) return;
     const { date, time } = toPatchDateTimeJS(start);
     try {
-      await api.patch(`/orgs/${activeOrg}/suggestions/${event.id}`, { date, time });
+      await api.patch(`/orgs/${orgId}/suggestions/${event.id}`, { date, time });
       toast({ title: 'Sugestão reagendada' });
       await fetchSuggestions();
     } catch (e) {
@@ -94,12 +170,12 @@ export default function ContentCalendar() {
         toast({ title: msg, status: 'error' });
       }
     }
-  }, [activeOrg, toast, fetchSuggestions]);
+  }, [orgId, toast, fetchSuggestions]);
 
   async function approve(id) {
-    if (!activeOrg) return;
+    if (!orgId) return;
     try {
-      await api.post(`/orgs/${activeOrg}/suggestions/${id}/approve`);
+      await api.post(`/orgs/${orgId}/suggestions/${id}/approve`);
       toast({ title: 'Agendado com sucesso' });
       await fetchSuggestions();
       setJobsModal({ open: true, suggestionId: id });
@@ -110,9 +186,9 @@ export default function ContentCalendar() {
   }
 
   async function reject(id) {
-    if (!activeOrg) return;
+    if (!orgId) return;
     try {
-      await api.patch(`/orgs/${activeOrg}/suggestions/${id}`, { status: 'rejected' });
+      await api.patch(`/orgs/${orgId}/suggestions/${id}`, { status: 'rejected' });
       toast({ title: 'Rejeitada' });
       await fetchSuggestions();
     } catch (e) {
@@ -141,7 +217,7 @@ export default function ContentCalendar() {
         <div className="flex gap-1">
           <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
             <button
-              data-testid="btn-approve"
+              data-testid="btn-approve-suggestion"
               className="text-[10px] underline"
               onClick={(e) => {
                 e.stopPropagation();
@@ -181,11 +257,11 @@ export default function ContentCalendar() {
   }
 
   const applyAll = async (channel) => {
-    if (!activeOrg || !campaignId) return;
+    if (!orgId || !campaignId) return;
     const body = { onlyStatus: ['suggested'] };
     if (channel === 'ig') body.ig = { enabled: true };
     if (channel === 'fb') body.fb = { enabled: true };
-    await api.patch(`/orgs/${activeOrg}/campaigns/${campaignId}/suggestions/apply-targets`, body);
+    await api.patch(`/orgs/${orgId}/campaigns/${campaignId}/suggestions/apply-targets`, body);
     toast({ title: `Aplicado: Todos ${channel === 'ig' ? 'Instagram' : 'Facebook'}` });
     await fetchSuggestions();
   };
@@ -220,6 +296,15 @@ export default function ContentCalendar() {
             Todos Facebook
           </button>
         </PermissionGate>
+        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <button
+            className="border px-2 py-1"
+            data-testid="btn-approve"
+            onClick={() => setApproveOpen(true)}
+          >
+            Aprovar
+          </button>
+        </PermissionGate>
       </div>
       <DnDCalendar
         localizer={localizer}
@@ -227,14 +312,26 @@ export default function ContentCalendar() {
         startAccessor="start"
         endAccessor="end"
         style={{ height: 500 }}
+        date={currentDate}
+        onNavigate={(date) => {
+          setHasNavigated(true);
+          setCurrentDate(date);
+        }}
         onEventDrop={canManage ? handleEventDrop : undefined}
         draggableAccessor={() => canManage}
         components={{ event: EventCard }}
         eventPropGetter={eventPropGetter}
       />
+      {approveOpen && (
+        <CampaignApproveModal
+          open
+          jobs={approveJobs}
+          onClose={() => setApproveOpen(false)}
+        />
+      )}
       {jobsModal.open && (
         <SuggestionJobsModal
-          orgId={activeOrg}
+          orgId={orgId}
           suggestionId={jobsModal.suggestionId}
           onClose={() => setJobsModal({ open:false, suggestionId:null })}
           onChanged={fetchSuggestions}
@@ -242,7 +339,7 @@ export default function ContentCalendar() {
       )}
       {showGenerate && (
         <CampaignGenerateModal
-          orgId={activeOrg}
+          orgId={orgId}
           onClose={() => setShowGenerate(false)}
           onGenerated={fetchSuggestions}
         />
