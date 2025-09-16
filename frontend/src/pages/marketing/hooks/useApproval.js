@@ -3,6 +3,7 @@ import inboxApi from '../../../api/inboxApi.js';
 import { retry } from '../../../lib/retry.js';
 import { newIdempotencyKey } from '../../../lib/idempotency.js';
 import { track } from '../../../lib/analytics.js';
+import { audit } from '../../../lib/audit.js';
 
 const RETRY_DEFAULTS = {
   retries: 3,
@@ -100,6 +101,7 @@ export default function useApproval({ api = inboxApi } = {}) {
 
       if (aborted) {
         track('marketing_approve_abort', { jobId, suggestionId, bulk: !!signal });
+        await audit('marketing.approve.abort', { jobId, suggestionId, bulk: !!signal });
         return { ok: false, partial: false, reason: 'abort', jobStatus: 'idle', suggestionStatus: 'idle' };
       }
 
@@ -109,6 +111,7 @@ export default function useApproval({ api = inboxApi } = {}) {
 
       if (statuses.every((value) => value === 'ok')) {
         track('marketing_approve_success', { jobId, suggestionId, test: !!isTestEnv, bulk: !!signal });
+        await audit('marketing.approve.success', { jobId, suggestionId, bulk: !!signal });
         return { ok: true, partial: false, jobStatus, suggestionStatus };
       }
 
@@ -116,10 +119,12 @@ export default function useApproval({ api = inboxApi } = {}) {
         if (statuses.every((value) => value === 'err')) {
           const status = getErrorStatus(jobRes) ?? getErrorStatus(suggestionRes);
           track('marketing_approve_error', { jobId, suggestionId, status, bulk: !!signal });
+          await audit('marketing.approve.error', { jobId, suggestionId, status, bulk: !!signal });
           return { ok: false, partial: false, reason: 'error', status, jobStatus, suggestionStatus };
         }
 
         track('marketing_approve_partial', { jobId, suggestionId, bulk: !!signal });
+        await audit('marketing.approve.partial', { jobId, suggestionId, bulk: !!signal });
         return { ok: false, partial: true, jobStatus, suggestionStatus };
       }
 
@@ -127,11 +132,13 @@ export default function useApproval({ api = inboxApi } = {}) {
     } catch (err) {
       if (err?.name === 'AbortError') {
         track('marketing_approve_abort', { jobId, suggestionId, bulk: !!signal });
+        await audit('marketing.approve.abort', { jobId, suggestionId, bulk: !!signal });
         return { ok: false, partial: false, reason: 'abort', jobStatus: 'idle', suggestionStatus: 'idle' };
       }
 
       const status = err?.status ?? err?.response?.status;
       track('marketing_approve_error', { jobId, suggestionId, status, bulk: !!signal });
+      await audit('marketing.approve.error', { jobId, suggestionId, status, bulk: !!signal });
       return {
         ok: false,
         partial: false,
@@ -195,6 +202,26 @@ export default function useApproval({ api = inboxApi } = {}) {
       jobIds,
       suggestionId: suggestionConfig?.id ?? null,
     };
+
+    const auditBasePayload = {
+      jobId: trackPayload?.jobId ?? jobConfig?.id ?? jobId ?? null,
+      suggestionId: trackPayload?.suggestionId ?? suggestionConfig?.id ?? suggestionId ?? null,
+    };
+    const auditJobIds = Array.isArray(trackPayload?.jobIds)
+      ? trackPayload.jobIds
+      : Array.isArray(jobIds)
+        ? jobIds
+        : undefined;
+    if (Array.isArray(auditJobIds)) {
+      auditBasePayload.jobIds = auditJobIds;
+      if (auditBasePayload.jobIds.length > 1) {
+        auditBasePayload.bulk = true;
+      }
+    }
+    if (typeof trackPayload?.bulk !== 'undefined') {
+      auditBasePayload.bulk = !!trackPayload.bulk;
+    }
+    const buildAuditPayload = (extra = {}) => ({ ...auditBasePayload, ...extra });
 
     const shouldApproveJob = Boolean(jobRequest);
     const shouldApproveSuggestion = Boolean(suggestionRequest);
@@ -265,6 +292,7 @@ export default function useApproval({ api = inboxApi } = {}) {
 
       if (aborted) {
         track('marketing_approve_abort', trackPayload);
+        await audit('marketing.approve.abort', buildAuditPayload());
         return { ok: false, partial: false, reason: 'abort', jobStatus: 'idle', suggestionStatus: 'idle' };
       }
 
@@ -285,19 +313,23 @@ export default function useApproval({ api = inboxApi } = {}) {
 
       if (!errorType) {
         track('marketing_approve_success', { ...trackPayload, test: !!isTestEnv });
+        await audit('marketing.approve.success', buildAuditPayload());
         return { ok: true, partial: false, jobStatus, suggestionStatus };
       }
 
       if (errorType === 'partial') {
         track('marketing_approve_partial', trackPayload);
+        await audit('marketing.approve.partial', buildAuditPayload());
         return { ok: false, partial: true, jobStatus, suggestionStatus, status };
       }
 
       track('marketing_approve_error', { ...trackPayload, status });
+      await audit('marketing.approve.error', buildAuditPayload({ status }));
       return { ok: false, partial: false, reason: 'error', status, jobStatus, suggestionStatus };
     } catch (err) {
       if (err?.name === 'AbortError') {
         track('marketing_approve_abort', trackPayload);
+        await audit('marketing.approve.abort', buildAuditPayload());
         return { ok: false, partial: false, reason: 'abort', jobStatus: 'idle', suggestionStatus: 'idle' };
       }
 
@@ -307,6 +339,7 @@ export default function useApproval({ api = inboxApi } = {}) {
 
       const status = err?.status ?? err?.response?.status;
       track('marketing_approve_error', { ...trackPayload, status });
+      await audit('marketing.approve.error', buildAuditPayload({ status }));
       return {
         ok: false,
         partial: false,

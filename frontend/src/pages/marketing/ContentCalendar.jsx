@@ -8,6 +8,7 @@ import { Calendar, luxonLocalizer } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import SuggestionJobsModal from './components/SuggestionJobsModal.jsx';
+import DevLogsButton from './components/DevLogsButton.jsx';
 import { mapApiErrorToForm } from '../../ui/errors/mapApiError.js';
 import { useAuth } from '../../auth/useAuth.js';
 import PermissionGate from '../../auth/PermissionGate.jsx';
@@ -19,6 +20,7 @@ import useApproval from './hooks/useApproval.js';
 import BulkApprovalBar from './components/BulkApprovalBar.jsx';
 import { canApprove } from '../../auth/perm.js';
 import inboxApi from '../../api/inboxApi.js';
+import { audit } from '../../lib/audit.js';
 import useListSelection from './hooks/useListSelection.js';
 
 const localizer = luxonLocalizer(DateTime);
@@ -88,6 +90,7 @@ export default function ContentCalendar(props = {}) {
   const lastAttemptRef = useRef(null);
   const bulkAbortRef = useRef(null);
   const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  const isDevEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
 
   useEffect(() => {
     if (!Array.isArray(props.jobs)) return;
@@ -190,6 +193,7 @@ export default function ContentCalendar(props = {}) {
         { jobId, suggestionId: storedSuggestion },
         {}
       );
+      await audit('marketing.revert.success', { jobId, suggestionId: storedSuggestion ?? null });
 
       const jobExists = (approveJobs || []).some((job) => job.id === jobId);
       if (jobId && jobExists) {
@@ -206,6 +210,8 @@ export default function ContentCalendar(props = {}) {
         toastFn({ title: 'Ação desfeita.', variant: 'success' });
       }
     } catch (error) {
+      const status = error?.status ?? error?.response?.status;
+      await audit('marketing.revert.error', { jobId, suggestionId: storedSuggestion ?? null, status });
       if (typeof toastFn === 'function') {
         toastFn({ title: 'Falha ao desfazer.', variant: 'destructive' });
       }
@@ -682,6 +688,9 @@ export default function ContentCalendar(props = {}) {
               {approving ? t.approving : t.approve}
             </button>
           </PermissionGate>
+        )}
+        {isDevEnv && (
+          <DevLogsButton />
         )}
       </div>
       {allowed && approveJobs.length > 0 && (

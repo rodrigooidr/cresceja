@@ -64,6 +64,21 @@ const originalPost = api.post;
 function handleGet(...args) {
   const [url] = args;
   if (typeof url === "string") {
+    if (url.startsWith("/gov/logs")) {
+      try {
+        const parsed = new URL(url, "http://mock.local");
+        const event = parsed.searchParams.get("event");
+        const parsedLimit = Number(parsed.searchParams.get("limit"));
+        const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 100;
+        let items = __auditLogs;
+        if (event) {
+          items = items.filter((entry) => entry?.event === event);
+        }
+        return Promise.resolve({ data: { items: items.slice(-limit) } });
+      } catch {
+        return Promise.resolve({ data: { items: [] } });
+      }
+    }
     if (/\/marketing\/content\/jobs/.test(url) || /\/marketing\/calendar\/jobs/.test(url)) {
       return Promise.resolve({ data: { items: marketingJobs } });
     }
@@ -109,6 +124,19 @@ function handleGet(...args) {
 function handlePost(...args) {
   const [url, body] = args;
   if (typeof url === "string") {
+    if (url === "/gov/logs") {
+      const now = Date.now();
+      const payload = body && typeof body === "object" ? body : {};
+      const record = {
+        id: `log-${now}-${Math.random().toString(36).slice(2)}`,
+        ts: now,
+        event: payload.event ?? null,
+        actor: payload.actor ?? null,
+        payload: payload.payload ?? null,
+      };
+      __auditLogs.push(record);
+      return Promise.resolve({ data: { ok: true, id: record.id } });
+    }
     if (url === "/marketing/revert") {
       const payload = body && typeof body === "object" ? body : {};
       return Promise.resolve({ data: { ok: true, reverted: true, ...payload } });
@@ -137,6 +165,7 @@ let delayMs = 0;
 let failMatchers = [];
 let typedFailures = [];
 let flakyFailures = [];
+let __auditLogs = [];
 
 function createAbortError() {
   try {
@@ -317,6 +346,7 @@ api.__mock = {
     failMatchers = [];
     typedFailures = [];
     flakyFailures = [];
+    __auditLogs = [];
     api.get.mockClear();
     api.post.mockClear();
     applyHandlers();
@@ -372,6 +402,9 @@ api.__mock = {
         count: 0,
       });
     }
+  },
+  logs() {
+    return __auditLogs.slice();
   },
 };
 
