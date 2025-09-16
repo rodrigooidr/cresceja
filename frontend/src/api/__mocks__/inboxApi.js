@@ -109,6 +109,10 @@ function handleGet(...args) {
 function handlePost(...args) {
   const [url, body] = args;
   if (typeof url === "string") {
+    if (url === "/marketing/revert") {
+      const payload = body && typeof body === "object" ? body : {};
+      return Promise.resolve({ data: { ok: true, reverted: true, ...payload } });
+    }
     if (/\/marketing\/content\/approve/.test(url) || /\/marketing\/calendar\/approve/.test(url)) {
       return Promise.resolve({ data: { ok: true, received: body || null } });
     }
