@@ -1,15 +1,81 @@
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+// --- Polyfills leves para ambiente de teste ---
+const React = require('react');
 
-// Bridge universal do inboxApi → mock, cobrindo variações de path/com extensão
-const bridge = () => require("../src/api/__mocks__/inboxApi.js");
-try { jest.mock("../src/api/inboxApi", bridge); } catch {}
-try { jest.mock("../src/api/inboxApi.js", bridge); } catch {}
-try { jest.mock("../../src/api/inboxApi", bridge); } catch {}
-try { jest.mock("../../src/api/inboxApi.js", bridge); } catch {}
-try { jest.mock("src/api/inboxApi", bridge); } catch {}
-try { jest.mock("src/api/inboxApi.js", bridge); } catch {}
-try { jest.mock("@/api/inboxApi", bridge); } catch {}
-try { jest.mock("@/api/inboxApi.js", bridge); } catch {}
+if (typeof global.DOMException === 'undefined') {
+  global.DOMException = class DOMException extends Error {
+    constructor(message, name = 'DOMException') {
+      super(message);
+      this.name = name;
+    }
+  };
+}
+if (!global.crypto) {
+  global.crypto = {};
+}
+if (typeof global.crypto.randomUUID !== 'function') {
+  global.crypto.randomUUID = () => `test-${Math.random().toString(36).slice(2)}`;
+}
+if (typeof URL.createObjectURL !== 'function') {
+  global.URL.createObjectURL = () => 'blob:mock';
+  global.URL.revokeObjectURL = () => {};
+}
+
+// --- Mock do Router (evita "Router dentro de Router") ---
+// Use o Router real quando quiser (ex.: em um teste específico) setando USE_REAL_ROUTER=1
+if (!process.env.USE_REAL_ROUTER) {
+  jest.mock('react-router-dom', () => {
+    const actual = jest.requireActual('react-router-dom');
+    const PassThrough = ({ children }) => React.createElement(React.Fragment, null, children);
+    const LinkComponent = React.forwardRef
+      ? React.forwardRef(({ to, href, children, ...rest }, ref) => {
+          const resolvedHref = href || (typeof to === 'string' ? to : to?.pathname || '#');
+          return React.createElement('a', { href: resolvedHref, ...rest, ref }, children);
+        })
+      : ({ to, href, children, ...rest }) => {
+          const resolvedHref = href || (typeof to === 'string' ? to : to?.pathname || '#');
+          return React.createElement('a', { href: resolvedHref, ...rest }, children);
+        };
+    if (React.forwardRef) LinkComponent.displayName = 'MockLink';
+    const noopNavigate = () => {};
+    return {
+      ...actual,
+      BrowserRouter: PassThrough,
+      MemoryRouter: PassThrough,
+      HashRouter: PassThrough,
+      Link: LinkComponent,
+      NavLink: LinkComponent,
+      useNavigate: () => noopNavigate,
+      useLocation: () => ({ pathname: '/', search: '', hash: '', state: null, key: 'test' }),
+      useParams: () => ({}),
+    };
+  });
+}
+
+// --- Bridge do inboxApi para o mock ---
+// Garante que QUALQUER import de ../src/api/inboxApi use o mock de Jest.
+const createInboxApiMock = () => {
+  const mod = require('../src/api/__mocks__/inboxApi.js');
+  return mod && mod.__esModule ? mod : { __esModule: true, default: mod };
+};
+
+const registerInboxApiMock = (specifier) => {
+  try {
+    jest.mock(specifier, () => createInboxApiMock());
+  } catch {}
+};
+
+[
+  '../src/api/inboxApi',
+  '../src/api/inboxApi.js',
+  '../../src/api/inboxApi',
+  '../../src/api/inboxApi.js',
+  'src/api/inboxApi',
+  'src/api/inboxApi.js',
+  '@/api/inboxApi',
+  '@/api/inboxApi.js',
+].forEach(registerInboxApiMock);
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const inboxApiModule = require("../src/api/inboxApi.js");
 const inboxApi = inboxApiModule.default || inboxApiModule;
@@ -119,18 +185,6 @@ jest.mock(
 );
 
 if (!window.toast) { window.toast = jest.fn(); }
-
-// Navegação (padrão no-op; sobrescrever localmente quando precisar assert)
-jest.mock('react-router-dom', () => {
-  const actual = jest.requireActual('react-router-dom');
-  const React = require('react');
-  const SafeLink = React.forwardRef(({ children, to, href, ...rest }, ref) => {
-    const resolvedHref = href || (typeof to === 'string' ? to : to?.pathname || '#');
-    return React.createElement('a', { ...rest, href: resolvedHref, ref }, children);
-  });
-  SafeLink.displayName = 'MockLink';
-  return { ...actual, useNavigate: () => jest.fn(), Link: SafeLink };
-});
 
 const api = inboxApi;
 global.setFeatureGate = (features = {}, limits = {}) => {
@@ -343,9 +397,6 @@ afterEach(() => {
 // Utilitário opcional: garantir idioma e tz
 Object.defineProperty(navigator, "language", { value: "pt-BR", configurable: true });
 process.env.TZ = "America/Sao_Paulo";
-
-// React 18: informa que o ambiente suporta act
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // Reseta rotas mockadas entre testes (sem vazar handlers)
 beforeEach(() => {

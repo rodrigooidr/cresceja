@@ -13,8 +13,8 @@ module.exports = {
     '^hooks/(.*)$': '<rootDir>/src/hooks/$1',
     '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
-    '\\.(css|less|sass|scss)$': '<rootDir>/test/__mocks__/styleMock.js',
-    '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/test/__mocks__/fileMock.js',
+    '\\.(css|less|sass|scss)$': '<rootDir>/test/styleMock.cjs',
+    '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/test/fileMock.cjs',
   },
   transform: {
     '^.+\\.(js|jsx)$': 'babel-jest',
