@@ -1,6 +1,7 @@
 import React from 'react';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
+import * as perm from '../src/auth/perm.js';
 import { renderWithProviders, mockFeatureGate } from './utils/renderWithProviders.jsx';
 
 jest.mock('../src/api');
@@ -101,5 +102,34 @@ describe('ContentCalendar – Aprovar (UI)', () => {
     });
 
     await screen.findByText('Jobs da Sugestão');
+  });
+
+  it('exibe região de status para leitores de tela', async () => {
+    renderWithProviders(<ContentCalendar />);
+
+    const statusRegion = await screen.findByRole('status');
+    expect(statusRegion).toBeInTheDocument();
+
+    const button = await screen.findByTestId('btn-approve');
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    await waitFor(() => {
+      expect(statusRegion.textContent).toContain('Aprovando');
+    });
+  });
+
+  it('não mostra botão Aprovar quando canApprove retorna false', async () => {
+    const spy = jest.spyOn(perm, 'canApprove').mockReturnValue(false);
+    try {
+      renderWithProviders(<ContentCalendar />);
+      await waitFor(() => {
+        expect(screen.queryByTestId('btn-approve')).toBeNull();
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

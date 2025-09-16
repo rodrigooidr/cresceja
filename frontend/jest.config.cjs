@@ -26,6 +26,7 @@ module.exports = {
   collectCoverageFrom: [
     'src/pages/marketing/**/*.{js,jsx,ts,tsx}',
     'src/lib/{retry,idempotency,analytics}.js',
+    'src/pages/marketing/hooks/useApproval.js',
   ],
   coverageThreshold: {
     './src/pages/marketing/': {

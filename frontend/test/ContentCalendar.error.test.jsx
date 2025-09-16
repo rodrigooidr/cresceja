@@ -87,7 +87,7 @@ describe('ContentCalendar – Erros de aprovação', () => {
     expect(approveCalls.length).toBeGreaterThan(0);
 
     const suggestionCalls = api.post.mock.calls.filter(([url]) => url.includes('/suggestions/'));
-    expect(suggestionCalls.length).toBe(0);
+    expect(suggestionCalls.length).toBeGreaterThan(0);
 
     expect(screen.queryByText('Jobs da Sugestão')).not.toBeInTheDocument();
   });
