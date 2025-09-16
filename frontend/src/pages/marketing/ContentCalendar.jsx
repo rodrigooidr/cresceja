@@ -15,6 +15,8 @@ import { CAN_MANAGE_CAMPAIGNS } from '../../auth/roles.js';
 import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
 import CampaignApproveModal from './components/CampaignApproveModal.jsx';
 import { suggestionTitle } from './lib/suggestionTitle';
+import { newIdempotencyKey } from '../../lib/idempotency.js';
+import { track } from '../../lib/analytics.js';
 
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
@@ -62,10 +64,20 @@ export default function ContentCalendar() {
   const [lastAttempt, setLastAttempt] = useState(null);
   const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
   const isMountedRef = useRef(true);
+  const inflightRef = useRef(null);
 
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+      if (inflightRef.current) {
+        try {
+          inflightRef.current.abort();
+        } catch {}
+        inflightRef.current = null;
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     let alive = true;
@@ -127,7 +139,6 @@ export default function ContentCalendar() {
 
   async function executeApproval(attemptInput) {
     if (!isMountedRef.current) return;
-    if (approving) return;
     const client = typeof jobsClient?.post === 'function' ? jobsClient : api;
     const attempt = attemptInput ?? buildApprovalAttempt();
     const jobIds = Array.isArray(attempt?.jobIds) ? attempt.jobIds : [];
@@ -138,6 +149,20 @@ export default function ContentCalendar() {
 
     if (!isMountedRef.current) return;
 
+    if (inflightRef.current) {
+      try {
+        inflightRef.current.abort();
+      } catch {}
+    }
+    const controller = new AbortController();
+    inflightRef.current = controller;
+    const idempotencyKey = newIdempotencyKey();
+    const analyticsPayload = { jobIds, suggestionId, normalizedOrgId };
+    const makeConfig = () => ({
+      signal: controller.signal,
+      headers: { 'Idempotency-Key': idempotencyKey },
+    });
+
     setApproving(true);
     setLastAttempt({ jobIds, suggestionId, normalizedOrgId });
     setApprovalState({
@@ -146,15 +171,29 @@ export default function ContentCalendar() {
       error: null,
     });
 
+    track('marketing_approve_click', analyticsPayload);
+
     try {
       const jobPromise = shouldApproveJobs
-        ? client.post('/marketing/content/approve', { ids: jobIds })
+        ? client.post('/marketing/content/approve', { ids: jobIds }, makeConfig())
         : Promise.resolve({ ok: true });
       const suggestionPromise = shouldApproveSuggestion
-        ? api.post(`/orgs/${normalizedOrgId}/suggestions/${suggestionId}/approve`)
+        ? api.post(`/orgs/${normalizedOrgId}/suggestions/${suggestionId}/approve`, undefined, makeConfig())
         : Promise.resolve({ ok: true });
 
       const [jobRes, suggestionRes] = await Promise.allSettled([jobPromise, suggestionPromise]);
+      const results = [jobRes, suggestionRes];
+      const aborted = results.some(
+        (res) => res?.status === 'rejected' && res.reason?.name === 'AbortError'
+      );
+      if (aborted) {
+        track('marketing_approve_abort', analyticsPayload);
+        return;
+      }
+      if (!isMountedRef.current || inflightRef.current !== controller) {
+        return;
+      }
+
       const jobStatus = shouldApproveJobs ? (jobRes.status === 'fulfilled' ? 'ok' : 'err') : 'idle';
       const suggestionStatus = shouldApproveSuggestion
         ? (suggestionRes.status === 'fulfilled' ? 'ok' : 'err')
@@ -168,32 +207,43 @@ export default function ContentCalendar() {
         errorType = statuses.every((status) => status === 'err') ? 'full' : 'partial';
       }
 
-      if (isMountedRef.current) {
+      if (isMountedRef.current && inflightRef.current === controller) {
         setApprovalState({ job: jobStatus, suggestion: suggestionStatus, error: errorType });
       }
 
+      if (!isMountedRef.current || inflightRef.current !== controller) return;
+
       if (!errorType) {
-        if (shouldApproveSuggestion && suggestionId && isMountedRef.current) {
+        if (shouldApproveSuggestion && suggestionId) {
           setJobsModal({ open: true, suggestionId });
         }
-        if (isMountedRef.current) {
-          setApproveOpen(true);
-        }
+        setApproveOpen(true);
         toast({ title: 'Jobs aprovados com sucesso.' });
+        track('marketing_approve_success', analyticsPayload);
       } else if (errorType === 'partial') {
         toast({ title: 'Aprovação parcial: tente novamente.', status: 'error' });
+        track('marketing_approve_partial', analyticsPayload);
       } else {
         toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
+        track('marketing_approve_error', analyticsPayload);
       }
     } catch (err) {
-      console.error(err);
-      if (isMountedRef.current) {
-        setApprovalState((state) => ({ ...state, error: 'full' }));
+      if (err?.name === 'AbortError') {
+        track('marketing_approve_abort', analyticsPayload);
+      } else {
+        console.error(err);
+        if (isMountedRef.current && inflightRef.current === controller) {
+          setApprovalState((state) => ({ ...state, error: 'full' }));
+          toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
+        }
+        track('marketing_approve_error', analyticsPayload);
       }
-      toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
     } finally {
-      if (isMountedRef.current) {
-        setApproving(false);
+      if (inflightRef.current === controller) {
+        inflightRef.current = null;
+        if (isMountedRef.current) {
+          setApproving(false);
+        }
       }
     }
   }
@@ -205,7 +255,7 @@ export default function ContentCalendar() {
   }
 
   function handleRetry() {
-    if (!lastAttempt || approving) return;
+    if (!lastAttempt) return;
     executeApproval({ ...lastAttempt });
   }
 
