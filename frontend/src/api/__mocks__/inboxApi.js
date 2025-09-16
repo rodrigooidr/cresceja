@@ -232,7 +232,13 @@ function handlePost(...args) {
           });
         }, __waOpts.autoReadMs);
       }
-      return Promise.resolve({ data: { ok: true, message: msg } });
+      return Promise.resolve({
+        data: {
+          ok: true,
+          message: msg,
+          idempotency: config?.headers?.["Idempotency-Key"] || null,
+        },
+      });
     }
     if (/^\/whatsapp\/(cloud|baileys)\/markRead$/.test(url)) {
       const bus = api.__mock.waBus();
