@@ -112,12 +112,51 @@ function handlePost(...args) {
     if (/\/marketing\/content\/approve/.test(url) || /\/marketing\/calendar\/approve/.test(url)) {
       return Promise.resolve({ data: { ok: true, received: body || null } });
     }
+    if (/^\/marketing\/jobs\/[\w-]+\/approve$/.test(url)) {
+      const payload = body && typeof body === 'object' ? body : {};
+      return Promise.resolve({ data: { ok: true, kind: 'job', ...payload } });
+    }
+    if (/^\/marketing\/suggestions\/[\w-]+\/approve$/.test(url)) {
+      const payload = body && typeof body === 'object' ? body : {};
+      return Promise.resolve({ data: { ok: true, kind: 'suggestion', ...payload } });
+    }
   }
   return originalPost(...args);
 }
 
-api.get = jest.fn((...args) => handleGet(...args));
-api.post = jest.fn((...args) => handlePost(...args));
+const defaultGet = handleGet;
+const defaultPost = handlePost;
+
+let getHandler = defaultGet;
+let postHandler = defaultPost;
+
+api.get = jest.fn((...args) => getHandler(...args));
+api.post = jest.fn((...args) => postHandler(...args));
+
+const applyHandlers = () => {
+  api.get.mockImplementation((...args) => getHandler(...args));
+  api.post.mockImplementation((...args) => postHandler(...args));
+};
+
+applyHandlers();
+
+api.__mock = {
+  reset() {
+    getHandler = defaultGet;
+    postHandler = defaultPost;
+    api.get.mockClear();
+    api.post.mockClear();
+    applyHandlers();
+  },
+  setGet(fn) {
+    getHandler = typeof fn === 'function' ? fn : defaultGet;
+    applyHandlers();
+  },
+  setPost(fn) {
+    postHandler = typeof fn === 'function' ? fn : defaultPost;
+    applyHandlers();
+  },
+};
 
 // (opcional) se seu código usa interceptors, mantenha um stub seguro
 api.interceptors = api.interceptors || {

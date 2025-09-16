@@ -57,6 +57,8 @@ export default function ContentCalendar() {
   const [approveOpen, setApproveOpen] = useState(false);
   const [currentDate, setCurrentDate] = useState(() => new Date());
   const [hasNavigated, setHasNavigated] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
 
   useEffect(() => {
     let alive = true;
@@ -77,16 +79,16 @@ export default function ContentCalendar() {
             : [];
         if (!alive) return;
         setApproveJobs(items);
-        if (process.env.NODE_ENV === 'test' && items.length > 0) {
+        if (isTestEnv && items.length > 0) {
           if (typeof jobsClient?.post === 'function') {
             try {
               await jobsClient.post('/marketing/content/approve', { ids: items.map((item) => item.id) });
-            } catch {
-              // ignore errors in test environment fallback
+              if (!alive) return;
+              setApproveOpen(true);
+            } catch (err) {
+              console.error(err);
             }
           }
-          if (!alive) return;
-          setApproveOpen(true);
         }
       } catch {
         if (!alive) return;
@@ -97,36 +99,38 @@ export default function ContentCalendar() {
     return () => {
       alive = false;
     };
-  }, [jobsClient]);
+  }, [jobsClient, isTestEnv]);
 
   async function onApproveClick() {
+    if (approving) return;
     const client = typeof jobsClient?.post === 'function' ? jobsClient : api;
+    const suggestion = suggestions.find((item) => item?.status === 'suggested') || suggestions[0];
+    setApproving(true);
     try {
       if (approveJobs.length > 0 && typeof client?.post === 'function') {
         await client.post('/marketing/content/approve', { ids: approveJobs.map((job) => job.id) });
       }
-    } catch {
-      // mantém compat com legado mesmo se o POST falhar silenciosamente
-    }
 
-    const suggestion = suggestions.find((item) => item?.status === 'suggested') || suggestions[0];
-    if (orgId && suggestion) {
-      const normalizedOrgId =
-        process.env.NODE_ENV === 'test' && typeof orgId === 'string' && !orgId.startsWith('org-')
-          ? `org-${orgId}`
-          : orgId;
-      try {
+      if (orgId && suggestion) {
+        const normalizedOrgId =
+          process.env.NODE_ENV === 'test' && typeof orgId === 'string' && !orgId.startsWith('org-')
+            ? `org-${orgId}`
+            : orgId;
         await api.post(`/orgs/${normalizedOrgId}/suggestions/${suggestion.id}/approve`);
-      } catch {
-        // não bloqueia a abertura do modal se o approve legado falhar
       }
-    }
 
-    if (suggestion) {
-      setJobsModal({ open: true, suggestionId: suggestion.id });
-    }
+      if (suggestion) {
+        setJobsModal({ open: true, suggestionId: suggestion.id });
+      }
 
-    setApproveOpen(true);
+      setApproveOpen(true);
+      toast({ title: 'Jobs aprovados com sucesso.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Não foi possível aprovar. Tente novamente.', status: 'error' });
+    } finally {
+      setApproving(false);
+    }
   }
 
   const fetchCampaigns = useCallback(async () => {
@@ -339,8 +343,10 @@ export default function ContentCalendar() {
             className="border px-2 py-1"
             data-testid="btn-approve"
             onClick={onApproveClick}
+            disabled={approving}
+            aria-busy={approving ? 'true' : 'false'}
           >
-            Aprovar
+            {approving ? 'Aprovando…' : 'Aprovar'}
           </button>
         </PermissionGate>
       </div>
