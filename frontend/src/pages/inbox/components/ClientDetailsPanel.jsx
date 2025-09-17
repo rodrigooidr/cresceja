@@ -2,10 +2,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import inboxApi from "../../../api/inboxApi";
 import useToastFallback from "../../../hooks/useToastFallback";
+import UpcomingAppointments from "@/pages/inbox/components/UpcomingAppointments";
+import ScheduleModal from "@/pages/inbox/components/ScheduleModal";
 
 export default function ClientDetailsPanel({ conversation, onApplyTags, addToast: addToastProp, onSchedule }) {
   const addToast = useToastFallback(addToastProp);
   const [client, setClient] = useState(null);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [schedulePrefill, setSchedulePrefill] = useState(null);
+  const [appointmentsRefresh, setAppointmentsRefresh] = useState(0);
 
   // Estados locais (editáveis)
   const [birthDate, setBirthDate] = useState("");
@@ -19,6 +24,8 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
 
   const handleSchedule = () => {
     if (!conversation) return;
+    setSchedulePrefill({ personName: "", serviceName: "" });
+    setScheduleOpen(true);
     onSchedule?.({ conversation, client });
   };
 
@@ -37,6 +44,9 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
       }
     })();
   }, [conversation?.id]);
+
+  const contactId = client?.id || conversation?.contact?.id || null;
+  const scheduleContact = client || conversation?.contact || null;
 
   const fullName = useMemo(() => {
     return client?.name || client?.full_name || conversation?.client_name || "Cliente";
@@ -129,6 +139,21 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
           Agendar
         </button>
       </div>
+
+      <UpcomingAppointments
+        key={`${contactId || "no-contact"}-${appointmentsRefresh}`}
+        contactId={contactId}
+        onReschedule={(ev) => {
+          setSchedulePrefill({
+            personName: "",
+            serviceName: ev.summary || "",
+          });
+          setScheduleOpen(true);
+        }}
+        onChanged={() => {
+          setAppointmentsRefresh((prev) => prev + 1);
+        }}
+      />
 
       {/* Informações básicas (somente leitura se não houver cliente) */}
       <div className="space-y-2 text-sm">
@@ -241,6 +266,24 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
           {isSaving ? "Salvando..." : "Salvar alterações"}
         </button>
       </div>
+
+      <ScheduleModal
+        open={scheduleOpen}
+        onClose={() => setScheduleOpen(false)}
+        contact={scheduleContact}
+        defaultPersonName={schedulePrefill?.personName || ""}
+        defaultServiceName={schedulePrefill?.serviceName || ""}
+        conversationId={
+          conversation?.id ||
+          conversation?.conversation_id ||
+          conversation?.conversationId ||
+          null
+        }
+        onScheduled={() => {
+          setScheduleOpen(false);
+          setAppointmentsRefresh((prev) => prev + 1);
+        }}
+      />
     </div>
   );
 }
