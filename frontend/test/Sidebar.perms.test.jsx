@@ -6,6 +6,8 @@ jest.mock('@/auth/permCompat', () => ({
   hasPerm: (p) => ({ 'inbox:view': true, 'audit:view': false, 'telemetry:view': false, 'marketing:view': true }[p] ?? false),
 }));
 
+jest.mock('@/config/sidebar', () => []);
+
 // ajuste o caminho do componente se necessário:
 import Sidebar from '@/components/Sidebar';
 

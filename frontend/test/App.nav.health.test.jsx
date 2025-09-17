@@ -3,8 +3,9 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 import AppRoutes from '@/routes/AppRoutes';
+
+const { MemoryRouter } = jest.requireActual('react-router-dom');
 
 // Mocks para isolar a navegação
 jest.mock('@/components/RequirePerm.jsx', () => ({ children }) => <>{children}</>);
