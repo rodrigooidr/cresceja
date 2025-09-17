@@ -34,53 +34,65 @@ function fmtDay(d) {
  *   inbox_ttfr_daily: [{day, ttfr_p50, ttfr_p95, samples}]
  * }
  */
-export default function TelemetryCharts({ data }) {
-  if (!data) return null;
+export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
+  const attendance = useMemo(
+    () =>
+      (attendanceRaw || []).map((r) => ({
+        day: fmtDay(r.day),
+        pending: Number(r.pending || 0),
+        confirmed: Number(r.confirmed || 0),
+        canceled: Number(r.canceled || 0),
+        noshow: Number(r.noshow || 0),
+      })),
+    [attendanceRaw],
+  );
+
+  if (!data && attendance.length === 0) return null;
 
   const waSend = useMemo(
     () =>
-      (data.wa_send_daily || []).map((r) => ({
+      (data?.wa_send_daily || []).map((r) => ({
         day: fmtDay(r.day),
         transport: r.transport || 'cloud',
         ok: Number(r.provider_ok || 0),
         fb: Number(r.provider_fallback || 0),
         total: Number(r.total_attempts || 0),
       })),
-    [data.wa_send_daily],
+    [data?.wa_send_daily],
   );
 
   const waLatency = useMemo(
     () =>
-      (data.wa_latency_daily || []).map((r) => ({
+      (data?.wa_latency_daily || []).map((r) => ({
         day: fmtDay(r.day),
         transport: r.transport || 'cloud',
         p50: Number(r.p50_ms || r.p50 || 0),
         p95: Number(r.p95_ms || r.p95 || 0),
         samples: Number(r.samples || 0),
       })),
-    [data.wa_latency_daily],
+    [data?.wa_latency_daily],
   );
 
   const inboxVol = useMemo(
     () =>
-      (data.inbox_volume_daily || []).map((r) => ({
+      (data?.inbox_volume_daily || []).map((r) => ({
         day: fmtDay(r.day),
         inbound: Number(r.inbound_count || 0),
         outbound: Number(r.outbound_count || 0),
         total: Number(r.total || (r.inbound_count || 0) + (r.outbound_count || 0)),
       })),
-    [data.inbox_volume_daily],
+    [data?.inbox_volume_daily],
   );
 
   const ttfr = useMemo(
     () =>
-      (data.inbox_ttfr_daily || []).map((r) => ({
+      (data?.inbox_ttfr_daily || []).map((r) => ({
         day: fmtDay(r.day),
         p50: Math.round(Number(r.ttfr_p50 ?? r.ttfr_p50_ms ?? r.ttfr_p50_s ?? 0)),
         p95: Math.round(Number(r.ttfr_p95 ?? r.ttfr_p95_ms ?? r.ttfr_p95_s ?? 0)),
         samples: Number(r.samples || 0),
       })),
-    [data.inbox_ttfr_daily],
+    [data?.inbox_ttfr_daily],
   );
 
   return (
@@ -143,6 +155,24 @@ export default function TelemetryCharts({ data }) {
             <Line type="monotone" dataKey="p95" name="p95 (s)" dot={false} />
           </LineChart>
         </GraphCard>
+      )}
+
+      {!!attendance.length && (
+        <div aria-label="chart-attendance" style={{ height: 320, marginTop: 16 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={attendance} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="day" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Legend />
+              <Bar stackId="a" dataKey="confirmed" name="Confirmados" />
+              <Bar stackId="a" dataKey="canceled" name="Cancelados" />
+              <Bar stackId="a" dataKey="noshow" name="No-show" />
+              <Bar stackId="a" dataKey="pending" name="Pendentes" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       )}
     </div>
   );

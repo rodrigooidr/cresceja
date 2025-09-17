@@ -87,6 +87,7 @@ import calendarRsvpRouter from './routes/calendar.rsvp.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
 import calendarCalendarsAdminRouter from './routes/calendar.calendars.admin.js';
 import telemetryAppointmentsRouter from './routes/telemetry.appointments.js';
+import telemetryAppointmentsExportRouter from './routes/telemetry.appointments.export.js';
 import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
@@ -282,6 +283,7 @@ function configureApp() {
   app.use('/api', calendarServicesAdminRouter);
   app.use('/api', calendarCalendarsAdminRouter);
   app.use('/api', telemetryAppointmentsRouter);
+  app.use('/api', telemetryAppointmentsExportRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
