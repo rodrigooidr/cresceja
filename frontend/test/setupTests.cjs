@@ -470,3 +470,12 @@ if (!global.ResizeObserver) {
     disconnect() {}
   };
 }
+
+// Polyfill leve para Idempotency-Key no ScheduleModal
+if (!global.crypto || !global.crypto.getRandomValues) {
+  global.crypto = global.crypto || {};
+  global.crypto.getRandomValues = (arr) => {
+    for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256);
+    return arr;
+  };
+}
