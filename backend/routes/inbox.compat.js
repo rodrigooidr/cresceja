@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query } from '#db';
 import * as authModule from '../middleware/auth.js';
+import Audit from '../services/audit.js';
 import { ensureLoaded, cfg } from '../services/inbox/directionSender.meta.js';
 
 (async () => {
@@ -184,6 +185,13 @@ router.post('/inbox/messages', async (req, res, next) => {
     if (!messageId) {
       return res.status(500).json({ error: 'fallback_failed' });
     }
+
+    await Audit.auditLog(null, {
+      action: 'inbox.send.fallback',
+      entity: 'conversation',
+      entity_id: conversationId,
+      payload: { messageId },
+    });
 
     res.json({ ok: true, messageId, conversationId });
   } catch (err) {

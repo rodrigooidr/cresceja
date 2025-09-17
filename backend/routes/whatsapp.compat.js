@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { createRequire } from 'module';
 import { query } from '#db';
 import * as authModule from '../middleware/auth.js';
+import Audit from '../services/audit.js';
 import { ensureLoaded, cfg } from '../services/inbox/directionSender.meta.js';
 
 (async () => {
@@ -10,6 +12,10 @@ import { ensureLoaded, cfg } from '../services/inbox/directionSender.meta.js';
     // ignore boot failures; keep safe defaults
   }
 })();
+
+const require = createRequire(import.meta.url);
+
+const FORCE_FALLBACK = String(process.env.WHATSAPP_FORCE_FALLBACK || 'false').toLowerCase() === 'true';
 
 const router = Router();
 const requireAuth =
@@ -51,11 +57,21 @@ async function fallbackPersistOutgoingMessage({ conversationId, transport, media
 async function tryLoad(paths = []) {
   for (const p of paths) {
     try {
-      const mod = await import(new URL(p, import.meta.url));
+      const mod = require(p);
       if (mod) {
         return mod.default ?? mod;
       }
     } catch (err) {
+      if (err?.code === 'ERR_REQUIRE_ESM') {
+        try {
+          const mod = await import(new URL(`${p}${p.endsWith('.js') ? '' : '.js'}`, import.meta.url));
+          if (mod) {
+            return mod.default ?? mod;
+          }
+        } catch (_err2) {
+          // ignore and continue to next path
+        }
+      }
       if (
         err?.code === 'ERR_MODULE_NOT_FOUND' ||
         err?.code === 'MODULE_NOT_FOUND' ||
@@ -119,6 +135,41 @@ async function callSendMedia(fn, { to, media, text, idempotencyKey }) {
   return fn({ to, media, caption: text, idempotencyKey });
 }
 
+async function ensureConversationFor(to, transport) {
+  const existing = await query(
+    `SELECT c.id
+       FROM public.conversations c
+       JOIN public.channels ch ON ch.id = c.channel_id
+      WHERE ch.type='whatsapp'
+        AND ch.mode=$2
+        AND (c.chat_id=$1 OR c.external_user_id=$1)
+      ORDER BY c.created_at ASC
+      LIMIT 1`,
+    [to, transport]
+  );
+  if (existing.rows.length) {
+    return existing.rows[0].id;
+  }
+
+  const r = await query(
+    `INSERT INTO public.conversations (id, org_id, channel_id, contact_id, status, assigned_to,
+                                      is_ai_active, ai_status, human_requested_at, alert_sent, unread_count,
+                                      last_message_at, created_at, updated_at, ai_enabled, client_id,
+                                      channel, account_id, external_user_id, external_thread_id, chat_id, transport)
+     SELECT gen_random_uuid(), ch.org_id, ch.id, NULL, 'open', NULL,
+            false, 'idle', NULL, false, 0,
+            now(), now(), now(), true, NULL,
+            ch.type, ch.id, NULL, NULL, $1, $2
+     FROM public.channels ch
+     WHERE ch.type='whatsapp' AND ch.mode=$2
+     ORDER BY ch.created_at ASC
+     LIMIT 1
+     RETURNING id`,
+    [to, transport]
+  );
+  return r.rows[0]?.id || null;
+}
+
 async function doSend(defaultTransport, params) {
   const {
     to,
@@ -130,37 +181,142 @@ async function doSend(defaultTransport, params) {
     transport: explicitTransport,
   } = params || {};
   const transport = preferredTransport || explicitTransport || defaultTransport;
-  if (!to) {
+  if (!to && !conversationId) {
     return { ok: false, error: 'destination_required' };
   }
 
-  const service = serviceFor(transport);
-  const sendText = getMethod(service, 'sendText');
-  const sendMedia = getMethod(service, 'sendMedia');
+  const conv = conversationId
+    ? { id: conversationId, to }
+    : to
+      ? { id: null, to }
+      : await (async () => {
+          const r = await query(
+            `SELECT id FROM public.conversations WHERE chat_id=$1 LIMIT 1`,
+            [to]
+          );
+          return { id: r.rows[0]?.id || null, to };
+        })();
 
-  if (service && ((media && sendMedia) || (!media && sendText))) {
-    if (media) {
-      await callSendMedia(sendMedia, { to, media, text, idempotencyKey });
-      return { ok: true, transport, to, idempotencyKey: idempotencyKey || null };
-    }
-    await callSendText(sendText, { to, text, idempotencyKey });
-    return { ok: true, transport, to, idempotencyKey: idempotencyKey || null };
+  if (conv.id && !conv.to) {
+    const resolved = await resolveToFromConversation(conv.id);
+    conv.to = resolved.to;
   }
 
-  const messageId = conversationId
-    ? await fallbackPersistOutgoingMessage({ conversationId, transport, media, text })
-    : null;
+  if (!conv.to) {
+    return { ok: false, error: 'destination_required' };
+  }
+
+  const svc = transport === 'baileys' ? baileysSvc : waCloudSvc;
+  const hasProvider =
+    !FORCE_FALLBACK && !!(svc && (typeof svc.sendText === 'function' || typeof svc.sendMedia === 'function'));
+
+  if (hasProvider) {
+    let result;
+    try {
+      if (media && typeof svc.sendMedia === 'function') {
+        result = await svc.sendMedia({ to: conv.to, media, caption: text, idempotencyKey });
+      } else if (typeof svc.sendText === 'function') {
+        result = await svc.sendText({ to: conv.to, text, idempotencyKey });
+      } else {
+        throw new Error('provider_missing_method');
+      }
+
+      const convId = conv.id || (await ensureConversationFor(conv.to, transport));
+      if (!convId) {
+        throw new Error('conversation_resolution_failed');
+      }
+      const ins = await query(
+        `INSERT INTO public.messages
+           (id, org_id, conversation_id, sender, direction, type, text, status, created_at, updated_at, provider_message_id)
+         SELECT gen_random_uuid(), ch.org_id, $1, $5, $6, $2, $3, 'sent', now(), now(), $7
+         FROM public.channels ch
+         WHERE ch.type='whatsapp' AND ch.mode=$4
+         ORDER BY ch.created_at ASC
+         LIMIT 1
+         RETURNING id`,
+        [
+          convId,
+          media ? (media.type || 'image') : 'text',
+          text || null,
+          transport,
+          cfg.SENDER_OUT,
+          cfg.DIR_OUT,
+          result?.id || result?.messageId || result?.message?.id || null,
+        ]
+      );
+
+      if (!ins.rows.length) {
+        throw new Error('message_persist_failed');
+      }
+
+      await query(
+        `UPDATE public.conversations
+            SET last_message_at = now(), updated_at = now()
+          WHERE id = $1`,
+        [convId]
+      );
+
+      await Audit.auditLog(null, {
+        action: 'wa.send.provider',
+        entity: transport,
+        entity_id: conv.to || conv.id,
+        payload: { messageId: ins.rows[0].id, provider: !!result, idempotencyKey },
+      });
+
+      return {
+        ok: true,
+        transport,
+        to: conv.to,
+        messageId: ins.rows[0].id,
+        provider: 'used',
+        idempotencyKey: idempotencyKey || null,
+      };
+    } catch (e) {
+      // provider failure falls back to local persistence
+    }
+  }
+
+  const cvId = conv.id || (await ensureConversationFor(conv.to || to, transport));
+  if (!cvId) {
+    return { ok: false, error: 'conversation_resolution_failed' };
+  }
+  const ins = await query(
+    `INSERT INTO public.messages
+       (id, org_id, conversation_id, sender, direction, type, text, status, created_at, updated_at)
+     SELECT gen_random_uuid(), ch.org_id, $1, $4, $5, $2, $3, 'sent', now(), now()
+     FROM public.channels ch
+     WHERE ch.type='whatsapp' AND ch.mode=$6
+     ORDER BY ch.created_at ASC
+     LIMIT 1
+     RETURNING id`,
+    [cvId, media ? (media.type || 'image') : 'text', text || null, cfg.SENDER_OUT, cfg.DIR_OUT, transport]
+  );
+
+  if (!ins.rows.length) {
+    return { ok: false, error: 'message_persist_failed' };
+  }
+
+  await query(
+    `UPDATE public.conversations
+        SET last_message_at = now(), updated_at = now()
+      WHERE id = $1`,
+    [cvId]
+  );
+
+  await Audit.auditLog(null, {
+    action: 'wa.send.fallback',
+    entity: transport,
+    entity_id: to || conversationId || conv.to || cvId,
+    payload: { messageId: ins.rows[0].id, idempotencyKey },
+  });
 
   return {
     ok: true,
+    messageId: ins.rows[0].id,
     transport,
-    to,
-    conversationId: conversationId || null,
-    text: text ?? null,
-    media: media ?? null,
+    to: conv.to || to || null,
     idempotencyKey: idempotencyKey || null,
-    note: 'service_not_configured',
-    messageId,
+    note: 'fallback_saved_only',
   };
 }
 
@@ -250,12 +406,50 @@ router.post('/whatsapp/baileys/sendMedia', async (req, res, next) => {
   }
 });
 
-router.post('/whatsapp/markRead', async (_req, res) => {
-  res.json({ ok: true });
+router.post('/whatsapp/markRead', async (req, res, next) => {
+  try {
+    const { conversationId, to, transport: explicitTransport } = req.body || {};
+    const target = to ? { to, transport: explicitTransport } : await resolveToFromConversation(conversationId);
+    const transport = explicitTransport || target.transport || null;
+    const service = serviceFor(transport);
+    const markRead = getMethod(service, 'markRead');
+
+    if (markRead && target.to) {
+      if (markRead.length >= 2) {
+        await markRead(target.to, conversationId);
+      } else {
+        await markRead({ to: target.to, conversationId });
+      }
+      return res.json({ ok: true, provider: 'used' });
+    }
+
+    res.json({ ok: true, provider: 'noop' });
+  } catch (err) {
+    next(err);
+  }
 });
 
-router.post('/whatsapp/typing', async (_req, res) => {
-  res.json({ ok: true });
+router.post('/whatsapp/typing', async (req, res, next) => {
+  try {
+    const { conversationId, to, state, transport: explicitTransport } = req.body || {};
+    const target = to ? { to, transport: explicitTransport } : await resolveToFromConversation(conversationId);
+    const transport = explicitTransport || target.transport || null;
+    const service = serviceFor(transport);
+    const typing = getMethod(service, 'typing');
+
+    if (typing && target.to) {
+      if (typing.length >= 2) {
+        await typing(target.to, state ?? 'on');
+      } else {
+        await typing({ to: target.to, state: state ?? 'on' });
+      }
+      return res.json({ ok: true, provider: 'used' });
+    }
+
+    res.json({ ok: true, provider: 'noop' });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;
