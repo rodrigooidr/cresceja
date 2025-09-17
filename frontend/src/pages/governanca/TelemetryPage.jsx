@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import TelemetryCharts from '@/pages/governanca/TelemetryCharts';
 
 function Table({ title, cols, rows, empty = 'Sem dados' }) {
   return (
@@ -43,6 +44,7 @@ export default function TelemetryPage() {
   const [range, setRange] = useState({ from: '', to: '' });
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [showCharts, setShowCharts] = useState(true);
 
   useEffect(() => {
     const qp = new URLSearchParams();
@@ -59,7 +61,7 @@ export default function TelemetryPage() {
   return (
     <div style={{ padding: 16 }}>
       <h1>Métricas — Governança</h1>
-      <div style={{ display: 'flex', gap: 8, margin: '8px 0' }}>
+      <div style={{ display: 'flex', gap: 8, margin: '8px 0', alignItems: 'center' }}>
         <label>
           De:{' '}
           <input
@@ -76,10 +78,20 @@ export default function TelemetryPage() {
             onChange={(e) => setRange((r) => ({ ...r, to: e.target.value }))}
           />
         </label>
+        <label style={{ marginLeft: 'auto' }}>
+          <input
+            type="checkbox"
+            checked={showCharts}
+            onChange={(e) => setShowCharts(e.target.checked)}
+            style={{ marginRight: 6 }}
+          />
+          Mostrar gráficos
+        </label>
       </div>
       {loading && <div>Carregando…</div>}
       {!loading && data && (
         <>
+          {showCharts && <TelemetryCharts data={data} />}
           <Table
             title="Envios WhatsApp por dia"
             cols={[
