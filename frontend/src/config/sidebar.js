@@ -2,7 +2,7 @@ const sidebar = [
   {
     section: 'Inbox',
     items: [
-      { label: 'Inbox', to: '/app/inbox', minRole: 'Agent' }
+      { label: 'Inbox', to: '/inbox', minRole: 'Agent', perm: 'inbox:view' }
     ]
   },
   {
@@ -19,7 +19,12 @@ const sidebar = [
     section: 'Conteúdo',
     items: [
       { label: 'Studio', to: '/app/content/studio', minRole: 'Agent', feature: 'contentStudio' },
-      { label: 'Calendar', to: '/app/content/calendar', minRole: 'Agent', feature: 'contentCalendar' }
+      {
+        label: 'Calendário',
+        to: '/marketing/calendar',
+        minRole: 'Agent',
+        perm: 'marketing:view',
+      }
     ]
   },
   {
@@ -43,6 +48,13 @@ const sidebar = [
     items: [
       { label: 'Relatórios', to: '/app/reports', minRole: 'Manager' }
     ]
+  },
+  {
+    section: 'Governança',
+    items: [
+      { label: 'Governança & Logs', to: '/settings/governanca', minRole: 'Manager', perm: 'audit:view' },
+      { label: 'Métricas', to: '/settings/governanca/metricas', minRole: 'Manager', perm: 'telemetry:view' },
+    ],
   },
   {
     section: 'Configurações',
