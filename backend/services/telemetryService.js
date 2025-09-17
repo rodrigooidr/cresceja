@@ -99,3 +99,41 @@ export async function appointmentsOverview({ from, to, orgId }) {
   );
   return q.rows || [];
 }
+
+export async function appointmentsFunnelByDay({ from, to, orgId }) {
+  if (!orgId) return [];
+  const result = await rootQuery(
+    `
+      SELECT date_trunc('day', start_at) AS day,
+             count(*) AS requested,
+             count(*) FILTER (WHERE rsvp_status = 'confirmed') AS confirmed,
+             count(*) FILTER (WHERE rsvp_status = 'canceled')  AS canceled,
+             count(*) FILTER (WHERE rsvp_status = 'noshow')    AS noshow
+        FROM public.calendar_events
+       WHERE org_id = $1 AND start_at BETWEEN $2 AND $3
+       GROUP BY 1
+       ORDER BY 1
+    `,
+    [orgId, from, to]
+  );
+  return result.rows || [];
+}
+
+export async function appointmentsByPersonService({ from, to, orgId }) {
+  if (!orgId) return [];
+  const result = await rootQuery(
+    `
+      SELECT calendar_id AS person,
+             COALESCE(service_name, summary, 'Atendimento') AS service,
+             count(*) FILTER (WHERE rsvp_status = 'confirmed') AS confirmed,
+             count(*) FILTER (WHERE rsvp_status = 'canceled')  AS canceled,
+             count(*) FILTER (WHERE rsvp_status = 'noshow')    AS noshow
+        FROM public.calendar_events
+       WHERE org_id = $1 AND start_at BETWEEN $2 AND $3
+       GROUP BY 1, 2
+       ORDER BY 1, 2
+    `,
+    [orgId, from, to]
+  );
+  return result.rows || [];
+}

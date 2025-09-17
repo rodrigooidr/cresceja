@@ -53,13 +53,12 @@ export default function UpcomingAppointments({ contactId, onReschedule, onChange
 
   async function remind(ev) {
     try {
-      const r = await fetch('/api/calendar/reminders/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hours: 0.25 }),
-      });
+      const r = await fetch(
+        `/api/calendar/events/${encodeURIComponent(ev.id)}/remind`,
+        { method: 'POST' }
+      );
       if (!r.ok) throw new Error('failed');
-      alert('Lembrete disparado.');
+      alert('Lembrete enviado!');
       await load();
     } catch (e) {
       alert('Falha ao enviar lembrete.');
