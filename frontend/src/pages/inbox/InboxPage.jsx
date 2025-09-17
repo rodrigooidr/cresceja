@@ -363,10 +363,38 @@ export default function InboxPage({ addToast: addToastProp }) {
   );
 
   const openScheduleModal = useCallback(
-    ({ conversation: conv, client: cli }) => {
+    ({ conversation: conv, client: cli, defaultPersonName = "", defaultServiceName = "" } = {}) => {
+      const baseConversation = conv || selectedConversation || null;
+      const baseClient = cli || null;
+
+      const displayName =
+        baseClient?.name ||
+        baseClient?.full_name ||
+        baseClient?.display_name ||
+        baseConversation?.client_name ||
+        "";
+
+      const contact = {
+        id: baseClient?.id || baseConversation?.client_id || undefined,
+        display_name: displayName || undefined,
+        email: baseClient?.email || baseConversation?.client_email || undefined,
+        phone_e164:
+          baseClient?.phone_e164 ||
+          baseConversation?.client_phone_e164 ||
+          baseConversation?.client_phone ||
+          undefined,
+      };
+
+      const hasContactInfo =
+        Boolean(contact.id) ||
+        Boolean(contact.display_name) ||
+        Boolean(contact.email) ||
+        Boolean(contact.phone_e164);
+
       setScheduleContext({
-        conversation: conv || selectedConversation || null,
-        client: cli || null,
+        contact: hasContactInfo ? contact : null,
+        defaultPersonName,
+        defaultServiceName,
       });
       setScheduleOpen(true);
     },
@@ -379,28 +407,46 @@ export default function InboxPage({ addToast: addToastProp }) {
   }, []);
 
   const handleScheduledEvent = useCallback(
-    ({ event, person }) => {
+    (event) => {
       if (!event || !selectedId) {
         closeScheduleModal();
         return;
       }
 
-      let formatted = null;
-      try {
-        if (event.start) {
-          const start = new Date(event.start);
-          if (!Number.isNaN(start.getTime())) {
-            formatted = `${start.toLocaleDateString("pt-BR")} ${start.toLocaleTimeString("pt-BR", {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}`;
-          }
-        }
-      } catch {
-        formatted = null;
+      let startISO = null;
+      const start = event?.start;
+      if (typeof start === "string") {
+        startISO = start;
+      } else if (start?.dateTime) {
+        startISO = start.dateTime;
+      } else if (start?.date) {
+        startISO = `${start.date}T00:00:00`;
       }
 
-      const parts = [`Agendado com ${person || "o profissional"}`];
+      let formatted = null;
+      if (startISO) {
+        const startDate = new Date(startISO);
+        if (!Number.isNaN(startDate.getTime())) {
+          formatted = `${startDate.toLocaleDateString("pt-BR")} ${startDate.toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}`;
+        }
+      }
+
+      const personName =
+        event?.extendedProperties?.private?.personName ||
+        event?.extendedProperties?.shared?.personName ||
+        event?.personName ||
+        null;
+      const summary = event?.summary || (personName ? `Atendimento com ${personName}` : "Atendimento");
+
+      const parts = [];
+      if (personName) {
+        parts.push(`Agendado com ${personName}`);
+      } else {
+        parts.push(`Agendamento criado: ${summary}`);
+      }
       if (formatted) parts.push(`em ${formatted}`);
       if (event.htmlLink) parts.push(`Abrir no Google: ${event.htmlLink}`);
 
@@ -476,10 +522,10 @@ export default function InboxPage({ addToast: addToastProp }) {
       <ScheduleModal
         open={scheduleOpen}
         onClose={closeScheduleModal}
-        conversation={scheduleContext?.conversation || selectedConversation || null}
-        client={scheduleContext?.client || null}
+        contact={scheduleContext?.contact || null}
+        defaultPersonName={scheduleContext?.defaultPersonName || ""}
+        defaultServiceName={scheduleContext?.defaultServiceName || ""}
         onScheduled={handleScheduledEvent}
-        addToast={addToast}
       />
     </div>
   );

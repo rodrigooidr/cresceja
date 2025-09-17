@@ -62,6 +62,7 @@ const sidebar = [
       { label: 'Usuários', to: '/app/settings/users', minRole: 'Manager' },
       { label: 'Canais', to: '/app/settings/channels', minRole: 'Manager' },
       { label: 'Permissões', to: '/app/settings/permissions', minRole: 'Manager' },
+      { label: 'Agenda & Serviços', to: '/settings/agenda', minRole: 'Manager', perm: 'org_admin' },
       { label: 'Plano', to: '/app/settings/plan', minRole: 'OrgOwner' }
     ]
   },

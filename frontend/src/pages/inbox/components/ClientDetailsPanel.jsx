@@ -1,5 +1,5 @@
 // src/pages/inbox/components/ClientDetailsPanel.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import inboxApi from "../../../api/inboxApi";
 import useToastFallback from "../../../hooks/useToastFallback";
 
@@ -15,6 +15,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
   // Tags
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState("");
+  const dirtyRef = useRef({ birthdate: false, notes: false, tags: false });
 
   const handleSchedule = () => {
     if (!conversation) return;
@@ -23,13 +24,14 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
 
   useEffect(() => {
     if (!conversation?.id) return;
+    dirtyRef.current = { birthdate: false, notes: false, tags: false };
     (async () => {
       try {
         const { data } = await inboxApi.get(`/inbox/conversations/${conversation.id}/client`);
         setClient(data);
-        setBirthDate(data.birthdate || "");
-        setNotes(data.notes || "");
-        setTags(data.tags || []);
+        if (!dirtyRef.current.birthdate) setBirthDate(data.birthdate || "");
+        if (!dirtyRef.current.notes) setNotes(data.notes || "");
+        if (!dirtyRef.current.tags) setTags(data.tags || []);
       } catch {
         setClient(null);
       }
@@ -70,6 +72,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
         payload
       );
       setClient(data.client || data);
+      dirtyRef.current = { birthdate: false, notes: false, tags: false };
       addToast({ kind: "success", text: "Dados do cliente salvos" });
     } catch (err) {
       addToast({
@@ -86,6 +89,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
     if (!t) return;
     if (!tags.includes(t)) {
       const next = [...tags, t];
+      dirtyRef.current.tags = true;
       setTags(next);
       onApplyTags?.(next);
     }
@@ -93,6 +97,7 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
   };
 
   const removeTag = (t) => {
+    dirtyRef.current.tags = true;
     const next = tags.filter((x) => x !== t);
     setTags(next);
     onApplyTags?.(next);
@@ -143,24 +148,42 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
 
       {/* Data de nascimento */}
       <div>
-        <label className="block text-xs font-semibold mb-1">Data de nascimento</label>
+        <label
+          className="block text-xs font-semibold mb-1"
+          htmlFor="client-details-birthdate"
+        >
+          Data de nascimento
+        </label>
         <input
-          type="date"
+          id="client-details-birthdate"
+          type="text"
           className="w-full px-3 py-2 border rounded-lg text-sm"
           value={birthDate || ""}
-          onChange={(e) => setBirthDate(e.target.value)}
+          onChange={(e) => {
+            dirtyRef.current.birthdate = true;
+            setBirthDate(e.target.value);
+          }}
           disabled={!conversation}
         />
       </div>
 
       {/* Outras informações (área grande + scroll) */}
       <div>
-        <label className="block text-xs font-semibold mb-1">Outras informações</label>
+        <label
+          className="block text-xs font-semibold mb-1"
+          htmlFor="client-details-notes"
+        >
+          Outras informações
+        </label>
         <textarea
+          id="client-details-notes"
           className="w-full px-3 py-2 border rounded-lg text-sm min-h-[140px] max-h-[320px] overflow-auto"
           placeholder="Observações gerais, preferências, histórico…"
           value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          onChange={(e) => {
+            dirtyRef.current.notes = true;
+            setNotes(e.target.value);
+          }}
           disabled={!conversation}
         />
       </div>

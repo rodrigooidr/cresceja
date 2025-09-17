@@ -1,8 +1,8 @@
-// frontend/src/pages/inbox/components/ClientDetailsPanel.test.jsx
+// frontend/test/ClientDetailsPanel.test.jsx
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-import ClientDetailsPanel from './ClientDetailsPanel.jsx';
+import ClientDetailsPanel from '../src/pages/inbox/components/ClientDetailsPanel.jsx';
 
 // Mock explícito do axios wrapper (deve vir antes do import real)
 jest.mock('api/inboxApi', () => ({
