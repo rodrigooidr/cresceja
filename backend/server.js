@@ -84,6 +84,7 @@ import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import calendarRemindersRouter from './routes/calendar.reminders.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
+import calendarCalendarsAdminRouter from './routes/calendar.calendars.admin.js';
 import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
@@ -276,6 +277,7 @@ function configureApp() {
   app.use('/api', calendarCompatRouter);
   app.use('/api', calendarRemindersRouter);
   app.use('/api', calendarServicesAdminRouter);
+  app.use('/api', calendarCalendarsAdminRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
