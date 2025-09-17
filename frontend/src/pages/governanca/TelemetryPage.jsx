@@ -45,6 +45,14 @@ export default function TelemetryPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showCharts, setShowCharts] = useState(true);
+  const hasChartData =
+    !!(
+      data &&
+      (data.wa_send_daily?.length ||
+        data.wa_latency_daily?.length ||
+        data.inbox_volume_daily?.length ||
+        data.inbox_ttfr_daily?.length)
+    );
 
   useEffect(() => {
     const qp = new URLSearchParams();
@@ -91,7 +99,12 @@ export default function TelemetryPage() {
       {loading && <div>Carregando…</div>}
       {!loading && data && (
         <>
-          {showCharts && <TelemetryCharts data={data} />}
+          {showCharts &&
+            (!hasChartData ? (
+              <div style={{ opacity: 0.7 }}>Sem dados para o período selecionado.</div>
+            ) : (
+              <TelemetryCharts data={data} />
+            ))}
           <Table
             title="Envios WhatsApp por dia"
             cols={[

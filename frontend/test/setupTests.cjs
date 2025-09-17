@@ -154,6 +154,46 @@ jest.mock(
   { virtual:true }
 );
 
+jest.mock('recharts', () => {
+  const React = require('react');
+  const createComponent = (displayName) => {
+    const Component = React.forwardRef(
+      ({ children, className, style, title, id, role, ...rest }, ref) => {
+        const { ['aria-label']: ariaLabel } = rest;
+        const safeProps = { ref, 'data-mock': displayName };
+        if (className != null) safeProps.className = className;
+        if (style != null) safeProps.style = style;
+        if (title != null) safeProps.title = title;
+        if (id != null) safeProps.id = id;
+        if (role != null) safeProps.role = role;
+        if (ariaLabel != null) safeProps['aria-label'] = ariaLabel;
+
+        return React.createElement(
+          'div',
+          safeProps,
+          typeof children === 'function' ? children({ width: 800, height: 600 }) : children,
+        );
+      },
+    );
+    Component.displayName = displayName;
+    return Component;
+  };
+
+  return {
+    __esModule: true,
+    ResponsiveContainer: createComponent('ResponsiveContainer'),
+    LineChart: createComponent('LineChart'),
+    Line: createComponent('Line'),
+    CartesianGrid: createComponent('CartesianGrid'),
+    XAxis: createComponent('XAxis'),
+    YAxis: createComponent('YAxis'),
+    Tooltip: createComponent('Tooltip'),
+    Legend: createComponent('Legend'),
+    BarChart: createComponent('BarChart'),
+    Bar: createComponent('Bar'),
+  };
+}, { virtual: true });
+
 jest.mock('../src/api');
 jest.mock('../src/ui/feature/FeatureGate.jsx', () => ({ __esModule: true, default: ({children}) => children }));
 jest.mock('../src/ui/feature/FeatureGate', () => ({ __esModule: true, default: ({children}) => children }));
@@ -422,4 +462,11 @@ if (!global.Notification) {
 }
 if (!navigator.permissions) {
   navigator.permissions = { query: async () => ({ state: "granted" }) };
+}
+if (!global.ResizeObserver) {
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
 }

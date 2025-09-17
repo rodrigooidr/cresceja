@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ResponsiveContainer, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend,
   BarChart, Bar
@@ -37,42 +37,58 @@ function fmtDay(d) {
 export default function TelemetryCharts({ data }) {
   if (!data) return null;
 
-  const waSend = (data.wa_send_daily || []).map(r => ({
-    day: fmtDay(r.day),
-    transport: r.transport || 'cloud',
-    ok: Number(r.provider_ok || 0),
-    fb: Number(r.provider_fallback || 0),
-    total: Number(r.total_attempts || 0),
-  }));
+  const waSend = useMemo(
+    () =>
+      (data.wa_send_daily || []).map((r) => ({
+        day: fmtDay(r.day),
+        transport: r.transport || 'cloud',
+        ok: Number(r.provider_ok || 0),
+        fb: Number(r.provider_fallback || 0),
+        total: Number(r.total_attempts || 0),
+      })),
+    [data.wa_send_daily],
+  );
 
-  const waLatency = (data.wa_latency_daily || []).map(r => ({
-    day: fmtDay(r.day),
-    transport: r.transport || 'cloud',
-    p50: Number(r.p50_ms || r.p50 || 0),
-    p95: Number(r.p95_ms || r.p95 || 0),
-    samples: Number(r.samples || 0),
-  }));
+  const waLatency = useMemo(
+    () =>
+      (data.wa_latency_daily || []).map((r) => ({
+        day: fmtDay(r.day),
+        transport: r.transport || 'cloud',
+        p50: Number(r.p50_ms || r.p50 || 0),
+        p95: Number(r.p95_ms || r.p95 || 0),
+        samples: Number(r.samples || 0),
+      })),
+    [data.wa_latency_daily],
+  );
 
-  const inboxVol = (data.inbox_volume_daily || []).map(r => ({
-    day: fmtDay(r.day),
-    inbound: Number(r.inbound_count || 0),
-    outbound: Number(r.outbound_count || 0),
-    total: Number(r.total || (r.inbound_count || 0) + (r.outbound_count || 0)),
-  }));
+  const inboxVol = useMemo(
+    () =>
+      (data.inbox_volume_daily || []).map((r) => ({
+        day: fmtDay(r.day),
+        inbound: Number(r.inbound_count || 0),
+        outbound: Number(r.outbound_count || 0),
+        total: Number(r.total || (r.inbound_count || 0) + (r.outbound_count || 0)),
+      })),
+    [data.inbox_volume_daily],
+  );
 
-  const ttfr = (data.inbox_ttfr_daily || []).map(r => ({
-    day: fmtDay(r.day),
-    p50: Math.round(Number(r.ttfr_p50 ?? r.ttfr_p50_ms ?? r.ttfr_p50_s || 0)),
-    p95: Math.round(Number(r.ttfr_p95 ?? r.ttfr_p95_ms ?? r.ttfr_p95_s || 0)),
-    samples: Number(r.samples || 0),
-  }));
+  const ttfr = useMemo(
+    () =>
+      (data.inbox_ttfr_daily || []).map((r) => ({
+        day: fmtDay(r.day),
+        p50: Math.round(Number(r.ttfr_p50 ?? r.ttfr_p50_ms ?? r.ttfr_p50_s ?? 0)),
+        p95: Math.round(Number(r.ttfr_p95 ?? r.ttfr_p95_ms ?? r.ttfr_p95_s ?? 0)),
+        samples: Number(r.samples || 0),
+      })),
+    [data.inbox_ttfr_daily],
+  );
 
   return (
     <div style={{ marginTop: 8 }}>
       {/* Envios WhatsApp por dia: barras empilhadas OK vs Fallback */}
       {!!waSend.length && (
         <GraphCard title="WhatsApp — Envios por dia (OK vs Fallback)">
-          <BarChart data={waSend}>
+          <BarChart data={waSend} aria-label="chart-whatsapp-sends">
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="day" />
             <YAxis allowDecimals={false} />
@@ -87,7 +103,7 @@ export default function TelemetryCharts({ data }) {
       {/* Latência p50/p95 */}
       {!!waLatency.length && (
         <GraphCard title="WhatsApp — Latência (ms) p50/p95">
-          <LineChart data={waLatency}>
+          <LineChart data={waLatency} aria-label="chart-whatsapp-latency">
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="day" />
             <YAxis />
@@ -102,7 +118,7 @@ export default function TelemetryCharts({ data }) {
       {/* Volume inbox por dia */}
       {!!inboxVol.length && (
         <GraphCard title="Inbox — Volume por dia">
-          <BarChart data={inboxVol}>
+          <BarChart data={inboxVol} aria-label="chart-inbox-volume">
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="day" />
             <YAxis allowDecimals={false} />
@@ -117,7 +133,7 @@ export default function TelemetryCharts({ data }) {
       {/* TTFR p50/p95 em segundos */}
       {!!ttfr.length && (
         <GraphCard title="Inbox — TTFR (s) p50/p95">
-          <LineChart data={ttfr}>
+          <LineChart data={ttfr} aria-label="chart-inbox-ttfr">
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="day" />
             <YAxis />
