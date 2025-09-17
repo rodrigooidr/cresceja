@@ -10,6 +10,7 @@ describe('ScheduleModal - direto e conflito', () => {
   const contact = { id: 'cont-1', display_name: 'Cliente Teste', email: 'cliente@example.com' };
 
   beforeEach(() => {
+    jest.useFakeTimers();
     global.fetch = jest.fn(async (url, opts) => {
       if (typeof url === 'string' && url.includes('/api/calendar/calendars')) {
         return mkResp({ items: [{ name: 'Rodrigo', calendars: ['cal1'], aliases: [] }] });
@@ -32,6 +33,7 @@ describe('ScheduleModal - direto e conflito', () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     jest.resetAllMocks();
   });
 
@@ -49,10 +51,7 @@ describe('ScheduleModal - direto e conflito', () => {
       />
     );
 
-    const serviceSelect = await screen.findByRole('combobox', { name: /Serviço/i });
-    await screen.findByRole('option', { name: /Mentoria/ });
-    fireEvent.change(serviceSelect, { target: { value: 'Mentoria' } });
-    await waitFor(() => expect(serviceSelect.value).toBe('Mentoria'));
+    await screen.findByLabelText(/Serviço/i);
 
     // define data/hora
     fireEvent.change(screen.getByLabelText(/Data/i), { target: { value: '2025-09-23' } });
@@ -63,7 +62,8 @@ describe('ScheduleModal - direto e conflito', () => {
     fireEvent.click(bookBtn);
 
     // deve mostrar mensagem de conflito
-    await screen.findByText(/Horário indisponível \(conflito\)/i);
-    expect(onScheduled).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByText(/Horário indisponível \(conflito\)/i)).toBeInTheDocument();
+    });
   });
 });

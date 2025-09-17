@@ -156,7 +156,7 @@ jest.mock(
 
 jest.mock('recharts', () => {
   const React = require('react');
-  const createComponent = (displayName) => {
+const createComponent = (displayName) => {
     const Component = React.forwardRef(
       ({ children, className, style, title, id, role, ...rest }, ref) => {
         const { ['aria-label']: ariaLabel } = rest;
