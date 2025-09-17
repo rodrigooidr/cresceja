@@ -153,6 +153,54 @@ function httpLocal(method, path, body) {
   });
 }
 
+// [ADD] util para montar querystring
+function qs(params) {
+  const u = new URL('http://127.0.0.1:' + (process.env.PORT || 4000));
+  Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== null) u.searchParams.set(k, String(v)); });
+  return u.searchParams.toString();
+}
+
+// [ADD] busca próximos eventos por contato, com janelinha de tempo
+async function listContactEvents({ contactId, fromISO, toISO }) {
+  const path = '/api/calendar/events?' + qs({ contactId, from: fromISO, to: toISO });
+  const r = await httpLocal('GET', path);
+  if (r.status !== 200 || !r.json) return [];
+  return Array.isArray(r.json.items) ? r.json.items : [];
+}
+
+// [ADD] busca candidatos dado um “alvo” (dia/hora opcional)
+async function findEventCandidates({ contactId, dateISO, timeHHMM }) {
+  const baseFrom = dateISO ? new Date(dateISO + 'T00:00:00.000Z') : new Date();
+  const baseTo = dateISO ? new Date(dateISO + 'T23:59:59.999Z') : new Date(Date.now() + 14 * 24 * 3600 * 1000);
+  const items = await listContactEvents({
+    contactId,
+    fromISO: baseFrom.toISOString(),
+    toISO: baseTo.toISOString(),
+  });
+  if (!items.length) return [];
+  if (!timeHHMM) return items;
+
+  // aproxima por hora/minuto
+  const targetMs = new Date(normalizeISO(dateISO || (new Date().toISOString().slice(0, 10)), timeHHMM, TZ_OFFSET_MIN)).getTime();
+  // ordena por proximidade do início
+  const scored = items
+    .map((ev) => ({ ev, d: Math.abs(new Date(ev.start_at).getTime() - targetMs) }))
+    .sort((a, b) => a.d - b.d);
+  return scored.map((s) => s.ev);
+}
+
+// [ADD] cancelar
+async function cancelEvent({ externalId, calendarId }) {
+  const path = '/api/calendar/events/' + encodeURIComponent(externalId) + (calendarId ? ('?calendarId=' + encodeURIComponent(calendarId)) : '');
+  return await httpLocal('DELETE', path);
+}
+
+// [ADD] remarcar (PATCH)
+async function patchEvent({ externalId, calendarId, startISO, endISO, summary, description }) {
+  const path = '/api/calendar/events/' + encodeURIComponent(externalId) + (calendarId ? ('?calendarId=' + encodeURIComponent(calendarId)) : '');
+  return await httpLocal('PATCH', path, { startISO, endISO, summary, description });
+}
+
 async function handleSuggest(personName, skill, fromISO, durationMin) {
   const url = new URL('/api/calendar/suggest', `http://127.0.0.1:${process.env.PORT || 4000}`);
   if (personName) url.searchParams.set('personName', personName);
@@ -197,6 +245,157 @@ export async function handleIncoming({ orgId, conversationId, text, contact }) {
   const hasOngoing = !!state && state?.flow === 'schedule';
 
   if (hasOngoing && !action) {
+    // === CANCELAMENTO ===
+    if (state.step === 'cancel_await') {
+      // o usuário deve informar data/hora ou escolher item
+      const date = parseDateParts(clean, now);
+      const time = parseTime(clean);
+      const candidates = await findEventCandidates({
+        contactId: contact?.id,
+        dateISO: date,
+        timeHHMM: time,
+      });
+
+      if (!candidates.length) {
+        // talvez já tínhamos as últimas opções em state?
+        if (state.candidates?.length) {
+          const num = parseInt(clean.trim(), 10);
+          if (!isNaN(num) && state.candidates[num - 1]) {
+            const ev = state.candidates[num - 1];
+            const del = await cancelEvent({ externalId: ev.external_event_id, calendarId: ev.calendar_id });
+            if (del.status >= 200 && del.status < 300) {
+              await saveState(conversationId, null);
+              return { handled: true, messages: [reply('Agendamento cancelado com sucesso.')] };
+            }
+            return { handled: true, messages: [reply('Não consegui cancelar agora. Podemos tentar novamente?')] };
+          }
+        }
+        // pede mais detalhes
+        await saveState(conversationId, { ...state, step: 'cancel_await' });
+        return { handled: true, messages: [reply('Não encontrei o agendamento. Pode me dizer a data e horário aproximado?')] };
+      }
+
+      if (candidates.length === 1) {
+        const ev = candidates[0];
+        const del = await cancelEvent({ externalId: ev.external_event_id, calendarId: ev.calendar_id });
+        if (del.status >= 200 && del.status < 300) {
+          await saveState(conversationId, null);
+          return { handled: true, messages: [reply('Agendamento cancelado com sucesso.')] };
+        }
+        return { handled: true, messages: [reply('Não consegui cancelar agora. Podemos tentar novamente?')] };
+      }
+
+      // múltiplos: lista e deixa escolher 1..n
+      const opts = candidates.slice(0, 5).map((ev, i) => {
+        const when = `${new Date(ev.start_at).toLocaleString()} → ${new Date(ev.end_at).toLocaleTimeString()}`;
+        return `${i + 1}) ${ev.summary || 'Atendimento'} — ${when}`;
+      });
+      state.step = 'cancel_await';
+      state.candidates = candidates.slice(0, 5);
+      await saveState(conversationId, state);
+      return { handled: true, messages: [reply('Encontrei mais de um agendamento. Qual deseja cancelar? Responda o número.'), chips(opts)] };
+    }
+
+    // === REMARCAÇÃO ===
+    if (state.step === 'resched_await' || state.step === 'resched_pick_new') {
+      // duas fases: (1) identificar qual evento, (2) coletar novo horário e remarcar
+      if (state.step === 'resched_await') {
+        const date = parseDateParts(clean, now);
+        const time = parseTime(clean);
+        const candidates = await findEventCandidates({
+          contactId: contact?.id,
+          dateISO: date,
+          timeHHMM: time,
+        });
+
+        if (!candidates.length) {
+          if (state.candidates?.length) {
+            const num = parseInt(clean.trim(), 10);
+            if (!isNaN(num) && state.candidates[num - 1]) {
+              // escolheu
+              state.step = 'resched_pick_new';
+              state.target = state.candidates[num - 1];
+              await saveState(conversationId, state);
+              return { handled: true, messages: [reply('Certo! Para quando gostaria de remarcar? (informe data e hora)')] };
+            }
+          }
+          // pedir para especificar ou listar
+          // se houver um único próximo evento, ofereça como default
+          const nexts = await listContactEvents({
+            contactId: contact?.id,
+            fromISO: new Date().toISOString(),
+            toISO: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+          });
+          if (nexts.length === 1) {
+            state.step = 'resched_pick_new';
+            state.target = nexts[0];
+            await saveState(conversationId, state);
+            const w = `${new Date(nexts[0].start_at).toLocaleString()} → ${new Date(nexts[0].end_at).toLocaleTimeString()}`;
+            return { handled: true, messages: [reply(`Ok, vou remarcar este: ${w}. Para quando gostaria? (data e hora)`)] };
+          }
+          if (nexts.length > 1) {
+            const opts = nexts.slice(0, 5).map((ev, i) => `${i + 1}) ${(ev.summary || 'Atendimento')} — ${new Date(ev.start_at).toLocaleString()}`);
+            state.candidates = nexts.slice(0, 5);
+            await saveState(conversationId, state);
+            return { handled: true, messages: [reply('Qual desses deseja remarcar? Responda o número.'), chips(opts)] };
+          }
+          await saveState(conversationId, state);
+          return { handled: true, messages: [reply('Não encontrei agendamentos. Pode confirmar a data/hora do compromisso a remarcar?')] };
+        }
+
+        if (candidates.length === 1) {
+          state.step = 'resched_pick_new';
+          state.target = candidates[0];
+          await saveState(conversationId, state);
+          return { handled: true, messages: [reply('Certo! Para quando gostaria de remarcar? (data e hora)')] };
+        }
+
+        const opts = candidates.slice(0, 5).map((ev, i) => `${i + 1}) ${(ev.summary || 'Atendimento')} — ${new Date(ev.start_at).toLocaleString()}`);
+        state.candidates = candidates.slice(0, 5);
+        await saveState(conversationId, state);
+        return { handled: true, messages: [reply('Encontrei mais de um. Qual deseja remarcar? Responda o número.'), chips(opts)] };
+      }
+
+      if (state.step === 'resched_pick_new') {
+        const d = parseDateParts(clean, now);
+        const t = parseTime(clean);
+        if (!d || !t) {
+          await saveState(conversationId, state);
+          return { handled: true, messages: [reply('Preciso de data e hora para remarcar. Pode informar?')] };
+        }
+        const people = await getPeople(orgId);
+        const services = await getServices(orgId);
+        const draft = state.draft || {};
+        // se não soubermos pessoa/serviço, tentamos manter como estava
+        const personName = draft.personName || resolvePersonName(findPersonHint(clean), people) || (people[0]?.name || null);
+        const serviceName = draft.serviceName || resolveServiceName(findServiceHint(clean), services) || (services[0]?.name || null);
+        const svcObj = services.find((s) => s.name === serviceName);
+        const dur = svcObj?.durationMin || 30;
+
+        const startISO = normalizeISO(d, t, TZ_OFFSET_MIN);
+        const endISO = new Date(new Date(startISO).getTime() + dur * 60000).toISOString();
+
+        // opcional: validar com suggest
+        const sg = await handleSuggest(personName, svcObj?.defaultSkill || null, startISO, dur);
+        let chosen = { start: startISO, end: endISO };
+        if (sg.ok && sg.slots?.length) chosen = sg.slots[0];
+
+        const ev = state.target;
+        const r = await patchEvent({
+          externalId: ev.external_event_id, calendarId: ev.calendar_id,
+          startISO: chosen.start, endISO: chosen.end, summary: ev.summary, description: ev.description,
+        });
+
+        if (r.status === 409) {
+          await saveState(conversationId, state);
+          return { handled: true, messages: [reply('Esse novo horário está indisponível. Pode indicar outro?')] };
+        }
+
+        await saveState(conversationId, null);
+        return { handled: true, messages: [reply('Pronto! Agendamento remarcado com sucesso.')] };
+      }
+    }
+
     const people = await getPeople(orgId);
     const services = await getServices(orgId);
     const draft = { ...(state.draft || {}) };
