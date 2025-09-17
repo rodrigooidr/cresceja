@@ -395,6 +395,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         contact: hasContactInfo ? contact : null,
         defaultPersonName,
         defaultServiceName,
+        conversationId: baseConversation?.id || null,
       });
       setScheduleOpen(true);
     },
@@ -450,20 +451,77 @@ export default function InboxPage({ addToast: addToastProp }) {
       if (formatted) parts.push(`em ${formatted}`);
       if (event.htmlLink) parts.push(`Abrir no Google: ${event.htmlLink}`);
 
+      const messageId = `schedule-${Date.now()}`;
       const synthetic = {
-        id: `schedule-${Date.now()}`,
+        id: messageId,
         conversation_id: String(selectedId),
         text: parts.join(' — '),
         created_at: new Date().toISOString(),
         direction: 'out',
         sender: 'agent',
         type: 'text',
+        actions: [],
       };
+
+      const cancelAction = {
+        label: 'Cancelar',
+        style: 'danger',
+        onClick: async () => {
+          if (!event?.id) return;
+          if (!window.confirm('Cancelar este agendamento?')) return;
+          try {
+            const queryParam = event.calendarId ? `?calendarId=${encodeURIComponent(event.calendarId)}` : '';
+            const resp = await fetch(`/api/calendar/events/${encodeURIComponent(event.id)}${queryParam}`, {
+              method: 'DELETE',
+            });
+            if (!resp.ok) throw new Error('cancel_failed');
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === messageId
+                  ? {
+                      ...msg,
+                      text: `${msg.text} — Cancelado`,
+                      actions: [],
+                    }
+                  : msg,
+              ),
+            );
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `cancel-${Date.now()}`,
+                conversation_id: String(selectedId),
+                text: 'Evento cancelado com sucesso.',
+                created_at: new Date().toISOString(),
+                direction: 'out',
+                sender: 'agent',
+                type: 'text',
+              },
+            ]);
+          } catch (err) {
+            // eslint-disable-next-line no-alert
+            alert('Falha ao cancelar. Tente novamente.');
+          }
+        },
+      };
+
+      const rescheduleAction = {
+        label: 'Remarcar',
+        onClick: () => {
+          openScheduleModal({
+            conversation: selectedConversation,
+            defaultPersonName: event.__personName || personName || '',
+            defaultServiceName: event.__serviceName || summary || '',
+          });
+        },
+      };
+
+      synthetic.actions = [cancelAction, rescheduleAction];
 
       setMessages((prev) => [...prev, synthetic]);
       closeScheduleModal();
     },
-    [selectedId, setMessages, closeScheduleModal]
+    [selectedId, setMessages, closeScheduleModal, openScheduleModal, selectedConversation]
   );
 
   if (!allowed) return null;
@@ -525,6 +583,7 @@ export default function InboxPage({ addToast: addToastProp }) {
         contact={scheduleContext?.contact || null}
         defaultPersonName={scheduleContext?.defaultPersonName || ""}
         defaultServiceName={scheduleContext?.defaultServiceName || ""}
+        conversationId={scheduleContext?.conversationId || null}
         onScheduled={handleScheduledEvent}
       />
     </div>

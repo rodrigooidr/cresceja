@@ -39,6 +39,12 @@ function renderMessageBody(m) {
     (typeof m?.transcript === 'string' ? m.transcript : '') ??
     '';
 
+  const actions = Array.isArray(m?.actions)
+    ? m.actions
+    : Array.isArray(m?.meta?.actions)
+    ? m.meta.actions
+    : null;
+
   if (Array.isArray(m.attachments) && m.attachments.length) {
     return (
       <div className="flex flex-col gap-2">
@@ -93,6 +99,34 @@ function renderMessageBody(m) {
         >
           📎 <span className="truncate max-w-[220px]">{label}</span>
         </a>
+      </div>
+    );
+  }
+
+  if (actions?.length) {
+    return (
+      <div className="flex flex-col gap-2">
+        {text && (
+          <span data-testid="message-text" className="whitespace-pre-wrap break-words">
+            {text}
+          </span>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {actions.map((action, idx) => (
+            <button
+              key={action.id || idx}
+              type="button"
+              onClick={action.onClick}
+              className={`px-3 py-1 rounded-md text-sm border transition-colors ${
+                action.style === 'danger'
+                  ? 'bg-red-500 text-white border-red-600 hover:bg-red-600'
+                  : 'bg-white text-blue-600 border-blue-200 hover:border-blue-400'
+              }`}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }

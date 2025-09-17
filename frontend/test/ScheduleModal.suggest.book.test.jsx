@@ -35,6 +35,7 @@ describe('ScheduleModal - sugestão e agendamento', () => {
         expect(body.contactId).toBe(contact.id);
         expect(body.startISO).toBe('2025-09-23T17:00:00.000Z');
         expect(body.endISO).toBe('2025-09-23T18:00:00.000Z');
+        expect(body.conversationId).toBe('conv-1');
         return mkResp({ id: 'evt-1', summary: 'Consulta', start: body.startISO, end: body.endISO, htmlLink: 'https://google.com' });
       }
       throw new Error('unexpected fetch ' + url);
@@ -55,6 +56,7 @@ describe('ScheduleModal - sugestão e agendamento', () => {
         contact={contact}
         defaultPersonName="Rodrigo"
         defaultServiceName="Consulta"
+        conversationId="conv-1"
         onScheduled={onScheduled}
       />
     );

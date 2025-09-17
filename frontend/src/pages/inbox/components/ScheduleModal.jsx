@@ -15,6 +15,7 @@ export default function ScheduleModal({
   contact = null,
   defaultPersonName = "",
   defaultServiceName = "",
+  conversationId = null,
   onScheduled,
 }) {
   const [loading, setLoading] = useState(false);
@@ -26,6 +27,12 @@ export default function ScheduleModal({
   const [services, setServices] = useState([]); // [{name, durationMin, defaultSkill}]
   const [personInput, setPersonInput] = useState(defaultPersonName);
   const [serviceName, setServiceName] = useState(defaultServiceName);
+
+  useEffect(() => {
+    if (!open) return;
+    setPersonInput(defaultPersonName);
+    setServiceName(defaultServiceName);
+  }, [open, defaultPersonName, defaultServiceName]);
 
   // quando serviço for escolhido, herdamos a duração
   const selectedService = useMemo(
@@ -150,15 +157,17 @@ export default function ScheduleModal({
       endISO = endLocal.toISOString();
     }
 
+    const chosenSummary = selectedService?.name || serviceName || "Atendimento";
     const payload = {
       personName: personResolved || personInput,
-      summary: selectedService?.name || "Atendimento",
+      summary: chosenSummary,
       description: notes || undefined,
       startISO,
       endISO,
       attendeeEmail: contact?.email || undefined,
       attendeeName: contact?.display_name || undefined,
       contactId: contact?.id || undefined,
+      conversationId: conversationId || undefined,
     };
 
     try {
@@ -177,7 +186,12 @@ export default function ScheduleModal({
         setError(`Falha ao agendar. ${txt || ""}`);
       } else {
         const evt = await r.json();
-        onScheduled?.(evt);
+        const enriched = {
+          ...evt,
+          __serviceName: selectedService?.name || serviceName || payload.summary || null,
+          __personName: personResolved || personInput || null,
+        };
+        onScheduled?.(enriched);
         onClose?.();
       }
     } catch (e2) {
