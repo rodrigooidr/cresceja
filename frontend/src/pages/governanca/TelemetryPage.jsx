@@ -47,6 +47,8 @@ export default function TelemetryPage() {
   const [showCharts, setShowCharts] = useState(true);
   const [appt, setAppt] = useState(null);
   const [attendance, setAttendance] = useState([]);
+  const [funnel, setFunnel] = useState([]);
+  const [byPersonService, setByPersonService] = useState([]);
   const hasChartData =
     !!(
       (data &&
@@ -78,20 +80,43 @@ export default function TelemetryPage() {
           .then((r) => r.json())
           .catch(() => ({ items: [] }));
 
-        const [overviewData, appointmentsData] = await Promise.all([
+        const funnelUrl = new URL('/api/telemetry/appointments/funnel', window.location.origin);
+        if (range.from) funnelUrl.searchParams.set('from', range.from);
+        if (range.to) funnelUrl.searchParams.set('to', range.to);
+        const funnelPromise = fetch(funnelUrl.toString())
+          .then((r) => r.json())
+          .catch(() => ({ items: [] }));
+
+        const personServiceUrl = new URL(
+          '/api/telemetry/appointments/by-person-service',
+          window.location.origin
+        );
+        if (range.from) personServiceUrl.searchParams.set('from', range.from);
+        if (range.to) personServiceUrl.searchParams.set('to', range.to);
+        const personServicePromise = fetch(personServiceUrl.toString())
+          .then((r) => r.json())
+          .catch(() => ({ items: [] }));
+
+        const [overviewData, appointmentsData, funnelData, personServiceData] = await Promise.all([
           overviewPromise,
           appointmentsPromise,
+          funnelPromise,
+          personServicePromise,
         ]);
 
         if (!active) return;
         setData(overviewData);
         setAppt(appointmentsData);
         setAttendance(appointmentsData.items || []);
+        setFunnel(funnelData.items || []);
+        setByPersonService(personServiceData.items || []);
       } catch (_err) {
         if (!active) return;
         setData(null);
         setAppt({ items: [] });
         setAttendance([]);
+        setFunnel([]);
+        setByPersonService([]);
       } finally {
         if (active) setLoading(false);
       }
@@ -103,6 +128,11 @@ export default function TelemetryPage() {
       active = false;
     };
   }, [range.from, range.to]);
+
+  const fromParam = range.from || '';
+  const toParam = range.to || '';
+  const encodedFrom = encodeURIComponent(fromParam);
+  const encodedTo = encodeURIComponent(toParam);
 
   return (
     <div style={{ padding: 16 }}>
@@ -155,9 +185,7 @@ export default function TelemetryPage() {
               >
                 <h2 style={{ margin: '8px 0' }}>Agenda — Comparecimento por dia</h2>
                 <a
-                  href={`/api/telemetry/appointments/export.csv?from=${encodeURIComponent(
-                    range.from || '',
-                  )}&to=${encodeURIComponent(range.to || '')}`}
+                  href={`/api/telemetry/appointments/export.csv?from=${encodedFrom}&to=${encodedTo}`}
                   style={{
                     fontSize: 14,
                     textDecoration: 'none',
@@ -195,6 +223,72 @@ export default function TelemetryPage() {
               </table>
             </section>
           )}
+          <section style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2>Funil de Agendamentos (dia)</h2>
+              <a
+                href={`/api/telemetry/appointments/funnel/export.csv?from=${encodedFrom}&to=${encodedTo}`}
+                className="btn"
+              >
+                Exportar CSV
+              </a>
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Dia</th>
+                  <th>Solicitados</th>
+                  <th>Confirmados</th>
+                  <th>Cancelados</th>
+                  <th>No-show</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(funnel || []).map((r) => (
+                  <tr key={r.day}>
+                    <td>{String(r.day).slice(0, 10)}</td>
+                    <td>{r.requested || 0}</td>
+                    <td>{r.confirmed || 0}</td>
+                    <td>{r.canceled || 0}</td>
+                    <td>{r.noshow || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <section style={{ marginTop: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2>Por Profissional / Serviço</h2>
+              <a
+                href={`/api/telemetry/appointments/by-person-service/export.csv?from=${encodedFrom}&to=${encodedTo}`}
+                className="btn"
+              >
+                Exportar CSV
+              </a>
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Profissional</th>
+                  <th>Serviço</th>
+                  <th>Confirmados</th>
+                  <th>Cancelados</th>
+                  <th>No-show</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(byPersonService || []).map((r, i) => (
+                  <tr key={i}>
+                    <td>{r.person || '-'}</td>
+                    <td>{r.service || '-'}</td>
+                    <td>{r.confirmed || 0}</td>
+                    <td>{r.canceled || 0}</td>
+                    <td>{r.noshow || 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
           <Table
             title="Envios WhatsApp por dia"
             cols={[

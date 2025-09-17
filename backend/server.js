@@ -83,11 +83,15 @@ import plansRouter from './routes/plans.js';
 import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import calendarRemindersRouter from './routes/calendar.reminders.js';
+import calendarRemindersOneRouter from './routes/calendar.reminders.one.js';
 import calendarRsvpRouter from './routes/calendar.rsvp.js';
+import calendarNoshowRouter from './routes/calendar.noshow.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
 import calendarCalendarsAdminRouter from './routes/calendar.calendars.admin.js';
 import telemetryAppointmentsRouter from './routes/telemetry.appointments.js';
 import telemetryAppointmentsExportRouter from './routes/telemetry.appointments.export.js';
+import telemetryAppointmentsFunnelRouter from './routes/telemetry.appointments.funnel.js';
+import telemetryAppointmentsFunnelExportRouter from './routes/telemetry.appointments.funnel.export.js';
 import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
@@ -279,11 +283,15 @@ function configureApp() {
   app.use('/api', googleCalendarRouter);
   app.use('/api', calendarCompatRouter);
   app.use('/api', calendarRsvpRouter);
+  app.use('/api', calendarNoshowRouter);
   app.use('/api', calendarRemindersRouter);
+  app.use('/api', calendarRemindersOneRouter);
   app.use('/api', calendarServicesAdminRouter);
   app.use('/api', calendarCalendarsAdminRouter);
   app.use('/api', telemetryAppointmentsRouter);
   app.use('/api', telemetryAppointmentsExportRouter);
+  app.use('/api', telemetryAppointmentsFunnelRouter);
+  app.use('/api', telemetryAppointmentsFunnelExportRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
