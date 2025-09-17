@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import inboxApi from "../../../api/inboxApi";
 import useToastFallback from "../../../hooks/useToastFallback";
 
-export default function ClientDetailsPanel({ conversation, onApplyTags, addToast: addToastProp }) {
+export default function ClientDetailsPanel({ conversation, onApplyTags, addToast: addToastProp, onSchedule }) {
   const addToast = useToastFallback(addToastProp);
   const [client, setClient] = useState(null);
 
@@ -15,6 +15,11 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
   // Tags
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState("");
+
+  const handleSchedule = () => {
+    if (!conversation) return;
+    onSchedule?.({ conversation, client });
+  };
 
   useEffect(() => {
     if (!conversation?.id) return;
@@ -103,14 +108,21 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
   return (
     <div className="client-details-panel border rounded-xl bg-white shadow-sm p-3 space-y-3 h-full">
       {/* Cabeçalho */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <h3 className="font-semibold text-sm">{fullName}</h3>
           <p className="text-xs text-gray-500">
             {channelLabel} • #{conversation?.id || "—"}
           </p>
         </div>
-        {/* Botão de enviar para funil poderia ficar no header da conversa; aqui mantemos foco nos dados do cliente */}
+        <button
+          type="button"
+          className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+          onClick={handleSchedule}
+          disabled={!conversation}
+        >
+          Agendar
+        </button>
       </div>
 
       {/* Informações básicas (somente leitura se não houver cliente) */}

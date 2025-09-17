@@ -72,6 +72,7 @@ import handoffRouter from './routes/conversations.handoff.js';
 import inboxCompatRouter from './routes/inbox.compat.js';
 import crmCompatRouter from './routes/crm.compat.js';
 import aiCompatRouter from './routes/ai.compat.js';
+import aiActionsRouter from './routes/ai.actions.js';
 import inboxTranscribeRouter from './routes/inbox.transcribe.js';
 import crmStatusCompatRouter from './routes/crm.status.compat.js';
 import whatsappCompatRouter from './routes/whatsapp.compat.js';
@@ -80,6 +81,8 @@ import debugRouter from './routes/debug.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import plansRouter from './routes/plans.js';
 import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
+import calendarCompatRouter from './routes/calendar.compat.js';
+import calendarRemindersRouter from './routes/calendar.reminders.js';
 import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
@@ -244,6 +247,7 @@ function configureApp() {
   app.use('/api', inboxCompatRouter);
   app.use('/api', crmCompatRouter);
   app.use('/api', aiCompatRouter);
+  app.use('/api', aiActionsRouter);
   app.use('/api', inboxTranscribeRouter);
   app.use('/api', crmStatusCompatRouter);
   app.use('/api', whatsappCompatRouter);
@@ -268,6 +272,8 @@ function configureApp() {
   app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter);
   app.use('/api/integrations/meta', metaOauthIntegrationRouter);
   app.use('/api', googleCalendarRouter);
+  app.use('/api', calendarCompatRouter);
+  app.use('/api', calendarRemindersRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
