@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import CalendarPermissionsEditor from "@/pages/settings/CalendarPermissionsEditor";
 
 function Section({ title, children }) {
   return (
@@ -134,6 +135,22 @@ export default function CalendarSettingsPage() {
               <strong>Origem:</strong> <code>org_ai_settings.collect_fields.appointment_services</code> (fallback para defaults).
             </div>
           </Section>
+
+          <section style={{ marginTop: 24 }}>
+            <h2 style={{ margin: "8px 0" }}>
+              Editar profissionais (aliases, skills, slot/buffers)
+            </h2>
+            <div style={{ border: "1px solid #eee", borderRadius: 8, padding: 12 }}>
+              <CalendarPermissionsEditor
+                calendars={calendars}
+                onSaved={() => {
+                  fetch('/api/calendar/calendars')
+                    .then((r) => r.json())
+                    .then((js) => setCalendars(js.items || []));
+                }}
+              />
+            </div>
+          </section>
 
           <Section title="Editar Catálogo de Serviços (OrgAdmin)">
             <div style={{ padding: 12 }}>
