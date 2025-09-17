@@ -1,6 +1,15 @@
 import { Router } from 'express';
 import { query } from '#db';
 import * as authModule from '../middleware/auth.js';
+import { ensureLoaded, cfg } from '../services/inbox/directionSender.meta.js';
+
+(async () => {
+  try {
+    await ensureLoaded();
+  } catch (_err) {
+    // ignore boot failures; keep safe defaults
+  }
+})();
 
 const router = Router();
 const requireAuth =
@@ -10,6 +19,34 @@ const requireAuth =
   ((_req, _res, next) => next());
 
 router.use(requireAuth);
+
+async function fallbackPersistOutgoingMessage({ conversationId, transport, media, text }) {
+  if (!conversationId || !transport) return null;
+  const kind = media ? media.type || 'image' : 'text';
+  const normalizedText = text ?? null;
+  const ins = await query(
+    `INSERT INTO public.messages
+       (id, org_id, conversation_id, sender, direction, type, text, status, created_at, updated_at)
+     SELECT gen_random_uuid(), c.org_id, c.id, $4, $5, $2, $3, 'sent', now(), now()
+       FROM public.conversations c
+       JOIN public.channels ch ON ch.id = c.channel_id
+      WHERE c.id = $1
+        AND ch.type = 'whatsapp'
+        AND (ch.mode = $6 OR ($6 IS NULL AND ch.mode IS NULL))
+      LIMIT 1
+      RETURNING id`,
+    [conversationId, kind, normalizedText, cfg.SENDER_OUT, cfg.DIR_OUT, transport]
+  );
+  if (!ins.rows.length) return null;
+  const messageId = ins.rows[0].id;
+  await query(
+    `UPDATE public.conversations
+        SET last_message_at = now(), updated_at = now()
+      WHERE id = $1`,
+    [conversationId]
+  );
+  return messageId;
+}
 
 async function tryLoad(paths = []) {
   for (const p of paths) {
@@ -110,6 +147,10 @@ async function doSend(defaultTransport, params) {
     return { ok: true, transport, to, idempotencyKey: idempotencyKey || null };
   }
 
+  const messageId = conversationId
+    ? await fallbackPersistOutgoingMessage({ conversationId, transport, media, text })
+    : null;
+
   return {
     ok: true,
     transport,
@@ -119,6 +160,7 @@ async function doSend(defaultTransport, params) {
     media: media ?? null,
     idempotencyKey: idempotencyKey || null,
     note: 'service_not_configured',
+    messageId,
   };
 }
 
