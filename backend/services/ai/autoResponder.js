@@ -5,6 +5,7 @@ const { Queue } = pkg;
 import IORedis from 'ioredis';
 import { logTelemetry } from '../telemetryService.js';
 import * as schedulerBot from './scheduler.bot.js';
+import { ensureToken } from '../calendar/rsvp.js';
 
 const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
 
@@ -35,6 +36,48 @@ async function enqueueSystemMessage({ db, orgId, conversationId, text, queue = n
 }
 
 export async function autoReplyIfEnabled({ db, orgId, conversationId, contactId, text }) {
+  const normalizedText = (text || '').trim().toLowerCase();
+
+  if (normalizedText === 'confirmar' && contactId) {
+    try {
+      const fromISO = new Date().toISOString();
+      const toISO = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+      const baseUrl = `http://127.0.0.1:${process.env.PORT || 4000}`;
+      const eventsUrl = new URL('/api/calendar/events', baseUrl);
+      eventsUrl.searchParams.set('contactId', contactId);
+      eventsUrl.searchParams.set('from', fromISO);
+      eventsUrl.searchParams.set('to', toISO);
+      const resp = await fetch(eventsUrl.toString());
+      if (resp.ok) {
+        const js = await resp.json();
+        const next = (js.items || [])[0];
+        if (next?.id) {
+          const token = next.rsvp_token || (await ensureToken(next.id));
+          if (!token) return;
+          await fetch(`${baseUrl}/api/calendar/rsvp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, action: 'confirm' }),
+          });
+          if (conversationId) {
+            await fetch(`${baseUrl}/api/inbox/messages`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                conversationId,
+                text: 'Presença confirmada. Obrigado!',
+                meta: { system: true, type: 'calendar.rsvp', status: 'confirmed' },
+              }),
+            }).catch(() => {});
+          }
+          return;
+        }
+      }
+    } catch (_err) {
+      // silencioso
+    }
+  }
+
   const { rows } = await q(db)(
     'SELECT enabled, handoff_keywords FROM org_ai_settings WHERE org_id = $1',
     [orgId]
@@ -43,7 +86,7 @@ export async function autoReplyIfEnabled({ db, orgId, conversationId, contactId,
   if (!s?.enabled) return;
 
   const kws = s.handoff_keywords || [];
-  const lower = (text || '').toLowerCase();
+  const lower = normalizedText;
 
   if (kws.some(k => lower.includes(k))) {
     const autoDisable =

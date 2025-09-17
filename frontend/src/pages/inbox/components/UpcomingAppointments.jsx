@@ -51,6 +51,21 @@ export default function UpcomingAppointments({ contactId, onReschedule, onChange
     }
   }
 
+  async function remind(ev) {
+    try {
+      const r = await fetch('/api/calendar/reminders/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hours: 0.25 }),
+      });
+      if (!r.ok) throw new Error('failed');
+      alert('Lembrete disparado.');
+      await load();
+    } catch (e) {
+      alert('Falha ao enviar lembrete.');
+    }
+  }
+
   if (!contactId) return null;
 
   return (
@@ -69,9 +84,32 @@ export default function UpcomingAppointments({ contactId, onReschedule, onChange
               <div style={{ fontSize: 13, opacity:.85 }}>
                 {new Date(ev.start_at).toLocaleString()} → {new Date(ev.end_at).toLocaleTimeString()}
               </div>
-              <div style={{ display:'flex', gap:8, marginTop:6 }}>
+              <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6 }}>
+                <span
+                  style={{
+                    fontSize: 12,
+                    padding: '2px 6px',
+                    borderRadius: 999,
+                    background:
+                      ev.rsvp_status === 'confirmed'
+                        ? '#DCFCE7'
+                        : ev.rsvp_status === 'canceled'
+                        ? '#FEE2E2'
+                        : ev.rsvp_status === 'noshow'
+                        ? '#FFE4E6'
+                        : '#E5E7EB',
+                  }}
+                >
+                  {ev.rsvp_status || 'pending'}
+                </span>
                 <button onClick={() => onReschedule?.(ev)} style={{ border:'1px solid #ddd', borderRadius:6, padding:'4px 8px' }}>
                   Remarcar
+                </button>
+                <button
+                  onClick={() => remind(ev)}
+                  style={{ border: '1px solid #ddd', borderRadius: 6, padding: '4px 8px' }}
+                >
+                  Lembrar agora
                 </button>
                 <button onClick={() => cancel(ev)} style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:6, padding:'4px 8px' }}>
                   Cancelar
