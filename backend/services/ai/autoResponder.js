@@ -4,6 +4,7 @@ import pkg from 'bullmq';
 const { Queue } = pkg;
 import IORedis from 'ioredis';
 import { logTelemetry } from '../telemetryService.js';
+import * as schedulerBot from './scheduler.bot.js';
 
 const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
 
@@ -12,6 +13,25 @@ function getRedis() {
     maxRetriesPerRequest: null,
     enableReadyCheck: false
   });
+}
+
+async function enqueueSystemMessage({ db, orgId, conversationId, text, queue = null }) {
+  if (!text) return null;
+  const ins = await q(db)(
+    `INSERT INTO messages (org_id, conversation_id, sender, direction, type, text, provider, status, created_at)
+       VALUES ($1, $2, 'agent', 'outbound', 'text', $3, 'whatsapp_cloud', 'queued', NOW())
+     RETURNING id`,
+    [orgId, conversationId, text]
+  );
+  const messageId = ins.rows?.[0]?.id;
+  if (!messageId) return null;
+  const queueInstance = queue || new Queue('social-publish', { connection: getRedis() });
+  await queueInstance.add(
+    'send',
+    { orgId, conversationId, messageId },
+    { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+  );
+  return messageId;
 }
 
 export async function autoReplyIfEnabled({ db, orgId, conversationId, contactId, text }) {
@@ -51,6 +71,35 @@ export async function autoReplyIfEnabled({ db, orgId, conversationId, contactId,
 
   if (!text) return;
   const reply = `🤖 ${text}`;
+
+  try {
+    const maybe = await schedulerBot.handleIncoming({
+      orgId,
+      conversationId,
+      text,
+      contact: contactId ? { id: contactId } : null,
+    });
+
+    if (maybe?.handled) {
+      const queue = new Queue('social-publish', { connection: getRedis() });
+      for (const message of maybe.messages || []) {
+        if (message.type === 'text') {
+          await enqueueSystemMessage({ db, orgId, conversationId, text: message.text, queue });
+        } else if (message.type === 'options') {
+          await enqueueSystemMessage({
+            db,
+            orgId,
+            conversationId,
+            text: `Opções: ${(message.options || []).join(' | ')}`,
+            queue,
+          });
+        }
+      }
+      return;
+    }
+  } catch (e) {
+    // fallback silencioso
+  }
 
   const ins = await q(db)(
     `INSERT INTO messages (org_id, conversation_id, sender, direction, type, text, provider, status, created_at)
