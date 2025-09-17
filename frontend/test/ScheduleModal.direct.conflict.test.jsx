@@ -22,6 +22,7 @@ describe('ScheduleModal - direto e conflito', () => {
         const body = JSON.parse(opts?.body || '{}');
         // sem sugestão: usa data/hora digitados para compor start/end
         expect(body.startISO).toMatch(/^2025-09-23T/);
+        expect(body.conversationId).toBe('conv-2');
         // se quisermos simular conflito:
         if (body.summary === 'Mentoria') {
           return mkResp({ error: 'time_conflict' }, false, 409);
@@ -47,6 +48,7 @@ describe('ScheduleModal - direto e conflito', () => {
         contact={contact}
         defaultPersonName="Rodrigo"
         defaultServiceName="Mentoria" // 45 min
+        conversationId="conv-2"
         onScheduled={onScheduled}
       />
     );

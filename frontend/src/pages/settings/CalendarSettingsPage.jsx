@@ -45,6 +45,7 @@ export default function CalendarSettingsPage() {
   const [calendars, setCalendars] = useState([]);
   const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [svcDraft, setSvcDraft] = useState([]);
 
   useEffect(() => {
     Promise.all([
@@ -61,6 +62,25 @@ export default function CalendarSettingsPage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    setSvcDraft(services);
+  }, [services]);
+
+  async function saveServices() {
+    const r = await fetch('/api/calendar/services', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: svcDraft }),
+    });
+    if (!r.ok) {
+      // eslint-disable-next-line no-alert
+      alert('Falha ao salvar');
+    } else {
+      // eslint-disable-next-line no-alert
+      alert('Serviços atualizados!');
+    }
+  }
 
   return (
     <div style={{ padding: 16 }}>
@@ -112,6 +132,87 @@ export default function CalendarSettingsPage() {
             />
             <div style={{ padding: 12, fontSize: 13, opacity: 0.8 }}>
               <strong>Origem:</strong> <code>org_ai_settings.collect_fields.appointment_services</code> (fallback para defaults).
+            </div>
+          </Section>
+
+          <Section title="Editar Catálogo de Serviços (OrgAdmin)">
+            <div style={{ padding: 12 }}>
+              {svcDraft.map((s, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr 140px 180px 80px',
+                    gap: 8,
+                    marginBottom: 8,
+                  }}
+                >
+                  <input
+                    value={s.name || ''}
+                    onChange={(e) => {
+                      const v = [...svcDraft];
+                      v[idx] = { ...v[idx], name: e.target.value };
+                      setSvcDraft(v);
+                    }}
+                    placeholder="Nome do serviço"
+                  />
+                  <input
+                    type="number"
+                    min="10"
+                    step="5"
+                    value={s.durationMin ?? ''}
+                    onChange={(e) => {
+                      const v = [...svcDraft];
+                      v[idx] = { ...v[idx], durationMin: Number(e.target.value) || null };
+                      setSvcDraft(v);
+                    }}
+                    placeholder="Duração (min)"
+                  />
+                  <input
+                    value={s.defaultSkill || ''}
+                    onChange={(e) => {
+                      const v = [...svcDraft];
+                      v[idx] = { ...v[idx], defaultSkill: e.target.value || null };
+                      setSvcDraft(v);
+                    }}
+                    placeholder="Skill padrão (opcional)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = [...svcDraft];
+                      v.splice(idx, 1);
+                      setSvcDraft(v);
+                    }}
+                  >
+                    Remover
+                  </button>
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setSvcDraft([...(svcDraft || []), { name: '', durationMin: 30, defaultSkill: '' }])}
+                >
+                  Adicionar serviço
+                </button>
+                <button
+                  type="button"
+                  onClick={saveServices}
+                  style={{
+                    background: '#16a34a',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '6px 10px',
+                  }}
+                >
+                  Salvar
+                </button>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
+                Dica: a IA usa a duração/skill do serviço para sugerir horários e escolher profissionais.
+              </div>
             </div>
           </Section>
         </>

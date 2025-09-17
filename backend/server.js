@@ -83,6 +83,7 @@ import plansRouter from './routes/plans.js';
 import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import calendarRemindersRouter from './routes/calendar.reminders.js';
+import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
 import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
@@ -274,6 +275,7 @@ function configureApp() {
   app.use('/api', googleCalendarRouter);
   app.use('/api', calendarCompatRouter);
   app.use('/api', calendarRemindersRouter);
+  app.use('/api', calendarServicesAdminRouter);
   app.use('/api/orgs', orgsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
@@ -285,6 +287,26 @@ function configureApp() {
   app.use(metaStatusRouter);
 
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
+
+  if (process.env.CALENDAR_REMINDERS_CRON_ENABLED === 'true') {
+    const EVERY_MIN = Number(process.env.CALENDAR_REMINDERS_INTERVAL_MIN || 15);
+    setInterval(async () => {
+      try {
+        await fetch('http://127.0.0.1:' + (process.env.PORT || 4000) + '/api/calendar/reminders/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hours: 24 }),
+        });
+        await fetch('http://127.0.0.1:' + (process.env.PORT || 4000) + '/api/calendar/reminders/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hours: 1 }),
+        });
+      } catch (e) {
+        // no-op
+      }
+    }, EVERY_MIN * 60 * 1000);
+  }
 
   /* eslint-disable no-unused-vars */
   app.use((err, req, res, _next) => {
