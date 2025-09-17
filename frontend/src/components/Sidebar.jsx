@@ -12,6 +12,7 @@ to="/inbox"
 to="/marketing/calendar"
 to="/settings/governanca"
 to="/settings/governanca/metricas"
+to="/settings/agenda"
 */
 
 const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
@@ -55,6 +56,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     { perm: 'audit:view', to: '/settings/governanca', label: 'Governança & Logs' },
     { perm: 'telemetry:view', to: '/settings/governanca/metricas', label: 'Métricas' },
     { perm: 'marketing:view', to: '/marketing/calendar', label: 'Calendário' },
+    { perm: 'org_admin', to: '/settings/agenda', label: 'Agenda & Serviços' },
   ];
   const visibleContractLinks = contractLinks.filter(({ perm }) => hasPerm(perm));
 

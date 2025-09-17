@@ -5,6 +5,7 @@ import GovLogsPage from "../pages/marketing/GovLogsPage.jsx";
 import TelemetryPage from "../pages/governanca/TelemetryPage.jsx";
 import WhatsAppInbox from "../pages/inbox/whatsapp/WhatsAppInbox.jsx";
 import RequirePerm from "@/components/RequirePerm.jsx";
+import CalendarSettingsPage from "@/pages/settings/CalendarSettingsPage.jsx";
 
 // ÚNICA fonte de verdade para as rotas
 export const APP_ROUTES = [
@@ -44,6 +45,15 @@ export const APP_ROUTES = [
         {/* Se padronizou no backend para analytics.view,
             troque a perm acima para 'analytics:view' */}
         <TelemetryPage />
+      </RequirePerm>
+    ),
+  },
+
+  {
+    path: "/settings/agenda",
+    element: (
+      <RequirePerm perm="org_admin">
+        <CalendarSettingsPage />
       </RequirePerm>
     ),
   },
