@@ -1,4 +1,4 @@
-// ADD-ONLY: audita presença de links no sidebar para cada rota do contrato
+
 const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
@@ -34,3 +34,4 @@ main().catch((err) => {
   console.error('[nav-audit] Falha ao executar auditoria:', err);
   process.exit(1);
 });
+

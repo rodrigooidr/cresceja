@@ -1,9 +1,24 @@
 import React from "react";
 import { createWhatsAppClient } from "../../../integrations/whatsapp/client";
 import inboxApi from "../../../api/inboxApi";
+import { useInboxAlerts } from "../hooks/useInboxAlerts.js";
+import UrgentBadge from "../components/UrgentBadge.jsx";
+import HandoffBanner from "../components/HandoffBanner.jsx";
 import ChannelBadge from "./ChannelBadge.jsx";
 import TagEditor from "./TagEditor.jsx";
 import ContactPanel from "./ContactPanel.jsx";
+
+const EMPTY_PENDING = new Map();
+
+function hasPendingAlert(pendingAlerts, conversationId) {
+  if (!conversationId || !pendingAlerts || typeof pendingAlerts.has !== "function") {
+    return false;
+  }
+  if (pendingAlerts.has(conversationId)) return true;
+  const key = String(conversationId);
+  if (pendingAlerts.has(key)) return true;
+  return false;
+}
 
 function useWhatsAppClient({ transport = "cloud" } = {}) {
   const [client, setClient] = React.useState(null);
@@ -34,6 +49,9 @@ function useConversations(client) {
           unread: 0,
           typing: "paused",
           contact: null,
+          needs_human: false,
+          alert_sent: false,
+          conversation_id: chatId,
         };
       next.set(chatId, updater(base));
       return next;
@@ -129,6 +147,9 @@ function useConversations(client) {
             unread: 0,
             typing: "paused",
             contact: contact ?? null,
+            needs_human: false,
+            alert_sent: false,
+            conversation_id: chatId,
           };
         const ids = new Set(base.messages.map((msg) => msg.id));
         const merged = [
@@ -255,7 +276,15 @@ function useConversations(client) {
   };
 }
 
-function ConversationList({ convs, active, onOpen, tagFilter, onTagFilter, onAddTag }) {
+function ConversationList({
+  convs,
+  active,
+  onOpen,
+  tagFilter,
+  onTagFilter,
+  onAddTag,
+  pendingAlerts = EMPTY_PENDING,
+}) {
   const list = React.useMemo(() => {
     const ordered = Array.from(convs.values()).sort((a, b) => {
       const lastA = a.messages[a.messages.length - 1];
@@ -286,6 +315,15 @@ function ConversationList({ convs, active, onOpen, tagFilter, onTagFilter, onAdd
         {list.length === 0 && <div className="p-3 text-sm opacity-70">Sem conversas.</div>}
         {list.map((conversation) => {
           const last = conversation.messages[conversation.messages.length - 1];
+          const conversationId =
+            conversation?.conversation_id ??
+            conversation?.id ??
+            conversation?.chat_id ??
+            conversation?.chatId ??
+            null;
+          const needsHuman = conversation?.needs_human && !conversation?.alert_sent;
+          const alsoPending = hasPendingAlert(pendingAlerts, conversationId);
+          const showUrgent = Boolean(needsHuman || alsoPending);
           return (
             <button
               key={conversation.id}
@@ -297,7 +335,10 @@ function ConversationList({ convs, active, onOpen, tagFilter, onTagFilter, onAdd
             >
               <div className="flex items-center gap-1">
                 <ChannelBadge channel={conversation.contact?.channel || "whatsapp"} />
-                <div className="font-medium">{conversation.contact?.name || conversation.title}</div>
+                <div className="font-medium">
+                  {conversation.contact?.name || conversation.title}
+                  {showUrgent && <UrgentBadge />}
+                </div>
               </div>
               <TagEditor
                 tags={conversation.contact?.tags || []}
@@ -427,7 +468,15 @@ function MessageBubble({ m, onTranscribe }) {
   );
 }
 
-function ChatWindow({ conv, onSend, onSendMedia, onTyping, onTranscribe }) {
+function ChatWindow({
+  conv,
+  onSend,
+  onSendMedia,
+  onTyping,
+  onTranscribe,
+  showHandoff = false,
+  onAck,
+}) {
   const [text, setText] = React.useState("");
   const [mediaUrl, setMediaUrl] = React.useState("");
 
@@ -444,6 +493,7 @@ function ChatWindow({ conv, onSend, onSendMedia, onTyping, onTranscribe }) {
 
   return (
     <div className="flex-1 flex flex-col h-full">
+      <HandoffBanner show={showHandoff} onAck={onAck} />
       <div className="flex items-center justify-between p-3 border-b">
         <div>
           <div className="font-semibold">
@@ -519,6 +569,34 @@ export default function WhatsAppInbox({ transport = "cloud" }) {
   const { convs, active, openChat, sendText, sendMedia, setTyping, updateConv, setContactForChat } =
     useConversations(client);
   const [tagFilter, setTagFilter] = React.useState("");
+  const { pending: pendingAlertsRaw, ack: ackAlert } = useInboxAlerts();
+  const pendingAlerts = pendingAlertsRaw instanceof Map ? pendingAlertsRaw : EMPTY_PENDING;
+  const activeConversation = active ? convs.get(active) : null;
+  const activeConversationId =
+    activeConversation?.conversation_id ??
+    activeConversation?.id ??
+    activeConversation?.chat_id ??
+    activeConversation?.chatId ??
+    active ??
+    null;
+  const showHandoffBanner = React.useMemo(() => {
+    if (!activeConversationId) return false;
+    const needsHuman = activeConversation?.needs_human && !activeConversation?.alert_sent;
+    const pendingAlert = hasPendingAlert(pendingAlerts, activeConversationId);
+    return Boolean(needsHuman || pendingAlert);
+  }, [activeConversation, activeConversationId, pendingAlerts]);
+  const handleAckAlert = React.useCallback(async () => {
+    if (!activeConversationId || typeof ackAlert !== "function") return;
+    await ackAlert(activeConversationId);
+    const key = active || (typeof activeConversationId === "string" ? activeConversationId : null);
+    if (key) {
+      updateConv(key, (conv) => ({
+        ...conv,
+        alert_sent: true,
+        needs_human: false,
+      }));
+    }
+  }, [activeConversationId, ackAlert, active, updateConv]);
 
   const handleTranscribe = React.useCallback(
     async (chatId, message) => {
@@ -562,13 +640,16 @@ export default function WhatsAppInbox({ transport = "cloud" }) {
         tagFilter={tagFilter}
         onTagFilter={setTagFilter}
         onAddTag={handleAddTag}
+        pendingAlerts={pendingAlerts}
       />
       <ChatWindow
-        conv={active ? convs.get(active) : null}
+        conv={activeConversation}
         onSend={sendText}
         onSendMedia={sendMedia}
         onTyping={setTyping}
         onTranscribe={(message) => handleTranscribe(active, message)}
+        showHandoff={showHandoffBanner}
+        onAck={handleAckAlert}
       />
       <div className="border-l flex flex-col">
         <div className="p-2 border-b">

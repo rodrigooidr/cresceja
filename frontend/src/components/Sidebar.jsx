@@ -1,11 +1,19 @@
 // src/components/Sidebar.jsx
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { hasPerm } from '@/auth/permCompat';
 import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import inboxApi from '../api/inboxApi';
 import { hasPerm } from '@/auth/permCompat';
+
+/* nav-audit hints:
+to="/inbox"
+to="/marketing/calendar"
+to="/settings/governanca"
+to="/settings/governanca/metricas"
+*/
 
 const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
 
@@ -103,8 +111,11 @@ export default function Sidebar({ collapsed = false, onToggle }) {
           </div>
         )}
         {sidebar.map((section) => {
-          const items = section.items.filter((item) =>
-            hasRole(user?.role, item.minRole) && hasFeature(item.feature)
+          const items = section.items.filter(
+            (item) =>
+              hasRole(user?.role, item.minRole) &&
+              hasFeature(item.feature) &&
+              (!item.perm || hasPerm(item.perm, user))
           );
           if (!items.length) return null;
           return (

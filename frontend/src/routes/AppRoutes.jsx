@@ -1,12 +1,15 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import ContentCalendar from "../pages/marketing/ContentCalendar.jsx";
+import GovLogsPage from "../pages/marketing/GovLogsPage.jsx";
+import TelemetryPage from "../pages/governanca/TelemetryPage.jsx";
+import WhatsAppInbox from "../pages/inbox/whatsapp/WhatsAppInbox.jsx";
 import RequirePerm from "@/components/RequirePerm.jsx";
-import WhatsAppInbox from "@/pages/inbox/whatsapp/WhatsAppInbox.jsx";
-import GovLogsPage from "@/pages/marketing/GovLogsPage.jsx";
-import TelemetryPage from "@/pages/governanca/TelemetryPage.jsx";
-import ContentCalendar from "@/pages/marketing/ContentCalendar.jsx";
 
-const ROUTES = [
+// ÚNICA fonte de verdade para as rotas
+export const APP_ROUTES = [
+  { path: "/", element: <Navigate to="/marketing/calendar" replace /> },
+
   {
     path: "/inbox",
     element: (
@@ -15,22 +18,7 @@ const ROUTES = [
       </RequirePerm>
     ),
   },
-  {
-    path: "/settings/governanca",
-    element: (
-      <RequirePerm perm="audit:view">
-        <GovLogsPage />
-      </RequirePerm>
-    ),
-  },
-  {
-    path: "/settings/governanca/metricas",
-    element: (
-      <RequirePerm perm="telemetry:view">
-        <TelemetryPage />
-      </RequirePerm>
-    ),
-  },
+
   {
     path: "/marketing/calendar",
     element: (
@@ -39,24 +27,39 @@ const ROUTES = [
       </RequirePerm>
     ),
   },
-  { path: "/", element: <Navigate to="/marketing/calendar" replace /> },
+
+  {
+    path: "/settings/governanca",
+    element: (
+      <RequirePerm perm="audit:view">
+        <GovLogsPage />
+      </RequirePerm>
+    ),
+  },
+
+  {
+    path: "/settings/governanca/metricas",
+    element: (
+      <RequirePerm perm="telemetry:view">
+        {/* Se padronizou no backend para analytics.view,
+            troque a perm acima para 'analytics:view' */}
+        <TelemetryPage />
+      </RequirePerm>
+    ),
+  },
+
   { path: "*", element: <div>Not found</div> },
 ];
-
-export const APP_ROUTES = ROUTES;
 
 export default function AppRoutes() {
   return (
     <Routes>
-      {ROUTES.map(({ path, element, index }) =>
-        index ? (
-          <Route key="index" index element={element} />
-        ) : (
-          <Route key={path ?? "__fallback__"} path={path} element={element} />
-        )
-      )}
+      {APP_ROUTES.map(({ path, element }) => (
+        <Route key={path} path={path} element={element} />
+      ))}
     </Routes>
   );
 }
 
-AppRoutes.routes = ROUTES;
+// opcional: expor a lista de rotas para testes/outros usos
+AppRoutes.routes = APP_ROUTES;

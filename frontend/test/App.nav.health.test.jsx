@@ -1,19 +1,33 @@
+// test/routes/AppRoutes.inbox.test.jsx
+/* ADD-ONLY: merged & fixed */
+
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import AppRoutes from '@/routes/AppRoutes.jsx';
+import { MemoryRouter } from 'react-router-dom';
+import AppRoutes from '@/routes/AppRoutes';
 
+// Mocks para isolar a navegação
 jest.mock('@/components/RequirePerm.jsx', () => ({ children }) => <>{children}</>);
 jest.mock('@/pages/inbox/whatsapp/WhatsAppInbox.jsx', () => () => <div>Inbox</div>);
 jest.mock('@/pages/marketing/GovLogsPage.jsx', () => () => <div>Governança</div>);
 jest.mock('@/pages/governanca/TelemetryPage.jsx', () => () => <div>Métricas</div>);
 jest.mock('@/pages/marketing/ContentCalendar.jsx', () => () => <div>Calendário</div>);
 
-const routes = Array.isArray(AppRoutes) ? AppRoutes : AppRoutes.routes;
+// Polyfill opcional para ambientes sem EventSource
+beforeAll(() => {
+  if (typeof global.EventSource !== 'function') {
+    global.EventSource = function EventSource() {};
+  }
+});
 
-const inboxRoute = routes.find((route) => route.path === '/inbox');
-
-test('abre Inbox sem crash', () => {
-  expect(inboxRoute).toBeTruthy();
-  render(inboxRoute.element);
-  expect(screen.getByText(/Conversas|Inbox|WhatsApp/i)).toBeTruthy();
+describe('Navegação básica', () => {
+  test('abre /inbox sem crash', () => {
+    render(
+      <MemoryRouter initialEntries={['/inbox']}>
+        <AppRoutes />
+      </MemoryRouter>
+    );
+    // Heurísticas que devem existir na sua Inbox
+    expect(screen.queryByText(/Conversas|Inbox|WhatsApp/i)).toBeTruthy();
+  });
 });
