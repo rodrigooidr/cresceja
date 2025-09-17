@@ -1,7 +1,6 @@
 // src/components/Sidebar.jsx
 import React, { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { hasPerm } from '@/auth/permCompat';
 import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
