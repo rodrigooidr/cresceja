@@ -45,6 +45,7 @@ export default function TelemetryPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showCharts, setShowCharts] = useState(true);
+  const [appt, setAppt] = useState(null);
   const hasChartData =
     !!(
       data &&
@@ -58,12 +59,45 @@ export default function TelemetryPage() {
     const qp = new URLSearchParams();
     if (range.from) qp.set('from', range.from);
     if (range.to) qp.set('to', range.to);
+    const queryString = qp.toString();
     setLoading(true);
-    fetch(`/api/telemetry/overview?${qp.toString()}`)
-      .then((r) => r.json())
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+    let active = true;
+
+    async function load() {
+      try {
+        const overviewUrl = queryString
+          ? `/api/telemetry/overview?${queryString}`
+          : '/api/telemetry/overview';
+        const overviewPromise = fetch(overviewUrl).then((r) => r.json());
+        const urlAppt = new URL('/api/telemetry/appointments/overview', window.location.origin);
+        if (range.from) urlAppt.searchParams.set('from', range.from);
+        if (range.to) urlAppt.searchParams.set('to', range.to);
+        const appointmentsPromise = fetch(urlAppt.toString())
+          .then((r) => r.json())
+          .catch(() => ({ items: [] }));
+
+        const [overviewData, appointmentsData] = await Promise.all([
+          overviewPromise,
+          appointmentsPromise,
+        ]);
+
+        if (!active) return;
+        setData(overviewData);
+        setAppt(appointmentsData);
+      } catch (_err) {
+        if (!active) return;
+        setData(null);
+        setAppt({ items: [] });
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+
+    return () => {
+      active = false;
+    };
   }, [range.from, range.to]);
 
   return (
@@ -105,6 +139,35 @@ export default function TelemetryPage() {
             ) : (
               <TelemetryCharts data={data} />
             ))}
+          {appt?.items?.length > 0 && (
+            <section style={{ marginTop: 16 }}>
+              <h2>Agenda — Comparecimento por dia</h2>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Dia</th>
+                    <th>Pend.</th>
+                    <th>Confirm.</th>
+                    <th>Cancel.</th>
+                    <th>No-show</th>
+                    <th>Lembretes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {appt.items.map((r) => (
+                    <tr key={r.day}>
+                      <td>{String(r.day).slice(0, 10)}</td>
+                      <td>{r.pending || 0}</td>
+                      <td>{r.confirmed || 0}</td>
+                      <td>{r.canceled || 0}</td>
+                      <td>{r.noshow || 0}</td>
+                      <td>{r.reminded || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
           <Table
             title="Envios WhatsApp por dia"
             cols={[

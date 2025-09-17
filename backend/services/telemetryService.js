@@ -76,4 +76,26 @@ export async function logTelemetry(
 
 export default {
   logTelemetry,
+  appointmentsOverview,
 };
+
+export async function appointmentsOverview({ from, to, orgId }) {
+  if (!orgId) return [];
+  const q = await rootQuery(
+    `
+      SELECT date_trunc('day', start_at) AS day,
+             count(*) FILTER (WHERE rsvp_status = 'pending')   AS pending,
+             count(*) FILTER (WHERE rsvp_status = 'confirmed') AS confirmed,
+             count(*) FILTER (WHERE rsvp_status = 'canceled')  AS canceled,
+             count(*) FILTER (WHERE rsvp_status = 'noshow')    AS noshow,
+             SUM(CASE WHEN reminder_sent_at IS NOT NULL THEN 1 ELSE 0 END) AS reminded
+        FROM public.calendar_events
+       WHERE org_id = $1
+         AND start_at BETWEEN $2 AND $3
+       GROUP BY 1
+       ORDER BY 1 ASC
+    `,
+    [orgId, from, to]
+  );
+  return q.rows || [];
+}

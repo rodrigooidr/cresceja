@@ -191,7 +191,8 @@ router.get('/calendar/events', requireAuth, async (req, res, next) => {
     const { from, to, personName = null, contactId = null } = req.query;
     const rows = await query(
       `
-      SELECT id, summary, description, start_at, end_at, external_event_id, calendar_id, contact_id
+      SELECT id, summary, description, start_at, end_at, external_event_id, calendar_id, contact_id,
+             rsvp_status, rsvp_token, reminder_sent_at, reminders_count, confirmed_at, canceled_at, noshow_at
       FROM public.calendar_events
       WHERE ($1::timestamptz IS NULL OR start_at >= $1)
         AND ($2::timestamptz IS NULL OR end_at   <= $2)
