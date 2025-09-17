@@ -6,6 +6,7 @@ import {
   listMessages,
   appendMessage,
 } from '../services/conversationsService.js';
+import { logTelemetry } from '../services/telemetryService.js';
 
 const router = Router();
 
@@ -92,6 +93,15 @@ router.post('/:id/messages', async (req, res, next) => {
       from,
       payload
     );
+    if (from === 'agent' || from === 'customer' || from === 'contact') {
+      const eventKey = from === 'agent' ? 'inbox.message.sent' : 'inbox.message.received';
+      await logTelemetry(db, {
+        orgId,
+        userId: from === 'agent' ? req.user?.id || null : null,
+        source: 'inbox',
+        eventKey,
+      });
+    }
     res.status(201).json(created);
   } catch (err) {
     next(err);

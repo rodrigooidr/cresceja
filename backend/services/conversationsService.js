@@ -57,7 +57,7 @@ export async function listConversations(db, orgId, { q: search, status, tags, li
     SELECT
       c.id,
       c.status,
-      TRUE AS ai_enabled,
+      c.ai_enabled,
       COALESCE(mu.unread_count, 0) AS unread_count,
       c.last_message_at,
       ${PROVIDER_CASE_SQL} AS provider,
@@ -68,7 +68,10 @@ export async function listConversations(db, orgId, { q: search, status, tags, li
         'photo_url',  ct.photo_url,
         'phone_e164', ct.phone_e164,
         'tags',       COALESCE(ct.tags, '{}'::text[])
-      ) AS contact
+      ) AS contact,
+      c.human_requested_at,
+      c.alert_sent,
+      (c.human_requested_at IS NOT NULL AND c.ai_enabled = FALSE) AS needs_human
     FROM conversations c
     LEFT JOIN contacts   ct ON ct.id = c.contact_id
     LEFT JOIN channels   ch ON ch.id = c.channel_id
@@ -106,7 +109,8 @@ export async function getConversation(db, orgId, id) {
         'photo_url',  ct.photo_url,
         'phone_e164', ct.phone_e164,
         'tags',       COALESCE(ct.tags, '{}'::text[])
-      ) AS contact
+      ) AS contact,
+      (c.human_requested_at IS NOT NULL AND c.ai_enabled = FALSE) AS needs_human
     FROM conversations c
     LEFT JOIN contacts   ct ON ct.id = c.contact_id
     LEFT JOIN channels   ch ON ch.id = c.channel_id

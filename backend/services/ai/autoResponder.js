@@ -3,6 +3,7 @@ import { query as rootQuery } from '#db';
 import pkg from 'bullmq';
 const { Queue } = pkg;
 import IORedis from 'ioredis';
+import { logTelemetry } from '../telemetryService.js';
 
 const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
 
@@ -25,15 +26,26 @@ export async function autoReplyIfEnabled({ db, orgId, conversationId, contactId,
   const lower = (text || '').toLowerCase();
 
   if (kws.some(k => lower.includes(k))) {
+    const autoDisable =
+      process.env.HANDOFF_AUTO_DISABLE_IA === undefined ||
+      ['true', '1', 'yes'].includes(String(process.env.HANDOFF_AUTO_DISABLE_IA).toLowerCase());
+
     await q(db)(
       `UPDATE conversations
-          SET ai_status = 'handed_off',
-              is_ai_active = FALSE,
-              human_requested_at = NOW(),
-              alert_sent = FALSE
+          SET human_requested_at = COALESCE(human_requested_at, NOW()),
+              alert_sent = FALSE,
+              ai_enabled = CASE WHEN $3 THEN FALSE ELSE ai_enabled END
         WHERE id = $1 AND org_id = $2`,
-      [conversationId, orgId]
+      [conversationId, orgId, autoDisable]
     );
+
+    await logTelemetry(db, {
+      orgId,
+      userId: null,
+      source: 'handoff',
+      eventKey: 'handoff.requested',
+      metadata: { trigger: 'client_keyword', contactId },
+    });
     return;
   }
 
@@ -48,6 +60,14 @@ export async function autoReplyIfEnabled({ db, orgId, conversationId, contactId,
   );
 
   const messageId = ins.rows[0].id;
+
+  await logTelemetry(db, {
+    orgId,
+    userId: null,
+    source: 'ai',
+    eventKey: 'ai.autoreply.sent',
+    metadata: { conversationId, contactId },
+  });
 
   const queue = new Queue('social-publish', { connection: getRedis() });
   await queue.add('send', { orgId, conversationId, messageId }, { attempts: 3, backoff: { type: 'exponential', delay: 2000 } });

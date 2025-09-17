@@ -67,6 +67,8 @@ import postsRouter from './routes/posts.js';
 import inboxRoutes from './routes/inbox.js';
 import inboxSendRoutes from './routes/inbox.send.js';
 import metaChannelsRoutes from './routes/channels/meta.js';
+import telemetryRouter from './routes/telemetry.js';
+import handoffRouter from './routes/conversations.handoff.js';
 import inboxCompatRouter from './routes/inbox.compat.js';
 import crmCompatRouter from './routes/crm.compat.js';
 import aiCompatRouter from './routes/ai.compat.js';
@@ -258,6 +260,8 @@ function configureApp() {
   app.use('/', orgsCampaignsRouter);
   app.use('/', orgsCampaignsApproveRouter);
   app.use('/', orgsAssetsRouter);
+  app.use('/', telemetryRouter);
+  app.use('/', handoffRouter);
 
   app.use('/api/integrations', integrationsRouter);
   app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);
