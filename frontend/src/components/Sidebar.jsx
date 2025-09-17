@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import inboxApi from '../api/inboxApi';
+import { hasPerm } from '@/auth/permCompat';
 
 /* nav-audit hints:
 to="/inbox"
@@ -50,6 +51,14 @@ export default function Sidebar({ collapsed = false, onToggle }) {
   const hasFeature = (flag) => !flag || user?.features?.[flag];
   const [me, setMe] = useState(null);
 
+  const contractLinks = [
+    { perm: 'inbox:view', to: '/inbox', label: 'Inbox' },
+    { perm: 'audit:view', to: '/settings/governanca', label: 'Governança & Logs' },
+    { perm: 'telemetry:view', to: '/settings/governanca/metricas', label: 'Métricas' },
+    { perm: 'marketing:view', to: '/marketing/calendar', label: 'Calendário' },
+  ];
+  const visibleContractLinks = contractLinks.filter(({ perm }) => hasPerm(perm));
+
   useEffect(() => {
     (async () => {
       try {
@@ -76,6 +85,31 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         </div>
       )}
       <nav className="flex-1 overflow-y-auto mt-2">
+        {visibleContractLinks.length > 0 && (
+          <div className="mb-4">
+            {!collapsed && (
+              <div className="px-2 text-xs font-semibold text-gray-500 uppercase">
+                Navegação
+              </div>
+            )}
+            {visibleContractLinks.map(({ to, label }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  `block px-2 py-2 text-sm rounded ${
+                    isActive
+                      ? 'bg-blue-50 text-blue-700 font-semibold'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`
+                }
+                title={collapsed ? label.charAt(0) : undefined}
+              >
+                {collapsed ? label.charAt(0) : label}
+              </NavLink>
+            ))}
+          </div>
+        )}
         {sidebar.map((section) => {
           const items = section.items.filter(
             (item) =>

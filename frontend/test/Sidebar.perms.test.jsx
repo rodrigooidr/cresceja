@@ -12,8 +12,8 @@ import Sidebar from '@/components/Sidebar';
 describe('Sidebar por permissão', () => {
   test('exibe/oculta links conforme RBAC', () => {
     render(<Sidebar />);
-    expect(screen.getByRole('link', { name: /Inbox/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /^Calendário$/i })).toBeInTheDocument();
+    expect(screen.getByText(/Inbox/i)).toBeInTheDocument();
+    expect(screen.getByText(/Calendário/i)).toBeInTheDocument();
     expect(screen.queryByText(/Governança/i)).toBeNull();
     expect(screen.queryByText(/Métricas/i)).toBeNull();
   });

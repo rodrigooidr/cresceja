@@ -65,7 +65,11 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "guardrail:inbox": "node scripts/guardrail-inbox.js",
+
     "test:nav": "jest --runTestsByPath test/App.routes.contract.test.jsx test/Sidebar.perms.test.jsx test/App.nav.health.test.jsx --silent",
+
+    "test:nav": "jest --config jest.config.cjs --runTestsByPath test/App.routes.contract.test.jsx test/Sidebar.perms.test.jsx test/App.nav.health.test.jsx --silent",
+
     "audit:nav": "node scripts/nav-audit.js"
   },
   "browserslist": {

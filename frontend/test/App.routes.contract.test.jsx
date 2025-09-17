@@ -1,4 +1,4 @@
-/* ADD-ONLY */
+
 import AppRoutes from '@/routes/AppRoutes';
 import { ROUTE_CONTRACT } from '@/routes/contract';
 

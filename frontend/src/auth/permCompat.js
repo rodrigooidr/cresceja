@@ -1,3 +1,4 @@
+
 import { useAuth } from '@/contexts/AuthContext';
 
 const PERMISSION_FALLBACK = {
@@ -49,4 +50,5 @@ export function hasPerm(perm, user) {
 export function useHasPerm(perm) {
   const { user } = useAuth();
   return hasPerm(perm, user);
+
 }
