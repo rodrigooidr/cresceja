@@ -20,6 +20,7 @@ import useToastFallback from "../../hooks/useToastFallback";
 import ChannelPicker from "../../components/inbox/ChannelPicker.jsx";
 import { useInboxAlerts } from "./hooks/useInboxAlerts.js";
 import HandoffBanner from "./components/HandoffBanner.jsx";
+import ScheduleModal from "./components/ScheduleModal.jsx";
 
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
@@ -139,6 +140,8 @@ export default function InboxPage({ addToast: addToastProp }) {
   // ===== MENSAGENS =====
   const [messages, setMessages] = useState([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleContext, setScheduleContext] = useState(null);
 
   const selectedConversation = useMemo(
     () => conversations.find((c) => String(c.id) === String(selectedId)) || null,
@@ -359,6 +362,64 @@ export default function InboxPage({ addToast: addToastProp }) {
     [selectedId, addToast]
   );
 
+  const openScheduleModal = useCallback(
+    ({ conversation: conv, client: cli }) => {
+      setScheduleContext({
+        conversation: conv || selectedConversation || null,
+        client: cli || null,
+      });
+      setScheduleOpen(true);
+    },
+    [selectedConversation]
+  );
+
+  const closeScheduleModal = useCallback(() => {
+    setScheduleOpen(false);
+    setScheduleContext(null);
+  }, []);
+
+  const handleScheduledEvent = useCallback(
+    ({ event, person }) => {
+      if (!event || !selectedId) {
+        closeScheduleModal();
+        return;
+      }
+
+      let formatted = null;
+      try {
+        if (event.start) {
+          const start = new Date(event.start);
+          if (!Number.isNaN(start.getTime())) {
+            formatted = `${start.toLocaleDateString("pt-BR")} ${start.toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}`;
+          }
+        }
+      } catch {
+        formatted = null;
+      }
+
+      const parts = [`Agendado com ${person || "o profissional"}`];
+      if (formatted) parts.push(`em ${formatted}`);
+      if (event.htmlLink) parts.push(`Abrir no Google: ${event.htmlLink}`);
+
+      const synthetic = {
+        id: `schedule-${Date.now()}`,
+        conversation_id: String(selectedId),
+        text: parts.join(' — '),
+        created_at: new Date().toISOString(),
+        direction: 'out',
+        sender: 'agent',
+        type: 'text',
+      };
+
+      setMessages((prev) => [...prev, synthetic]);
+      closeScheduleModal();
+    },
+    [selectedId, setMessages, closeScheduleModal]
+  );
+
   if (!allowed) return null;
 
   // ===== UI =====
@@ -409,8 +470,17 @@ export default function InboxPage({ addToast: addToastProp }) {
           conversation={selectedConversation}
           onApplyTags={applyTags}
           addToast={addToast}
+          onSchedule={openScheduleModal}
         />
       </aside>
+      <ScheduleModal
+        open={scheduleOpen}
+        onClose={closeScheduleModal}
+        conversation={scheduleContext?.conversation || selectedConversation || null}
+        client={scheduleContext?.client || null}
+        onScheduled={handleScheduledEvent}
+        addToast={addToast}
+      />
     </div>
   );
 }
