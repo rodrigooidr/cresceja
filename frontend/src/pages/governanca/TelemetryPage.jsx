@@ -46,13 +46,15 @@ export default function TelemetryPage() {
   const [loading, setLoading] = useState(false);
   const [showCharts, setShowCharts] = useState(true);
   const [appt, setAppt] = useState(null);
+  const [attendance, setAttendance] = useState([]);
   const hasChartData =
     !!(
-      data &&
-      (data.wa_send_daily?.length ||
-        data.wa_latency_daily?.length ||
-        data.inbox_volume_daily?.length ||
-        data.inbox_ttfr_daily?.length)
+      (data &&
+        (data.wa_send_daily?.length ||
+          data.wa_latency_daily?.length ||
+          data.inbox_volume_daily?.length ||
+          data.inbox_ttfr_daily?.length)) ||
+      attendance?.length
     );
 
   useEffect(() => {
@@ -84,10 +86,12 @@ export default function TelemetryPage() {
         if (!active) return;
         setData(overviewData);
         setAppt(appointmentsData);
+        setAttendance(appointmentsData.items || []);
       } catch (_err) {
         if (!active) return;
         setData(null);
         setAppt({ items: [] });
+        setAttendance([]);
       } finally {
         if (active) setLoading(false);
       }
@@ -137,11 +141,34 @@ export default function TelemetryPage() {
             (!hasChartData ? (
               <div style={{ opacity: 0.7 }}>Sem dados para o período selecionado.</div>
             ) : (
-              <TelemetryCharts data={data} />
+              <TelemetryCharts data={data} attendance={attendance} />
             ))}
           {appt?.items?.length > 0 && (
             <section style={{ marginTop: 16 }}>
-              <h2>Agenda — Comparecimento por dia</h2>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginTop: 16,
+                }}
+              >
+                <h2 style={{ margin: '8px 0' }}>Agenda — Comparecimento por dia</h2>
+                <a
+                  href={`/api/telemetry/appointments/export.csv?from=${encodeURIComponent(
+                    range.from || '',
+                  )}&to=${encodeURIComponent(range.to || '')}`}
+                  style={{
+                    fontSize: 14,
+                    textDecoration: 'none',
+                    border: '1px solid #ddd',
+                    borderRadius: 6,
+                    padding: '6px 10px',
+                  }}
+                >
+                  Exportar CSV
+                </a>
+              </div>
               <table className="table">
                 <thead>
                   <tr>
