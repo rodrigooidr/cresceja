@@ -1,6 +1,15 @@
 import { Router } from 'express';
 import { query } from '#db';
 import * as authModule from '../middleware/auth.js';
+import { ensureLoaded, cfg } from '../services/inbox/directionSender.meta.js';
+
+(async () => {
+  try {
+    await ensureLoaded();
+  } catch (_err) {
+    // ignore boot failures; keep safe defaults
+  }
+})();
 
 const router = Router();
 const requireAuth =
@@ -10,6 +19,34 @@ const requireAuth =
   ((_req, _res, next) => next());
 
 router.use(requireAuth);
+
+async function fallbackPersistOutgoingMessage(conversationId, transport, media, text) {
+  if (!conversationId || !transport) return null;
+  const kind = media ? media.type || 'image' : 'text';
+  const normalizedText = text ?? null;
+  const ins = await query(
+    `INSERT INTO public.messages
+       (id, org_id, conversation_id, sender, direction, type, text, status, created_at, updated_at)
+     SELECT gen_random_uuid(), c.org_id, c.id, $4, $5, $2, $3, 'sent', now(), now()
+       FROM public.conversations c
+       JOIN public.channels ch ON ch.id = c.channel_id
+      WHERE c.id = $1
+        AND ch.type = 'whatsapp'
+        AND (ch.mode = $6 OR ($6 IS NULL AND ch.mode IS NULL))
+      LIMIT 1
+      RETURNING id`,
+    [conversationId, kind, normalizedText, cfg.SENDER_OUT, cfg.DIR_OUT, transport]
+  );
+  if (!ins.rows.length) return null;
+  const messageId = ins.rows[0].id;
+  await query(
+    `UPDATE public.conversations
+        SET last_message_at = now(), updated_at = now()
+      WHERE id = $1`,
+    [conversationId]
+  );
+  return messageId;
+}
 
 router.get('/inbox/threads', async (req, res, next) => {
   try {
@@ -109,10 +146,61 @@ router.get('/inbox/threads/:id/messages', async (req, res, next) => {
   }
 });
 
+router.post('/inbox/messages', async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const conversationId = body.conversationId || body.conversation_id || null;
+    const text = body.message ?? body.text ?? null;
+    const media = body.media || null;
+    if (!conversationId) {
+      return res.status(400).json({ error: 'conversation_required' });
+    }
+
+    const { rows } = await query(
+      `SELECT c.id, ch.mode AS transport, ch.type
+         FROM public.conversations c
+         JOIN public.channels ch ON ch.id = c.channel_id
+        WHERE c.id = $1
+        LIMIT 1`,
+      [conversationId]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'conversation_not_found' });
+    }
+
+    const conv = rows[0];
+    if (conv.type !== 'whatsapp') {
+      return res.status(400).json({ error: 'unsupported_channel' });
+    }
+
+    const messageId = await fallbackPersistOutgoingMessage(
+      conversationId,
+      conv.transport,
+      media,
+      text
+    );
+
+    if (!messageId) {
+      return res.status(500).json({ error: 'fallback_failed' });
+    }
+
+    res.json({ ok: true, messageId, conversationId });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/inbox/messages/:id/read', async (req, res, next) => {
   try {
     const id = req.params.id;
     await query(`UPDATE public.messages SET status = 'read', updated_at = now() WHERE id = $1`, [id]);
+    await query(
+      `UPDATE public.conversations
+          SET unread_count = GREATEST(unread_count - 1, 0), updated_at = now()
+        WHERE id = (SELECT conversation_id FROM public.messages WHERE id = $1)`,
+      [id]
+    );
     res.json({ ok: true });
   } catch (err) {
     next(err);
