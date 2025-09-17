@@ -1,5 +1,8 @@
 // src/pages/inbox/components/ConversationList.jsx
 import React, { useMemo } from "react";
+import UrgentBadge from "./UrgentBadge.jsx";
+
+const EMPTY_MAP = new Map();
 
 /**
  * Props:
@@ -17,7 +20,13 @@ import React, { useMemo } from "react";
  * - selectedId: string|number|null
  * - onSelect: (id) => void
  */
-export default function ConversationList({ loading = false, items = [], selectedId, onSelect }) {
+export default function ConversationList({
+  loading = false,
+  items = [],
+  selectedId,
+  onSelect,
+  pendingAlerts = EMPTY_MAP,
+}) {
   const content = useMemo(() => {
     if (loading) return <SkeletonList />;
     if (!items.length) return <EmptyState />;
@@ -30,11 +39,12 @@ export default function ConversationList({ loading = false, items = [], selected
             item={c}
             selected={String(c.id) === String(selectedId)}
             onClick={() => onSelect?.(c.id)}
+            pendingAlerts={pendingAlerts}
           />
         ))}
       </ul>
     );
-  }, [loading, items, selectedId, onSelect]);
+  }, [loading, items, selectedId, onSelect, pendingAlerts]);
 
   return (
     <div className="h-full overflow-auto" data-testid="conv-list" aria-label="Conversations">
@@ -45,7 +55,7 @@ export default function ConversationList({ loading = false, items = [], selected
   );
 }
 
-function Row({ item, selected, onClick }) {
+function Row({ item, selected, onClick, pendingAlerts = EMPTY_MAP }) {
   const name =
     item.name ||
     item.contact?.name ||
@@ -61,6 +71,13 @@ function Row({ item, selected, onClick }) {
 
   const unread = Number(item.unread_count || 0);
   const channel = (item.channel || "—").toLowerCase();
+  const conversationId = item.conversation_id ?? item.id ?? item.chat_id;
+  const key = conversationId != null ? String(conversationId) : null;
+  const needsHuman = item.needs_human && !item.alert_sent;
+  const alsoPending = key
+    ? pendingAlerts?.has?.(conversationId) || pendingAlerts?.has?.(key)
+    : false;
+  const showUrgent = Boolean(needsHuman || alsoPending);
 
   return (
     <li
@@ -75,7 +92,10 @@ function Row({ item, selected, onClick }) {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
-            <h4 className="font-medium text-sm truncate">{name}</h4>
+            <h4 className="font-medium text-sm truncate">
+              {name}
+              {showUrgent && <UrgentBadge />}
+            </h4>
             <span className="text-[11px] text-gray-500 shrink-0">{ts}</span>
           </div>
 

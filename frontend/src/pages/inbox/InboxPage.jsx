@@ -18,12 +18,15 @@ import SidebarFilters from "./components/SidebarFilters.jsx";
 import ClientDetailsPanel from "./components/ClientDetailsPanel.jsx";
 import useToastFallback from "../../hooks/useToastFallback";
 import ChannelPicker from "../../components/inbox/ChannelPicker.jsx";
+import { useInboxAlerts } from "./hooks/useInboxAlerts.js";
+import HandoffBanner from "./components/HandoffBanner.jsx";
 
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
   const { allowed } = useActiveOrgGate();
   const { selected: orgId } = useOrg();
+  const inboxAlerts = useInboxAlerts();
 
   // ===== FILTROS =====
   const [filters, setFilters] = useState(() => ({
@@ -141,6 +144,31 @@ export default function InboxPage({ addToast: addToastProp }) {
     () => conversations.find((c) => String(c.id) === String(selectedId)) || null,
     [conversations, selectedId]
   );
+
+  const pendingAlerts = inboxAlerts.pending;
+  const showHandoffBanner = useMemo(() => {
+    if (!selectedConversation) return false;
+    const currentId =
+      selectedConversation?.id ?? selectedConversation?.conversation_id;
+    if (!currentId) return false;
+    const needsHuman =
+      selectedConversation?.needs_human && !selectedConversation?.alert_sent;
+    const pendingAlert =
+      pendingAlerts?.has?.(currentId) || pendingAlerts?.has?.(String(currentId));
+    return Boolean(needsHuman || pendingAlert);
+  }, [selectedConversation, pendingAlerts]);
+  const handleAckAlert = useCallback(async () => {
+    if (!selectedConversation) return;
+    const currentId =
+      selectedConversation?.id ?? selectedConversation?.conversation_id;
+    if (!currentId) return;
+    await inboxAlerts.ack(currentId);
+    setConversations((prev) =>
+      prev.map((c) =>
+        String(c.id) === String(currentId) ? { ...c, alert_sent: true } : c
+      )
+    );
+  }, [selectedConversation, inboxAlerts, setConversations]);
 
   useEffect(() => {
     async function load() {
@@ -351,6 +379,7 @@ export default function InboxPage({ addToast: addToastProp }) {
           items={conversations || []}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          pendingAlerts={pendingAlerts}
         />
       </aside>
 
@@ -361,6 +390,7 @@ export default function InboxPage({ addToast: addToastProp }) {
           onSetStatus={setStatus}
           onToggleAI={toggleAi}
         />
+        <HandoffBanner show={showHandoffBanner} onAck={handleAckAlert} />
         <div className="flex-1 overflow-y-auto">
           <MessageList
             loading={loadingMsgs}

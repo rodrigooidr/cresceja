@@ -2,6 +2,7 @@ import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import ContentCalendar from "../pages/marketing/ContentCalendar.jsx";
 import GovLogsPage from "../pages/marketing/GovLogsPage.jsx";
+import TelemetryPage from "../pages/governanca/TelemetryPage.jsx";
 
 export default function AppRoutes() {
   return (
@@ -9,6 +10,7 @@ export default function AppRoutes() {
       <Route path="/" element={<Navigate to="/marketing/calendar" replace />} />
       <Route path="/marketing/calendar" element={<ContentCalendar currentUser={{ role: "SuperAdmin" }} />} />
       <Route path="/settings/governanca" element={<GovLogsPage />} />
+      <Route path="/settings/governanca/metricas" element={<TelemetryPage />} />
       <Route path="*" element={<div>Not found</div>} />
     </Routes>
   );
