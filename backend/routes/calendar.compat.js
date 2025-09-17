@@ -188,7 +188,7 @@ router.post('/calendar/events', async (req, res, next) => {
 
 router.get('/calendar/events', requireAuth, async (req, res, next) => {
   try {
-    const { from, to, personName = null } = req.query;
+    const { from, to, personName = null, contactId = null } = req.query;
     const rows = await query(
       `
       SELECT id, summary, description, start_at, end_at, external_event_id, calendar_id, contact_id
@@ -198,11 +198,12 @@ router.get('/calendar/events', requireAuth, async (req, res, next) => {
         AND ($3::text IS NULL OR calendar_id IN (
           SELECT COALESCE(external_account_id, username)
           FROM public.channel_accounts
-          WHERE org_id=$4 AND channel='google_calendar' AND lower(name)=lower($3)
+          WHERE org_id=$5 AND channel='google_calendar' AND lower(name)=lower($3)
         ))
+        AND ($4::uuid IS NULL OR contact_id = $4)
       ORDER BY start_at ASC
     `,
-      [from || null, to || null, personName || null, req.user?.org_id],
+      [from || null, to || null, personName || null, contactId || null, req.user?.org_id],
     );
     res.json({ items: rows.rows || [] });
   } catch (e) {
