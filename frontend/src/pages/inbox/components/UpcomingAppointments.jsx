@@ -1,123 +1,67 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
+import inboxApi from '@/api/inboxApi';
 
-/**
- * Props:
- * - contactId: uuid do contato (obrigatório)
- * - onReschedule: (event) => void   // abrir ScheduleModal pré-preenchido
- * - onChanged?: () => void          // opcional: recarregar pai após cancelamento
- */
-export default function UpcomingAppointments({ contactId, onReschedule, onChanged }) {
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+const DEDUP_MIN = parseInt(import.meta.env.VITE_REMIND_DEDUP_WINDOW_MIN || '10', 10);
 
-  const fromISO = useMemo(() => new Date().toISOString(), []);
-  const toISO   = useMemo(() => new Date(Date.now() + 30*24*3600*1000).toISOString(), []);
+export default function UpcomingAppointments({ items = [] }) {
+  const [busyId, setBusyId] = useState(null);
+  const [cooldown, setCooldown] = useState({}); // { [eventId]: untilTs }
 
-  async function load() {
-    setLoading(true); setErr('');
+  const now = Date.now();
+
+  const canSend = (id) => {
+    const until = cooldown[id];
+    return !until || now > until;
+  };
+
+  async function sendRemind(ev) {
+    if (!canSend(ev.id)) return;
+    setBusyId(ev.id);
     try {
-      const u = new URL('/api/calendar/events', window.location.origin);
-      u.searchParams.set('contactId', contactId);
-      u.searchParams.set('from', fromISO);
-      u.searchParams.set('to', toISO);
-      const r = await fetch(u.toString());
-      const js = await r.json();
-      setItems(js.items || []);
-    } catch(e) {
-      setErr('Falha ao carregar agendamentos.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (contactId) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactId]);
-
-  async function cancel(ev) {
-    if (!window.confirm('Cancelar este agendamento?')) return;
-    try {
-      const u = new URL(`/api/calendar/events/${encodeURIComponent(ev.external_event_id)}`, window.location.origin);
-      // calendarId pode vir do normalizer como organizer email; se não houver, backend ignora
-      if (ev.calendar_id) u.searchParams.set('calendarId', ev.calendar_id);
-      const r = await fetch(u.toString(), { method: 'DELETE' });
-      if (!r.ok) throw new Error('cancel failed');
-      await load();
-      onChanged?.();
-    } catch(e) {
-      alert('Falha ao cancelar.');
-    }
-  }
-
-  async function remind(ev) {
-    try {
-      const r = await fetch(
-        `/api/calendar/events/${encodeURIComponent(ev.id)}/remind`,
-        { method: 'POST' }
-      );
-      if (!r.ok) throw new Error('failed');
-      alert('Lembrete enviado!');
-      await load();
+      const { data } = await inboxApi.post(`/calendar/events/${ev.id}/remind`, {
+        to: ev.customer?.whatsapp || ev.customer?.phone,
+        channel: 'whatsapp',
+        text: ev.remindText || 'Lembrete do seu agendamento.'
+      });
+      // se idempotent:false ou true, sempre inicia cooldown
+      const until = Date.now() + DEDUP_MIN * 60 * 1000;
+      setCooldown((m) => ({ ...m, [ev.id]: until }));
+      window.toast?.({ title: data.idempotent ? 'Já enviado recentemente' : 'Lembrete enviado!' });
     } catch (e) {
-      alert('Falha ao enviar lembrete.');
+      if (e?.response?.status === 429) {
+        window.toast?.({ title: 'Muitos pedidos. Tente de novo em até 60s.' });
+      } else if (e?.response?.status === 424) {
+        window.toast?.({ title: 'WhatsApp não configurado. Configure nas integrações.' });
+      } else {
+        window.toast?.({ title: 'Falha ao enviar lembrete.' });
+      }
+    } finally {
+      setBusyId(null);
     }
   }
-
-  if (!contactId) return null;
 
   return (
-    <div aria-label="upcoming-appointments" style={{ marginTop: 12 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6 }}>Próximos agendamentos</div>
-      {loading && <div>Carregando…</div>}
-      {err && <div style={{ color:'#b91c1c' }}>{err}</div>}
-      {!loading && !err && items.length === 0 && (
-        <div style={{ opacity:.7 }}>Nenhum agendamento nos próximos 30 dias.</div>
-      )}
-      {!loading && items.length > 0 && (
-        <ul style={{ listStyle:'none', padding: 0, margin: 0, display:'grid', gap: 8 }}>
-          {items.map((ev) => (
-            <li key={ev.id} style={{ border:'1px solid #eee', borderRadius: 8, padding: 8 }}>
-              <div style={{ fontWeight: 600 }}>{ev.summary || 'Atendimento'}</div>
-              <div style={{ fontSize: 13, opacity:.85 }}>
-                {new Date(ev.start_at).toLocaleString()} → {new Date(ev.end_at).toLocaleTimeString()}
-              </div>
-              <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6 }}>
-                <span
-                  style={{
-                    fontSize: 12,
-                    padding: '2px 6px',
-                    borderRadius: 999,
-                    background:
-                      ev.rsvp_status === 'confirmed'
-                        ? '#DCFCE7'
-                        : ev.rsvp_status === 'canceled'
-                        ? '#FEE2E2'
-                        : ev.rsvp_status === 'noshow'
-                        ? '#FFE4E6'
-                        : '#E5E7EB',
-                  }}
-                >
-                  {ev.rsvp_status || 'pending'}
-                </span>
-                <button onClick={() => onReschedule?.(ev)} style={{ border:'1px solid #ddd', borderRadius:6, padding:'4px 8px' }}>
-                  Remarcar
-                </button>
-                <button
-                  onClick={() => remind(ev)}
-                  style={{ border: '1px solid #ddd', borderRadius: 6, padding: '4px 8px' }}
-                >
-                  Lembrar agora
-                </button>
-                <button onClick={() => cancel(ev)} style={{ background:'#ef4444', color:'#fff', border:'none', borderRadius:6, padding:'4px 8px' }}>
-                  Cancelar
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="space-y-2">
+      {items.map((ev) => {
+        const disabled = busyId === ev.id || !canSend(ev.id);
+        const until = cooldown[ev.id];
+        const tooltip = until ? `Aguarde ${Math.ceil((until - Date.now())/60000)} min para reenviar` : 'Enviar lembrete';
+        return (
+          <div key={ev.id} className="border rounded p-2 flex items-center justify-between">
+            <div>
+              <div className="font-medium">{ev.title}</div>
+              <div className="text-xs opacity-70">{new Date(ev.start_at).toLocaleString()}</div>
+            </div>
+            <button
+              className={`px-3 py-1 border rounded ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => sendRemind(ev)} disabled={disabled} title={tooltip}
+            >
+              {busyId === ev.id ? 'Enviando...' : (until ? 'Aguardando...' : 'Enviar lembrete')}
+            </button>
+          </div>
+        );
+      })}
+      {items.length === 0 && <div className="text-sm opacity-70">Sem agendamentos.</div>}
     </div>
   );
 }
