@@ -41,7 +41,9 @@ export default function ClientsPage() {
   }
 
   useEffect(() => {
-    setOrgIdHeaderProvider(() => selected || null);
+    if (typeof setOrgIdHeaderProvider === "function") {
+      setOrgIdHeaderProvider(() => selected || null);
+    }
     try {
       const keyA = "activeOrgId";
       const keyB = "active_org_id";
