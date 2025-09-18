@@ -90,7 +90,7 @@ import calendarRemindersRouter from './routes/calendar.reminders.js';
 import createCalendarRemindersOneRouter from './routes/calendar.reminders.one.js';
 import createAuditLogsRouter from './routes/audit.logs.js';
 import calendarRsvpRouter from './routes/calendar.rsvp.js';
-import calendarNoshowRouter from './routes/calendar.noshow.js';
+import noShowRouter from './routes/calendar.noshow.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
 import calendarCalendarsAdminRouter from './routes/calendar.calendars.admin.js';
 import telemetryAppointmentsRouter from './routes/telemetry.appointments.js';
@@ -102,9 +102,13 @@ import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
-import { requireRole } from './auth/requireRole.js';
-import { ROLES } from './lib/permissions.js';
+
+// 🔧 FIX: usar uma única origem para requireRole e ROLES (CommonJS -> ESM interop)
+import requireRoleModule from './middleware/requireRole.js';
+const { requireRole, ROLES } = requireRoleModule;
+
 import { adminContext } from './middleware/adminContext.js';
+import { startNoShowCron } from './jobs/noshow.sweep.cron.js';
 
 // ---------- Paths ----------
 const __filename = fileURLToPath(import.meta.url);
@@ -234,13 +238,27 @@ function configureApp() {
   app.use('/api', plansRouter);
 
   // Rotas administrativas de planos (SuperAdmin/Support)
-  app.use('/api/admin/plans', authRequired, requireRole('SuperAdmin','Support'), adminContext, adminPlansFeaturesRouter);
+  app.use(
+    '/api/admin/plans',
+    authRequired,
+    requireRole(ROLES.SuperAdmin, ROLES.Support),
+    adminContext,
+    adminPlansFeaturesRouter
+  );
 
   // Demais rotas administrativas (SuperAdmin)
-  app.use('/api/admin', authRequired, requireRole('SuperAdmin'), adminContext, adminOrgsRouter);
+  app.use(
+    '/api/admin',
+    authRequired,
+    requireRole(ROLES.SuperAdmin),
+    adminContext,
+    adminOrgsRouter
+  );
 
+  // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
 
+  // Rotas que são factories e precisam de dependências
   const calendarRemindersOneRoute = createCalendarRemindersOneRouter({
     db: pool,
     requireAuth: authRequired,
@@ -255,7 +273,7 @@ function configureApp() {
     ROLES,
   });
 
-  // ---------- Rotas protegidas ----------
+  // ---------- Demais rotas protegidas ----------
   app.use('/api/channels', channelsRouter);
   app.use('/api/posts', postsRouter);
   app.use('/api/lgpd', lgpdRouter);
@@ -307,7 +325,7 @@ function configureApp() {
   app.use('/api', googleCalendarRouter);
   app.use('/api', calendarCompatRouter);
   app.use('/api', calendarRsvpRouter);
-  app.use('/api', calendarNoshowRouter);
+  app.use(noShowRouter({ db: pool, requireAuth: authRequired }));
   app.use('/api', calendarRemindersRouter);
   app.use(calendarRemindersOneRoute);
   app.use(auditLogsRouter);
@@ -321,24 +339,28 @@ function configureApp() {
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
 
+  // Rotas legacy baseadas em app
   inboxRoutes(app);
   inboxSendRoutes(app);
   metaChannelsRoutes(app);
   app.use(mediaRoutes);
   app.use(metaStatusRouter);
 
+  // 404 para /api/*
   app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
+  // Crons de lembretes de calendário (puxa os runners HTTP localmente)
   if (process.env.CALENDAR_REMINDERS_CRON_ENABLED === 'true') {
     const EVERY_MIN = Number(process.env.CALENDAR_REMINDERS_INTERVAL_MIN || 15);
     setInterval(async () => {
       try {
-        await fetch('http://127.0.0.1:' + (process.env.PORT || 4000) + '/api/calendar/reminders/run', {
+        const base = 'http://127.0.0.1:' + (process.env.PORT || 4000);
+        await fetch(base + '/api/calendar/reminders/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ hours: 24 }),
         });
-        await fetch('http://127.0.0.1:' + (process.env.PORT || 4000) + '/api/calendar/reminders/run', {
+        await fetch(base + '/api/calendar/reminders/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ hours: 1 }),
@@ -347,6 +369,11 @@ function configureApp() {
         // no-op
       }
     }, EVERY_MIN * 60 * 1000);
+  }
+
+  // Cron de sweep de no-show (job interno)
+  if (process.env.NOSHOW_SWEEP_CRON) {
+    startNoShowCron({ db: pool, orgIdResolver: async () => 'system' });
   }
 
   /* eslint-disable no-unused-vars */
@@ -359,7 +386,7 @@ function configureApp() {
     }
     res.status(status).json(payload);
   });
-  /* eslint-enable no-unused-vars */
+  /* eslint-enable no_UNUSED_VARS */
 
   app.get('/', (_req, res) => res.json({ name: 'CresceJá API', status: 'ok' }));
 }
