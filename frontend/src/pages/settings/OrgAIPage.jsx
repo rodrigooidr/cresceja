@@ -5,13 +5,18 @@ import PageHeader from "@/ui/PageHeader.jsx";
 import { Button, Input, Select } from "@/ui/controls/Input.jsx";
 import Switch from "@/ui/controls/Switch.jsx";
 import { useToasts } from "@/components/ToastHost.jsx";
+import GuardrailsForm from "@/components/ai/GuardrailsForm.jsx";
+import RagSourcesCard from "@/components/ai/RagSourcesCard.jsx";
+import PromptPreview from "@/components/ai/PromptPreview.jsx";
+import TestChat from "@/components/ai/TestChat.jsx";
+import ViolationsList from "@/components/ai/ViolationsList.jsx";
 
 const INITIAL_PROFILE = Object.freeze({
   vertical: "",
   brandVoice: "",
   languages: [],
   rag: { enabled: false, topK: "5" },
-  guardrails: {},
+  guardrails: { maxReplyChars: "", pre: [], post: [] },
   tools: [],
   policies: [],
   fewShot: [],
@@ -33,6 +38,16 @@ function normalizeProfile(rawProfile) {
     profile.guardrails && typeof profile.guardrails === "object"
       ? { ...profile.guardrails }
       : {};
+  guardrails.pre = Array.isArray(guardrails.pre)
+    ? guardrails.pre
+        .map((rule) => (rule && typeof rule === "object" ? { ...rule } : null))
+        .filter(Boolean)
+    : [];
+  guardrails.post = Array.isArray(guardrails.post)
+    ? guardrails.post
+        .map((rule) => (rule && typeof rule === "object" ? { ...rule } : null))
+        .filter(Boolean)
+    : [];
   const rag = profile.rag && typeof profile.rag === "object" ? { ...profile.rag } : {};
   const languages = Array.isArray(profile.languages) ? profile.languages : [];
 
@@ -79,6 +94,40 @@ function buildPayload(draft, languageDraft) {
     } else {
       delete guardrails.maxReplyChars;
     }
+  }
+
+  if (Array.isArray(guardrails.pre)) {
+    guardrails.pre = guardrails.pre
+      .map((rule) => {
+        if (!rule || typeof rule !== "object") return null;
+        const base = { type: rule.type };
+        if (!base.type) return null;
+        if (rule.value !== undefined) base.value = rule.value;
+        return base;
+      })
+      .filter(Boolean);
+    if (guardrails.pre.length === 0) delete guardrails.pre;
+  }
+
+  if (Array.isArray(guardrails.post)) {
+    guardrails.post = guardrails.post
+      .map((rule) => {
+        if (!rule || typeof rule !== "object") return null;
+        const base = { type: rule.type };
+        if (!base.type) return null;
+        if (rule.limit !== undefined && rule.limit !== "") {
+          const parsedLimit = Number.parseInt(rule.limit, 10);
+          if (Number.isFinite(parsedLimit) && parsedLimit > 0) {
+            base.limit = parsedLimit;
+          }
+        }
+        if (base.type === "maxLength" && base.limit === undefined) {
+          return null;
+        }
+        return base;
+      })
+      .filter(Boolean);
+    if (guardrails.post.length === 0) delete guardrails.post;
   }
 
   const ragTopK = Number.parseInt(draft.rag?.topK ?? "", 10);
@@ -168,10 +217,23 @@ export default function OrgAIPage() {
       : VERTICAL_CUSTOM;
   }, [draft.vertical]);
 
-  const languagesPreview = useMemo(() => {
-    const parsed = parseLanguages(languageDraft);
-    return parsed.length > 0 ? parsed.join(", ") : "—";
-  }, [languageDraft]);
+  const promptPreviewProfile = useMemo(
+    () => ({
+      ...draft,
+      languages: parseLanguages(languageDraft),
+      guardrails: {
+        maxReplyChars: draft.guardrails?.maxReplyChars ?? "",
+        pre: Array.isArray(draft.guardrails?.pre) ? draft.guardrails.pre : [],
+        post: Array.isArray(draft.guardrails?.post) ? draft.guardrails.post : [],
+      },
+    }),
+    [draft, languageDraft],
+  );
+
+  const draftProfilePayload = useMemo(
+    () => buildPayload(draft, languageDraft),
+    [draft, languageDraft],
+  );
 
   const handleSave = useCallback(
     async (event) => {
@@ -320,42 +382,16 @@ export default function OrgAIPage() {
               </div>
             </section>
 
-            <section className="ui-card p-6 space-y-4">
-              <header>
-                <h2 className="text-lg font-semibold text-slate-900">Guardrails</h2>
-                <p className="text-sm text-slate-500">
-                  Limite respostas e defina regras para proteger o atendimento.
-                </p>
-              </header>
-
-              <div className="space-y-2">
-                <label htmlFor="orgai-max-chars" className="text-sm font-medium text-slate-700">
-                  Tamanho máximo da resposta (caracteres)
-                </label>
-                <Input
-                  id="orgai-max-chars"
-                  name="maxReplyChars"
-                  type="number"
-                  min="50"
-                  step="10"
-                  value={draft.guardrails?.maxReplyChars ?? ""}
-                  onChange={(event) => {
-                    const { value } = event.target;
-                    setDraft((prev) => ({
-                      ...prev,
-                      guardrails: { ...prev.guardrails, maxReplyChars: value },
-                    }));
-                  }}
-                />
-                <p className="text-xs text-slate-500">
-                  Deixe em branco para permitir respostas completas. Ajuste conforme o canal e o contexto.
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                Espaço reservado para políticas, prompts e regras específicas (em breve).
-              </div>
-            </section>
+            <GuardrailsForm
+              value={draft.guardrails}
+              onChange={(next) => {
+                setDraft((prev) => ({
+                  ...prev,
+                  guardrails: { ...prev.guardrails, ...next },
+                }));
+              }}
+              disabled={!orgId || saving}
+            />
 
             <section className="ui-card p-6 space-y-4">
               <header className="flex items-center justify-between">
@@ -365,12 +401,6 @@ export default function OrgAIPage() {
                     Habilite busca em documentos para enriquecer as respostas da IA.
                   </p>
                 </div>
-              </header>
-
-              <div className="flex items-center justify-between gap-4">
-                <label htmlFor="orgai-rag-enabled" className="text-sm font-medium text-slate-700">
-                  RAG habilitado
-                </label>
                 <Switch
                   id="orgai-rag-enabled"
                   checked={!!draft.rag?.enabled}
@@ -381,7 +411,7 @@ export default function OrgAIPage() {
                     }));
                   }}
                 />
-              </div>
+              </header>
 
               <div className="space-y-2">
                 <label htmlFor="orgai-rag-topk" className="text-sm font-medium text-slate-700">
@@ -406,7 +436,11 @@ export default function OrgAIPage() {
                   Ajuste quantos trechos relevantes a IA deve considerar ao responder.
                 </p>
               </div>
+
+              <RagSourcesCard orgId={orgId} disabled={!orgId || saving} />
             </section>
+
+            <ViolationsList orgId={orgId} />
           </div>
 
           <div className="space-y-6">
@@ -436,29 +470,9 @@ export default function OrgAIPage() {
               )}
             </section>
 
-            <section className="ui-card p-6 space-y-4">
-              <header>
-                <h2 className="text-lg font-semibold text-slate-900">Preview</h2>
-                <p className="text-sm text-slate-500">
-                  Resumo do comportamento atual configurado para a IA.
-                </p>
-              </header>
+            <PromptPreview profile={promptPreviewProfile} />
 
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 space-y-2">
-                <div>
-                  <span className="font-semibold text-slate-800">Segmento:</span> {draft.vertical || "—"}
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-800">Tom:</span> {draft.brandVoice || "—"}
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-800">Idiomas:</span> {languagesPreview}
-                </div>
-                <div>
-                  <span className="font-semibold text-slate-800">RAG:</span> {draft.rag?.enabled ? "Ativado" : "Desativado"}
-                </div>
-              </div>
-            </section>
+            <TestChat orgId={orgId} draftProfile={draftProfilePayload} />
           </div>
         </div>
       )}
