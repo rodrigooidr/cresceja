@@ -2,7 +2,10 @@
 module.exports = {
   testEnvironment: 'jsdom',
   testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
-  setupFilesAfterEnv: ['<rootDir>/test/setupTests.cjs'],
+  setupFilesAfterEnv: [
+    '<rootDir>/test/setupTests.cjs',
+    '<rootDir>/test/setup.jest.cjs',
+  ],
   testMatch: [
     '<rootDir>/test/**/*.test.jsx',
     '<rootDir>/test/**/*.test.js',
@@ -18,6 +21,7 @@ module.exports = {
     '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.(css|less|sass|scss)$': '<rootDir>/test/styleMock.cjs',
+    '\\.module\\.(css|less|sass|scss)$': 'identity-obj-proxy',
     '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/test/fileMock.cjs',
   },
   transform: {
