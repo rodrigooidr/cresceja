@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query } from '#db';
 import * as authModule from '../middleware/auth.js';
+import { sweepNoShow } from '../services/calendar/noshow.js';
 
 const router = Router();
 
@@ -10,24 +11,20 @@ const requireAuth =
   authModule?.default ||
   ((_req, _res, next) => next());
 
+function resolveDb(req) {
+  if (req?.db && typeof req.db.query === 'function') return req.db;
+  return { query: (text, params) => query(text, params) };
+}
+
 router.post('/calendar/noshow/sweep', requireAuth, async (req, res, next) => {
   try {
     if (String(process.env.NOSHOW_ENABLED).toLowerCase() !== 'true') {
       return res.json({ ok: true, updated: 0, skipped: 'disabled' });
     }
+
     const grace = Number(process.env.NOSHOW_GRACE_MIN || 15);
-    const result = await query(
-      `
-        UPDATE public.calendar_events
-           SET rsvp_status = 'noshow', noshow_at = NOW()
-         WHERE rsvp_status = 'pending'
-           AND start_at < NOW() - make_interval(mins := $1::int)
-           AND (canceled_at IS NULL)
-         RETURNING id
-      `,
-      [grace]
-    );
-    return res.json({ ok: true, updated: result.rowCount || 0 });
+    const ids = await sweepNoShow({ db: resolveDb(req), graceMinutes: grace });
+    return res.json({ ok: true, updated: ids.length });
   } catch (err) {
     return next(err);
   }

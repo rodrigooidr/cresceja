@@ -87,7 +87,8 @@ import plansRouter from './routes/plans.js';
 import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import calendarRemindersRouter from './routes/calendar.reminders.js';
-import calendarRemindersOneRouter from './routes/calendar.reminders.one.js';
+import createCalendarRemindersOneRouter from './routes/calendar.reminders.one.js';
+import createAuditLogsRouter from './routes/audit.logs.js';
 import calendarRsvpRouter from './routes/calendar.rsvp.js';
 import calendarNoshowRouter from './routes/calendar.noshow.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
@@ -102,6 +103,7 @@ import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 import { authRequired, impersonationGuard } from './middleware/auth.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
 import { requireRole } from './auth/requireRole.js';
+import { ROLES } from './lib/permissions.js';
 import { adminContext } from './middleware/adminContext.js';
 
 // ---------- Paths ----------
@@ -239,6 +241,20 @@ function configureApp() {
 
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
 
+  const calendarRemindersOneRoute = createCalendarRemindersOneRouter({
+    db: pool,
+    requireAuth: authRequired,
+    requireRole,
+    ROLES,
+  });
+
+  const auditLogsRouter = createAuditLogsRouter({
+    db: pool,
+    requireAuth: authRequired,
+    requireRole,
+    ROLES,
+  });
+
   // ---------- Rotas protegidas ----------
   app.use('/api/channels', channelsRouter);
   app.use('/api/posts', postsRouter);
@@ -293,7 +309,8 @@ function configureApp() {
   app.use('/api', calendarRsvpRouter);
   app.use('/api', calendarNoshowRouter);
   app.use('/api', calendarRemindersRouter);
-  app.use('/api', calendarRemindersOneRouter);
+  app.use(calendarRemindersOneRoute);
+  app.use(auditLogsRouter);
   app.use('/api', calendarServicesAdminRouter);
   app.use('/api', calendarCalendarsAdminRouter);
   app.use('/api', telemetryAppointmentsRouter);
