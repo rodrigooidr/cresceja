@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import TelemetryCharts from '@/pages/governanca/TelemetryCharts';
+import inboxApi from '@/api/inboxApi';
 
 function Table({ title, cols, rows, empty = 'Sem dados' }) {
   return (
@@ -49,6 +50,7 @@ export default function TelemetryPage() {
   const [attendance, setAttendance] = useState([]);
   const [funnel, setFunnel] = useState([]);
   const [byPersonService, setByPersonService] = useState([]);
+  const [audit, setAudit] = useState({ loading: false, error: null, items: [], action: '' });
   const hasChartData =
     !!(
       (data &&
@@ -133,6 +135,24 @@ export default function TelemetryPage() {
   const toParam = range.to || '';
   const encodedFrom = encodeURIComponent(fromParam);
   const encodedTo = encodeURIComponent(toParam);
+
+  const loadAudit = useCallback(
+    async (actionFilter = '') => {
+      setAudit((s) => ({ ...s, loading: true, error: null }));
+      try {
+        const qs = actionFilter ? `?action=${encodeURIComponent(actionFilter)}` : '';
+        const { data: auditData } = await inboxApi.get(`/audit/logs${qs}`);
+        setAudit((s) => ({ ...s, loading: false, items: auditData.items || [] }));
+      } catch (e) {
+        setAudit((s) => ({ ...s, loading: false, error: 'Falha ao carregar auditoria' }));
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    loadAudit();
+  }, [loadAudit]);
 
   return (
     <div style={{ padding: 16 }}>
@@ -336,6 +356,69 @@ export default function TelemetryPage() {
               ttfr_p95: r.ttfr_p95 ?? r.ttfr_p95_ms ?? r.ttfr_p95_s,
             }))}
           />
+          <section style={{ marginTop: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <h2 style={{ margin: 0 }}>Auditoria recente</h2>
+              <input
+                style={{ border: '1px solid #d1d5db', padding: '4px 8px', borderRadius: 6 }}
+                placeholder="Filtrar por action (ex: calendar.remind.sent)"
+                value={audit.action}
+                onChange={(e) => setAudit((s) => ({ ...s, action: e.target.value }))}
+              />
+              <button
+                onClick={() => loadAudit(audit.action)}
+                disabled={audit.loading}
+                style={{
+                  padding: '4px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  background: audit.loading ? '#f3f4f6' : '#fff',
+                  cursor: audit.loading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {audit.loading ? 'Carregando...' : 'Atualizar'}
+              </button>
+            </div>
+            {audit.error && <div style={{ color: '#dc2626' }}>{audit.error}</div>}
+            <div style={{ overflow: 'auto', border: '1px solid #e5e7eb', borderRadius: 8 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#f9fafb' }}>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Data</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>User</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Action</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Entidade</th>
+                    <th style={{ textAlign: 'left', padding: 8 }}>Payload</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(audit.items || []).map((r, i) => (
+                    <tr key={i} style={{ borderTop: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: 8 }}>{new Date(r.created_at).toLocaleString()}</td>
+                      <td style={{ padding: 8 }}>{r.user_id || '—'}</td>
+                      <td style={{ padding: 8 }}>{r.action}</td>
+                      <td style={{ padding: 8 }}>
+                        {r.entity}
+                        {r.entity_id ? `#${r.entity_id}` : ''}
+                      </td>
+                      <td style={{ padding: 8 }}>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                          {JSON.stringify(r.payload, null, 2)}
+                        </pre>
+                      </td>
+                    </tr>
+                  ))}
+                  {(!audit.items || audit.items.length === 0) && !audit.loading && (
+                    <tr>
+                      <td style={{ padding: 8 }} colSpan={5}>
+                        Sem registros.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </>
       )}
     </div>
