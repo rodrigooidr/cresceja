@@ -1,6 +1,16 @@
+// backend/services/audit.js
 import { query as rootQuery } from '#db';
 
-export const HEADERS = ['id', 'user', 'action', 'created_at'];
+export const HEADERS = [
+  'id',
+  'org_id',
+  'user_id',
+  'user_email',
+  'action',
+  'entity',
+  'entity_id',
+  'created_at',
+];
 
 function quoted(v) {
   if (v == null) return '';
@@ -14,44 +24,77 @@ export function toCsv(rows = []) {
   return [head, ...lines].join('\n');
 }
 
-const q = (db) => (db && db.query) ? (t,p)=>db.query(t,p) : (t,p)=>rootQuery(t,p);
+const getQuery = (db) => {
+  if (db && typeof db.query === 'function') {
+    return (text, params) => db.query(text, params);
+  }
+  return (text, params) => rootQuery(text, params);
+};
 
+function serializePayload(payload) {
+  if (payload == null) return null;
+  if (typeof payload === 'string') return payload;
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    // fallback super defensivo
+    try {
+      return JSON.stringify(String(payload));
+    } catch {
+      return String(payload);
+    }
+  }
+}
+
+/**
+ * Registra um evento de auditoria.
+ * Aceita aliases para maior tolerância:
+ * - orgId | org_id
+ * - userId | user_id
+ * - userEmail | user_email
+ * - entityId | entity_id | target_id
+ * - entity | target_type | targetType
+ * - payload | meta
+ */
 export async function auditLog(db, params = {}) {
+  const query = getQuery(db);
+
   const {
-    user_email,
-    userEmail,
-    userId,
-    orgId,
+    orgId, org_id,
+    userId, user_id,
+    userEmail, user_email,
     action,
-    entity,
-    entity_id,
-    entityId,
-    target_type,
-    targetType,
-    target_id,
-    payload,
-    meta,
-  } = params;
+    entity, target_type, targetType,
+    entityId, entity_id, target_id,
+    payload, meta,
+  } = params || {};
 
-  const email = user_email ?? userEmail ?? null;
-  const targetEntity = entity ?? target_type ?? targetType ?? null;
-  const targetId = entity_id ?? entityId ?? target_id ?? null;
-  const basePayload = payload ?? meta ?? null;
-  const finalPayload = basePayload ? { ...basePayload } : {};
+  if (!action) return; // no-op se não houver ação
 
-  if (orgId && finalPayload.orgId == null) finalPayload.orgId = orgId;
-  if (userId && finalPayload.userId == null) finalPayload.userId = userId;
+  const orgValue = orgId ?? org_id ?? null;
+  const userValue = userId ?? user_id ?? null;
+  const emailValue = user_email ?? userEmail ?? null;
 
-  await q(db)(
+  const entityValue = entity ?? target_type ?? targetType ?? null;
+  const entityIdValue = entityId ?? entity_id ?? target_id ?? null;
+
+  // payload pode vir de payload ou meta
+  const payloadValue = serializePayload(payload ?? meta ?? null);
+
+  // Preferimos (org_id, user_id). Se não houver, gravamos via user_email.
+  if (orgValue != null || userValue != null) {
+    await query(
+      `INSERT INTO audit_logs (org_id, user_id, action, entity, entity_id, payload)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [orgValue, userValue, action, entityValue, entityIdValue, payloadValue]
+    );
+    return;
+  }
+
+  await query(
     `INSERT INTO audit_logs (user_email, action, entity, entity_id, payload)
-     VALUES ($1,$2,$3,$4,$5)` ,
-    [
-      email,
-      action,
-      targetEntity,
-      targetId || null,
-      Object.keys(finalPayload).length ? JSON.stringify(finalPayload) : null,
-    ]
+     VALUES ($1,$2,$3,$4,$5)`,
+    [emailValue, action, entityValue, entityIdValue, payloadValue]
   );
 }
 
