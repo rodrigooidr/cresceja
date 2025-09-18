@@ -3,7 +3,11 @@ module.exports = {
   testEnvironment: 'jsdom',
   testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
   setupFilesAfterEnv: ['<rootDir>/test/setupTests.cjs'],
-  testMatch: ['<rootDir>/test/**/*.test.jsx', '<rootDir>/test/**/*.test.js'],
+  testMatch: [
+    '<rootDir>/test/**/*.test.jsx',
+    '<rootDir>/test/**/*.test.js',
+    '<rootDir>/test/**/*.spec.jsx',
+  ],
   moduleDirectories: ['node_modules', 'src'],
   moduleNameMapper: {
     '^api/(.*)$': '<rootDir>/src/api/$1',

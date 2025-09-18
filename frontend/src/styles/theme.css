@@ -12,3 +12,8 @@ body{color:var(--ui-text);background:var(--ui-muted)}
 .ui-btn{border-radius:10px;padding:.5rem .9rem;border:1px solid var(--ui-border);background:#fff}
 .ui-btn--primary{background:var(--ui-primary);color:#fff;border-color:var(--ui-primary)}
 .ui-btn--primary:hover{background:var(--ui-primary-600)}
+.ui-switch{appearance:none;cursor:pointer;position:relative;width:2.75rem;height:1.5rem;border-radius:9999px;background:var(--ui-border);border:1px solid var(--ui-border);transition:background-color .2s ease, border-color .2s ease;display:inline-flex;align-items:center;}
+.ui-switch::after{content:"";position:absolute;left:2px;width:1.3rem;height:1.3rem;border-radius:9999px;background:#fff;box-shadow:var(--ui-shadow);transform:translateX(0);transition:transform .2s ease;}
+.ui-switch:checked{background:var(--ui-primary);border-color:var(--ui-primary);}
+.ui-switch:checked::after{transform:translateX(1.2rem);}
+.ui-switch:disabled{opacity:.5;cursor:not-allowed;}

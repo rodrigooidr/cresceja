@@ -6,6 +6,8 @@ import TelemetryPage from "../pages/governanca/TelemetryPage.jsx";
 import WhatsAppInbox from "../pages/inbox/whatsapp/WhatsAppInbox.jsx";
 import RequirePerm from "@/components/RequirePerm.jsx";
 import CalendarSettingsPage from "@/pages/settings/CalendarSettingsPage.jsx";
+import RequireRole from "./guards/RequireRole.jsx";
+import OrgAIPage from "@/pages/settings/OrgAIPage.jsx";
 
 // ÚNICA fonte de verdade para as rotas
 export const APP_ROUTES = [
@@ -55,6 +57,15 @@ export const APP_ROUTES = [
       <RequirePerm perm="org_admin">
         <CalendarSettingsPage />
       </RequirePerm>
+    ),
+  },
+
+  {
+    path: "/settings/ai",
+    element: (
+      <RequireRole roles={["orgAdmin", "superAdmin"]}>
+        <OrgAIPage />
+      </RequireRole>
     ),
   },
 

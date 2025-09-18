@@ -9,14 +9,16 @@ import { canUse, limitKeyFor } from "../../utils/featureGate.js";
 
 const LS_KEY = "sidebar:collapsed";
 
-function Item({ to, children, disabled, title, collapsed }) {
+function Item({ to, children, disabled, title, collapsed, testId }) {
   const label = typeof children === "string" ? children : "";
   const content = collapsed ? label.charAt(0) : children;
   if (disabled) {
     return (
       <div
-        className="px-3 py-2 text-gray-400 cursor-not-allowed text-center"
+        className="px-3 py-2 text-gray-400 cursor-not-allowed text-center opacity-60"
         title={title || "Selecione uma organização"}
+        data-testid={testId}
+        aria-disabled="true"
       >
         {content}
       </div>
@@ -26,6 +28,7 @@ function Item({ to, children, disabled, title, collapsed }) {
     <NavLink
       to={to}
       title={label || title}
+      data-testid={testId}
       className={({ isActive }) =>
         `block px-3 py-2 rounded hover:bg-gray-100 ${
           isActive ? "bg-gray-100 font-medium" : ""
@@ -100,6 +103,8 @@ export default function Sidebar() {
   const { selected, publicMode } = useOrg();
   const needsOrg = !publicMode && !selected;
   const [org, setOrg] = useState(null);
+  const canManageOrgAI =
+    ["orgadmin", "superadmin"].includes(String(user?.role || "").toLowerCase());
 
   useEffect(() => {
     if (!selected) { setOrg(null); return; }
@@ -182,6 +187,23 @@ export default function Sidebar() {
         <Item to="/settings" disabled={needsOrg} collapsed={collapsed}>
           Configurações
         </Item>
+        {(() => {
+          const aiDisabled = needsOrg || !canManageOrgAI;
+          const aiTitle = !canManageOrgAI
+            ? "Disponível apenas para Org Admins ou Super Admins"
+            : "Selecione uma organização para acessar a IA";
+          return (
+            <Item
+              to="/settings/ai"
+              disabled={aiDisabled}
+              collapsed={collapsed}
+              title={aiTitle}
+              testId="nav-settings-ai"
+            >
+              IA da Organização
+            </Item>
+          );
+        })()}
         <Item to="/calendar" disabled={needsOrg} collapsed={collapsed}>
           Calendário
         </Item>
