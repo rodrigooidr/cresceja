@@ -1,36 +1,35 @@
-import { Router } from 'express';
-import { query } from '#db';
-import * as authModule from '../middleware/auth.js';
+import express from 'express';
+import { requireRole, ROLES } from '../middleware/requireRole.js';
+import { sweepNoShow } from '../services/calendar/noshow.js';
+import { auditLog } from '../services/audit.js';
 
-const router = Router();
+export default ({ db, requireAuth }) => {
+  const router = express.Router();
 
-const requireAuth =
-  authModule?.requireAuth ||
-  authModule?.authRequired ||
-  authModule?.default ||
-  ((_req, _res, next) => next());
+  router.post(
+    '/api/calendar/noshow/sweep',
+    requireAuth,
+    requireRole(ROLES.SuperAdmin, ROLES.OrgAdmin, ROLES.Support),
+    async (req, res, next) => {
+      try {
+        const grace = parseInt(process.env.NOSHOW_GRACE_MINUTES || '15', 10);
+        const ids = await sweepNoShow({ db, graceMinutes: grace });
 
-router.post('/calendar/noshow/sweep', requireAuth, async (req, res, next) => {
-  try {
-    if (String(process.env.NOSHOW_ENABLED).toLowerCase() !== 'true') {
-      return res.json({ ok: true, updated: 0, skipped: 'disabled' });
+        await auditLog(db, {
+          orgId: req.user?.orgId || null,
+          userId: req.user?.id || null,
+          action: 'calendar.no_show.sweep',
+          entity: 'calendar_event',
+          entityId: null,
+          payload: { count: ids.length, ids },
+        });
+
+        res.json({ ok: true, count: ids.length, ids });
+      } catch (e) {
+        next(e);
+      }
     }
-    const grace = Number(process.env.NOSHOW_GRACE_MIN || 15);
-    const result = await query(
-      `
-        UPDATE public.calendar_events
-           SET rsvp_status = 'noshow', noshow_at = NOW()
-         WHERE rsvp_status = 'pending'
-           AND start_at < NOW() - make_interval(mins := $1::int)
-           AND (canceled_at IS NULL)
-         RETURNING id
-      `,
-      [grace]
-    );
-    return res.json({ ok: true, updated: result.rowCount || 0 });
-  } catch (err) {
-    return next(err);
-  }
-});
+  );
 
-export default router;
+  return router;
+};

@@ -37,3 +37,5 @@ export function requireScope(scope) {
     return res.status(403).json({ error: 'scope_forbidden', scope });
   };
 }
+
+export { ROLES };

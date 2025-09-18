@@ -89,7 +89,7 @@ import calendarCompatRouter from './routes/calendar.compat.js';
 import calendarRemindersRouter from './routes/calendar.reminders.js';
 import calendarRemindersOneRouter from './routes/calendar.reminders.one.js';
 import calendarRsvpRouter from './routes/calendar.rsvp.js';
-import calendarNoshowRouter from './routes/calendar.noshow.js';
+import noShowRouter from './routes/calendar.noshow.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
 import calendarCalendarsAdminRouter from './routes/calendar.calendars.admin.js';
 import telemetryAppointmentsRouter from './routes/telemetry.appointments.js';
@@ -101,8 +101,9 @@ import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 // Auth & contexto de RLS
 import { authRequired, impersonationGuard } from './middleware/auth.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
-import { requireRole } from './auth/requireRole.js';
+import { requireRole } from './middleware/requireRole.js';
 import { adminContext } from './middleware/adminContext.js';
+import { startNoShowCron } from './jobs/noshow.sweep.cron.js';
 
 // ---------- Paths ----------
 const __filename = fileURLToPath(import.meta.url);
@@ -291,7 +292,7 @@ function configureApp() {
   app.use('/api', googleCalendarRouter);
   app.use('/api', calendarCompatRouter);
   app.use('/api', calendarRsvpRouter);
-  app.use('/api', calendarNoshowRouter);
+  app.use(noShowRouter({ db: pool, requireAuth: authRequired }));
   app.use('/api', calendarRemindersRouter);
   app.use('/api', calendarRemindersOneRouter);
   app.use('/api', calendarServicesAdminRouter);
@@ -330,6 +331,10 @@ function configureApp() {
         // no-op
       }
     }, EVERY_MIN * 60 * 1000);
+  }
+
+  if (process.env.NOSHOW_SWEEP_CRON) {
+    startNoShowCron({ db: pool, orgIdResolver: async () => 'system' });
   }
 
   /* eslint-disable no-unused-vars */
