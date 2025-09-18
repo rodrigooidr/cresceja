@@ -1,13 +1,20 @@
 /* eslint-env jest */
 let router;
+let createRouter;
+let authHandler;
 const queryMock = jest.fn();
 const ensureTokenMock = jest.fn();
+const requireRoleFactory = () => (_req, _res, next) => next();
+const rateLimitMock = jest.fn(() => (_req, _res, next) => next());
+const sendWhatsAppMock = jest.fn(async () => ({ provider_message_id: 'msg-123' }));
 
 beforeAll(async () => {
   await jest.unstable_mockModule('#db', () => ({
     query: (...args) => queryMock(...args),
+    pool: { query: (...args) => queryMock(...args) },
+    default: { query: (...args) => queryMock(...args) },
   }));
-  const authHandler = (req, _res, next) => {
+  authHandler = (req, _res, next) => {
     req.user = req.user || { org_id: 'org-1' };
     next();
   };
@@ -16,10 +23,22 @@ beforeAll(async () => {
     authRequired: authHandler,
     default: authHandler,
   }));
+  await jest.unstable_mockModule('../middleware/requireRole.js', () => ({
+    requireRole: requireRoleFactory,
+    ROLES: { SuperAdmin: 'superAdmin', OrgAdmin: 'orgAdmin' },
+    default: { requireRole: requireRoleFactory },
+  }));
+  await jest.unstable_mockModule('express-rate-limit', () => ({
+    default: (...args) => rateLimitMock(...args),
+  }));
   await jest.unstable_mockModule('../services/calendar/rsvp.js', () => ({
     ensureToken: (...args) => ensureTokenMock(...args),
   }));
-  ({ default: router } = await import('../routes/calendar.reminders.one.js'));
+  await jest.unstable_mockModule('../services/messaging.js', () => ({
+    sendWhatsApp: (...args) => sendWhatsAppMock(...args),
+    ProviderNotConfigured: class ProviderNotConfigured extends Error {},
+  }));
+  ({ default: createRouter } = await import('../routes/calendar.reminders.one.js'));
 });
 
 beforeEach(() => {
@@ -46,11 +65,16 @@ beforeEach(() => {
     }
     return { rows: [] };
   });
-  global.fetch = jest.fn(async () => ({ ok: true }));
+  router = createRouter({
+    db: { query: (...args) => queryMock(...args) },
+    requireAuth: authHandler,
+    requireRole: requireRoleFactory,
+    ROLES: { SuperAdmin: 'superAdmin', OrgAdmin: 'orgAdmin' },
+  });
 });
 
 afterEach(() => {
-  delete global.fetch;
+  sendWhatsAppMock.mockClear();
 });
 
 afterAll(() => {
@@ -58,17 +82,17 @@ afterAll(() => {
 });
 
 test('envia lembrete individual', async () => {
-  const layer = router.stack.find((l) => l.route?.path === '/calendar/events/:id/remind');
+  const layer = router.stack.find((l) => l.route?.path === '/api/calendar/events/:id/remind');
   const stack = layer.route.stack;
   const handler = stack[stack.length - 1].handle;
-  const req = { params: { id: 'loc-1' }, user: { org_id: 'org-1' } };
+  const req = {
+    params: { id: 'loc-1' },
+    user: { org_id: 'org-1' },
+    body: { to: '+5511999999999', channel: 'whatsapp', text: 'Lembrete' },
+  };
   const json = jest.fn();
   const status = jest.fn().mockReturnThis();
   await handler(req, { json, status }, () => {});
-  expect(json).toHaveBeenCalledWith({ ok: true });
-  expect(global.fetch).toHaveBeenCalledWith(
-    expect.stringContaining('/api/whatsapp/send'),
-    expect.objectContaining({ method: 'POST' })
-  );
-  expect(ensureTokenMock).toHaveBeenCalledWith('loc-1');
+  expect(json).toHaveBeenCalledWith({ idempotent: false, ok: true });
+  expect(sendWhatsAppMock).toHaveBeenCalledWith('+5511999999999', 'Lembrete', expect.any(Object));
 });
