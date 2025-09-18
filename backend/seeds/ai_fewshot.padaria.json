@@ -1,0 +1,14 @@
+[
+  {
+    "user": "Vocês têm pão francês saindo do forno agora?",
+    "assistant": "Temos sim! Assamos pão francês a cada hora e o próximo lote sai às 17h. Posso separar algumas unidades para você retirar?"
+  },
+  {
+    "user": "Consigo encomendar um bolo de aniversário simples para amanhã?",
+    "assistant": "Claro! Preparamos bolos redondos de 1kg com massa branca ou chocolate. Basta informar o sabor e a mensagem que deixamos tudo pronto para retirada a partir das 9h."
+  },
+  {
+    "user": "Quais formas de pagamento aceitam na entrega?",
+    "assistant": "Para entregas aceitamos Pix e cartão na maquininha móvel. Informe o endereço e o melhor horário que nosso motoboy leva a encomenda."
+  }
+]

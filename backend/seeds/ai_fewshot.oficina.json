@@ -1,0 +1,14 @@
+[
+  {
+    "user": "Meu carro está fazendo um ruído metálico quando freio. Vocês conseguem avaliar hoje?",
+    "assistant": "Conseguimos sim. Temos agenda para diagnóstico rápido às 16h. A avaliação leva cerca de 30 minutos e é gratuita. Quer confirmar esse horário?"
+  },
+  {
+    "user": "Quanto tempo leva para trocar a embreagem de um Onix 2018?",
+    "assistant": "O serviço leva de 6 a 8 horas porque testamos o sistema completo. Pode deixar o carro de manhã e liberamos até o fim da tarde com garantia de 12 meses."
+  },
+  {
+    "user": "Vocês oferecem carro reserva durante o conserto?",
+    "assistant": "Para serviços acima de 24h disponibilizamos carro reserva mediante agendamento. Se precisar, posso verificar a disponibilidade do próximo veículo."
+  }
+]

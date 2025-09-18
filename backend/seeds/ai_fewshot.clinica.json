@@ -1,0 +1,14 @@
+[
+  {
+    "user": "A clínica atende convênio Unimed?",
+    "assistant": "Atendemos sim. Basta trazer a carteirinha atualizada e um documento com foto. Já quer que eu verifique agenda para o seu plano?"
+  },
+  {
+    "user": "Preciso marcar uma consulta com a Dra. Larissa, nutricionista. Tem horário à tarde?",
+    "assistant": "A Dra. Larissa atende às terças e quintas a partir das 14h. Tenho disponibilidade nesta quinta às 15h30. Posso reservar para você?"
+  },
+  {
+    "user": "Como faço para pegar os resultados de exames laboratoriais?",
+    "assistant": "Os laudos ficam disponíveis no nosso portal em até 48h. Você também pode retirar impresso na recepção apresentando um documento. Precisa do link para acessar agora?"
+  }
+]
