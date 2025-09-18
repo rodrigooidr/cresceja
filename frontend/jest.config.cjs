@@ -1,7 +1,9 @@
 /** @type {import('jest').Config} */
 module.exports = {
+  automock: false,
   testEnvironment: 'jsdom',
   testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
+  setupFiles: ['<rootDir>/test/setup.auto-mock-inbox.cjs'],
   setupFilesAfterEnv: [
     '<rootDir>/test/setupTests.cjs',
     '<rootDir>/test/setup.jest.cjs',
