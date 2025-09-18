@@ -1,3 +1,13 @@
+/**
+ * Este teste importa módulos ESM via `await import(...)`.
+ * Rode com: NODE_OPTIONS=--experimental-vm-modules (já embutido no script npm).
+ */
+if (!process.execArgv.join(' ').includes('--experimental-vm-modules')) {
+  // Não falha o teste, só loga um aviso útil
+  // eslint-disable-next-line no-console
+  console.warn('[WARN] Execute backend tests com NODE_OPTIONS=--experimental-vm-modules (use npm run test:backend).');
+}
+
 const request = require('supertest');
 const express = require('express');
 let router;

@@ -34,3 +34,8 @@ Use o painel de violações para identificar entradas bloqueadas, revisar detalh
    - **Resposta**: saída do modelo (ou a recusa em caso de violação).
    - **Debug**: tokens utilizados, chamadas de ferramentas, documentos do RAG considerados (com texto pré-visualizado) e eventuais violações.
 5. Use esse fluxo para validar guardrails, contexto do RAG, exemplos few-shot e integrações antes de liberar o perfil para produção.
+
+## Testes
+- Backend: `npm run test:backend` (já inclui NODE_OPTIONS=--experimental-vm-modules via cross-env)
+- Frontend: `npm run test:frontend`
+- Tudo: `npm test`
