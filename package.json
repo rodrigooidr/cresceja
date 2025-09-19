@@ -8,10 +8,13 @@
     "test:frontend": "npx jest --config frontend/jest.config.cjs --runInBand",
     "test": "npm run test:backend && npm run test:frontend",
     "test:frontend:orgai": "npx jest --config frontend/jest.orgai.cjs --runInBand",
-    "test:orgai": "npm run test:backend && npm run test:frontend:orgai"
+    "test:orgai": "npm run test:backend && npm run test:frontend:orgai",
+    "test:backend:junit": "cross-env NODE_OPTIONS=--experimental-vm-modules JEST_JUNIT_OUTPUT=reports/junit/backend.xml npx jest --config backend/jest.config.cjs --reporters=default --reporters=jest-junit --runInBand",
+    "test:frontend:orgai:junit": "cross-env JEST_JUNIT_OUTPUT=reports/junit/frontend-orgai.xml npx jest --config frontend/jest.orgai.cjs --reporters=default --reporters=jest-junit --runInBand"
   },
   "devDependencies": {
     "cross-env": "^10.0.0",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "jest-junit": "^16.0.0"
   }
 }
