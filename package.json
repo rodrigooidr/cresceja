@@ -6,7 +6,9 @@
     "test:backend": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest --config backend/jest.config.cjs --runInBand",
     "test:backend:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest --config backend/jest.config.cjs --watch",
     "test:frontend": "npx jest --config frontend/jest.config.cjs --runInBand",
-    "test": "npm run test:backend && npm run test:frontend"
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:frontend:orgai": "npx jest --config frontend/jest.orgai.cjs --runInBand",
+    "test:orgai": "npm run test:backend && npm run test:frontend:orgai"
   },
   "devDependencies": {
     "cross-env": "^10.0.0",
