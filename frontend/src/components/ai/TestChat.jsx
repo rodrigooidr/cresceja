@@ -152,6 +152,7 @@ export default function TestChat({ orgId = null, draftProfile = null }) {
           <Button
             type="submit"
             variant="primary"
+            data-testid="testchat-send"
             disabled={!canSend}
             aria-disabled={!canSend || undefined}
           >

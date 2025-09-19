@@ -50,8 +50,7 @@ export default function RagSourcesCard({
     }
   };
 
-  const handleUrlSubmit = async (event) => {
-    event.preventDefault();
+  const handleUrlSubmit = async () => {
     const url = urlDraft.trim();
     if (!url || !orgId) return;
     setStatusMessage("loading", "Enviando URL para a base de conhecimento");
@@ -123,8 +122,11 @@ export default function RagSourcesCard({
         </p>
       </div>
 
-      <form className="space-y-2" onSubmit={handleUrlSubmit}>
-        <label className="text-sm font-medium text-slate-700" htmlFor="rag-url-input">
+      <div className="space-y-2">
+        <label
+          className="text-sm font-medium text-slate-700"
+          htmlFor="rag-url-input"
+        >
           Adicionar URL
         </label>
         <Input
@@ -133,20 +135,27 @@ export default function RagSourcesCard({
           placeholder="https://exemplo.com/base-de-conhecimento"
           value={urlDraft}
           onChange={(event) => setUrlDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              handleUrlSubmit();
+            }
+          }}
           disabled={isDisabled || uploading}
           aria-disabled={isDisabled || uploading || undefined}
         />
         <div className="flex justify-end">
           <Button
-            type="submit"
+            type="button"
             variant="primary"
+            onClick={handleUrlSubmit}
             disabled={isDisabled || uploading || !urlDraft.trim()}
             aria-disabled={isDisabled || uploading || !urlDraft.trim() || undefined}
           >
             Enviar URL
           </Button>
         </div>
-      </form>
+      </div>
 
       <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
         <div>
