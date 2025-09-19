@@ -82,55 +82,145 @@ if (typeof g.fetch !== 'function') {
   }
 }
 
-// --- Augmentação mínima do inboxApi: só garante jest.fn e helpers básicos em __mock ---
-(function __augmentInboxApi() {
+// --- Safe wrapper: evita erro quando runOnlyPendingTimers roda fora de fake timers ---
+(() => {
+  const orig = jest.runOnlyPendingTimers;
+  if (typeof orig === 'function') {
+    jest.runOnlyPendingTimers = (...args) => {
+      try { return orig(...args); } catch (e) {
+        const msg = String(e?.message || e);
+        if (msg.includes('not been configured as fake timers') || msg.includes('_checkFakeTimers')) return;
+        throw e;
+      }
+    };
+  }
+})();
+
+// --- Augmentação V2 do inboxApi: helpers esperados pelas suítes (sem tocar nos __mocks__) ---
+(() => {
+  if (global.__INBOX_API_AUGMENT_V2__) return;
+  global.__INBOX_API_AUGMENT_V2__ = true;
+
   let mod;
   try { mod = require('@/api/inboxApi'); } catch { return; }
   const client = (mod && (mod.default || mod)) || null;
   if (!client) return;
 
-  // 1) Envolver métodos HTTP (apenas se ainda não forem jest.fn)
+  // Garante jest.fn em métodos HTTP e guarda original
   ['get', 'post', 'put', 'delete'].forEach((method) => {
     const fn = client[method];
     if (typeof fn === 'function' && !fn.mock) {
       const orig = fn.bind(client);
       const wrapped = jest.fn((...args) => orig(...args));
-      // marca para não reempacotar no futuro
-      wrapped._isJestWrapped = true;
+      wrapped._orig = orig;
       client[method] = wrapped;
     }
   });
 
-  // 2) Namespace __mock com utilitários mínimos esperados por algumas suítes
   if (!client.__mock) client.__mock = {};
   const ns = client.__mock;
 
-  // Falhar N vezes para um endpoint específico
-  if (!ns.failNTimes) {
-    ns.failNTimes = (method = 'get', path = '', times = 1, error) => {
-      const m = String(method).toLowerCase();
-      const fn = client[m];
-      if (!fn || !fn.mock) return; // não há jest.fn — algo inesperado
-      const origImpl = fn.getMockImplementation() || ((...args) => Promise.resolve({ data: {} }));
-      let count = 0;
-      fn.mockImplementation(async (url, ...rest) => {
-        if (url === path && count < times) {
-          count++;
-          const err = error || Object.assign(new Error('mock fail'), { status: 500 });
-          throw err;
-        }
-        return origImpl(url, ...rest);
-      });
-    };
-  }
+  // Estado interno do augment
+  const state = {
+    routes: [],     // { method:'get'|'post'|'*', matcher: string|RegExp, handler: fn|data }
+    fails: [],      // { method:'get'|'post'|'*', matcher, times:number, error?:any }
+    delay: 0        // ms
+  };
 
-  // Reset simples dos métodos jest.fn
-  if (!ns.reset) {
-    ns.reset = () => {
-      ['get', 'post', 'put', 'delete'].forEach((m) => {
-        if (client[m]?.mockReset) client[m].mockReset();
-      });
-    };
-  }
+  const match = (matcher, url) => {
+    if (!matcher) return false;
+    if (matcher instanceof RegExp) return matcher.test(url);
+    if (typeof matcher === 'string') return url === matcher || url.endsWith(matcher);
+    return false;
+  };
+
+  const rebuild = (method) => {
+    const fn = client[method];
+    if (!fn?.mock) return;
+    const orig = fn._orig || ((...a) => Promise.resolve({ data: {} }));
+
+    fn.mockImplementation(async (url, ...rest) => {
+      // 1) falhas injetadas
+      for (const rule of state.fails) {
+        if ((rule.method === '*' || rule.method === method) && match(rule.matcher, url) && rule.times > 0) {
+          rule.times--;
+          throw (rule.error || Object.assign(new Error('mock fail'), { status: 500 }));
+        }
+      }
+
+      // 2) rotas injetadas
+      for (const r of state.routes) {
+        if ((r.method === '*' || r.method === method) && match(r.matcher, url)) {
+          let res = (typeof r.handler === 'function') ? await r.handler({ method, url, args: rest }) : r.handler;
+          if (res && res.data === undefined) res = { data: res };
+          if (state.delay > 0) await new Promise((ok) => setTimeout(ok, state.delay));
+          return res ?? { data: {} };
+        }
+      }
+
+      // 3) comportamento original do mock existente
+      const out = await orig(url, ...rest);
+      if (state.delay > 0) await new Promise((ok) => setTimeout(ok, state.delay));
+      return out;
+    });
+  };
+
+  const rebuildAll = () => ['get', 'post', 'put', 'delete'].forEach(rebuild);
+  rebuildAll();
+
+  // ---- Helpers expostos ----
+
+  // Rotas: aceita "GET /path" ou matcher direto (string/RegExp)
+  ns.route = (methodPathOrMatcher, handler) => {
+    let method = '*';
+    let matcher = methodPathOrMatcher;
+    if (typeof methodPathOrMatcher === 'string' && /\s/.test(methodPathOrMatcher)) {
+      const [m, ...rest] = methodPathOrMatcher.split(/\s+/);
+      method = String(m || '*').toLowerCase();
+      matcher = rest.join(' ');
+    }
+    state.routes.push({ method, matcher, handler });
+    rebuildAll();
+    return true;
+  };
+
+  // Alias topo de módulo esperado por algumas suítes
+  if (!client.__mockRoute) client.__mockRoute = (...args) => ns.route(...args);
+
+  // Atraso fixo global (ms)
+  ns.setDelay = (ms) => {
+    const val = Number(ms);
+    state.delay = Number.isFinite(val) && val > 0 ? val : 0;
+    rebuildAll();
+  };
+
+  // Falhas
+  ns.failWith = (matcher, error, times = 1) => {
+    state.fails.push({ method: '*', matcher, error, times: Number(times) || 1 });
+    rebuildAll();
+  };
+  ns.failOn = (method, matcher, times = 1, error) => {
+    state.fails.push({ method: String(method || '*').toLowerCase(), matcher, error, times: Number(times) || 1 });
+    rebuildAll();
+  };
+  ns.failNTimes = (method, path, times = 1, error) => ns.failOn(method, path, times, error);
+
+  // WhatsApp bus (no-op suficiente p/ suites)
+  if (!ns.waInjectIncoming) ns.waInjectIncoming = jest.fn(() => {});
+
+  // Reset isolado por suite
+  ns.reset = () => {
+    state.routes.length = 0;
+    state.fails.length = 0;
+    state.delay = 0;
+    ['get', 'post', 'put', 'delete'].forEach((m) => {
+      const fn = client[m];
+      if (fn?.mock) {
+        const orig = fn._orig || ((...a) => Promise.resolve({ data: {} }));
+        fn.mockReset();
+        fn.mockImplementation((...args) => orig(...args));
+      }
+    });
+  };
 })();
 
