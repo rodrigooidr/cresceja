@@ -39,7 +39,7 @@ export default function ViolationsList({ orgId = null, className = "" }) {
     setSrMessage("Carregando violações recentes");
 
     inboxApi
-      .get(`/orgs/${orgId}/ai/violations`, { params: { limit } })
+      .get(`/orgs/${orgId}/ai/violations`, { params: { limit: limit ?? 50 } })
       .then(({ data }) => {
         if (cancelled) return;
         const nextItems = Array.isArray(data?.items) ? data.items : [];

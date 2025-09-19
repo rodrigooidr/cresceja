@@ -1,6 +1,15 @@
 // 1) Força mock APENAS do inboxApi (NÃO mockar '@/api/index' aqui)
 try { jest.mock('@/api/inboxApi'); } catch {}
 
+try {
+  const mod = require('@/api/inboxApi');
+  const api = (mod && (mod.default || mod)) || null;
+  const route = api && (api.__mock?.route || api.__mockRoute);
+  if (typeof route === 'function') {
+    route(/\/orgs\/[^/]+\/ai\/violations(\?.*)?$/, { items: [] });
+  }
+} catch {}
+
 // 2) Blindar chamadas a runOnlyPendingTimers mesmo se alguém trocou para real timers no meio do teste
 (() => {
   const orig = jest.runOnlyPendingTimers;
