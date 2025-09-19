@@ -3,7 +3,10 @@ const config = {
   automock: false,
   testEnvironment: 'jsdom',
   testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
-  setupFiles: ['<rootDir>/test/setup.auto-mock-inbox.cjs'],
+  setupFiles: [
+    '<rootDir>/test/setup.early.cjs',
+    '<rootDir>/test/setup.auto-mock-inbox.cjs',
+  ],
   setupFilesAfterEnv: [
     '<rootDir>/test/setupTests.cjs',
     '<rootDir>/test/setup.jest.cjs',
@@ -44,6 +47,7 @@ const config = {
       statements: 80,
     },
   },
+  fakeTimers: { enableGlobally: true },
 };
 
 config.transform['^.+\\.(js|jsx)$'] = 'babel-jest';
