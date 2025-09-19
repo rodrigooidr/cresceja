@@ -1,4 +1,8 @@
-import { applyOrgIdHeader, setOrgIdHeaderProvider } from "../orgHeader.js";
+import { applyOrgIdHeader } from "../orgHeader.js";
+
+// helpers no-op exigidos por componentes durante testes
+export const setOrgIdHeaderProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
+export const setTokenProvider      = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
 
 function normalizeListLike(x) {
   if (Array.isArray(x)) return x;
@@ -300,7 +304,7 @@ const api = {
 };
 
 export default api;
-export { setOrgIdHeaderProvider, __mockRoute, __resetMockApi, __setFeatures, __setLimits, __setProgressScenario };
+export { __mockRoute, __resetMockApi, __setFeatures, __setLimits, __setProgressScenario };
 
 export function __mockMetaReset() { __resetMetaAccounts(); }
 
