@@ -1,3 +1,7 @@
+// Força o uso dos mocks manuais para API em TODAS as suites
+try { jest.mock('@/api/inboxApi'); } catch {}
+try { jest.mock('@/api/index'); } catch {}
+
 // frontend/test/setup.jest.cjs
 // Extensões úteis do RTL
 try { require('@testing-library/jest-dom'); } catch {}

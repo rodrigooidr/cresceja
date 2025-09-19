@@ -1,5 +1,5 @@
 /** @type {import('jest').Config} */
-module.exports = {
+const config = {
   automock: false,
   testEnvironment: 'jsdom',
   testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
@@ -22,13 +22,11 @@ module.exports = {
     '^hooks/(.*)$': '<rootDir>/src/hooks/$1',
     '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
-    '\\.(css|less|sass|scss)$': '<rootDir>/test/styleMock.cjs',
-    '\\.module\\.(css|less|sass|scss)$': 'identity-obj-proxy',
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '\\.module\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/test/fileMock.cjs',
   },
-  transform: {
-    '^.+\\.(js|jsx)$': 'babel-jest',
-  },
+  transform: {},
   transformIgnorePatterns: [
     '/node_modules/(?!(luxon|react-big-calendar|date-arithmetic|@internationalized/date)/)',
   ],
@@ -47,3 +45,7 @@ module.exports = {
     },
   },
 };
+
+config.transform['^.+\\.(js|jsx)$'] = 'babel-jest';
+
+module.exports = config;
