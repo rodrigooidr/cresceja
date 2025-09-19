@@ -60,8 +60,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jest-logs
+          name: jest-reports
           path: |
+            reports/junit/**/*.xml
             **/jest*.log
             **/junit*.xml
-          if-no-files-found: ignore
+          if-no-files-found: warn
