@@ -201,8 +201,12 @@ export default function GuardrailsForm({
 
         {blockTopicsEnabled && (
           <div className="space-y-2">
-            <form className="flex gap-2" onSubmit={handleAddTopic}>
-              <label htmlFor="guardrails-topic-input" className="sr-only">
+            <div className="flex gap-2" role="group" aria-labelledby="guardrails-topic-label">
+              <label
+                id="guardrails-topic-label"
+                htmlFor="guardrails-topic-input"
+                className="sr-only"
+              >
                 Novo termo para bloquear
               </label>
               <Input
@@ -210,18 +214,25 @@ export default function GuardrailsForm({
                 value={topicDraft}
                 placeholder="Ex.: desconto, brinde, segredo"
                 onChange={(event) => setTopicDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    handleAddTopic();
+                  }
+                }}
                 disabled={disabled}
                 aria-disabled={disabled || undefined}
               />
               <Button
-                type="submit"
+                type="button"
                 variant="primary"
+                onClick={handleAddTopic}
                 disabled={disabled}
                 aria-disabled={disabled || undefined}
               >
                 Adicionar
               </Button>
-            </form>
+            </div>
 
             {blockTopicTerms.length === 0 ? (
               <p className="text-xs text-slate-500">Nenhum termo configurado.</p>

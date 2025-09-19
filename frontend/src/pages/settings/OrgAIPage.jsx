@@ -265,7 +265,7 @@ export default function OrgAIPage() {
   const isSaveDisabled = !orgId || loading || saving;
 
   return (
-    <form className="p-6 space-y-6" onSubmit={handleSave} data-testid="orgai-page">
+    <div className="p-6 space-y-6" data-testid="orgai-page">
       <div aria-live="polite" className="sr-only" role="status">
         {srMessage}
       </div>
@@ -280,7 +280,8 @@ export default function OrgAIPage() {
         actions={
           <Button
             variant="primary"
-            type="submit"
+            type="button"
+            onClick={handleSave}
             data-testid="orgai-save"
             disabled={isSaveDisabled}
             aria-disabled={isSaveDisabled}
@@ -403,6 +404,7 @@ export default function OrgAIPage() {
                 </div>
                 <Switch
                   id="orgai-rag-enabled"
+                  aria-label="RAG habilitado"
                   checked={!!draft.rag?.enabled}
                   onChange={(value) => {
                     setDraft((prev) => ({
@@ -476,6 +478,6 @@ export default function OrgAIPage() {
           </div>
         </div>
       )}
-    </form>
+    </div>
   );
 }

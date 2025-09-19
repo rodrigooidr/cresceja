@@ -8,7 +8,7 @@ function buildPreviewText({ vertical, brandVoice, languages, rag, guardrails }) 
   segments.push(`Tom da marca: ${brandVoice || "—"}`);
   const langs = Array.isArray(languages) && languages.length > 0 ? languages.join(", ") : "—";
   segments.push(`Idiomas suportados: ${langs}`);
-  const ragStatus = rag?.enabled ? `Ativo (topK=${rag?.topK ?? "—"})` : "Desativado";
+  const ragStatus = rag?.enabled ? `Ativado (topK=${rag?.topK ?? "—"})` : "Desativado";
   segments.push(`RAG: ${ragStatus}`);
   if (guardrails?.maxReplyChars) {
     segments.push(`Resposta limitada a ${guardrails.maxReplyChars} caracteres`);
