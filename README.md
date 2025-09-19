@@ -1,3 +1,5 @@
+[![OrgAI Tests](https://github.com/<owner>/<repo>/actions/workflows/orgai-tests.yml/badge.svg)](https://github.com/<owner>/<repo>/actions/workflows/orgai-tests.yml)
+
 # Calendar Reminders & No-Show
 
 ## Endpoints protegidos (RBAC)
@@ -34,6 +36,15 @@ Frontend:
 ```
 npx jest --config frontend/jest.config.cjs --runInBand
 ```
+
+### Testes – IA da Organização
+- Rodar local:
+  ```bash
+  npm run test:orgai            # backend + frontend (OrgAI)
+  npm run test:backend
+  npm run test:frontend:orgai
+  ```
+- CI dedicado: OrgAI Tests (workflow `orgai-tests.yml`) executa em PRs e pushes que afetam a feature.
 
 ## Smoke manual
 1. Dispare `POST /api/calendar/events/:id/remind` duas vezes < 10min → 2ª retorna `{ idempotent:true }`.

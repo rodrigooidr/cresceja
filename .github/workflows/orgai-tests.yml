@@ -1,0 +1,67 @@
+name: OrgAI Tests
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - "backend/**"
+      - "frontend/src/components/ai/**"
+      - "frontend/src/pages/settings/OrgAIPage.jsx"
+      - "frontend/test/**"
+      - "frontend/jest.orgai.cjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/orgai-tests.yml"
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - "backend/**"
+      - "frontend/src/components/ai/**"
+      - "frontend/src/pages/settings/OrgAIPage.jsx"
+      - "frontend/test/**"
+      - "frontend/jest.orgai.cjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/orgai-tests.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: orgai-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: true
+      # Ajuda o Jest ESM no backend (mesmo que já esteja no script):
+      NODE_OPTIONS: --experimental-vm-modules
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Backend tests
+        run: npm run test:backend
+
+      - name: Frontend OrgAI tests
+        run: npm run test:frontend:orgai
+
+      - name: Upload Jest results (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest-logs
+          path: |
+            **/jest*.log
+            **/junit*.xml
+          if-no-files-found: ignore
