@@ -4,6 +4,8 @@
 
 let __delayMs = 0;
 export const apiUrl = "http://mock.local";
+export const setOrgIdHeaderProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
+export const setTokenProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
 
 // ---- Estado em memória (pode ser sobrescrito via __seed) ----
 const state = {
