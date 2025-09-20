@@ -22,11 +22,11 @@
     "fix:backend:deps": "npm --prefix backend i -D supertest express express-rate-limit node-fetch@2 zod dotenv pino axios luxon pg"
   },
   "overrides": {
-    "libsignal-node": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/refs/heads/main",
-    "libsignal": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/refs/heads/main",
+    "libsignal-node": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
+    "libsignal": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
     "@whiskeysockets/baileys": {
-      "libsignal": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/refs/heads/main",
-      "libsignal-node": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/refs/heads/main"
+      "libsignal": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
+      "libsignal-node": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1"
     },
     "@whiskeysockets/eslint-config": "https://codeload.github.com/whiskeysockets/eslint-config/tar.gz/refs/heads/main"
   },

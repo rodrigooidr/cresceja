@@ -4,26 +4,40 @@ import * as authModule from '../middleware/auth.js';
 import * as rolesModule from '../middleware/requireRole.js';
 import { sweepNoShow } from '../services/calendar/noshow.js';
 
-const router = express.Router();
+function resolveRequireAuth(override) {
+  if (typeof override === 'function') {
+    return override;
+  }
+  return (
+    (typeof authModule?.requireAuth === 'function' && authModule.requireAuth) ||
+    (typeof authModule?.authRequired === 'function' && authModule.authRequired) ||
+    (typeof authModule?.default === 'function' && authModule.default) ||
+    ((_req, _res, next) => next())
+  );
+}
 
-/** Middlewares resilientes */
-const requireAuth =
-  (typeof authModule?.requireAuth === 'function' && authModule.requireAuth) ||
-  (typeof authModule?.authRequired === 'function' && authModule.authRequired) ||
-  (typeof authModule?.default === 'function' && authModule.default) ||
-  ((_req, _res, next) => next());
+function resolveRequireRoleFactory(override) {
+  if (typeof override === 'function') {
+    return override;
+  }
+  return (
+    (typeof rolesModule?.requireRole === 'function' && rolesModule.requireRole) ||
+    (typeof rolesModule?.default === 'function' && rolesModule.default) ||
+    (typeof rolesModule === 'function' && rolesModule) ||
+    (() => (_req, _res, next) => next())
+  );
+}
 
-const requireRoleFn =
-  (typeof rolesModule?.requireRole === 'function' && rolesModule.requireRole) ||
-  (typeof rolesModule?.default === 'function' && rolesModule.default) ||
-  (typeof rolesModule === 'function' && rolesModule) ||
-  // fallback: retorna um middleware que deixa passar
-  (() => (_req, _res, next) => next());
-
-const ROLES =
-  (rolesModule?.ROLES) ||
-  (rolesModule?.default?.ROLES) ||
-  { SuperAdmin: 'SuperAdmin', OrgAdmin: 'OrgAdmin', Support: 'Support' };
+function resolveRoles(overrides) {
+  const baseRoles =
+    rolesModule?.ROLES ||
+    rolesModule?.default?.ROLES || {
+      SuperAdmin: 'SuperAdmin',
+      OrgAdmin: 'OrgAdmin',
+      Support: 'Support',
+    };
+  return { ...baseRoles, ...(overrides || {}) };
+}
 
 /** Audit opcional (lazy + cache) */
 let _auditCached = null;
@@ -51,51 +65,66 @@ function normalizeGraceMinutes() {
   );
 }
 
-function resolveDb(req) {
-  // se você injeta db em req via middleware, aproveita aqui
+function resolveDb(req, fallbackDb) {
   if (req?.db) return req.db;
-  // se preferir forçar presença:
-  // throw new Error('DB instance not available on request');
+  if (fallbackDb && typeof fallbackDb.query === 'function') return fallbackDb;
   return null;
 }
 
-/** Handler principal */
-async function sweepHandler(req, res, next) {
-  try {
-    const enabled = String(process.env.NOSHOW_ENABLED ?? 'true').toLowerCase() === 'true';
-    if (!enabled) {
-      return res.json({ ok: true, count: 0, ids: [], skipped: 'disabled' });
-    }
-
-    const grace = normalizeGraceMinutes();
-    const db = resolveDb(req);
-
-    const ids = await sweepNoShow({ db, graceMinutes: grace });
-
-    // audit (se disponível)
+function createSweepHandler({ defaultDb }) {
+  return async function sweepHandler(req, res, next) {
     try {
-      const auditLog = await getAuditLog();
-      await auditLog(db, {
-        orgId: req.user?.orgId ?? null,
-        userId: req.user?.id ?? null,
-        action: 'calendar.no_show.sweep',
-        entity: 'calendar_event',
-        entityId: null,
-        payload: { count: ids.length, ids, graceMinutes: grace },
-      });
-    } catch {
-      // não quebra a requisição por causa do audit
-    }
+      const enabled = String(process.env.NOSHOW_ENABLED ?? 'true').toLowerCase() === 'true';
+      if (!enabled) {
+        return res.json({ ok: true, count: 0, ids: [], skipped: 'disabled' });
+      }
 
-    return res.json({ ok: true, count: ids.length, ids });
-  } catch (e) {
-    return next(e);
-  }
+      const grace = normalizeGraceMinutes();
+      const db = resolveDb(req, defaultDb);
+
+      const ids = await sweepNoShow({ db, graceMinutes: grace });
+
+      try {
+        const auditLog = await getAuditLog();
+        await auditLog(db, {
+          orgId: req.user?.orgId ?? req.user?.org_id ?? null,
+          userId: req.user?.id ?? req.user?.user_id ?? null,
+          action: 'calendar.no_show.sweep',
+          entity: 'calendar_event',
+          entityId: null,
+          payload: { count: ids.length, ids, graceMinutes: grace },
+        });
+      } catch {
+        // não quebra a requisição por causa do audit
+      }
+
+      return res.json({ ok: true, updated: ids.length });
+    } catch (e) {
+      return next(e);
+    }
+  };
 }
 
-/** Rotas (mantém compat: caminho curto e caminho com prefixo completo) */
-const guards = [requireAuth, requireRoleFn(ROLES.SuperAdmin, ROLES.OrgAdmin, ROLES.Support)];
-router.post('/sweep', ...guards, sweepHandler);
-router.post('/api/calendar/noshow/sweep', ...guards, sweepHandler);
+export function createNoShowRouter({
+  db = null,
+  requireAuth: authOverride,
+  requireRole: roleOverride,
+  ROLES: roleOverrides,
+} = {}) {
+  const router = express.Router();
+  const requireAuth = resolveRequireAuth(authOverride);
+  const requireRoleFactory = resolveRequireRoleFactory(roleOverride);
+  const roles = resolveRoles(roleOverrides);
+  const sweepHandler = createSweepHandler({ defaultDb: db });
+  const guards = [requireAuth, requireRoleFactory(roles.SuperAdmin, roles.OrgAdmin, roles.Support)];
 
-export default router;
+  router.post('/sweep', ...guards, sweepHandler);
+  router.post('/calendar/noshow/sweep', ...guards, sweepHandler);
+  router.post('/api/calendar/noshow/sweep', ...guards, sweepHandler);
+
+  return router;
+}
+
+const defaultRouter = createNoShowRouter();
+
+export default defaultRouter;

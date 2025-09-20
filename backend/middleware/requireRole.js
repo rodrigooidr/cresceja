@@ -1,6 +1,6 @@
 // backend/middleware/requireRole.js
 
-const ROLES = {
+export const ROLES = {
   SuperAdmin: 'superAdmin',
   OrgAdmin: 'orgAdmin',
   Support: 'support',
@@ -12,7 +12,7 @@ function getRole(user) {
   return user.role || (Array.isArray(user.roles) ? user.roles[0] : null);
 }
 
-function requireRole(...allowed) {
+export function requireRole(...allowed) {
   return (req, res, next) => {
     try {
       if (!req.user) {
@@ -48,7 +48,7 @@ function requireRole(...allowed) {
  * - string separada por vírgula/espaço
  * - '*' para todos os escopos
  */
-function hasSupportScope(user, scope) {
+export function hasSupportScope(user, scope) {
   if (!scope) return true; // sem escopo requerido
   const raw =
     user?.supportScopes ??
@@ -70,7 +70,7 @@ function hasSupportScope(user, scope) {
   return false;
 }
 
-function requireScope(scope) {
+export function requireScope(scope) {
   return (req, res, next) => {
     try {
       const user = req.user;
@@ -95,9 +95,14 @@ function requireScope(scope) {
   };
 }
 
-module.exports = {
-  ROLES,
-  requireRole,
-  requireScope,
-  hasSupportScope,
-};
+const defaultExport = Object.assign(
+  (...allowed) => requireRole(...allowed),
+  {
+    ROLES,
+    requireRole,
+    requireScope,
+    hasSupportScope,
+  }
+);
+
+export default defaultExport;
