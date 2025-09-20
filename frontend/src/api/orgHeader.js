@@ -1,5 +1,12 @@
 let orgIdProvider = null;
 
+const globalScope =
+  typeof globalThis !== 'undefined'
+    ? globalThis
+    : typeof window !== 'undefined'
+    ? window
+    : {};
+
 export function setOrgIdHeaderProvider(fn) {
   orgIdProvider = typeof fn === "function" ? fn : null;
 }
@@ -18,7 +25,7 @@ export function computeOrgId() {
     if (v != null && v !== "") return String(v);
   } catch {}
   // 3) fallback de testes (agora priorizado para compat com suíte)
-  const t = globalThis?.__TEST_ORG__?.id;
+  const t = globalScope?.__TEST_ORG__?.id;
   if (t != null && t !== "") return String(t);
 
   return undefined;

@@ -3,22 +3,16 @@ import inboxApi from '@/api/inboxApi';
 
 // helper portátil para CRA/Vite/janela
 const readEnv = (viteKey, craKey, fallback) => {
-  const fromVite =
-    typeof import.meta !== 'undefined' && import.meta && import.meta.env
-      ? import.meta.env[viteKey]
-      : undefined;
-
   const fromCRA =
     typeof process !== 'undefined' && process.env
       ? process.env[craKey]
       : undefined;
-
   const fromWindow =
-    typeof window !== 'undefined' && window.ENV
-      ? window.ENV[viteKey]
+    typeof window !== 'undefined' && window.__ENV__
+      ? window.__ENV__[viteKey] || window.__ENV__[craKey]
       : undefined;
 
-  return fromVite ?? fromCRA ?? fromWindow ?? fallback;
+  return fromCRA ?? fromWindow ?? fallback;
 };
 
 const DEDUP_MIN = Number(

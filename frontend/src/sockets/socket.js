@@ -1,16 +1,27 @@
-import { io } from 'socket.io-client';
 import { useOrg } from '../contexts/OrgContext';
 import { useEffect, useMemo } from 'react';
 import { API_BASE_URL, getAuthToken } from '../api/inboxApi';
+import { startSocketsSafe, getSocketUrl } from '../debug/installDebug';
 
 function pickOriginFromApi(base) {
   try { return base.replace(/\/api\/?$/, ''); } catch { return base; }
 }
 
+function resolveSocketUrl() {
+  try {
+    const helper = typeof getSocketUrl === 'function' ? getSocketUrl() : null;
+    if (helper) return helper;
+  } catch {}
+  return pickOriginFromApi(API_BASE_URL);
+}
+
 export function makeSocket() {
-  const origin = pickOriginFromApi(API_BASE_URL);
-  const token = getAuthToken?.() || localStorage.getItem('token');
-  return io(origin, { path: '/socket.io', auth: token ? { token } : undefined });
+  const token = getAuthToken?.() || (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
+  return startSocketsSafe({
+    url: resolveSocketUrl(),
+    path: '/socket.io',
+    auth: token ? { token } : undefined,
+  });
 }
 
 export function useSocket() {
@@ -18,7 +29,7 @@ export function useSocket() {
   const socket = useMemo(() => makeSocket(), []);
 
   useEffect(() => {
-    if (selected) socket.emit('org:switch', { orgId: selected });
+    if (selected && socket) socket.emit('org:switch', { orgId: selected });
   }, [selected, socket]);
 
   return socket;

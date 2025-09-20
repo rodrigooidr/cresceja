@@ -27,6 +27,12 @@ import useListSelection from './hooks/useListSelection.js';
 const localizer = luxonLocalizer(DateTime);
 const DnDCalendar = withDragAndDrop(Calendar);
 const TZ = 'America/Sao_Paulo';
+const globalScope =
+  typeof globalThis !== 'undefined'
+    ? globalThis
+    : typeof window !== 'undefined'
+    ? window
+    : {};
 
 export function toPatchDateTimeJS(startDate) {
   const { DateTime } = require('luxon');
@@ -48,8 +54,8 @@ export default function ContentCalendar(props = {}) {
   const { activeOrg } = useActiveOrg();
   const orgId = useMemo(() => {
     if (activeOrg) return activeOrg;
-    if (typeof globalThis !== 'undefined' && globalThis?.__TEST_ORG__?.id) {
-      return globalThis.__TEST_ORG__.id;
+    if (globalScope?.__TEST_ORG__?.id) {
+      return globalScope.__TEST_ORG__.id;
     }
     return null;
   }, [activeOrg]);

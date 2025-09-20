@@ -1,6 +1,7 @@
 // Instala ganchos de log e rede no window.__debugStore
 (function(){
   if (typeof window === "undefined") return;
+  if (typeof process !== "undefined" && process?.env?.NODE_ENV === "production") return;
 
   const store = window.__debugStore = {
     logs: [],    // {ts, level, args}
@@ -71,3 +72,76 @@
     };
   }
 })();
+
+// Sockets: habilitar/desabilitar por localStorage/ENV e não travar a UI quando offline
+const getSocketUrl = () => {
+  const ls =
+    typeof window !== 'undefined' && window.localStorage
+      ? window.localStorage.getItem('SOCKET_URL')
+      : null;
+  const fromEnv =
+    (typeof process !== 'undefined' && process.env && process.env.REACT_APP_SOCKET_URL) ||
+    (typeof window !== 'undefined' && window.__ENV__ && (window.__ENV__.SOCKET_URL || window.__ENV__.REACT_APP_SOCKET_URL)) ||
+    null;
+  return (
+    ls ||
+    fromEnv ||
+    (typeof window !== 'undefined' && window.location ? window.location.origin : null) ||
+    'http://localhost:4000'
+  );
+};
+
+const socketsDisabled =
+  (typeof window !== 'undefined' && window.localStorage?.getItem('DISABLE_SOCKETS') === 'true') ||
+  (typeof process !== 'undefined' && process.env && process.env.REACT_APP_DISABLE_SOCKETS === 'true') ||
+  (typeof window !== 'undefined' && window.__ENV__ && window.__ENV__.DISABLE_SOCKETS === 'true');
+
+let io;
+try {
+  // eslint-disable-next-line global-require
+  io = require('socket.io-client');
+  io = io?.io || io?.default || io;
+} catch {}
+
+export function startSocketsSafe(options = {}) {
+  if (!io || socketsDisabled) return null;
+  try {
+    const { url: overrideUrl, ...rest } = options || {};
+    const url = overrideUrl || getSocketUrl();
+    const socket = io(url, {
+      transports: ['polling', 'websocket'],
+      reconnection: true,
+      ...rest,
+    });
+    if (socket?.on) {
+      socket.on('connect_error', () => {});
+      socket.on('error', () => {});
+    }
+    return socket;
+  } catch {
+    return null;
+  }
+}
+
+export { getSocketUrl, socketsDisabled };
+
+// Semeia orgs/conversas quando há mock em dev:
+try {
+  if (
+    typeof window !== 'undefined' &&
+    typeof process !== 'undefined' &&
+    process.env?.NODE_ENV !== 'production' &&
+    window.inboxApi && typeof window.inboxApi.__mockRoute === 'function'
+  ) {
+    window.inboxApi.__mockRoute('GET /orgs', {
+      items: [
+        { id: 'org_demo', name: 'Org Demo' },
+      ],
+    });
+    window.inboxApi.__mockRoute('GET /orgs/org_demo/conversations', {
+      items: [
+        { id: 'c1', subject: 'Bem-vindo!', last: 'Olá 👋' },
+      ],
+    });
+  }
+} catch {}

@@ -1,7 +1,6 @@
-import inboxApi from "../../api/inboxApi";
 import React, { useEffect, useState } from "react";
-import { io } from "socket.io-client";
 import inboxApi from "../api/inboxApi";
+import { startSocketsSafe } from "../debug/installDebug";
 
 // Página simples de atendimento com 3 colunas
 export default function AtendimentoPage() {
@@ -14,17 +13,27 @@ export default function AtendimentoPage() {
 
   // Conecta ao socket
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) return;
-    const url = (process.env.REACT_APP_WS_URL || process.env.REACT_APP_API_URL || "http://localhost:4000").replace(/^http/, "ws");
-    const s = io(url, { auth: { token } });
-    s.on("message:new", (msg) => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (!token) {
+      setSocket(null);
+      return () => {};
+    }
+    const instance = startSocketsSafe({ auth: { token } });
+    if (!instance) {
+      setSocket(null);
+      return () => {};
+    }
+    const handleMessage = (msg) => {
       if (active && msg.conversation_id === active.id) {
         setMessages((prev) => [...prev, msg]);
       }
-    });
-    setSocket(s);
-    return () => s.disconnect();
+    };
+    instance.on("message:new", handleMessage);
+    setSocket(instance);
+    return () => {
+      instance.off?.("message:new", handleMessage);
+      try { instance.disconnect(); } catch {}
+    };
   }, [active]);
 
   // Junta-se à sala da conversa selecionada
