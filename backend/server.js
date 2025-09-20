@@ -90,6 +90,7 @@ import calendarRemindersRouter from './routes/calendar.reminders.js';
 import createCalendarRemindersOneRouter from './routes/calendar.reminders.one.js';
 import createAuditLogsRouter from './routes/audit.logs.js';
 import calendarRsvpRouter from './routes/calendar.rsvp.js';
+import { createHealthRouter } from './routes/health.js';
 import noShowRouter, { createNoShowRouter } from './routes/calendar.noshow.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
 import calendarCalendarsAdminRouter from './routes/calendar.calendars.admin.js';
@@ -114,6 +115,7 @@ const ROLES = requireRoleModule.ROLES ?? requireRoleModule.default?.ROLES ?? req
 
 import { adminContext } from './middleware/adminContext.js';
 import { startNoShowCron } from './jobs/noshow.sweep.cron.js';
+import { resolveDbHealthcheckConfig } from './utils/dbHealthcheckFlag.js';
 
 // ---------- Paths ----------
 const __filename = fileURLToPath(import.meta.url);
@@ -127,8 +129,20 @@ const logger = pino({
 
 export const app = express();
 
+function getDbHealthcheckConfig() {
+  return resolveDbHealthcheckConfig(process.env);
+}
+
+function logStartupFlags() {
+  const dbConfig = getDbHealthcheckConfig();
+  logger.info({ dbHealthcheck: dbConfig }, dbConfig.summary);
+}
+
 // ---------- Helpers ----------
-const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
+const corsOrigins = (
+  process.env.CORS_ORIGINS ||
+  'http://localhost:3000,http://127.0.0.1:3000,https://app.cresceja.com.br,https://app.cresceja.com'
+)
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
@@ -219,14 +233,10 @@ function configureApp() {
   });
 
   // ---------- Health público ----------
-  app.get('/api/health', (_req, res) => {
-    res.status(200).json({
-      status: 'ok',
-      service: 'cresceja-backend',
-      uptime: process.uptime(),
-      time: new Date().toISOString(),
-    });
-  });
+  app.use(
+    '/api/health',
+    createHealthRouter({ healthcheckFn: healthcheck, getDbConfig: getDbHealthcheckConfig })
+  );
   app.get('/api/ping', (_req, res) => res.json({ pong: true, t: Date.now() }));
 
   // ---------- Rotas públicas ----------
@@ -413,9 +423,13 @@ let started = false;
 let shutdownRegistered = false;
 
 async function ensureHealthcheck() {
-  if (String(process.env.SKIP_DB_HEALTHCHECK).toLowerCase() === 'true') {
-    logger.warn('Skipping DB healthcheck (SKIP_DB_HEALTHCHECK=true)');
+  const config = getDbHealthcheckConfig();
+  if (config.skip) {
+    logger.warn('Skipping DB healthcheck (SKIP_DB_HEALTHCHECK enabled)');
     return;
+  }
+  if (config.reason === 'ignored_in_production' && config.requested) {
+    logger.warn('Ignoring SKIP_DB_HEALTHCHECK in production; DB healthcheck required.');
   }
   try {
     await healthcheck();
@@ -469,7 +483,10 @@ function setupSocketServer() {
       const token =
         socket.handshake.auth?.token ||
         (socket.handshake.headers.authorization || '').split(' ')[1];
-      if (!token) return next(new Error('no_token'));
+      if (!token) {
+        socket.user = null;
+        return next();
+      }
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       socket.user = { id: payload.id, org_id: payload.org_id, role: payload.role };
       return next();
@@ -496,29 +513,58 @@ function setupSocketServer() {
   });
 }
 
-export async function start() {
+export async function start(options = {}) {
   if (started) return httpServer;
 
+  logStartupFlags();
   await ensureHealthcheck();
 
   httpServer = http.createServer(app);
   setupSocketServer();
 
-  const port = Number(process.env.PORT || 4000);
+  const requestedPort = options.port ?? process.env.PORT ?? 4000;
+  const numericPort =
+    typeof requestedPort === 'number' ? requestedPort : Number(requestedPort);
+  const port = Number.isFinite(numericPort) && numericPort >= 0 ? numericPort : 4000;
   await new Promise((resolve) => {
     httpServer.listen(port, () => {
-      logger.info(`CresceJá backend + WS listening on :${port}`);
+      const address = httpServer.address();
+      const actualPort = typeof address === 'object' && address ? address.port : port;
+      logger.info(`CresceJá backend + WS listening on :${actualPort}`);
       resolve();
     });
   });
 
-  if (process.env.RUN_WORKERS !== '0') {
+  if (process.env.RUN_WORKERS !== '0' && options.startWorkers !== false) {
     startCampaignsSyncWorker();
   }
 
   registerShutdownHooks();
   started = true;
   return httpServer;
+}
+
+export async function stop() {
+  if (!started) return;
+  if (io) {
+    await new Promise((resolve) => {
+      io.close(() => resolve());
+    });
+    app.set('io', null);
+  }
+  await new Promise((resolve) => {
+    if (httpServer) {
+      httpServer.close(() => {
+        logger.info('HTTP server closed');
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
+  httpServer = null;
+  io = null;
+  started = false;
 }
 
 if (process.env.NODE_ENV !== 'test') {
