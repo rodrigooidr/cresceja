@@ -50,18 +50,26 @@
     "whatwg-fetch": "^3.6.20",
     "whatwg-url": "^14.2.0",
     "@babel/plugin-syntax-import-meta": "^7.10.4",
-    "babel-plugin-transform-import-meta": "^2.2.1"
+    "babel-plugin-transform-import-meta": "^2.2.1",
+    "react-app-rewired": "^2.2.1"
   },
   "eslintConfig": {
     "extends": [
       "react-app",
       "react-app/jest",
       "plugin:react-hooks/recommended"
-    ]
+    ],
+    "env": {
+      "browser": true,
+      "es2021": true
+    },
+    "globals": {
+      "globalThis": "readonly"
+    }
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+    "start": "react-app-rewired start",
+    "build": "react-app-rewired build",
     "test": "cross-env NODE_OPTIONS=--max-old-space-size=4096 jest --maxWorkers=50% --detectOpenHandles --logHeapUsage",
     "test:health": "jest test/ContentCalendar.health.test.jsx --config jest.config.cjs --runTestsByPath --silent --maxWorkers=1",
     "test:watch": "jest --watch",
