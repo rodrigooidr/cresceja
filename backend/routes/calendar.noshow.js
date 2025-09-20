@@ -1,59 +1,47 @@
-// backend/routes/calendar.noshow.js
-
+// backend/routes/calendar.noshow.js  (ESM, export default router)
 import express from 'express';
 import * as authModule from '../middleware/auth.js';
-import * as requireRoleModule from '../middleware/requireRole.js';
+import * as rolesModule from '../middleware/requireRole.js';
 import { sweepNoShow } from '../services/calendar/noshow.js';
 
 const router = express.Router();
 
-const resolveAuth = () => {
-  if (typeof authModule?.requireAuth === 'function') return authModule.requireAuth;
-  if (typeof authModule?.authRequired === 'function') return authModule.authRequired;
-  if (typeof authModule?.default === 'function') return authModule.default;
-  return (_req, _res, next) => next();
-};
+/** Middlewares resilientes */
+const requireAuth =
+  (typeof authModule?.requireAuth === 'function' && authModule.requireAuth) ||
+  (typeof authModule?.authRequired === 'function' && authModule.authRequired) ||
+  (typeof authModule?.default === 'function' && authModule.default) ||
+  ((_req, _res, next) => next());
 
-const resolveRequireRole = () => {
-  if (typeof requireRoleModule?.requireRole === 'function') return requireRoleModule.requireRole;
-  if (typeof requireRoleModule?.default === 'function') return requireRoleModule.default;
-  if (typeof requireRoleModule?.default?.requireRole === 'function') {
-    return requireRoleModule.default.requireRole;
+const requireRoleFn =
+  (typeof rolesModule?.requireRole === 'function' && rolesModule.requireRole) ||
+  (typeof rolesModule?.default === 'function' && rolesModule.default) ||
+  (typeof rolesModule === 'function' && rolesModule) ||
+  // fallback: retorna um middleware que deixa passar
+  (() => (_req, _res, next) => next());
+
+const ROLES =
+  (rolesModule?.ROLES) ||
+  (rolesModule?.default?.ROLES) ||
+  { SuperAdmin: 'SuperAdmin', OrgAdmin: 'OrgAdmin', Support: 'Support' };
+
+/** Audit opcional (lazy + cache) */
+let _auditCached = null;
+async function getAuditLog() {
+  if (_auditCached) return _auditCached;
+  try {
+    const mod = await import('../services/audit.js');
+    _auditCached =
+      mod.auditLog ||
+      mod.default?.auditLog ||
+      (typeof mod.default === 'function' ? mod.default : async () => {});
+  } catch {
+    _auditCached = async () => {};
   }
-  if (typeof requireRoleModule === 'function') return requireRoleModule;
-  return () => (_req, _res, next) => next();
-};
-
-const resolveRoles = () => {
-  if (requireRoleModule?.ROLES) return requireRoleModule.ROLES;
-  if (requireRoleModule?.default?.ROLES) return requireRoleModule.default.ROLES;
-  return {};
-};
-
-const requireAuth = resolveAuth();
-const requireRole = resolveRequireRole();
-const ROLES = resolveRoles();
-
-// auditLog é opcional — se não existir, viramos no-op
-let auditLog = async () => {};
-try {
-  const auditModule = await import('../services/audit.js');
-  auditLog =
-    typeof auditModule.auditLog === 'function'
-      ? auditModule.auditLog
-      : typeof auditModule.default?.auditLog === 'function'
-        ? auditModule.default.auditLog
-        : typeof auditModule.default === 'function'
-          ? auditModule.default
-          : auditLog;
-} catch {
-  // sem audit service, segue sem log
+  return _auditCached;
 }
 
-function resolveDb(req) {
-  return req?.db;
-}
-
+/** Helpers */
 function normalizeGraceMinutes() {
   return (
     parseInt(
@@ -63,6 +51,15 @@ function normalizeGraceMinutes() {
   );
 }
 
+function resolveDb(req) {
+  // se você injeta db em req via middleware, aproveita aqui
+  if (req?.db) return req.db;
+  // se preferir forçar presença:
+  // throw new Error('DB instance not available on request');
+  return null;
+}
+
+/** Handler principal */
 async function sweepHandler(req, res, next) {
   try {
     const enabled = String(process.env.NOSHOW_ENABLED ?? 'true').toLowerCase() === 'true';
@@ -71,15 +68,14 @@ async function sweepHandler(req, res, next) {
     }
 
     const grace = normalizeGraceMinutes();
+    const db = resolveDb(req);
 
-    const ids = await sweepNoShow({
-      db: resolveDb(req),
-      graceMinutes: grace,
-    });
+    const ids = await sweepNoShow({ db, graceMinutes: grace });
 
     // audit (se disponível)
     try {
-      await auditLog(resolveDb(req), {
+      const auditLog = await getAuditLog();
+      await auditLog(db, {
         orgId: req.user?.orgId ?? null,
         userId: req.user?.id ?? null,
         action: 'calendar.no_show.sweep',
@@ -88,7 +84,7 @@ async function sweepHandler(req, res, next) {
         payload: { count: ids.length, ids, graceMinutes: grace },
       });
     } catch {
-      // não falhar a requisição por causa do audit
+      // não quebra a requisição por causa do audit
     }
 
     return res.json({ ok: true, count: ids.length, ids });
@@ -97,14 +93,9 @@ async function sweepHandler(req, res, next) {
   }
 }
 
-const sweepMiddlewares = [
-  requireAuth,
-  requireRole(ROLES.SuperAdmin, ROLES.OrgAdmin, ROLES.Support),
-  sweepHandler,
-];
-
-['/sweep', '/api/calendar/noshow/sweep'].forEach((path) => {
-  router.post(path, ...sweepMiddlewares);
-});
+/** Rotas (mantém compat: caminho curto e caminho com prefixo completo) */
+const guards = [requireAuth, requireRoleFn(ROLES.SuperAdmin, ROLES.OrgAdmin, ROLES.Support)];
+router.post('/sweep', ...guards, sweepHandler);
+router.post('/api/calendar/noshow/sweep', ...guards, sweepHandler);
 
 export default router;
