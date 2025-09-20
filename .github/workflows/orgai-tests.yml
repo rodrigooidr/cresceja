@@ -65,8 +65,8 @@ jobs:
             sed -i 's#git://#https://#g' package-lock.json
           fi
 
-      - name: Install deps
-        run: npm ci
+      - name: Install deps (omit optional)
+        run: npm ci --no-progress --omit=optional
 
       - name: Prepare reports dir
         run: mkdir -p reports/junit
