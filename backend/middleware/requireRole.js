@@ -7,36 +7,45 @@ export const ROLES = {
   User: 'user',
 };
 
-function getRole(user) {
+function getPrimaryRole(user) {
   if (!user) return null;
-  return user.role || (Array.isArray(user.roles) ? user.roles[0] : null);
+  if (user.role) return user.role;
+  if (Array.isArray(user.roles)) return user.roles[0] ?? null;
+  return null;
 }
 
-export function requireRole(...allowed) {
+function getUserRoles(user) {
+  if (!user) return [];
+  const list = [];
+  if (user.role) list.push(user.role);
+  if (Array.isArray(user.roles)) list.push(...user.roles);
+  return [...new Set(list.filter(Boolean))];
+}
+
+function userHasAnyRole(user, roles = []) {
+  if (!roles?.length) return true;
+  const list = getUserRoles(user);
+  if (!list.length) return false;
+  const set = new Set(list);
+  if (set.has(ROLES.SuperAdmin)) return true;
+  return roles.some((role) => set.has(role));
+}
+
+export function requireRole(...roles) {
+  const required = roles.flat().filter(Boolean);
   return (req, res, next) => {
     try {
       if (!req.user) {
         return res.status(401).json({ error: 'UNAUTHENTICATED' });
       }
 
-      const role = getRole(req.user);
-
-      // Sem role definido => proibido
-      if (!role) {
-        return res.status(403).json({ error: 'FORBIDDEN', required: allowed });
+      if (!userHasAnyRole(req.user, required)) {
+        return res.status(403).json({ error: 'FORBIDDEN', required });
       }
 
-      // SuperAdmin passa direto
-      if (role === ROLES.SuperAdmin) return next();
-
-      // Se não especificou allowed, ou se o role está permitido
-      if (allowed.length === 0 || allowed.includes(role)) {
-        return next();
-      }
-
-      return res.status(403).json({ error: 'FORBIDDEN', required: allowed });
+      return next();
     } catch (e) {
-      next(e);
+      return next(e);
     }
   };
 }
@@ -78,7 +87,7 @@ export function requireScope(scope) {
         return res.status(401).json({ error: 'UNAUTHENTICATED' });
       }
 
-      const role = getRole(user);
+      const role = getPrimaryRole(user);
 
       // SuperAdmin passa direto
       if (role === ROLES.SuperAdmin) return next();
@@ -95,14 +104,4 @@ export function requireScope(scope) {
   };
 }
 
-const defaultExport = Object.assign(
-  (...allowed) => requireRole(...allowed),
-  {
-    ROLES,
-    requireRole,
-    requireScope,
-    hasSupportScope,
-  }
-);
-
-export default defaultExport;
+export default requireRole;
