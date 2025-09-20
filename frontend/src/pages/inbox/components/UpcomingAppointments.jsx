@@ -1,16 +1,23 @@
 import React, { useState } from 'react';
 import inboxApi from '@/api/inboxApi';
 
+// helper portátil para CRA/Vite/janela
 const readEnv = (viteKey, craKey, fallback) => {
-  const fromVite = (typeof import !== 'undefined' && import.meta && import.meta.env)
-    ? import.meta.env[viteKey]
-    : undefined;
-  const fromCRA = (typeof process !== 'undefined' && process.env)
-    ? process.env[craKey]
-    : undefined;
-  const fromWindow = (typeof window !== 'undefined' && window.ENV)
-    ? window.ENV[viteKey]
-    : undefined;
+  const fromVite =
+    typeof import.meta !== 'undefined' && import.meta && import.meta.env
+      ? import.meta.env[viteKey]
+      : undefined;
+
+  const fromCRA =
+    typeof process !== 'undefined' && process.env
+      ? process.env[craKey]
+      : undefined;
+
+  const fromWindow =
+    typeof window !== 'undefined' && window.ENV
+      ? window.ENV[viteKey]
+      : undefined;
+
   return fromVite ?? fromCRA ?? fromWindow ?? fallback;
 };
 

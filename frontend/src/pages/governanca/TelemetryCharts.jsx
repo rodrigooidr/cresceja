@@ -4,7 +4,6 @@ import {
   BarChart, Bar
 } from 'recharts';
 
-// Card simples para embalar cada gráfico
 function GraphCard({ title, children, height = 280 }) {
   return (
     <section style={{ marginTop: 16 }}>
@@ -20,7 +19,6 @@ function GraphCard({ title, children, height = 280 }) {
 
 function fmtDay(d) {
   if (!d) return '';
-  // aceita Date ou string ISO
   const s = typeof d === 'string' ? d : String(d);
   return s.slice(0, 10); // YYYY-MM-DD
 }
@@ -35,6 +33,7 @@ function fmtDay(d) {
  * }
  */
 export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
+  // MEMOs sempre no topo, sem condicionais:
   const attendance = useMemo(
     () =>
       (attendanceRaw || []).map((r) => ({
@@ -46,8 +45,6 @@ export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
       })),
     [attendanceRaw],
   );
-
-  if (!data && attendance.length === 0) return null;
 
   const waSend = useMemo(
     () =>
@@ -95,10 +92,18 @@ export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
     [data?.inbox_ttfr_daily],
   );
 
+  const hasAny =
+    (waSend && waSend.length) ||
+    (waLatency && waLatency.length) ||
+    (inboxVol && inboxVol.length) ||
+    (ttfr && ttfr.length) ||
+    (attendance && attendance.length);
+
+  if (!hasAny) return null;
+
   return (
     <div style={{ marginTop: 8 }}>
-      {/* Envios WhatsApp por dia: barras empilhadas OK vs Fallback */}
-      {!!waSend.length && (
+      {waSend.length > 0 && (
         <GraphCard title="WhatsApp — Envios por dia (OK vs Fallback)">
           <BarChart data={waSend} aria-label="chart-whatsapp-sends">
             <CartesianGrid strokeDasharray="3 3" />
@@ -112,8 +117,7 @@ export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
         </GraphCard>
       )}
 
-      {/* Latência p50/p95 */}
-      {!!waLatency.length && (
+      {waLatency.length > 0 && (
         <GraphCard title="WhatsApp — Latência (ms) p50/p95">
           <LineChart data={waLatency} aria-label="chart-whatsapp-latency">
             <CartesianGrid strokeDasharray="3 3" />
@@ -127,8 +131,7 @@ export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
         </GraphCard>
       )}
 
-      {/* Volume inbox por dia */}
-      {!!inboxVol.length && (
+      {inboxVol.length > 0 && (
         <GraphCard title="Inbox — Volume por dia">
           <BarChart data={inboxVol} aria-label="chart-inbox-volume">
             <CartesianGrid strokeDasharray="3 3" />
@@ -142,8 +145,7 @@ export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
         </GraphCard>
       )}
 
-      {/* TTFR p50/p95 em segundos */}
-      {!!ttfr.length && (
+      {ttfr.length > 0 && (
         <GraphCard title="Inbox — TTFR (s) p50/p95">
           <LineChart data={ttfr} aria-label="chart-inbox-ttfr">
             <CartesianGrid strokeDasharray="3 3" />
@@ -157,7 +159,7 @@ export default function TelemetryCharts({ data, attendance: attendanceRaw }) {
         </GraphCard>
       )}
 
-      {!!attendance.length && (
+      {attendance.length > 0 && (
         <div aria-label="chart-attendance" style={{ height: 320, marginTop: 16 }}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={attendance} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
