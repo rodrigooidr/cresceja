@@ -47,6 +47,12 @@ jobs:
           node-version: "20"
           cache: "npm"
 
+      - name: Force GitHub over HTTPS (no SSH)
+        run: |
+          git config --global url."https://github.com/".insteadOf ssh://git@github.com/
+          git config --global url."https://github.com/".insteadOf git@github.com:
+          git config --global url."https://".insteadOf git://
+
       - name: Install deps
         run: npm ci
 
