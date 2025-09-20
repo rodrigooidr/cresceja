@@ -3,13 +3,13 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test:backend": "sh -c 'cd backend && NODE_OPTIONS=--experimental-vm-modules npx jest --config jest.config.cjs --runInBand'",
+    "test:backend": "NODE_OPTIONS=--experimental-vm-modules npx jest --config backend/jest.config.cjs --runInBand",
     "test:backend:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest --config backend/jest.config.cjs --watch",
     "test:frontend": "npx jest --config frontend/jest.config.cjs --runInBand",
     "test": "npm run test:backend && npm run test:frontend",
     "test:frontend:orgai": "npx jest --config frontend/jest.orgai.cjs --runInBand",
     "test:orgai": "npm run test:backend && npm run test:frontend:orgai",
-    "test:backend:junit": "sh -c 'cd backend && NODE_OPTIONS=--experimental-vm-modules JEST_JUNIT_OUTPUT=../reports/junit/backend.xml npx jest --config jest.config.cjs --reporters=default --reporters=jest-junit --runInBand'",
+    "test:backend:junit": "NODE_OPTIONS=--experimental-vm-modules JEST_JUNIT_OUTPUT=reports/junit/backend.xml npx jest --config backend/jest.config.cjs --reporters=default --reporters=jest-junit --runInBand",
     "test:frontend:orgai:junit": "cross-env JEST_JUNIT_OUTPUT=reports/junit/frontend-orgai.xml npx jest --config frontend/jest.orgai.cjs --reporters=default --reporters=jest-junit --runInBand"
   },
   "devDependencies": {
