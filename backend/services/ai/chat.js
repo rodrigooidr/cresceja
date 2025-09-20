@@ -1,8 +1,22 @@
 
-import OpenAI from 'openai';
 import { query } from '#db';
 
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+let openaiClientPromise;
+
+async function getOpenAI() {
+  if (!process.env.OPENAI_API_KEY) return null;
+  if (!openaiClientPromise) {
+    openaiClientPromise = import('openai')
+      .then(({ default: OpenAI }) => new OpenAI({ apiKey: process.env.OPENAI_API_KEY }))
+      .catch((err) => {
+        console.error('Failed to load OpenAI SDK', err);
+        openaiClientPromise = null;
+        throw err;
+      });
+  }
+
+  return openaiClientPromise;
+}
 
 const tones = {
   whatsapp: 'próximo e casual, direto, claro e com toques de humor leve',
@@ -10,8 +24,21 @@ const tones = {
   facebook: 'mais formal e estruturado, com passos e bullets quando útil'
 };
 
+const fallbackResponse = {
+  text: 'Olá! Me conte como posso ajudar 😊',
+  usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
+};
+
 export async function aiReply({ channel_type='whatsapp', history=[], companyProfile={} }){
-  if (!openai) return { text: 'Olá! Me conte como posso ajudar 😊', usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 } };
+  let openai;
+  try {
+    openai = await getOpenAI();
+  } catch (err) {
+    console.error('OpenAI client unavailable', err);
+    return fallbackResponse;
+  }
+
+  if (!openai) return fallbackResponse;
 
   const sys = `Você é um atendente simpático da empresa ${companyProfile.name || 'CresceJá'}. 
 Tom: ${tones[channel_type]}. Sempre peça nome e forma de contato quando apropriado (com consentimento), deixando claro que os dados serão usados para atendimento e propostas, conforme LGPD.`;
