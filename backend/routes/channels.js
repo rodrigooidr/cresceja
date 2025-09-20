@@ -1,8 +1,10 @@
 import { Router } from 'express';
-import { requireRole } from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 import { ROLES } from '../lib/permissions.js';
 
 const router = Router();
+
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 router.get('/summary', async (req, res) => {
   const orgId = req.orgId;

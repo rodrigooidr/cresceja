@@ -1,9 +1,11 @@
 import { Router } from 'express';
-import { requireRole } from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 import { ROLES } from '../lib/permissions.js';
 import { query as globalQuery } from '#db';
 
 const router = Router();
+
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 router.get(
   '/api/orgs/:orgId/ai/violations',

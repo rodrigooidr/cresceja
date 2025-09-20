@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireRole } from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 import { ROLES } from '../lib/permissions.js';
 import { ingest, reindex } from '../services/ai/ingestService.js';
 
 const router = Router();
+
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 const ingestSchema = z.object({
   source_type: z.string(),

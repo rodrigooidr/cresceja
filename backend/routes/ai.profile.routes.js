@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireRole } from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 import { ROLES } from '../lib/permissions.js';
 import { getProfile, updateProfile } from '../services/ai/profileService.js';
+
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 const router = Router();
 

@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireRole } from '../../middleware/requireRole.js';
+import * as requireRoleMod from '../../middleware/requireRole.js';
 import { getPlanFeatures, upsertPlanFeatures } from '../../services/plans.js';
 import { query as rootQuery } from '#db';
 
 const router = Router();
+
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 router.use(requireRole('SuperAdmin','Support'));
 

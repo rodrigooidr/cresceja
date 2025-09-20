@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import db from '#db';
 import { authRequired } from '../middleware/auth.js';
-import { requireRole } from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 
 const r = Router();
+
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 /** Util: formata value tipado em string para a vitrine */
 function displayValue(def, raw) {
