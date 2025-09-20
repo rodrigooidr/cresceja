@@ -90,7 +90,7 @@ import calendarRemindersRouter from './routes/calendar.reminders.js';
 import createCalendarRemindersOneRouter from './routes/calendar.reminders.one.js';
 import createAuditLogsRouter from './routes/audit.logs.js';
 import calendarRsvpRouter from './routes/calendar.rsvp.js';
-import noShowRouter from './routes/calendar.noshow.js';
+import noShowRouter, { createNoShowRouter } from './routes/calendar.noshow.js';
 import calendarServicesAdminRouter from './routes/calendar.services.admin.js';
 import calendarCalendarsAdminRouter from './routes/calendar.calendars.admin.js';
 import telemetryAppointmentsRouter from './routes/telemetry.appointments.js';
@@ -330,7 +330,16 @@ function configureApp() {
   app.use('/api', googleCalendarRouter);
   app.use('/api', calendarCompatRouter);
   app.use('/api', calendarRsvpRouter);
-  app.use(noShowRouter({ db: pool, requireAuth: authRequired }));
+  const configuredNoShowRouter =
+    typeof createNoShowRouter === 'function'
+      ? createNoShowRouter({
+          db: pool,
+          requireAuth: authRequired,
+          requireRole,
+          ROLES,
+        })
+      : noShowRouter;
+  app.use(configuredNoShowRouter);
   app.use('/api', calendarRemindersRouter);
   app.use(calendarRemindersOneRoute);
   app.use(auditLogsRouter);
@@ -404,6 +413,10 @@ let started = false;
 let shutdownRegistered = false;
 
 async function ensureHealthcheck() {
+  if (String(process.env.SKIP_DB_HEALTHCHECK).toLowerCase() === 'true') {
+    logger.warn('Skipping DB healthcheck (SKIP_DB_HEALTHCHECK=true)');
+    return;
+  }
   try {
     await healthcheck();
     logger.info('DB healthcheck OK');
