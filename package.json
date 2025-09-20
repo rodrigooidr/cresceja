@@ -15,7 +15,11 @@
     "ci:prepare-lock": "bash -lc 'if [ ! -f package-lock.json ]; then NPM_CONFIG_OPTIONAL=false npm i --package-lock-only --no-audit --no-fund; fi; sed -i \"s#ssh://git@github.com/#https://github.com/#g\" package-lock.json; sed -i \"s#git@github.com:#https://github.com/#g\" package-lock.json; sed -i \"s#git://#https://#g\" package-lock.json'",
     "ci:install:no-optional": "NPM_CONFIG_OPTIONAL=false npm ci --no-progress",
     "deps:rewrite-git": "bash -lc 'if [ -f package-lock.json ]; then sed -i \"s#ssh://git@github.com/#https://github.com/#g\" package-lock.json && sed -i \"s#git@github.com:#https://github.com/#g\" package-lock.json && sed -i \"s#git://#https://#g\" package-lock.json; fi'",
-    "preinstall": "bash -lc 'git config --global url.\"https://github.com/\".insteadOf ssh://git@github.com/ && git config --global url.\"https://github.com/\".insteadOf git@github.com: && git config --global url.\"https://\".insteadOf git:// && if [ -f package-lock.json ]; then sed -i \"s#ssh://git@github.com/#https://github.com/#g\" package-lock.json && sed -i \"s#git@github.com:#https://github.com/#g\" package-lock.json && sed -i \"s#git://#https://#g\" package-lock.json; fi'"
+    "preinstall": "bash -lc 'git config --global url.\"https://github.com/\".insteadOf ssh://git@github.com/ && git config --global url.\"https://github.com/\".insteadOf git@github.com: && git config --global url.\"https://\".insteadOf git:// && if [ -f package-lock.json ]; then sed -i \"s#ssh://git@github.com/#https://github.com/#g\" package-lock.json && sed -i \"s#git@github.com:#https://github.com/#g\" package-lock.json && sed -i \"s#git://#https://#g\" package-lock.json; fi'",
+    "deps:backend:lock": "npm --prefix backend i --package-lock-only --no-audit --no-fund",
+    "deps:backend:ci": "NPM_CONFIG_OPTIONAL=false npm --prefix backend ci --no-progress",
+    "test:backend:only": "NODE_OPTIONS=--experimental-vm-modules npm --prefix backend test -- --runInBand",
+    "fix:backend:deps": "npm --prefix backend i -D supertest express express-rate-limit node-fetch@2 zod dotenv pino axios luxon pg"
   },
   "overrides": {
     "libsignal-node": "https://codeload.github.com/whiskeysockets/libsignal-node/tar.gz/refs/heads/main",
