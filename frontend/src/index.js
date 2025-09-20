@@ -11,6 +11,10 @@ import { PricingProvider } from "./contexts/PricingContext";   // se existir
 import { AuthProvider } from "./contexts/AuthContext";         // se existir
 import { OrgProvider } from "./contexts/OrgContext";
 
+if (typeof window !== "undefined") {
+  window.inboxApi = window.inboxApi || inboxApi;
+}
+
 if (process.env.NODE_ENV !== "production") {
   try { require("./debug/installDebug"); } catch {}
 }

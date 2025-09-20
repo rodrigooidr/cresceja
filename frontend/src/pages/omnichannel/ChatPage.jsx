@@ -6,8 +6,7 @@ import inboxApi from "../../api/inboxApi";
 // - Links e ações básicas: assumir conversa, enviar mensagem, filtros, busca
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { io } from "socket.io-client";
-import inboxApi from "../../api/inboxApi";
+import { startSocketsSafe } from "../../debug/installDebug";
 
 const CHANNEL_ICONS = {
   whatsapp: "/icons/whatsapp.svg",
@@ -143,30 +142,49 @@ export default function ChatPage() {
 
   /** Socket setup **/
   useEffect(() => {
-    if (!token) return;
-    const url = (process.env.REACT_APP_WS_URL || process.env.REACT_APP_API_URL || "http://localhost:4000").replace(/^http/, "ws");
+    if (!token) {
+      setSocket(null);
+      return () => {};
+    }
 
-    const s = io(url, {
+    const s = startSocketsSafe({
       transports: ["websocket"],
       auth: { token },
     });
+    if (!s) {
+      setSocket(null);
+      return () => {};
+    }
 
-    s.on("connect", () => {
-      // console.log("WS connected", s.id);
+    const handleConnect = () => {
       if (activeId) s.emit("join:conversation", activeId);
-    });
+    };
 
-    s.on("chat:message", (msg) => {
-      // Recebe mensagem em tempo real da conversa ativa
+    const handleChatMessage = (msg) => {
       setMessages((prev) => {
         if (!activeId || msg?.conversationId !== activeId) return prev;
-        return [...prev, { id: `ws-${Date.now()}`, from: msg.from === "system" ? "system" : msg.from === "agent" ? "agent" : "contact", text: msg.text, at: msg.at }];
+        return [
+          ...prev,
+          {
+            id: `ws-${Date.now()}`,
+            from: msg.from === "system" ? "system" : msg.from === "agent" ? "agent" : "contact",
+            text: msg.text,
+            at: msg.at,
+          },
+        ];
       });
       playBeep();
-    });
+    };
+
+    s.on("connect", handleConnect);
+    s.on("chat:message", handleChatMessage);
 
     setSocket(s);
-    return () => s.disconnect();
+    return () => {
+      s.off?.("connect", handleConnect);
+      s.off?.("chat:message", handleChatMessage);
+      try { s.disconnect(); } catch {}
+    };
   }, [token, activeId]);
 
   /** Carregar conversas (REST com fallback) **/

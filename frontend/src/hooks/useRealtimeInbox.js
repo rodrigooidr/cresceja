@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
+import { startSocketsSafe } from '../debug/installDebug';
 import escalationSound from '../assets/sounds/escalation.mp3';
 
 export function useRealtimeInbox({ conversationId, onMessage, onConversation, onEscalation }) {
@@ -12,11 +12,15 @@ export function useRealtimeInbox({ conversationId, onMessage, onConversation, on
 
   // cria a conexão apenas 1x
   useEffect(() => {
-    const socket = io({
+    const socket = startSocketsSafe({
       path: '/socket.io',
       transports: ['websocket'],
       autoConnect: true,
     });
+    if (!socket) {
+      socketRef.current = null;
+      return () => {};
+    }
     socketRef.current = socket;
 
     socket.on('connect_error', (err) => {

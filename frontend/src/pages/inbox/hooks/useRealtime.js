@@ -1,45 +1,55 @@
-// src/pages/inbox/hooks/useRealtime.js
 import { useEffect } from 'react';
-import { io } from 'socket.io-client';
 import inboxApi from '../../../api/inboxApi';
-
+import { startSocketsSafe } from '../../../debug/installDebug';
 
 const apiWsUrl = (path = '/') => {
-const base = (inboxApi?.defaults?.baseURL || '').replace(/\/api\/?$/, '');
-const u = new URL(base || window.location.origin);
-u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
-return `${u.origin}${path}`;
+  try {
+    const base = (inboxApi?.defaults?.baseURL || '').replace(/\/api\/?$/, '');
+    const origin = base || (typeof window !== 'undefined' ? window.location.origin : '');
+    if (!origin) return path;
+    const u = new URL(origin);
+    return `${u.origin}${path}`;
+  } catch {
+    return path;
+  }
 };
-const createSocket = () => io(apiWsUrl('/socket.io'), { path: '/socket.io', withCredentials: true });
 
+const createSocket = () =>
+  startSocketsSafe({
+    url: apiWsUrl('/socket.io'),
+    path: '/socket.io',
+    withCredentials: true,
+  });
 
 export default function useRealtime({ selRef, onNewMessage, onUpdateMessage, onConversationUpdated, onTyping }) {
-useEffect(() => {
-const s = createSocket();
+  useEffect(() => {
+    const s = createSocket();
+    if (!s) return () => {};
 
+    const onConnect = () => {};
+    const onDisconnect = () => {};
 
-const onConnect = () => { /* opcional: setConnected(true) via callback */ };
-const onDisconnect = () => { /* opcional */ };
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+    if (onNewMessage) s.on('message:new', onNewMessage);
+    if (onUpdateMessage) s.on('message:updated', onUpdateMessage);
+    if (onConversationUpdated) s.on('conversation:updated', onConversationUpdated);
+    if (onTyping) {
+      s.on('typing', onTyping);
+      s.on('message:typing', onTyping);
+    }
 
-
-s.on('connect', onConnect);
-s.on('disconnect', onDisconnect);
-s.on('message:new', onNewMessage);
-s.on('message:updated', onUpdateMessage);
-s.on('conversation:updated', onConversationUpdated);
-s.on('typing', onTyping);
-s.on('message:typing', onTyping);
-
-
-return () => {
-s.off('connect', onConnect);
-s.off('disconnect', onDisconnect);
-s.off('message:new', onNewMessage);
-s.off('message:updated', onUpdateMessage);
-s.off('conversation:updated', onConversationUpdated);
-s.off('typing', onTyping);
-s.off('message:typing', onTyping);
-s.disconnect();
-};
-}, [selRef, onNewMessage, onUpdateMessage, onConversationUpdated, onTyping]);
+    return () => {
+      s.off?.('connect', onConnect);
+      s.off?.('disconnect', onDisconnect);
+      if (onNewMessage) s.off?.('message:new', onNewMessage);
+      if (onUpdateMessage) s.off?.('message:updated', onUpdateMessage);
+      if (onConversationUpdated) s.off?.('conversation:updated', onConversationUpdated);
+      if (onTyping) {
+        s.off?.('typing', onTyping);
+        s.off?.('message:typing', onTyping);
+      }
+      try { s.disconnect(); } catch {}
+    };
+  }, [selRef, onNewMessage, onUpdateMessage, onConversationUpdated, onTyping]);
 }

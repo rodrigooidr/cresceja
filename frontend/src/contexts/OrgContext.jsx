@@ -11,6 +11,13 @@ import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
 
+const globalScope =
+  typeof globalThis !== "undefined"
+    ? globalThis
+    : typeof window !== "undefined"
+    ? window
+    : {};
+
 // Broadcast opcional (quem quiser ouvir “org:changed”)
 function announceOrgChanged(orgId) {
   try {
@@ -180,6 +187,35 @@ export function OrgProvider({ children }) {
     refreshOrgs();
   }, [isAuthenticated, visibility, refreshOrgs]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (user?.role !== "SuperAdmin") return;
+    if (selected) return;
+    if (orgs.length > 0) return;
+
+    inboxApi
+      .get("/orgs", { meta: { scope: "global" } })
+      .then((res) => {
+        const raw = Array.isArray(res?.data?.items)
+          ? res.data.items
+          : Array.isArray(res?.data?.data)
+          ? res.data.data
+          : Array.isArray(res?.data)
+          ? res.data
+          : [];
+        if (!raw.length) return;
+        const items = raw.map((o) => ({
+          id: o.id ?? o._id,
+          name: o.company?.name ?? o.name ?? o.fantasy_name ?? "Sem nome",
+          slug: o.slug || null,
+          plan: o.plan || o.current_plan || null,
+          features: o.features || o.flags || {},
+        }));
+        setOrgs((prev) => (prev.length ? prev : items));
+      })
+      .catch(() => {});
+  }, [isAuthenticated, user?.role, selected, orgs.length]);
+
   // Ao logar/deslogar, garante X-Org-Id coerente
   useEffect(() => {
     if (!isAuthenticated) {
@@ -274,7 +310,7 @@ export function useOrg() {
 
   // ✅ Fallback apenas em testes
   if (process.env.NODE_ENV === "test") {
-    const testOrg = globalThis.__TEST_ORG__ || {
+    const testOrg = globalScope.__TEST_ORG__ || {
       id: "org1",
       name: "Org Test",
       features: {},
