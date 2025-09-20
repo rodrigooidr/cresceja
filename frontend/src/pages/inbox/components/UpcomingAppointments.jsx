@@ -1,7 +1,22 @@
 import React, { useState } from 'react';
 import inboxApi from '@/api/inboxApi';
 
-const DEDUP_MIN = parseInt(import.meta.env.VITE_REMIND_DEDUP_WINDOW_MIN || '10', 10);
+const readEnv = (viteKey, craKey, fallback) => {
+  const fromVite = (typeof import !== 'undefined' && import.meta && import.meta.env)
+    ? import.meta.env[viteKey]
+    : undefined;
+  const fromCRA = (typeof process !== 'undefined' && process.env)
+    ? process.env[craKey]
+    : undefined;
+  const fromWindow = (typeof window !== 'undefined' && window.ENV)
+    ? window.ENV[viteKey]
+    : undefined;
+  return fromVite ?? fromCRA ?? fromWindow ?? fallback;
+};
+
+const DEDUP_MIN = Number(
+  readEnv('VITE_REMIND_DEDUP_WINDOW_MIN', 'REACT_APP_REMIND_DEDUP_WINDOW_MIN', 15)
+);
 
 export default function UpcomingAppointments({ items = [] }) {
   const [busyId, setBusyId] = useState(null);
