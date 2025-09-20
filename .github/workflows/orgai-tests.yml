@@ -53,6 +53,14 @@ jobs:
           git config --global url."https://github.com/".insteadOf git@github.com:
           git config --global url."https://".insteadOf git://
 
+      - name: Rewrite git URLs in lockfile (optional hardening)
+        run: |
+          if [ -f package-lock.json ]; then
+            sed -i 's#ssh://git@github.com/#https://github.com/#g' package-lock.json
+            sed -i 's#git@github.com:#https://github.com/#g' package-lock.json
+            sed -i 's#git://#https://#g' package-lock.json
+          fi
+
       - name: Install deps
         run: npm ci
 
