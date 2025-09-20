@@ -9,9 +9,11 @@ import {
 } from '../controllers/contentController.js';
 import { authRequired } from '../middleware/auth.js';
 import { withOrg } from '../middleware/withOrg.js';
-import { requireRole } from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 
 const router = Router();
+
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 router.use(authRequired, withOrg, requireRole('Agent'));
 

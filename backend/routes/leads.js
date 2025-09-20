@@ -7,10 +7,9 @@ import {
 } from '../controllers/leadsController.js';
 import { authRequired } from '../middleware/auth.js';
 import { withOrg } from '../middleware/withOrg.js';
-import requireRoleMod from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 
-const requireRole =
-  requireRoleMod?.requireRole ?? requireRoleMod?.default ?? requireRoleMod;
+const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 const router = Router();
 

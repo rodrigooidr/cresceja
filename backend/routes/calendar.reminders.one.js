@@ -4,7 +4,7 @@ import { z } from 'zod';
 import express from 'express';
 import { pool } from '#db';
 import * as authModule from '../middleware/auth.js';
-import { requireRole as defaultRequireRole } from '../middleware/requireRole.js';
+import * as requireRoleMod from '../middleware/requireRole.js';
 import { ROLES as DefaultRoles } from '../lib/permissions.js';
 import { sendWhatsApp, ProviderNotConfigured } from '../services/messaging.js';
 import { auditLog } from '../services/audit.js';
@@ -27,6 +27,8 @@ function resolveAuth(requireAuth) {
 }
 
 function resolveRole(requireRole, roles) {
+  const defaultRequireRole =
+    requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
   const factory = typeof requireRole === 'function' ? requireRole : defaultRequireRole;
   const superAdmin = roles?.SuperAdmin ?? 'SuperAdmin';
   const orgAdmin = roles?.OrgAdmin ?? 'OrgAdmin';

@@ -104,8 +104,13 @@ import { authRequired, impersonationGuard } from './middleware/auth.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
 
 // 🔧 FIX: usar uma única origem para requireRole e ROLES (CommonJS -> ESM interop)
-import requireRoleModule from './middleware/requireRole.js';
-const { requireRole, ROLES } = requireRoleModule;
+import * as requireRoleModule from './middleware/requireRole.js';
+const requireRole =
+  requireRoleModule.requireRole ??
+  requireRoleModule.default?.requireRole ??
+  requireRoleModule.default ??
+  requireRoleModule;
+const ROLES = requireRoleModule.ROLES ?? requireRoleModule.default?.ROLES ?? requireRoleModule.ROLES;
 
 import { adminContext } from './middleware/adminContext.js';
 import { startNoShowCron } from './jobs/noshow.sweep.cron.js';
