@@ -2,7 +2,7 @@
 import express from 'express';
 import * as authModule from '../middleware/auth.js';
 import * as rolesModule from '../middleware/requireRole.js';
-import { sweepNoShow } from '../services/calendar/noshow.js';
+import { sweepNoShow as defaultSweepNoShow } from '../services/calendar/noshow.js';
 
 function resolveRequireAuth(override) {
   if (typeof override === 'function') {
@@ -71,7 +71,7 @@ function resolveDb(req, fallbackDb) {
   return null;
 }
 
-function createSweepHandler({ defaultDb }) {
+function createSweepHandler({ defaultDb, sweepFn }) {
   return async function sweepHandler(req, res, next) {
     try {
       const enabled = String(process.env.NOSHOW_ENABLED ?? 'true').toLowerCase() === 'true';
@@ -82,7 +82,7 @@ function createSweepHandler({ defaultDb }) {
       const grace = normalizeGraceMinutes();
       const db = resolveDb(req, defaultDb);
 
-      const ids = await sweepNoShow({ db, graceMinutes: grace });
+      const ids = await (sweepFn || defaultSweepNoShow)({ db, graceMinutes: grace });
 
       try {
         const auditLog = await getAuditLog();
@@ -110,12 +110,13 @@ export function createNoShowRouter({
   requireAuth: authOverride,
   requireRole: roleOverride,
   ROLES: roleOverrides,
+  sweepNoShowFn = defaultSweepNoShow,
 } = {}) {
   const router = express.Router();
   const requireAuth = resolveRequireAuth(authOverride);
   const requireRoleFactory = resolveRequireRoleFactory(roleOverride);
   const roles = resolveRoles(roleOverrides);
-  const sweepHandler = createSweepHandler({ defaultDb: db });
+  const sweepHandler = createSweepHandler({ defaultDb: db, sweepFn: sweepNoShowFn });
   const guards = [requireAuth, requireRoleFactory(roles.SuperAdmin, roles.OrgAdmin, roles.Support)];
 
   router.post('/sweep', ...guards, sweepHandler);
