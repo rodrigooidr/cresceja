@@ -1,4 +1,4 @@
-// backend/middleware/requireRole.js
+// backend/middleware/requireRole.js  (ESM-safe)
 
 export const ROLES = {
   SuperAdmin: 'superAdmin',
@@ -23,11 +23,11 @@ function getUserRoles(user) {
 }
 
 function userHasAnyRole(user, roles = []) {
-  if (!roles?.length) return true;
+  if (!roles?.length) return true;        // no roles required → allow
   const list = getUserRoles(user);
   if (!list.length) return false;
   const set = new Set(list);
-  if (set.has(ROLES.SuperAdmin)) return true;
+  if (set.has(ROLES.SuperAdmin)) return true; // super admin bypass
   return roles.some((role) => set.has(role));
 }
 
@@ -38,11 +38,9 @@ export function requireRole(...roles) {
       if (!req.user) {
         return res.status(401).json({ error: 'UNAUTHENTICATED' });
       }
-
       if (!userHasAnyRole(req.user, required)) {
         return res.status(403).json({ error: 'FORBIDDEN', required });
       }
-
       return next();
     } catch (e) {
       return next(e);
@@ -51,14 +49,14 @@ export function requireRole(...roles) {
 }
 
 /**
- * Verifica se o usuário de suporte possui o escopo solicitado.
- * Aceita user.supportScopes | user.support_scopes | user.scopes como:
- * - array de strings
- * - string separada por vírgula/espaço
- * - '*' para todos os escopos
+ * Checks if a support user has the given scope.
+ * Accepts: user.supportScopes | user.support_scopes | user.scopes
+ * - array of strings
+ * - comma/space separated string
+ * - '*' wildcard
  */
 export function hasSupportScope(user, scope) {
-  if (!scope) return true; // sem escopo requerido
+  if (!scope) return true; // no scope required
   const raw =
     user?.supportScopes ??
     user?.support_scopes ??
@@ -70,7 +68,7 @@ export function hasSupportScope(user, scope) {
   if (typeof raw === 'string') {
     const items = raw.split(/[,\s]+/).filter(Boolean);
     return items.includes(scope);
-  }
+    }
 
   if (Array.isArray(raw)) {
     return raw.includes(scope);
@@ -89,10 +87,10 @@ export function requireScope(scope) {
 
       const role = getPrimaryRole(user);
 
-      // SuperAdmin passa direto
+      // SuperAdmin bypass
       if (role === ROLES.SuperAdmin) return next();
 
-      // Usuário de suporte com escopo adequado
+      // Support user with proper scope
       if ((user.is_support || role === ROLES.Support) && hasSupportScope(user, scope)) {
         return next();
       }
@@ -104,4 +102,5 @@ export function requireScope(scope) {
   };
 }
 
-export default requireRole;
+// Default export as an object for compatibility with previous CommonJS pattern
+export default { ROLES, requireRole, requireScope, hasSupportScope };
