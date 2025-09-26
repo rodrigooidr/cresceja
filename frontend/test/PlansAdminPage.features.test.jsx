@@ -42,7 +42,7 @@ test('editar e salvar features', async () => {
       post_tipo: 'Imagem',
     },
   });
-  jest.useFakeTimers();
+  jest.useFakeTimers({ legacyFakeTimers: false });
 });
 
 test('valida\u00e7\u00e3o de limite', async () => {
@@ -60,5 +60,5 @@ test('valida\u00e7\u00e3o de limite', async () => {
   expect(saveBtn).toBeDisabled();
   fireEvent.change(numInput, { target: { value: '' } });
   expect(screen.queryByText(/inteiro \u2265 0/i)).not.toBeInTheDocument();
-  jest.useFakeTimers();
+  jest.useFakeTimers({ legacyFakeTimers: false });
 });

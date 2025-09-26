@@ -241,13 +241,6 @@ if (!HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView = function(){};
 }
 
-// Timers: manter consistência para polling
-beforeEach(() => jest.useFakeTimers());
-afterEach(() => {
-  jest.runOnlyPendingTimers();
-  jest.useRealTimers();
-});
-
 // Estado default de org para testes (pode ajustar conforme seu domínio)
 globalThis.__TEST_ORG__ = {
   id: "1",

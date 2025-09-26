@@ -47,7 +47,7 @@ const config = {
       statements: 80,
     },
   },
-  fakeTimers: { enableGlobally: true },
+  fakeTimers: { enableGlobally: true, legacyFakeTimers: false },
 };
 
 config.transform['^.+\\.(js|jsx)$'] = 'babel-jest';

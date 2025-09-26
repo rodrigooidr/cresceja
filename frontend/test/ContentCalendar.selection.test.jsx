@@ -2,6 +2,10 @@ import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ContentCalendar from "../src/pages/marketing/ContentCalendar.jsx";
 import inboxApi from "../src/api/inboxApi";
+import {
+  registerContentCalendarRoutes,
+  setupContentCalendarRoutes,
+} from "./utils/mockContentCalendarRoutes.js";
 
 function mountWithJobs(jobs) {
   const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
@@ -9,8 +13,10 @@ function mountWithJobs(jobs) {
 }
 
 describe("ContentCalendar – Seleção avançada", () => {
+  setupContentCalendarRoutes();
   beforeEach(() => {
     inboxApi.__mock?.reset?.();
+    registerContentCalendarRoutes();
     localStorage.clear();
     window.toast = jest.fn();
   });

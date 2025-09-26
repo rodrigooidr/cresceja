@@ -10,14 +10,20 @@ jest.mock('../src/api/inboxApi.js');
 import api from '../src/api';
 import inboxApi from '../src/api/inboxApi.js';
 import { campaignsFixture, suggestionsFixture, jobsFixture } from './fixtures/calendar.fixtures.js';
+import {
+  registerContentCalendarRoutes,
+  setupContentCalendarRoutes,
+} from './utils/mockContentCalendarRoutes.js';
 
 mockFeatureGate();
+setupContentCalendarRoutes();
 
 describe('ContentCalendar – Aprovar (UI)', () => {
   beforeEach(() => {
     jest.useRealTimers();
     jest.resetAllMocks();
     inboxApi.__mock?.reset?.();
+    registerContentCalendarRoutes();
     window.toast?.mockClear?.();
 
     api.get.mockImplementation((url) => {

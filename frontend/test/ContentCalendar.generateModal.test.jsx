@@ -2,6 +2,7 @@ import React from 'react';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 import { renderWithProviders, mockFeatureGate } from './utils/renderWithProviders.jsx';
+import { setupContentCalendarRoutes } from './utils/mockContentCalendarRoutes.js';
 
 jest.mock('../src/api');
 import api from '../src/api';
@@ -12,6 +13,7 @@ jest.mock('react-big-calendar', () => ({ Calendar: ({ events }) => <div>{events.
 jest.mock('react-big-calendar/lib/addons/dragAndDrop', () => (Comp) => Comp);
 
 mockFeatureGate();
+setupContentCalendarRoutes();
 
 beforeEach(() => {
   jest.resetAllMocks();
