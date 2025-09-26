@@ -1,6 +1,5 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { act } from 'react-dom/test-utils';
 import CalendarPermissionsEditor from '@/pages/settings/CalendarPermissionsEditor';
 
 test('salva aliases/skills/slot/buffers para um profissional', async () => {
@@ -39,9 +38,7 @@ test('salva aliases/skills/slot/buffers para um profissional', async () => {
   global.alert = jest.fn();
 
   try {
-    await act(async () => {
-      render(<CalendarPermissionsEditor calendars={calendars} onSaved={() => {}} />);
-    });
+    render(<CalendarPermissionsEditor calendars={calendars} onSaved={() => {}} />);
 
     const aliasesInput = screen.getByPlaceholderText(/dr rodrigo, rod, ro/i);
     fireEvent.change(aliasesInput, { target: { value: 'dr rodrigo, rod' } });

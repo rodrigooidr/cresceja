@@ -5,17 +5,23 @@ import api from '../src/api';
 import inboxApi from '../src/api/inboxApi';
 import { renderWithProviders, mockFeatureGate } from './utils/renderWithProviders.jsx';
 import { campaignsFixture, suggestionsFixture } from './fixtures/calendar.fixtures.js';
+import {
+  registerContentCalendarRoutes,
+  setupContentCalendarRoutes,
+} from './utils/mockContentCalendarRoutes.js';
 
 jest.mock('../src/api');
 jest.mock('../src/api/inboxApi.js');
 
 mockFeatureGate();
+setupContentCalendarRoutes();
 
 describe('ContentCalendar – Bulk UI', () => {
   beforeEach(() => {
     jest.useRealTimers();
     jest.resetAllMocks();
     inboxApi.__mock?.reset?.();
+    registerContentCalendarRoutes();
     inboxApi.__mock?.setDelay?.(20);
     window.toast = jest.fn();
 

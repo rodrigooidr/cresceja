@@ -2,6 +2,10 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 import { campaignsFixture, suggestionsFixture, jobsFixture } from './fixtures/calendar.fixtures.js';
+import {
+  registerContentCalendarRoutes,
+  setupContentCalendarRoutes,
+} from './utils/mockContentCalendarRoutes.js';
 
 jest.mock('../src/api');
 jest.mock('../src/api/inboxApi.js');
@@ -37,10 +41,12 @@ function setupApiMocks() {
 }
 
 describe('ContentCalendar – Race: duplo clique aborta anterior', () => {
+  setupContentCalendarRoutes();
   beforeEach(() => {
     jest.useRealTimers();
     jest.resetAllMocks();
     inboxApi.__mock?.reset?.();
+    registerContentCalendarRoutes();
     setupApiMocks();
     window.analytics = { track: jest.fn() };
     window.toast = jest.fn();
@@ -63,6 +69,7 @@ describe('ContentCalendar – Race: duplo clique aborta anterior', () => {
     expect(btn).toBeDisabled();
 
     inboxApi.__mock.reset();
+    registerContentCalendarRoutes();
     setupApiMocks();
     inboxApi.__mock.setDelay(50);
     fireEvent.click(btn);

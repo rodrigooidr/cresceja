@@ -10,7 +10,7 @@ describe('ScheduleModal - direto e conflito', () => {
   const contact = { id: 'cont-1', display_name: 'Cliente Teste', email: 'cliente@example.com' };
 
   beforeEach(() => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ legacyFakeTimers: false });
     global.fetch = jest.fn(async (url, opts) => {
       if (typeof url === 'string' && url.includes('/api/calendar/calendars')) {
         return mkResp({ items: [{ name: 'Rodrigo', calendars: ['cal1'], aliases: [] }] });

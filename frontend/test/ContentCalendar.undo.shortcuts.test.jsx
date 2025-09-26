@@ -2,10 +2,16 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ContentCalendar from "../src/pages/marketing/ContentCalendar.jsx";
 import inboxApi from "../src/api/inboxApi";
+import {
+  registerContentCalendarRoutes,
+  setupContentCalendarRoutes,
+} from "./utils/mockContentCalendarRoutes.js";
 
 describe("ContentCalendar – Undo + atalhos", () => {
+  setupContentCalendarRoutes();
   beforeEach(() => {
     inboxApi.__mock?.reset?.();
+    registerContentCalendarRoutes();
     inboxApi.__mock.setDelay(20);
     if (typeof localStorage !== "undefined") {
       localStorage.clear();
