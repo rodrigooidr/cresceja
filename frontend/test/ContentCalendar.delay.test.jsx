@@ -9,13 +9,9 @@ jest.mock('../src/api/inboxApi.js');
 import api from '../src/api';
 import inboxApi from '../src/api/inboxApi.js';
 import { campaignsFixture, suggestionsFixture, jobsFixture } from './fixtures/calendar.fixtures.js';
-import {
-  registerContentCalendarRoutes,
-  setupContentCalendarRoutes,
-} from './utils/mockContentCalendarRoutes.js';
+import { mockContentCalendarRoutes } from './utils/mockContentCalendarRoutes.js';
 
 mockFeatureGate();
-setupContentCalendarRoutes();
 
 function setupApiMocks() {
   api.get.mockImplementation((url) => {
@@ -49,7 +45,7 @@ describe('ContentCalendar – Delay/Spinner', () => {
     jest.useRealTimers();
     jest.resetAllMocks();
     inboxApi.__mock?.reset?.();
-    registerContentCalendarRoutes();
+    mockContentCalendarRoutes();
     setupApiMocks();
     window.toast?.mockClear?.();
   });

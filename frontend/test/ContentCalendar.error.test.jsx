@@ -2,10 +2,7 @@ import React from 'react';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 import { renderWithProviders, mockFeatureGate } from './utils/renderWithProviders.jsx';
-import {
-  registerContentCalendarRoutes,
-  setupContentCalendarRoutes,
-} from './utils/mockContentCalendarRoutes.js';
+import { mockContentCalendarRoutes } from './utils/mockContentCalendarRoutes.js';
 
 jest.mock('../src/api');
 jest.mock('../src/api/inboxApi.js');
@@ -15,14 +12,13 @@ import inboxApi from '../src/api/inboxApi.js';
 import { campaignsFixture, suggestionsFixture, jobsFixture } from './fixtures/calendar.fixtures.js';
 
 mockFeatureGate();
-setupContentCalendarRoutes();
 
 describe('ContentCalendar – Erros de aprovação', () => {
   beforeEach(() => {
     jest.useRealTimers();
     jest.resetAllMocks();
     inboxApi.__mock?.reset?.();
-    registerContentCalendarRoutes();
+    mockContentCalendarRoutes();
     window.toast?.mockClear?.();
 
     api.get.mockImplementation((url) => {

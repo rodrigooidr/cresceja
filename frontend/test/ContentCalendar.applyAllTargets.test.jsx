@@ -2,17 +2,17 @@ import React from 'react';
 import { screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 import { renderWithProviders, mockFeatureGate } from './utils/renderWithProviders.jsx';
-import { setupContentCalendarRoutes } from './utils/mockContentCalendarRoutes.js';
+import { mockContentCalendarRoutes } from './utils/mockContentCalendarRoutes.js';
 
 jest.mock('../src/api');
 import api from '../src/api';
 import { campaignsFixture } from './fixtures/calendar.fixtures.js';
 
 mockFeatureGate();
-setupContentCalendarRoutes();
 
 beforeEach(() => {
   jest.resetAllMocks();
+  mockContentCalendarRoutes();
   api.get.mockImplementation((url) => {
     if (url.includes('/campaigns/') && url.endsWith('/suggestions')) {
       return Promise.resolve({ data: { items: [] } });
