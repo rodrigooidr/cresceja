@@ -1,6 +1,7 @@
 /** @type {import('jest').Config} */
 const config = {
   automock: false,
+  rootDir: __dirname, // isola o root no diretório do frontend
   testEnvironment: 'jsdom',
   testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
   setupFiles: [
@@ -12,11 +13,9 @@ const config = {
     '<rootDir>/test/setup.jest.cjs',
   ],
   testMatch: [
-    '<rootDir>/test/**/*.test.jsx',
-    '<rootDir>/test/**/*.test.js',
-    '<rootDir>/test/**/*.spec.jsx',
+    '<rootDir>/test/**/*.(test|spec).(js|jsx|ts|tsx)', // só pega testes do frontend
   ],
-  moduleDirectories: ['node_modules', 'src'],
+  moduleDirectories: ['node_modules', '<rootDir>/src', '<rootDir>/test'],
   moduleNameMapper: {
     '^api/(.*)$': '<rootDir>/src/api/$1',
     '^components/(.*)$': '<rootDir>/src/components/$1',
@@ -33,7 +32,15 @@ const config = {
   transformIgnorePatterns: [
     '/node_modules/(?!(luxon|react-big-calendar|date-arithmetic|@internationalized/date)/)',
   ],
-  testPathIgnorePatterns: ['/dist/', '/build/', '/node_modules/', '/e2e/'],
+  testPathIgnorePatterns: [
+    '/dist/',
+    '/build/',
+    '/node_modules/',
+    '/e2e/',
+    '<rootDir>/../backend/', // ignora backend
+    '<rootDir>/../server/',
+    '<rootDir>/../test/', // caso exista um "test" na raiz do repo
+  ],
   collectCoverageFrom: [
     'src/pages/marketing/**/*.{js,jsx,ts,tsx}',
     'src/lib/{retry,idempotency,analytics}.js',
