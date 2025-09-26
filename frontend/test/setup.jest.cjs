@@ -170,15 +170,28 @@ if (typeof g.fetch !== 'function') {
 
   // ---- Helpers expostos ----
 
-  // Rotas: aceita "GET /path" ou matcher direto (string/RegExp)
-  ns.route = (methodPathOrMatcher, handler) => {
+  // Rotas: aceita "GET /path", handler ou assinatura method, path, handler
+  ns.route = (a, b, c) => {
     let method = '*';
-    let matcher = methodPathOrMatcher;
-    if (typeof methodPathOrMatcher === 'string' && /\s/.test(methodPathOrMatcher)) {
-      const [m, ...rest] = methodPathOrMatcher.split(/\s+/);
-      method = String(m || '*').toLowerCase();
-      matcher = rest.join(' ');
+    let matcher;
+    let handler;
+
+    if (typeof a === 'string' && (b instanceof RegExp || typeof b === 'string') && c !== undefined) {
+      method = a.toLowerCase();
+      matcher = b;
+      handler = c;
+    } else {
+      handler = b;
+      matcher = a;
+      if (typeof a === 'string' && /\s/.test(a)) {
+        const [m, ...rest] = a.split(/\s+/);
+        method = String(m || '*').toLowerCase();
+        matcher = rest.join(' ');
+      } else {
+        method = '*';
+      }
     }
+
     state.routes.push({ method, matcher, handler });
     rebuildAll();
     return true;
