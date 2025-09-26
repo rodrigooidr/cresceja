@@ -2,10 +2,7 @@ import React from 'react';
 import { screen, fireEvent, waitFor } from '@testing-library/react';
 import ContentCalendar from '../src/pages/marketing/ContentCalendar.jsx';
 import { renderWithProviders, mockFeatureGate } from './utils/renderWithProviders.jsx';
-import {
-  registerContentCalendarRoutes,
-  setupContentCalendarRoutes,
-} from './utils/mockContentCalendarRoutes.js';
+import { mockContentCalendarRoutes } from './utils/mockContentCalendarRoutes.js';
 
 jest.mock('../src/api');
 jest.mock('../src/api/inboxApi.js');
@@ -15,7 +12,6 @@ import inboxApi from '../src/api/inboxApi.js';
 import { campaignsFixture, suggestionsFixture, jobsFixture } from './fixtures/calendar.fixtures.js';
 
 mockFeatureGate();
-setupContentCalendarRoutes();
 
 function setupApiMocks() {
   api.get.mockImplementation((url) => {
@@ -49,7 +45,7 @@ describe('ContentCalendar – Aprovação parcial + retry', () => {
     jest.useRealTimers();
     jest.resetAllMocks();
     inboxApi.__mock?.reset?.();
-    registerContentCalendarRoutes();
+    mockContentCalendarRoutes();
     setupApiMocks();
     window.toast?.mockClear?.();
   });
@@ -80,7 +76,7 @@ describe('ContentCalendar – Aprovação parcial + retry', () => {
     );
 
     inboxApi.__mock.reset();
-    registerContentCalendarRoutes();
+    mockContentCalendarRoutes();
     setupApiMocks();
     window.toast?.mockClear?.();
 

@@ -8,10 +8,7 @@ import ContentCalendar from "../src/pages/marketing/ContentCalendar.jsx";
 import api from "../src/api";
 import inboxApi from "../src/api/inboxApi.js";
 import { campaignsFixture, suggestionsFixture } from "./fixtures/calendar.fixtures.js";
-import {
-  registerContentCalendarRoutes,
-  setupContentCalendarRoutes,
-} from "./utils/mockContentCalendarRoutes.js";
+import { mockContentCalendarRoutes } from "./utils/mockContentCalendarRoutes.js";
 
 function setupApiMocks() {
   api.get.mockImplementation((url) => {
@@ -38,12 +35,11 @@ function setupApiMocks() {
 }
 
 describe("ContentCalendar – onApproved + i18n", () => {
-  setupContentCalendarRoutes();
   beforeEach(() => {
     jest.useRealTimers();
     jest.resetAllMocks();
     inboxApi.__mock?.reset?.();
-    registerContentCalendarRoutes();
+    mockContentCalendarRoutes();
     setupApiMocks();
     window.toast = jest.fn();
   });

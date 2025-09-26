@@ -3,10 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import ContentCalendar from "../src/pages/marketing/ContentCalendar.jsx";
 import inboxApi from "../src/api/inboxApi";
-import {
-  registerContentCalendarRoutes,
-  setupContentCalendarRoutes,
-} from "./utils/mockContentCalendarRoutes.js";
+import { mockContentCalendarRoutes } from "./utils/mockContentCalendarRoutes.js";
 
 const jobsFixture = [
   { id: "j1", title: "Sucesso", suggestionId: "s1" },
@@ -32,13 +29,12 @@ describe("ContentCalendar – Health check canário", () => {
   let originalToast;
   let originalAnalytics;
 
-  setupContentCalendarRoutes();
   beforeEach(() => {
     jest.useRealTimers();
     originalToast = window.toast;
     originalAnalytics = window.analytics;
     inboxApi.__mock?.reset?.();
-    registerContentCalendarRoutes();
+    mockContentCalendarRoutes();
     inboxApi.__mock?.setDelay?.(50);
     window.toast = jest.fn();
     window.analytics = { track: jest.fn() };
@@ -73,7 +69,7 @@ describe("ContentCalendar – Health check canário", () => {
     window.toast.mockClear();
 
     inboxApi.__mock.reset();
-    registerContentCalendarRoutes();
+    mockContentCalendarRoutes();
     inboxApi.__mock.setDelay(50);
     inboxApi.__mock.failWith(/\/marketing\/suggestions\/s2\/approve$/, { status: 503 });
 

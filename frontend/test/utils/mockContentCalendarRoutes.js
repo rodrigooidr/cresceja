@@ -1,72 +1,63 @@
-import apiModule from '../../src/api/index.js';
-import inboxApiModule from '../../src/api/inboxApi.js';
+import inboxApi from '@/api/inboxApi';
 
-const api = apiModule?.default || apiModule;
-const inboxApi = inboxApiModule?.default || inboxApiModule;
+const defaultJobs = [
+  {
+    id: 'job-1',
+    channel: 'instagram',
+    date: '2025-09-01',
+    title: 'Sugestão IG/FB #1',
+    suggestionId: 's1',
+  },
+];
 
-const clients = Array.from(
-  new Set([
-    api,
-    inboxApi,
-  ])
-).filter(Boolean);
+const defaultCampaigns = [
+  {
+    id: 'camp-1',
+    name: 'Campanha Setembro',
+    month_ref: '2025-09-01',
+  },
+];
 
-export function registerContentCalendarRoutes() {
-  const register = (method, matcher, handler) => {
-    clients.forEach((client) => {
-      const fn = client?.__mockRoute || client?.__mock?.route;
-      if (typeof fn === 'function') {
-        fn(method, matcher, handler);
-      }
-    });
-  };
+const defaultSuggestions = [
+  {
+    id: 's1',
+    title: 'Sugestão IG/FB #1',
+    channels: ['instagram', 'facebook'],
+    status: 'suggested',
+    date: '2025-09-01',
+    time: '09:00:00-03:00',
+  },
+  {
+    id: 's2',
+    title: 'Sugestão IG/FB #2',
+    channels: ['instagram'],
+    status: 'approved',
+    date: '2025-09-02',
+    time: '14:00:00-03:00',
+  },
+];
 
-  const defaultCampaigns = [{ id: 'camp-1', title: 'Outubro • Loja XYZ', month_ref: '2025-10-01' }];
-  const defaultSuggestions = [
-    {
-      id: 'sug-1',
-      campaign_id: 'camp-1',
-      date: '2025-10-05',
-      time: '10:00:00-03:00',
-      status: 'suggested',
-      title: 'Sugestão IG/FB #1',
-      copy_json: { headline: 'Sugestão IG/FB #1', caption: 'Legenda 1' },
-      channel_targets: { ig: { enabled: false }, fb: { enabled: false } },
-      channels: ['instagram', 'facebook'],
-    },
-    {
-      id: 'sug-2',
-      campaign_id: 'camp-1',
-      date: '2025-10-06',
-      time: '14:30:00-03:00',
-      status: 'approved',
-      title: 'Sugestão IG/FB #2',
-      copy_json: { headline: 'Sugestão IG/FB #2' },
-      channel_targets: { ig: { enabled: true }, fb: { enabled: false } },
-      channels: ['instagram'],
-    },
-  ];
+export function mockContentCalendarRoutes(overrides = {}) {
+  const jobs = overrides.jobs ?? defaultJobs;
+  const campaigns = overrides.campaigns ?? defaultCampaigns;
+  const suggestions = overrides.suggestions ?? defaultSuggestions;
+  const approveResponse = overrides.approveResponse ?? { data: { ok: true } };
 
-  register('GET', /\/orgs\/[^/]+\/campaigns$/, () => ({ data: { items: defaultCampaigns } }));
-  register('GET', /\/orgs\/[^/]+\/campaigns\/[^/]+\/suggestions$/, () => ({ data: { items: defaultSuggestions } }));
-  register('GET', '/marketing/suggestions', () => ({ data: { items: defaultSuggestions } }));
-  register('GET', /\/marketing\/suggestions\/sug-1$/, () => ({
-    data: {
-      id: 'sug-1',
-      title: 'Sugestão IG/FB #1',
-      body: 'Conteúdo da Sugestão IG/FB #1',
-      copy_json: { headline: 'Sugestão IG/FB #1', caption: 'Legenda 1' },
-      channels: ['instagram', 'facebook'],
-    },
+  inboxApi.__mockRoute?.('GET', '/marketing/content/jobs', () => ({
+    data: { items: jobs },
   }));
-  register('PUT', /\/marketing\/suggestions\/sug-1\/approve$/, () => ({ data: { ok: true } }));
-  register('PUT', /\/orgs\/[^/]+\/suggestions\/sug-1\/approve$/, () => ({ data: { ok: true } }));
+
+  inboxApi.__mockRoute?.('GET', /^\/orgs\/1\/campaigns(\?.*)?$/, () => ({
+    data: { items: campaigns },
+  }));
+
+  inboxApi.__mockRoute?.('GET', /^\/orgs\/1\/campaigns\/camp-1\/suggestions$/, () => ({
+    data: { items: suggestions },
+  }));
+
+  inboxApi.__mockRoute?.('PUT', /^\/orgs\/1\/campaigns\/camp-1\/suggestions\/s1\/approve$/, () => (
+    approveResponse
+  ));
 }
 
-export function setupContentCalendarRoutes() {
-  beforeEach(() => {
-    registerContentCalendarRoutes();
-  });
-}
-
-export default registerContentCalendarRoutes;
+export default mockContentCalendarRoutes;
