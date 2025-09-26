@@ -52,7 +52,7 @@ describe('quick actions permissions', () => {
   });
 
   test('agent limited actions', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 1, role: 'agent' }));
+    localStorage.setItem('user', JSON.stringify({ id: 1, role: 'OrgAgent' }));
     await renderPage();
     fireEvent.click(screen.getByTestId('conv-check-1'));
     const assignBtn = screen.getByTestId('qa-assign-btn');
@@ -72,7 +72,7 @@ describe('quick actions permissions', () => {
   });
 
   test('supervisor without spam', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 2, role: 'supervisor' }));
+    localStorage.setItem('user', JSON.stringify({ id: 2, role: 'OrgAdmin' }));
     await renderPage();
     fireEvent.click(screen.getByTestId('conv-check-1'));
     expect(screen.getByTestId('qa-assign-btn')).toBeEnabled();
@@ -82,8 +82,8 @@ describe('quick actions permissions', () => {
     expect(screen.getByTestId('qa-spam-btn')).toBeDisabled();
   });
 
-  test('org_admin all actions', async () => {
-    localStorage.setItem('user', JSON.stringify({ id: 3, role: 'org_admin' }));
+  test('org admin all actions', async () => {
+    localStorage.setItem('user', JSON.stringify({ id: 3, role: 'OrgAdmin' }));
     await renderPage();
     fireEvent.click(screen.getByTestId('conv-check-1'));
     expect(screen.getByTestId('qa-assign-btn')).toBeEnabled();

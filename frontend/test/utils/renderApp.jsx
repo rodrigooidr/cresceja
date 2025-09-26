@@ -26,7 +26,7 @@ export function renderApp(ui, { route = "/", org, user } = {}) {
     ...(org || {}),
   };
   const authVal = {
-    user: user || { id: "u_test", role: "SuperAdmin" },
+    user: user || { id: "u_test", role: "OrgOwner", roles: ["SuperAdmin"] },
     token: "t",
     hasRole: () => true,
     login: async () => {},

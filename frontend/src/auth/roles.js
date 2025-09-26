@@ -1,17 +1,42 @@
-export const ROLES = ['Agent','OrgAdmin','OrgOwner','Support','SuperAdmin'];
+export const ORG_ROLES = Object.freeze(['OrgViewer', 'OrgAgent', 'OrgAdmin', 'OrgOwner']);
+export const GLOBAL_ROLES = Object.freeze(['Support', 'SuperAdmin']);
 
-export function hasRoleAtLeast(userRole, minRole) {
-  const a = ROLES.indexOf(String(userRole || ''));
-  const b = ROLES.indexOf(String(minRole || ''));
-  return a >= 0 && b >= 0 && a >= b;
+export function decodeJwt() {
+  try {
+    const raw = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!raw) return null;
+    const [, payload] = raw.split('.');
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(normalized);
+    return JSON.parse(json);
+  } catch (err) {
+    return null;
+  }
 }
 
-// Capacidades
-export const CAN_MANAGE_CAMPAIGNS = (user) =>
-  !!user && hasRoleAtLeast(user.role, 'OrgAdmin');
+export const hasOrgRole = (wanted, source) => {
+  const target = Array.isArray(wanted) ? wanted : [wanted].filter(Boolean);
+  const context = source ?? decodeJwt();
+  const role = context?.role;
+  if (!role) return false;
+  return target.some((item) => item === role);
+};
 
-export const CAN_VIEW_ORGANIZATIONS_ADMIN = (user) =>
-  !!user && hasRoleAtLeast(user.role, 'SuperAdmin');
+export const hasGlobalRole = (wanted, source) => {
+  const target = Array.isArray(wanted) ? wanted : [wanted].filter(Boolean);
+  if (!target.length) return false;
+  const context = source ?? decodeJwt();
+  const roles = Array.isArray(context?.roles) ? context.roles : [];
+  return target.some((role) => roles.includes(role));
+};
 
-export const CAN_EDIT_CLIENTS = (user) =>
-  !!user && hasRoleAtLeast(user.role, 'Agent'); // ajuste se necessário
+export const canManageCampaigns = (source) =>
+  hasGlobalRole(['SuperAdmin'], source) || hasOrgRole(['OrgAdmin', 'OrgOwner'], source);
+
+export const canEditClients = (source) =>
+  hasGlobalRole(['SuperAdmin', 'Support'], source) ||
+  hasOrgRole(['OrgAgent', 'OrgAdmin', 'OrgOwner'], source);
+
+export const canViewOrganizationsAdmin = (source) =>
+  hasGlobalRole(['SuperAdmin', 'Support'], source);

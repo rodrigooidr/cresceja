@@ -26,7 +26,7 @@ function resetMock({ delay } = {}) {
 
 export const Sucesso = {
   args: {
-    currentUser: { role: "SuperAdmin" },
+    currentUser: { role: "OrgOwner", roles: ["SuperAdmin"] },
     jobs: seedJobs(),
   },
   render: (args) => {
@@ -38,7 +38,7 @@ export const Sucesso = {
 
 export const Parcial = {
   args: {
-    currentUser: { role: "SuperAdmin" },
+    currentUser: { role: "OrgOwner", roles: ["SuperAdmin"] },
     jobs: seedJobs(),
   },
   render: (args) => {
@@ -51,7 +51,7 @@ export const Parcial = {
 
 export const RateLimitDepoisSucesso = {
   args: {
-    currentUser: { role: "SuperAdmin" },
+    currentUser: { role: "OrgOwner", roles: ["SuperAdmin"] },
     jobs: seedJobs(),
   },
   render: (args) => {
@@ -64,7 +64,7 @@ export const RateLimitDepoisSucesso = {
 
 export const ErroCompleto = {
   args: {
-    currentUser: { role: "SuperAdmin" },
+    currentUser: { role: "OrgOwner", roles: ["SuperAdmin"] },
     jobs: [{ id: "j9", title: "Falhar tudo", suggestionId: "s9" }],
   },
   render: (args) => {
@@ -77,7 +77,7 @@ export const ErroCompleto = {
 
 export const AbortCorridaCliques = {
   args: {
-    currentUser: { role: "SuperAdmin" },
+    currentUser: { role: "OrgOwner", roles: ["SuperAdmin"] },
     jobs: seedJobs(),
   },
   render: (args) => {

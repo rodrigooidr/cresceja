@@ -1,9 +1,30 @@
 const express = require('express');
 
 const USERS = {
-  orgAdmin: { id: 'user-admin', org_id: 'org-1', orgId: 'org-1', role: 'orgAdmin', email: 'admin@example.com' },
-  user: { id: 'user-regular', org_id: 'org-1', orgId: 'org-1', role: 'user', email: 'user@example.com' },
-  superAdmin: { id: 'user-super', org_id: 'org-1', orgId: 'org-1', role: 'superAdmin', email: 'super@example.com' },
+  orgAdmin: {
+    id: 'user-admin',
+    org_id: 'org-1',
+    orgId: 'org-1',
+    role: 'OrgAdmin',
+    email: 'admin@example.com',
+    roles: [],
+  },
+  user: {
+    id: 'user-regular',
+    org_id: 'org-1',
+    orgId: 'org-1',
+    role: 'OrgViewer',
+    email: 'user@example.com',
+    roles: [],
+  },
+  superAdmin: {
+    id: 'user-super',
+    org_id: 'org-1',
+    orgId: 'org-1',
+    role: 'OrgOwner',
+    email: 'super@example.com',
+    roles: ['SuperAdmin'],
+  },
 };
 
 function createInitialEvents() {
@@ -141,7 +162,7 @@ async function makeApp() {
     db,
     requireAuth: customRequireAuth,
     requireRole: customRequireRole,
-    ROLES: { OrgAdmin: 'orgAdmin', SuperAdmin: 'superAdmin' },
+    ROLES: { OrgAdmin: 'OrgAdmin', SuperAdmin: 'SuperAdmin' },
   });
   const app = express();
   app.use(express.json());

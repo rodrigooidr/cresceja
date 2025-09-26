@@ -25,7 +25,7 @@ beforeAll(async () => {
   }));
   await jest.unstable_mockModule('../middleware/requireRole.js', () => ({
     requireRole: requireRoleFactory,
-    ROLES: { SuperAdmin: 'superAdmin', OrgAdmin: 'orgAdmin' },
+    ROLES: { SuperAdmin: 'SuperAdmin', OrgAdmin: 'OrgAdmin' },
     default: { requireRole: requireRoleFactory },
   }));
   await jest.unstable_mockModule('express-rate-limit', () => ({
@@ -69,7 +69,7 @@ beforeEach(() => {
     db: { query: (...args) => queryMock(...args) },
     requireAuth: authHandler,
     requireRole: requireRoleFactory,
-    ROLES: { SuperAdmin: 'superAdmin', OrgAdmin: 'orgAdmin' },
+    ROLES: { SuperAdmin: 'SuperAdmin', OrgAdmin: 'OrgAdmin' },
   });
 });
 

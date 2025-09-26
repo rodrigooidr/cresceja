@@ -201,7 +201,7 @@ jest.mock('../src/ui/feature/FeatureGate', () => ({ __esModule: true, default: (
 jest.mock('../src/contexts/AuthContext', () => {
   const React = require('react');
   const AuthContext = React.createContext({
-    user: { id: 'u_test', role: 'SuperAdmin', email: 'test@x.com' },
+    user: { id: 'u_test', role: 'OrgOwner', roles: ['SuperAdmin'], email: 'test@x.com' },
     isAuthenticated: true,
     login: jest.fn(),
     logout: jest.fn(),

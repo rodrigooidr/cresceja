@@ -59,7 +59,8 @@ describe("ContentCalendar – onApproved + i18n", () => {
       retry: "Retry",
     };
 
-    render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} onApproved={onApproved} t={t} />);
+    const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+    render(<ContentCalendar currentUser={superAdmin} onApproved={onApproved} t={t} />);
     await screen.findByText("Sugestão IG/FB #1");
     const btn = await screen.findByTestId("btn-approve");
     expect(btn).toHaveTextContent("Approve");
@@ -83,7 +84,8 @@ describe("ContentCalendar – onApproved + i18n", () => {
     inboxApi.__mock.failWith(/\/orgs\/.*\/suggestions\/.*\/approve$/, { status: 503 });
     const onApproved = jest.fn();
 
-    render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} onApproved={onApproved} />);
+    const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+    render(<ContentCalendar currentUser={superAdmin} onApproved={onApproved} />);
     await screen.findByText("Sugestão IG/FB #1");
     const btn = await screen.findByTestId("btn-approve");
     fireEvent.click(btn);

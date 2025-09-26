@@ -3,13 +3,24 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { query } from '#db';
+import { auth as authRequired } from '../middleware/auth.js';
+import { normalizeOrgRole, normalizeGlobalRoles } from '../lib/permissions.js';
 
 const router = Router();
 
 function signToken(payload) {
   const secret = process.env.JWT_SECRET || "dev-secret-change-me";
-  const expiresIn = process.env.JWT_EXPIRES_IN || "7d";
+  const expiresIn = process.env.JWT_EXPIRES_IN || "12h";
   return jwt.sign(payload, secret, { expiresIn });
+}
+
+function pickActiveMembership(memberships, requestedOrgId) {
+  if (!memberships?.length) return null;
+  if (requestedOrgId) {
+    const match = memberships.find((m) => m.org_id === requestedOrgId);
+    if (match) return match;
+  }
+  return memberships[0] || null;
 }
 
 /**
@@ -22,7 +33,7 @@ router.post("/login", async (req, res, next) => {
 
     // 1) usuário
     const { rows: userRows } = await query(
-      `SELECT id, name, email, password_hash, role, is_support, support_scopes
+      `SELECT id, name, email, password_hash
          FROM public.users
         WHERE email = $1
         LIMIT 1`,
@@ -37,40 +48,44 @@ router.post("/login", async (req, res, next) => {
 
     // 2) organizações do usuário  
     const { rows: orgRows } = await query(
-      `SELECT ou.org_id, ou.role
-        FROM public.org_users ou
-       WHERE ou.user_id = $1`,
+      `SELECT org_id, role
+         FROM public.org_members
+        WHERE user_id = $1
+        ORDER BY created_at ASC`,
       [user.id]
     );
 
-    if (orgRows.length === 0 && !user.is_support && user.role !== "SuperAdmin") {
-      // sem vínculo com org
+    const memberships = orgRows.map((row) => ({
+      org_id: row.org_id,
+      role: normalizeOrgRole(row.role),
+    }));
+
+    const activeMembership = pickActiveMembership(memberships, requestedOrgId);
+    const activeOrgId = activeMembership?.org_id || null;
+    const orgRole = normalizeOrgRole(activeMembership?.role);
+
+    const { rows: globals } = await query(
+      `SELECT role
+         FROM public.user_global_roles
+        WHERE user_id = $1
+        ORDER BY created_at ASC`,
+      [user.id]
+    );
+
+    const roles = normalizeGlobalRoles(globals.map((row) => row.role));
+
+    if (!activeOrgId && !roles.length) {
       return res.status(403).json({ error: "no_org_assigned" });
     }
 
-    // 3) escolhe a org ativa
-    const activeOrg =
-      (requestedOrgId && orgRows.find(r => r.org_id === requestedOrgId)) ||
-      orgRows[0] ||
-      null;
-
-    const org_id = activeOrg?.org_id || null;
-    const orgRole = activeOrg?.role || null;
-    const perms = activeOrg?.perms || {};
-
-    // 4) payload compatível com o resto do app
-    //    - inclui `id` (além de `sub`) e SEMPRE que possível `org_id`
-    const role = orgRole || user.role || "Viewer";
     const payload = {
       sub: user.id,
-      id: user.id,              // 👈 compat com código que usa req.user.id
-      org_id,                   // 👈 fundamental pro orgScope e RLS
-      role,
-      perms,
-      is_support: !!user.is_support,
-      support_scopes: user.support_scopes || [],
+      id: user.id,
       email: user.email,
       name: user.name,
+      org_id: activeOrgId,
+      role: orgRole,
+      roles,
     };
 
     const token = signToken(payload);
@@ -78,20 +93,26 @@ router.post("/login", async (req, res, next) => {
     // 5) resposta
     res.json({
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        org_id,
-        role,
-        perms,
-        is_support: !!user.is_support,
-        support_scopes: user.support_scopes || [],
-      },
+      user: payload,
     });
   } catch (err) {
     next(err);
   }
+});
+
+router.get('/me', authRequired, (req, res) => {
+  const user = req.user || {};
+  const id = user.id || user.sub || null;
+  const payload = {
+    sub: user.sub || id,
+    id,
+    email: user.email || null,
+    name: user.name || null,
+    org_id: user.org_id || null,
+    role: normalizeOrgRole(user.role),
+    roles: normalizeGlobalRoles(Array.isArray(user.roles) ? user.roles : []),
+  };
+  res.json(payload);
 });
 
 export default router;

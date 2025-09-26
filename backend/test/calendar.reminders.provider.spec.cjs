@@ -30,7 +30,7 @@ describe('reminder provider fallback', () => {
     const requireRoleMock = () => (_req, _res, next) => next();
     await jest.unstable_mockModule('../middleware/requireRole.js', () => ({
       requireRole: requireRoleMock,
-      ROLES: { SuperAdmin: 'superAdmin', OrgAdmin: 'orgAdmin' },
+      ROLES: { SuperAdmin: 'SuperAdmin', OrgAdmin: 'OrgAdmin' },
       default: { requireRole: requireRoleMock },
     }));
 

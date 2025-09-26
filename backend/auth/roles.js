@@ -1,51 +1,54 @@
-export const ROLES = {
-  SuperAdmin: "SuperAdmin",
-  Support: "Support",
-  Owner: "Owner",
-  Admin: "Admin",
-  Manager: "Manager",
-  Agent: "Agent",
-  Billing: "Billing",
-  ReadOnly: "ReadOnly",
-};
+import {
+  ORG_ROLES,
+  ROLES,
+  hasGlobalRole,
+  hasOrgRole,
+} from '../lib/permissions.js';
 
-export const ROLE_RANK = {
-  ReadOnly: 0,
-  Agent: 1,
-  Manager: 2,
-  Admin: 3,
-  Owner: 4,
-  Support: 5,
-  SuperAdmin: 6,
-  Billing: 2,
-};
+const ORG_ROLE_ORDER = ORG_ROLES;
 
-export function hasRoleAtLeast(role, min = "Admin") {
-  const r = ROLE_RANK[role] ?? -1;
-  const need = ROLE_RANK[min] ?? 999;
-  return r >= need;
+export function hasRoleAtLeast(role, min = ROLES.OrgViewer) {
+  const currentIndex = ORG_ROLE_ORDER.indexOf(role || '');
+  const requiredIndex = ORG_ROLE_ORDER.indexOf(min || '');
+  if (currentIndex === -1 || requiredIndex === -1) return false;
+  return currentIndex >= requiredIndex;
 }
 
-export const CAN_VIEW_ORGANIZATIONS_ADMIN = (role) =>
-  [ROLES.SuperAdmin, ROLES.Support].includes(role);
+export const CAN_VIEW_ORGANIZATIONS_ADMIN = (user) =>
+  hasGlobalRole(user, [ROLES.SuperAdmin, ROLES.Support]);
 
-export const CAN_EDIT_CLIENTS = (role) =>
-  [ROLES.SuperAdmin, ROLES.Support, ROLES.Owner, ROLES.Admin, ROLES.Manager, ROLES.Agent].includes(role);
+export const CAN_EDIT_CLIENTS = (user) =>
+  hasGlobalRole(user, [ROLES.SuperAdmin, ROLES.Support]) ||
+  hasOrgRole(user, [ROLES.OrgAgent, ROLES.OrgAdmin, ROLES.OrgOwner]);
 
-export function requireMinRole(minRole) {
+export function requireMinRole(minRole = ROLES.OrgViewer) {
   return function (req, res, next) {
-    const r = req.user?.role;
-    if (!hasRoleAtLeast(r, minRole)) {
-      return res.status(403).json({ error: 'forbidden', detail: `min_role:${minRole}` });
+    const user = req.user;
+    if (!user?.role) {
+      return res.status(401).json({ error: 'forbidden' });
     }
-    next();
+    if (hasGlobalRole(user, [ROLES.SuperAdmin])) {
+      return next();
+    }
+    if (hasRoleAtLeast(user.role, minRole)) {
+      return next();
+    }
+    return res.status(403).json({ error: 'forbidden', detail: `min_role:${minRole}` });
   };
 }
 
 export function requireRole(check) {
   return function (req, res, next) {
-    const r = req.user?.role;
-    if (!check(r)) return res.status(403).json({ error: 'forbidden' });
-    next();
+    const user = req.user;
+    if (!user?.role) return res.status(401).json({ error: 'forbidden' });
+    if (hasGlobalRole(user, [ROLES.SuperAdmin])) return next();
+    if (typeof check === 'function') {
+      if (check(user.role)) return next();
+    } else if (hasOrgRole(user, [check])) {
+      return next();
+    }
+    return res.status(403).json({ error: 'forbidden' });
   };
 }
+
+export { ROLES };

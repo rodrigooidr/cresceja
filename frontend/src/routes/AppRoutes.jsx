@@ -26,7 +26,7 @@ export const APP_ROUTES = [
     path: "/marketing/calendar",
     element: (
       <RequirePerm perm="marketing:view">
-        <ContentCalendar currentUser={{ role: "SuperAdmin" }} />
+        <ContentCalendar currentUser={{ role: "OrgOwner", roles: ["SuperAdmin"] }} />
       </RequirePerm>
     ),
   },
@@ -54,7 +54,7 @@ export const APP_ROUTES = [
   {
     path: "/settings/agenda",
     element: (
-      <RequirePerm perm="org_admin">
+      <RequirePerm perm="settings:agenda">
         <CalendarSettingsPage />
       </RequirePerm>
     ),
@@ -63,7 +63,7 @@ export const APP_ROUTES = [
   {
     path: "/settings/ai",
     element: (
-      <RequireRole roles={["orgAdmin", "superAdmin"]}>
+      <RequireRole orgRoles={["OrgAdmin", "OrgOwner"]} globalRoles={["SuperAdmin"]}>
         <OrgAIPage />
       </RequireRole>
     ),

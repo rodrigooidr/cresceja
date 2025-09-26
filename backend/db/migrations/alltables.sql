@@ -799,14 +799,23 @@ CREATE TABLE IF NOT EXISTS organizations (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS org_memberships (
+CREATE TABLE IF NOT EXISTS org_members (
   org_id uuid NOT NULL,
   user_id uuid NOT NULL,
-  role text NOT NULL DEFAULT 'Viewer',  -- OrgOwner | OrgAdmin | Manager | Agent | Viewer
+  role text NOT NULL DEFAULT 'OrgViewer',  -- OrgViewer | OrgAgent | OrgAdmin | OrgOwner
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (org_id, user_id),
-  CONSTRAINT org_memberships_org_fk
+  CONSTRAINT org_members_org_fk
     FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS user_global_roles (
+  user_id uuid NOT NULL,
+  role text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, role),
+  CONSTRAINT user_global_roles_user_fk
+    FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
 );
 
 -- Adiciona FK para users(id) se a tabela existir
@@ -818,11 +827,21 @@ BEGIN
   ) THEN
     PERFORM 1
     FROM pg_constraint c
-    WHERE c.conname = 'org_memberships_user_fk';
+    WHERE c.conname = 'org_members_user_fk';
 
     IF NOT FOUND THEN
-      ALTER TABLE org_memberships
-        ADD CONSTRAINT org_memberships_user_fk
+      ALTER TABLE org_members
+        ADD CONSTRAINT org_members_user_fk
+        FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+    END IF;
+
+    PERFORM 1
+    FROM pg_constraint c
+    WHERE c.conname = 'user_global_roles_user_fk';
+
+    IF NOT FOUND THEN
+      ALTER TABLE user_global_roles
+        ADD CONSTRAINT user_global_roles_user_fk
         FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
     END IF;
   END IF;
@@ -830,12 +849,13 @@ END$$;
 
 -- ===== Índices =====
 CREATE INDEX IF NOT EXISTS idx_orgs_name ON organizations (name);
-CREATE INDEX IF NOT EXISTS idx_memberships_user ON org_memberships (user_id);
-CREATE INDEX IF NOT EXISTS idx_memberships_org ON org_memberships (org_id);
+CREATE INDEX IF NOT EXISTS idx_members_user ON org_members (user_id);
+CREATE INDEX IF NOT EXISTS idx_members_org ON org_members (org_id);
+CREATE INDEX IF NOT EXISTS idx_global_roles_user ON user_global_roles (user_id);
 
 -- ===== RLS =====
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE org_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org_members ENABLE ROW LEVEL SECURITY;
 
 -- Policies: membros veem suas orgs
 DROP POLICY IF EXISTS orgs_member_sel ON organizations;
@@ -844,7 +864,7 @@ FOR SELECT
 USING (
   EXISTS (
     SELECT 1
-    FROM org_memberships m
+    FROM org_members m
     WHERE m.org_id = organizations.id
       AND app.current_user_id() IS NOT NULL
       AND m.user_id = app.current_user_id()
@@ -858,8 +878,8 @@ FOR SELECT
 USING ( app.current_role() IN ('SuperAdmin','Support') );
 
 -- Memberships: o próprio usuário enxerga seus vínculos; superusers veem tudo
-DROP POLICY IF EXISTS mem_self_sel ON org_memberships;
-CREATE POLICY mem_self_sel ON org_memberships
+DROP POLICY IF EXISTS mem_self_sel ON org_members;
+CREATE POLICY mem_self_sel ON org_members
 FOR SELECT
 USING (
   app.current_role() IN ('SuperAdmin','Support')
@@ -882,7 +902,7 @@ BEGIN
   SELECT id INTO v_user_id FROM public.users WHERE email = 'rodrigooidr@hotmail.com' LIMIT 1;
 
   IF v_user_id IS NOT NULL THEN
-    INSERT INTO org_memberships (org_id, user_id, role)
+    INSERT INTO org_members (org_id, user_id, role)
     VALUES ('00000000-0000-0000-0000-000000000001', v_user_id, 'OrgOwner')
     ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role;
   END IF;

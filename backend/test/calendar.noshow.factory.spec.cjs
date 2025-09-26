@@ -15,7 +15,7 @@ describe('calendar no-show router factory', () => {
     const router = createNoShowRouter({
       db: { query: jest.fn() },
       requireAuth: (req, _res, next) => {
-        req.user = { id: 'user-1', role: 'orgAdmin' };
+        req.user = { id: 'user-1', role: 'OrgAdmin', roles: [] };
         next();
       },
       requireRole: () => allowAll,
@@ -45,7 +45,7 @@ describe('calendar no-show router factory', () => {
     const router = createNoShowRouter({
       db: fakeDb,
       requireAuth: (req, _res, next) => {
-        req.user = { id: 'user-1', role: 'orgAdmin' };
+        req.user = { id: 'user-1', role: 'OrgAdmin', roles: [] };
         next();
       },
       requireRole: () => allowAll,

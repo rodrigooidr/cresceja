@@ -4,7 +4,7 @@ import AppLayout from "./ui/layout/AppLayout.jsx";
 import RequireAuth from "./auth/RequireAuth.jsx";
 import ActiveOrgGate from "./hooks/ActiveOrgGate.jsx";
 import RoleGate from "./auth/RoleGate.jsx";
-import { CAN_VIEW_ORGANIZATIONS_ADMIN } from "./auth/roles";
+import { canViewOrganizationsAdmin } from "./auth/roles";
 
 // públicas
 import LandingPage from "./pages/LandingPage.jsx";
@@ -62,7 +62,7 @@ export default function App() {
 
             {/* admin da plataforma (não depende da org ativa) */}
             <Route
-              element={<RoleGate allow={CAN_VIEW_ORGANIZATIONS_ADMIN} redirectTo="/inbox" />}
+              element={<RoleGate allow={canViewOrganizationsAdmin} redirectTo="/inbox" />}
             >
               <Route path="/admin/organizations" element={<AdminOrganizationsPage />} />
               <Route path="/admin/organizations/:id" element={<OrgDetailsPage />} />{/* ← add */}

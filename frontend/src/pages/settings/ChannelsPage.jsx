@@ -5,7 +5,7 @@ import InstagramCard from "../../components/settings/InstagramCard.jsx";
 import FacebookCard from "../../components/settings/FacebookCard.jsx";
 import GoogleCalendarCard from "../../components/settings/GoogleCalendarCard.jsx";
 
-export default function ChannelsPage({ minRole = "Manager" }) {
+export default function ChannelsPage({ minRole = "OrgAdmin" }) {
   const { allowed, reason } = useActiveOrgGate({ minRole, requireActiveOrg: true });
   const tabs = useMemo(
     () => ([

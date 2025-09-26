@@ -15,7 +15,7 @@ function mount() {
   return render(
     <MemoryRouter>
       <ContentCalendar
-        currentUser={{ role: "SuperAdmin" }}
+        currentUser={{ role: "OrgOwner", roles: ["SuperAdmin"] }}
         jobs={jobsFixture}
         bulkConcurrency={2}
         undoTtlMs={1500}

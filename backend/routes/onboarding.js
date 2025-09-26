@@ -5,9 +5,20 @@ import * as requireRoleMod from '../middleware/requireRole.js';
 
 const router = Router();
 
-const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
+const requireRole =
+  requireRoleMod.requireRole ??
+  requireRoleMod.default?.requireRole ??
+  requireRoleMod.default ??
+  requireRoleMod;
+const ROLES =
+  requireRoleMod.ROLES ??
+  requireRoleMod.default?.ROLES ??
+  requireRoleMod.ROLES ??
+  { OrgAgent: 'OrgAgent', OrgAdmin: 'OrgAdmin', OrgOwner: 'OrgOwner', SuperAdmin: 'SuperAdmin' };
 
-router.use(authRequired, withOrg, requireRole('Agent'));
+const AGENT_ROLES = [ROLES.OrgAgent, ROLES.OrgAdmin, ROLES.OrgOwner, ROLES.SuperAdmin];
+
+router.use(authRequired, withOrg, requireRole(AGENT_ROLES));
 
 // Converte oportunidade em cliente e inicia tarefas de onboarding
 router.put('/opportunities/:id/converter', async (req, res, next) => {

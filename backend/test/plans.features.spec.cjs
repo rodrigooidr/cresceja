@@ -33,7 +33,11 @@ describe('admin plans features routes', () => {
       })
     };
     const app = express();
-    app.use((req, _res, next) => { req.user = { role: 'SuperAdmin' }; req.db = mockDb; next(); });
+    app.use((req, _res, next) => {
+      req.user = { role: 'OrgViewer', roles: ['SuperAdmin'] };
+      req.db = mockDb;
+      next();
+    });
     app.use('/api/admin/plans', router);
 
     const res = await request(app).get('/api/admin/plans/plan1/features');
@@ -73,7 +77,11 @@ describe('admin plans features routes', () => {
     };
     const app = express();
     app.use(express.json());
-    app.use((req, _res, next) => { req.user = { role: 'SuperAdmin' }; req.db = mockDb; next(); });
+    app.use((req, _res, next) => {
+      req.user = { role: 'OrgViewer', roles: ['SuperAdmin'] };
+      req.db = mockDb;
+      next();
+    });
     app.use('/api/admin/plans', router);
 
     const body = {
@@ -92,7 +100,7 @@ describe('admin plans features routes', () => {
 
   test('403 quando user não tem role', async () => {
     const app = express();
-    app.use((req, _res, next) => { req.user = { role: 'OrgAdmin' }; next(); });
+    app.use((req, _res, next) => { req.user = { role: 'OrgAdmin', roles: [] }; next(); });
     app.use('/api/admin/plans', router);
     const res = await request(app).get('/api/admin/plans');
     expect(res.statusCode).toBe(403);

@@ -1,6 +1,7 @@
 import express from 'express';
 import { query } from '#db';
 import * as authModule from '../middleware/auth.js';
+import { hasGlobalRole, hasOrgRole, ROLES } from '../lib/permissions.js';
 
 const router = express.Router();
 const requireAuth =
@@ -10,7 +11,8 @@ const requireAuth =
   ((_req, _res, next) => next());
 
 function requireOrgAdmin(req, res, next) {
-  if (req.user?.role === 'org_admin' || req.user?.is_org_admin) return next();
+  if (hasOrgRole(req.user, [ROLES.OrgAdmin, ROLES.OrgOwner])) return next();
+  if (hasGlobalRole(req.user, [ROLES.SuperAdmin, ROLES.Support])) return next();
   return res.status(403).json({ error: 'forbidden' });
 }
 

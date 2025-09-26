@@ -50,6 +50,18 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='user_global_roles') THEN
+    CREATE TABLE public.user_global_roles (
+      user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+      role text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, role)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_global_roles_user ON public.user_global_roles(user_id);
+  END IF;
+END $$;
+
+DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='support_audit_logs') THEN
     CREATE TABLE public.support_audit_logs (
       id bigserial PRIMARY KEY,

@@ -14,7 +14,7 @@ beforeAll(async () => {
 function app() {
   const app = express();
   app.use(express.json());
-  app.use((req,_res,next)=>{ req.user={ org_id:'o1', role:'Agent' }; next(); });
+  app.use((req,_res,next)=>{ req.user={ org_id:'o1', role:'OrgAgent', roles:[] }; next(); });
   app.use('/api/uploads', router);
   return app;
 }

@@ -1,5 +1,14 @@
 // backend/middleware/auth.js (ESM)
 import jwt from "jsonwebtoken";
+import {
+  GLOBAL_ROLES,
+  ORG_ROLES,
+  ROLES,
+  hasGlobalRole,
+  hasOrgRole,
+  normalizeGlobalRoles,
+  normalizeOrgRole,
+} from '../lib/permissions.js';
 
 /**
  * Autenticação por JWT. Preenche req.user.
@@ -15,6 +24,8 @@ export function auth(req, res, next) {
     const secret = process.env.JWT_SECRET || "dev-secret-change-me";
     const payload = jwt.verify(token, secret);
     if (!payload.id && payload.sub) payload.id = payload.sub; // compat
+    payload.role = normalizeOrgRole(payload.role);
+    payload.roles = normalizeGlobalRoles(payload.roles);
     req.user = payload;
     next();
   } catch (e) {
@@ -47,9 +58,7 @@ export function impersonationGuard(req, res, next) {
     null;
 
   if (hdrImpersonate) {
-    const role = req.user?.role || "user";
-    const isSupport = !!req.user?.is_support;
-    const canImpersonate = isSupport || ["SuperAdmin", "Support"].includes(role);
+    const canImpersonate = hasGlobalRole(req.user, [ROLES.SuperAdmin, ROLES.Support]);
     if (!canImpersonate) {
       return res.status(403).json({ message: "impersonation not allowed" });
     }
@@ -68,12 +77,23 @@ export function impersonationGuard(req, res, next) {
  * SuperAdmin/is_support sempre passam.
  */
 export function requireRole(...allowed) {
+  const required = allowed.flat().filter(Boolean);
   return (req, res, next) => {
-    const role = req.user?.role;
-    if (!role) return res.status(401).json({ message: "unauthenticated" });
-    if (role === "SuperAdmin" || req.user?.is_support) return next();
-    if (!allowed || allowed.length === 0) return next();
-    if (allowed.includes(role)) return next();
+    const user = req.user;
+    if (!user?.role) return res.status(401).json({ message: "unauthenticated" });
+    if (hasGlobalRole(user, [ROLES.SuperAdmin])) return next();
+    if (!required.length) return next();
+
+    const allowedOrgRoles = required.filter((role) => role && ORG_ROLES.includes(role));
+    if (allowedOrgRoles.length && hasOrgRole(user, allowedOrgRoles)) {
+      return next();
+    }
+
+    const allowedGlobalRoles = required.filter((role) => GLOBAL_ROLES.includes(role));
+    if (allowedGlobalRoles.length && hasGlobalRole(user, allowedGlobalRoles)) {
+      return next();
+    }
+
     return res.status(403).json({ message: "forbidden" });
   };
 }
@@ -84,7 +104,16 @@ export function requireRole(...allowed) {
  */
 export function orgScope(req, res, next) {
   const orgId = req.user?.org_id;
-  if (!orgId) return res.status(401).json({ message: "org_id missing in token" });
+  if (!orgId) {
+    if (hasGlobalRole(req.user, [ROLES.SuperAdmin, ROLES.Support])) {
+      const headerOrg = req.headers['x-org-id'] || null;
+      if (headerOrg) {
+        req.orgId = headerOrg;
+        return next();
+      }
+    }
+    return res.status(401).json({ message: "org_id missing in token" });
+  }
   req.orgId = orgId;
   next();
 }

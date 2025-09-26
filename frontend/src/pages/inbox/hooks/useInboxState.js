@@ -9,24 +9,45 @@ status: (searchParams.get('status') || '').split(',').filter(Boolean),
 
 // role/capabilities
 const user = useMemo(() => {
-try { return JSON.parse(localStorage.getItem('user') || '{}'); }
-catch { return {}; }
+  try { return JSON.parse(localStorage.getItem('user') || '{}'); }
+  catch { return {}; }
 }, []);
-const role = user?.role || 'unknown';
-const isAdminRole = ['super_admin', 'SuperAdmin', 'org_admin', 'OrgOwner'].includes(role);
-const orgIdFromUrl = searchParams.get('org_id') || null;
-const unknownRole = !['agent','supervisor','org_admin','super_admin','manager','OrgOwner','SuperAdmin'].includes(role);
-const can = useCallback((action) => {
-const map = {
-read: ['agent','supervisor','org_admin','super_admin','manager','OrgOwner','SuperAdmin'],
-assign: ['agent','supervisor','org_admin','super_admin','manager','OrgOwner','SuperAdmin'],
-archive: ['supervisor','org_admin','super_admin','manager','OrgOwner','SuperAdmin'],
-close: ['supervisor','org_admin','super_admin','manager','OrgOwner','SuperAdmin'],
-spam: ['org_admin','super_admin','SuperAdmin'],
+const normalizeRole = (raw) => {
+  if (!raw) return 'Unknown';
+  const key = String(raw).toLowerCase();
+  const map = {
+    agent: 'OrgAgent',
+    orgagent: 'OrgAgent',
+    supervisor: 'OrgAdmin',
+    manager: 'OrgAdmin',
+    orgadmin: 'OrgAdmin',
+    orgowner: 'OrgOwner',
+    owner: 'OrgOwner',
+    orgviewer: 'OrgViewer',
+    viewer: 'OrgViewer',
+    support: 'Support',
+    superadmin: 'SuperAdmin',
+  };
+  return map[key] || raw;
 };
-const allowed = map[action] ? map[action].includes(role) : true;
-return unknownRole ? false : allowed;
-}, [role, unknownRole]);
+const role = normalizeRole(user?.role);
+const orgIdFromUrl = searchParams.get('org_id') || null;
+const knownRoles = ['OrgViewer', 'OrgAgent', 'OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'];
+const isAdminRole = ['OrgAdmin', 'OrgOwner', 'SuperAdmin'].includes(role);
+const unknownRole = !knownRoles.includes(role);
+const abilities = useMemo(() => ({
+  read: ['OrgAgent', 'OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'],
+  assign: ['OrgAgent', 'OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'],
+  archive: ['OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'],
+  close: ['OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'],
+  spam: ['OrgAdmin', 'Support', 'SuperAdmin'],
+}), []);
+const can = useCallback((action) => {
+  if (unknownRole) return false;
+  const allowed = abilities[action];
+  if (!allowed) return true;
+  return allowed.includes(role);
+}, [abilities, role, unknownRole]);
 
 
 const [selectedIds, setSelectedIds] = useState(() => new Set());
