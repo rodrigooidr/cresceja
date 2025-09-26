@@ -54,12 +54,52 @@ const state = {
       { id: "pro",  name: "Pro",    price_cents: 9900, trial_days: 14, features: ["5 usuários", "5.000 mensagens/mês", "IA avançada"] }
     ]
   },
-  remindersCooldown: new Map() // key: eventId -> timestamp último envio
+  remindersCooldown: new Map(), // key: eventId -> timestamp último envio
+  routes: []
 };
 
 // ---- Helpers ----
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const res = (data, status = 200, headers = { "x-mock": "inboxApi" }) => ({ data, status, headers });
+
+function registerRouteEntry(entry) {
+  state.routes.push(entry);
+}
+
+function normalizeRouteArgs(a, b, c) {
+  let method = '*';
+  let matcher;
+  let handler;
+
+  if (typeof a === 'string' && (b instanceof RegExp || typeof b === 'string') && c !== undefined) {
+    method = a.toLowerCase();
+    matcher = b;
+    handler = c;
+  } else {
+    handler = b;
+    matcher = a;
+    if (typeof a === 'string' && /\s/.test(a)) {
+      const [m, ...rest] = a.split(/\s+/);
+      method = String(m || '*').toLowerCase();
+      matcher = rest.join(' ');
+    } else {
+      method = '*';
+    }
+  }
+
+  return { method, matcher, handler };
+}
+
+function findRoute(method, url) {
+  const m = String(method || '*').toLowerCase();
+  for (const route of state.routes) {
+    if (!(route.method === m || route.method === '*')) continue;
+    const { matcher } = route;
+    if (matcher instanceof RegExp && matcher.test(url)) return route;
+    if (typeof matcher === 'string' && matcher === url) return route;
+  }
+  return null;
+}
 
 function parse(path) {
   // remove base se vier completo
@@ -81,6 +121,17 @@ function match(re, path) {
 async function _get(path, config = {}) {
   if (__delayMs) await sleep(__delayMs);
   const url = parse(path);
+
+  {
+    const route = findRoute('get', url);
+    if (route) {
+      const handler = route.handler;
+      const out = typeof handler === 'function'
+        ? await handler({ url, method: 'GET', config })
+        : handler;
+      return res(out?.data ?? out);
+    }
+  }
 
   // GET /orgs/:id/ai-profile
   {
@@ -206,6 +257,17 @@ async function _put(path, body = {}, config = {}) {
   if (__delayMs) await sleep(__delayMs);
   const url = parse(path);
 
+  {
+    const route = findRoute('put', url);
+    if (route) {
+      const handler = route.handler;
+      const out = typeof handler === 'function'
+        ? await handler({ url, method: 'PUT', body, config })
+        : handler;
+      return res(out?.data ?? out);
+    }
+  }
+
   // PUT /orgs/:id/ai-profile
   {
     const m = match(/^\/orgs\/([^/]+)\/ai-profile$/, url);
@@ -242,6 +304,14 @@ const inboxApi = {
     if (partial.kbByOrg) state.kbByOrg = { ...state.kbByOrg, ...partial.kbByOrg };
     if (partial.telemetryFunnel) state.telemetryFunnel = { ...state.telemetryFunnel, ...partial.telemetryFunnel };
     if (partial.publicPlans) state.publicPlans = { ...state.publicPlans, ...partial.publicPlans };
+  },
+  __mockRoute(...args) {
+    const entry = normalizeRouteArgs(...args);
+    registerRouteEntry(entry);
+    return true;
+  },
+  __resetRoutes() {
+    state.routes.length = 0;
   }
 };
 
