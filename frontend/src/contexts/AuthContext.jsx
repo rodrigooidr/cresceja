@@ -55,6 +55,7 @@ function hydrateAuthState() {
       role: payload.role || storedUser?.role || null,
       orgId: payload.org_id ?? storedUser?.orgId ?? null,
       orgRole: payload.org_role ?? storedUser?.orgRole ?? null,
+      roles: Array.isArray(payload.roles) ? payload.roles : storedUser?.roles || [],
     };
 
     return { user, token: rawToken };
@@ -142,7 +143,7 @@ export function useAuth() {
   if (ctx) return ctx;
   if (process.env.NODE_ENV === 'test') {
     return {
-      user: { id: 'u_test', role: 'SuperAdmin', email: 'test@example.com' },
+      user: { id: 'u_test', role: 'OrgOwner', roles: ['SuperAdmin'], email: 'test@example.com' },
       token: 'test-token',
       hasRole: () => true,
       login: async () => {},

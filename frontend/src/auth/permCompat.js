@@ -2,24 +2,29 @@
 import { useAuth } from '@/contexts/AuthContext';
 
 const PERMISSION_FALLBACK = {
-  'inbox:view': ['Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'],
-  'audit:view': ['Manager', 'OrgOwner', 'Support', 'SuperAdmin'],
-  'telemetry:view': ['Manager', 'OrgOwner', 'SuperAdmin'],
-  'marketing:view': ['Agent', 'Manager', 'OrgOwner', 'SuperAdmin'],
+  'inbox:view': ['OrgAgent', 'OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'],
+  'audit:view': ['OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'],
+  'telemetry:view': ['OrgAdmin', 'OrgOwner', 'SuperAdmin'],
+  'marketing:view': ['OrgAgent', 'OrgAdmin', 'OrgOwner', 'SuperAdmin'],
+  'settings:agenda': ['OrgAdmin', 'OrgOwner', 'SuperAdmin'],
+  'settings:ai': ['OrgAdmin', 'OrgOwner', 'SuperAdmin'],
 };
 
 function normalizeRole(role) {
   if (!role) return null;
   const key = String(role).trim().toLowerCase();
   const map = {
-    agent: 'Agent',
-    manager: 'Manager',
-    orgadmin: 'OrgOwner',
+    agent: 'OrgAgent',
+    orgagent: 'OrgAgent',
+    manager: 'OrgAdmin',
+    admin: 'OrgAdmin',
+    orgadmin: 'OrgAdmin',
     orgowner: 'OrgOwner',
     owner: 'OrgOwner',
     support: 'Support',
     superadmin: 'SuperAdmin',
-    viewer: 'Viewer',
+    orgviewer: 'OrgViewer',
+    viewer: 'OrgViewer',
   };
   return map[key] || role;
 }

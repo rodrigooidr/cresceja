@@ -19,7 +19,12 @@ import {
 } from "lucide-react";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 import { useAuth } from "../../contexts/AuthContext";
-import { CAN_EDIT_CLIENTS, CAN_VIEW_ORGANIZATIONS_ADMIN } from "../../auth/roles";
+import {
+  canEditClients,
+  canViewOrganizationsAdmin,
+  hasGlobalRole,
+  hasOrgRole,
+} from "../../auth/roles";
 import inboxApi from "../../api/inboxApi.js";
 import { canUse, limitKeyFor } from "../../utils/featureGate.js";
 
@@ -166,9 +171,8 @@ export default function Sidebar() {
   const { selected, publicMode } = useOrg();
   const needsOrg = !publicMode && !selected;
   const [org, setOrg] = useState(null);
-  const canManageOrgAI =
-    ["orgadmin", "superadmin"].includes(String(user?.role || "").toLowerCase());
-  const isSuperAdmin = user?.role === "SuperAdmin";
+  const canManageOrgAI = hasOrgRole(["OrgAdmin", "OrgOwner"], user) || hasGlobalRole(["SuperAdmin"], user);
+  const isSuperAdmin = hasGlobalRole(["SuperAdmin"], user);
 
   useEffect(() => {
     if (!selected) {
@@ -246,7 +250,7 @@ export default function Sidebar() {
           title="Selecione uma organização para abrir o Inbox"
           collapsed={collapsed}
         />
-        {CAN_EDIT_CLIENTS(user?.role) && (
+        {canEditClients(user) && (
           <NavItem
             to="/clients"
             icon={Users}
@@ -350,7 +354,7 @@ export default function Sidebar() {
           ));
         })()}
 
-        {(CAN_VIEW_ORGANIZATIONS_ADMIN(user?.role) || isSuperAdmin) && (
+        {(canViewOrganizationsAdmin(user) || isSuperAdmin) && (
           <>
             <div className="mt-3 text-xs uppercase text-gray-500 px-3">
               {collapsed ? 'A' : 'Admin'}

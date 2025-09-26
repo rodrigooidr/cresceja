@@ -1,75 +1,59 @@
 // src/components/Sidebar.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import inboxApi from '../api/inboxApi';
 import { hasPerm } from '@/auth/permCompat';
+import { hasGlobalRole, hasOrgRole } from '@/auth/roles';
 
-/* nav-audit hints:
-to="/inbox"
-to="/marketing/calendar"
-to="/settings/governanca"
-to="/settings/governanca/metricas"
-to="/settings/agenda"
-*/
-
-const ROLE_ORDER = ['Viewer', 'Agent', 'Manager', 'OrgOwner', 'Support', 'SuperAdmin'];
-
-const normalizeRole = (role) => {
-  if (!role) return null;
-  const k = String(role).trim().toLowerCase().replace(/[\s_-]/g, '');
-  const map = {
-    viewer: 'Viewer',
-    agente: 'Agent',
-    agent: 'Agent',
-    manager: 'Manager',
-    supervisor: 'Manager',
-    owner: 'OrgOwner',
-    orgowner: 'OrgOwner',
-    orgadmin: 'OrgOwner',
-    admin: 'OrgOwner',
-    superadmin: 'SuperAdmin',
-    superadministrator: 'SuperAdmin',
-    support: 'Support',
-  };
-  return map[k] || null;
-};
-
-const hasRole = (userRole, minRole) => {
-  const u = ROLE_ORDER.indexOf(normalizeRole(userRole));
-  const m = ROLE_ORDER.indexOf(minRole);
-  if (u === -1 || m === -1) return false;
-  return u >= m;
-};
+const ORG_ADMIN_ROLES = ['OrgAdmin', 'OrgOwner'];
+const ORG_AGENT_ROLES = ['OrgAgent', 'OrgAdmin', 'OrgOwner'];
 
 export default function Sidebar({ collapsed = false, onToggle }) {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const isAdmin = location.pathname.startsWith('/admin');
+  const isAdminRoute = location.pathname.startsWith('/admin');
   const hasFeature = (flag) => !flag || user?.features?.[flag];
   const [me, setMe] = useState(null);
 
+  const authSource = useMemo(() => {
+    if (me) return me;
+    if (user) return user;
+    return null;
+  }, [me, user]);
+
   const contractLinks = [
-    { perm: 'inbox:view', to: '/inbox', label: 'Inbox' },
-    { perm: 'audit:view', to: '/settings/governanca', label: 'Governança & Logs' },
-    { perm: 'telemetry:view', to: '/settings/governanca/metricas', label: 'Métricas' },
-    { perm: 'marketing:view', to: '/marketing/calendar', label: 'Calendário' },
-    { perm: 'org_admin', to: '/settings/agenda', label: 'Agenda & Serviços' },
+    { perm: 'inbox:view', to: '/inbox', label: 'Inbox', orgRoles: ORG_AGENT_ROLES },
+    { perm: 'audit:view', to: '/settings/governanca', label: 'Governança & Logs', orgRoles: ORG_ADMIN_ROLES },
+    { perm: 'telemetry:view', to: '/settings/governanca/metricas', label: 'Métricas', orgRoles: ORG_ADMIN_ROLES },
+    { perm: 'marketing:view', to: '/marketing/calendar', label: 'Calendário', orgRoles: ORG_AGENT_ROLES },
+    { perm: 'settings:agenda', to: '/settings/agenda', label: 'Agenda & Serviços', orgRoles: ORG_ADMIN_ROLES },
   ];
-  const visibleContractLinks = contractLinks.filter(({ perm }) => hasPerm(perm));
+
+  const visibleContractLinks = contractLinks.filter(({ perm, orgRoles }) => {
+    if (!authSource) return false;
+    if (orgRoles && !hasOrgRole(orgRoles, authSource)) return false;
+    return hasPerm(perm, authSource);
+  });
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         const { data } = await inboxApi.get('/auth/me');
-        setMe(data);
+        if (!cancelled) setMe(data);
       } catch (e) {
         console.error('auth_me_failed', e);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const showAdmin = authSource ? hasGlobalRole(['SuperAdmin'], authSource) : false;
 
   return (
     <aside
@@ -80,7 +64,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
           {collapsed ? '>' : '<'}
         </button>
       </div>
-      {!isAdmin && (
+      {!isAdminRoute && (
         <div className="p-2">
           <WorkspaceSwitcher collapsed={collapsed} />
         </div>
@@ -112,12 +96,14 @@ export default function Sidebar({ collapsed = false, onToggle }) {
           </div>
         )}
         {sidebar.map((section) => {
-          const items = section.items.filter(
-            (item) =>
-              hasRole(user?.role, item.minRole) &&
-              hasFeature(item.feature) &&
-              (!item.perm || hasPerm(item.perm, user))
-          );
+          const items = section.items.filter((item) => {
+            if (!authSource) return false;
+            if (item.orgRoles && !hasOrgRole(item.orgRoles, authSource)) return false;
+            if (item.globalRoles && !hasGlobalRole(item.globalRoles, authSource)) return false;
+            if (!hasFeature(item.feature)) return false;
+            if (item.perm && !hasPerm(item.perm, authSource)) return false;
+            return true;
+          });
           if (!items.length) return null;
           return (
             <div key={section.section} className="mb-4">
@@ -145,7 +131,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             </div>
           );
         })}
-        {me?.role === 'SuperAdmin' && (
+        {showAdmin && (
           <NavLink
             to="/admin/orgs"
             className={({ isActive }) =>

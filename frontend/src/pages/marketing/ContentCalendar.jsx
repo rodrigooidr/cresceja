@@ -13,7 +13,7 @@ import DevLogsButton from './components/DevLogsButton.jsx';
 import { mapApiErrorToForm } from '../../ui/errors/mapApiError.js';
 import { useAuth } from '../../auth/useAuth.js';
 import PermissionGate from '../../auth/PermissionGate.jsx';
-import { CAN_MANAGE_CAMPAIGNS } from '../../auth/roles.js';
+import { canManageCampaigns } from '../../auth/roles.js';
 import CampaignGenerateModal from './components/CampaignGenerateModal.jsx';
 import CampaignApproveModal from './components/CampaignApproveModal.jsx';
 import { suggestionTitle } from './lib/suggestionTitle';
@@ -41,8 +41,8 @@ export function toPatchDateTimeJS(startDate) {
 }
 
 export function isDnDEnabledForUser(user) {
-  const { CAN_MANAGE_CAMPAIGNS } = require('../../auth/roles');
-  return CAN_MANAGE_CAMPAIGNS(user);
+  const { canManageCampaigns } = require('../../auth/roles');
+  return canManageCampaigns(user);
 }
 
 export default function ContentCalendar(props = {}) {
@@ -63,7 +63,7 @@ export default function ContentCalendar(props = {}) {
   const toast = useToastFallback();
   const { user: authUser } = useAuth?.() ?? { user: null };
   const user = currentUser ?? authUser;
-  const canManage = CAN_MANAGE_CAMPAIGNS(user);
+  const canManage = canManageCampaigns(user);
   const allowed = canApprove?.(user) ?? true;
   const t = useMemo(
     () => ({
@@ -601,7 +601,7 @@ export default function ContentCalendar(props = {}) {
           <div className="text-[10px] opacity-70">{ig && 'IG '}{fb && 'FB '}{DateTime.fromJSDate(event.start).toFormat('HH:mm')}</div>
         </div>
         <div className="flex gap-1">
-          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <PermissionGate allow={canManageCampaigns}>
             <button
               data-testid="btn-approve-suggestion"
               className="text-[10px] underline"
@@ -613,7 +613,7 @@ export default function ContentCalendar(props = {}) {
               Aprovar
             </button>
           </PermissionGate>
-          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <PermissionGate allow={canManageCampaigns}>
             <button
               data-testid="btn-reject"
               className="text-[10px] underline"
@@ -625,7 +625,7 @@ export default function ContentCalendar(props = {}) {
               Rejeitar
             </button>
           </PermissionGate>
-          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <PermissionGate allow={canManageCampaigns}>
             <button
               data-testid="btn-jobs"
               className="text-[10px] underline"
@@ -655,7 +655,7 @@ export default function ContentCalendar(props = {}) {
   return (
     <div className="p-4">
       <div className="flex items-center gap-2 mb-2">
-        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+        <PermissionGate allow={canManageCampaigns}>
           <button
             data-testid="btn-generate-campaign"
             onClick={() => setShowGenerate(true)}
@@ -664,7 +664,7 @@ export default function ContentCalendar(props = {}) {
             Gerar Campanha (IA)
           </button>
         </PermissionGate>
-        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+        <PermissionGate allow={canManageCampaigns}>
           <button
             data-testid="btn-apply-ig"
             onClick={() => applyAll('ig')}
@@ -673,7 +673,7 @@ export default function ContentCalendar(props = {}) {
             Todos Instagram
           </button>
         </PermissionGate>
-        <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+        <PermissionGate allow={canManageCampaigns}>
           <button
             data-testid="btn-apply-fb"
             onClick={() => applyAll('fb')}
@@ -683,7 +683,7 @@ export default function ContentCalendar(props = {}) {
           </button>
         </PermissionGate>
         {allowed && (
-          <PermissionGate allow={CAN_MANAGE_CAMPAIGNS}>
+          <PermissionGate allow={canManageCampaigns}>
             <button
               className="border px-2 py-1"
               data-testid="btn-approve"

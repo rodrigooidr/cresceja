@@ -1,35 +1,36 @@
 // backend/middleware/requireRole.js  (ESM-safe)
 
-export const ROLES = {
-  SuperAdmin: 'superAdmin',
-  OrgAdmin: 'orgAdmin',
-  Support: 'support',
-  User: 'user',
-};
-
-function getPrimaryRole(user) {
-  if (!user) return null;
-  if (user.role) return user.role;
-  if (Array.isArray(user.roles)) return user.roles[0] ?? null;
-  return null;
-}
-
-function getUserRoles(user) {
-  if (!user) return [];
-  const list = [];
-  if (user.role) list.push(user.role);
-  if (Array.isArray(user.roles)) list.push(...user.roles);
-  return [...new Set(list.filter(Boolean))];
-}
+import {
+  GLOBAL_ROLES,
+  ORG_ROLES,
+  ROLES,
+  hasGlobalRole,
+  hasOrgRole,
+} from '../lib/permissions.js';
 
 function userHasAnyRole(user, roles = []) {
-  if (!roles?.length) return true;        // no roles required → allow
-  const list = getUserRoles(user);
-  if (!list.length) return false;
-  const set = new Set(list);
-  if (set.has(ROLES.SuperAdmin)) return true; // super admin bypass
-  return roles.some((role) => set.has(role));
+  if (!roles?.length) return true; // no roles required → allow
+  if (!user) return false;
+
+  if (hasGlobalRole(user, [ROLES.SuperAdmin])) return true;
+
+  const normalized = roles.flat().filter(Boolean);
+  if (!normalized.length) return true;
+
+  const wantedOrgRoles = normalized.filter((role) => ORG_ROLES.includes(role));
+  if (wantedOrgRoles.length && hasOrgRole(user, wantedOrgRoles)) {
+    return true;
+  }
+
+  const wantedGlobalRoles = normalized.filter((role) => GLOBAL_ROLES.includes(role));
+  if (wantedGlobalRoles.length && hasGlobalRole(user, wantedGlobalRoles)) {
+    return true;
+  }
+
+  return false;
 }
+
+export { ROLES };
 
 export function requireRole(...roles) {
   const required = roles.flat().filter(Boolean);
@@ -57,6 +58,8 @@ export function requireRole(...roles) {
  */
 export function hasSupportScope(user, scope) {
   if (!scope) return true; // no scope required
+  if (!hasGlobalRole(user, [ROLES.Support])) return false;
+
   const raw =
     user?.supportScopes ??
     user?.support_scopes ??
@@ -68,7 +71,7 @@ export function hasSupportScope(user, scope) {
   if (typeof raw === 'string') {
     const items = raw.split(/[,\s]+/).filter(Boolean);
     return items.includes(scope);
-    }
+  }
 
   if (Array.isArray(raw)) {
     return raw.includes(scope);
@@ -85,13 +88,9 @@ export function requireScope(scope) {
         return res.status(401).json({ error: 'UNAUTHENTICATED' });
       }
 
-      const role = getPrimaryRole(user);
+      if (hasGlobalRole(user, [ROLES.SuperAdmin])) return next();
 
-      // SuperAdmin bypass
-      if (role === ROLES.SuperAdmin) return next();
-
-      // Support user with proper scope
-      if ((user.is_support || role === ROLES.Support) && hasSupportScope(user, scope)) {
+      if (hasGlobalRole(user, [ROLES.Support]) && hasSupportScope(user, scope)) {
         return next();
       }
 
@@ -103,4 +102,11 @@ export function requireScope(scope) {
 }
 
 // Default export as an object for compatibility with previous CommonJS pattern
-export default { ROLES, requireRole, requireScope, hasSupportScope };
+const legacyExport = Object.assign(requireRole, {
+  ROLES,
+  requireRole,
+  requireScope,
+  hasSupportScope,
+});
+
+export default legacyExport;

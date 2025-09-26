@@ -5,6 +5,6 @@ import { useAuth } from "./useAuth";
 export default function RoleGate({ allow, redirectTo = "/" }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (!allow?.(user.role)) return <Navigate to={redirectTo} replace />;
+  if (!allow?.(user)) return <Navigate to={redirectTo} replace />;
   return <Outlet />;
 }

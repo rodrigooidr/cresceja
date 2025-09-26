@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import inboxApi, { setOrgIdHeaderProvider } from "../../api/inboxApi";
 import { useAuth } from "../../auth/useAuth";
-import { CAN_EDIT_CLIENTS } from "../../auth/roles";
+import { canEditClients } from "../../auth/roles";
 import useWhatsApp from "../../hooks/useWhatsApp.js";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 import FilterBar from "../../ui/filters/FilterBar.jsx";
@@ -16,7 +16,7 @@ function coerce(payload) {
 
 export default function ClientsPage() {
   const { user } = useAuth();
-  const canEdit = CAN_EDIT_CLIENTS(user?.role);
+  const canEdit = canEditClients(user);
   const { connected } = useWhatsApp();
   const { selected } = useOrg();
 

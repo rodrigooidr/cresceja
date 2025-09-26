@@ -59,7 +59,8 @@ describe('ContentCalendar – Bulk UI', () => {
 
   it('inicia bulk, mostra progresso e permite cancelar', async () => {
     inboxApi.__mock?.setDelay?.(120);
-    renderWithProviders(<ContentCalendar currentUser={{ role: 'SuperAdmin' }} bulkConcurrency={2} />);
+    const superAdmin = { role: 'OrgOwner', roles: ['SuperAdmin'] };
+    renderWithProviders(<ContentCalendar currentUser={superAdmin} bulkConcurrency={2} />);
 
     const job1 = await screen.findByTestId('job-checkbox-job-1');
     const job2 = await screen.findByTestId('job-checkbox-job-2');
@@ -85,7 +86,8 @@ describe('ContentCalendar – Bulk UI', () => {
     inboxApi.__mock?.setDelay?.(0);
     inboxApi.__mock?.failWith?.(/\/marketing\/suggestions\/sug-2\/approve$/, { status: 503 });
 
-    renderWithProviders(<ContentCalendar currentUser={{ role: 'SuperAdmin' }} />);
+    const superAdmin = { role: 'OrgOwner', roles: ['SuperAdmin'] };
+    renderWithProviders(<ContentCalendar currentUser={superAdmin} />);
 
     const job1 = await screen.findByTestId('job-checkbox-job-1');
     const job2 = await screen.findByTestId('job-checkbox-job-2');

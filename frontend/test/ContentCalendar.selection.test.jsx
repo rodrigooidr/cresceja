@@ -4,7 +4,8 @@ import ContentCalendar from "../src/pages/marketing/ContentCalendar.jsx";
 import inboxApi from "../src/api/inboxApi";
 
 function mountWithJobs(jobs) {
-  return render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} jobs={jobs} />);
+  const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+  return render(<ContentCalendar currentUser={superAdmin} jobs={jobs} />);
 }
 
 describe("ContentCalendar – Seleção avançada", () => {

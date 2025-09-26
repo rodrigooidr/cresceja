@@ -19,7 +19,8 @@ describe("Governança & Logs – Aprovação e Undo", () => {
 
   it("loga undo (revert) com sucesso", async () => {
     const jobs = [{ id: "j4", title: "D", suggestionId: "s4" }];
-    render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} jobs={jobs} undoTtlMs={1000} />);
+    const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+    render(<ContentCalendar currentUser={superAdmin} jobs={jobs} undoTtlMs={1000} />);
 
     let undoAction = null;
     window.toast.mockImplementation((payload) => {
@@ -52,7 +53,8 @@ describe("Governança & Logs – Aprovação e Undo", () => {
 
   it("loga sucesso de aprovação", async () => {
     const jobs = [{ id: "j1", title: "A", suggestionId: "s1" }];
-    render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} jobs={jobs} />);
+    const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+    render(<ContentCalendar currentUser={superAdmin} jobs={jobs} />);
 
     fireEvent.click(screen.getByTestId("job-checkbox-j1"));
     fireEvent.click(screen.getByTestId("bulk-start"));
@@ -69,7 +71,8 @@ describe("Governança & Logs – Aprovação e Undo", () => {
     inboxApi.__mock.failWith(/\/marketing\/suggestions\/s2\/approve$/, { status: 503 });
 
     const jobs = [{ id: "j2", title: "B", suggestionId: "s2" }];
-    const view = render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} jobs={jobs} />);
+    const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+    const view = render(<ContentCalendar currentUser={superAdmin} jobs={jobs} />);
 
     fireEvent.click(screen.getByTestId("job-checkbox-j2"));
     fireEvent.click(screen.getByTestId("bulk-start"));
@@ -84,7 +87,7 @@ describe("Governança & Logs – Aprovação e Undo", () => {
     inboxApi.__mock.failWith(/\/marketing\/suggestions\/s3\/approve$/, { status: 503 });
 
     view.rerender(
-      <ContentCalendar currentUser={{ role: "SuperAdmin" }} jobs={[{ id: "j3", title: "C", suggestionId: "s3" }]} />
+      <ContentCalendar currentUser={{ role: "OrgOwner", roles: ["SuperAdmin"] }} jobs={[{ id: "j3", title: "C", suggestionId: "s3" }]} />
     );
     fireEvent.click(screen.getByTestId("job-checkbox-j3"));
     fireEvent.click(screen.getByTestId("bulk-start"));

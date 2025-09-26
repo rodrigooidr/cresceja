@@ -1,6 +1,6 @@
 // Impersonação de Org por Support/SuperAdmin com auditoria
 
-import { ROLES, SUPPORT_SCOPES } from '../lib/permissions.js';
+import { ROLES, SUPPORT_SCOPES, hasGlobalRole } from '../lib/permissions.js';
 import { query } from '#db';
 
 export async function impersonation(req, res, next) {
@@ -16,7 +16,10 @@ export async function impersonation(req, res, next) {
     const headerOrg = req.header('x-impersonate-org-id') || req.query.impersonate_org_id;
 
     if (headerOrg) {
-      if (user.role === ROLES.SuperAdmin || (user.is_support && user.support_scopes?.includes(SUPPORT_SCOPES.impersonate))) {
+      const canImpersonate =
+        hasGlobalRole(user, [ROLES.SuperAdmin]) ||
+        (hasGlobalRole(user, [ROLES.Support]) && user.support_scopes?.includes(SUPPORT_SCOPES.impersonate));
+      if (canImpersonate) {
         req.orgId = headerOrg;
         req.impersonating = true;
 

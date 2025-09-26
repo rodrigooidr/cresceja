@@ -52,7 +52,7 @@ const renderPage = async () => {
 describe('quick actions bulk', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    localStorage.setItem('user', JSON.stringify({ id: 99, role: 'org_admin' }));
+    localStorage.setItem('user', JSON.stringify({ id: 99, role: 'OrgAdmin' }));
   });
 
   test('uses bulk endpoint when available', async () => {

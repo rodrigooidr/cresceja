@@ -25,7 +25,8 @@ describe("ContentCalendar – Undo + atalhos", () => {
     inboxApi.post = jest.fn(origPost);
 
     try {
-      render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} jobs={jobs} undoTtlMs={1000} />);
+      const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+      render(<ContentCalendar currentUser={superAdmin} jobs={jobs} undoTtlMs={1000} />);
 
       const cb = screen.getByTestId("job-checkbox-j1");
       fireEvent.click(cb);
@@ -56,7 +57,8 @@ describe("ContentCalendar – Undo + atalhos", () => {
       { id: "j1", title: "A", suggestionId: "s1" },
       { id: "j2", title: "B", suggestionId: "s2" },
     ];
-    render(<ContentCalendar currentUser={{ role: "SuperAdmin" }} jobs={jobs} />);
+    const superAdmin = { role: "OrgOwner", roles: ["SuperAdmin"] };
+    render(<ContentCalendar currentUser={superAdmin} jobs={jobs} />);
 
     fireEvent.keyDown(document, { key: "a", ctrlKey: true });
     expect(screen.getByTestId("job-checkbox-j1")).toBeChecked();
