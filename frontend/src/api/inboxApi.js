@@ -305,5 +305,34 @@ export function setImpersonateOrgId(orgId) {
   } catch {}
 }
 
+function withGlobalScope(options = {}) {
+  const next = { ...(options || {}) };
+  next.meta = { ...(options?.meta || {}) };
+  if (!next.meta.scope) next.meta.scope = "global";
+  return next;
+}
+
+export async function listAdminOrgs(status = "active", options = {}) {
+  const config = withGlobalScope(options);
+  config.params = { ...(config.params || {}), status };
+  return inboxApi.get(`/admin/orgs`, config);
+}
+
+export async function patchAdminOrg(orgId, payload, options = {}) {
+  return inboxApi.patch(`/admin/orgs/${orgId}`, payload, withGlobalScope(options));
+}
+
+export async function putAdminOrgPlan(orgId, payload, options = {}) {
+  return inboxApi.put(`/admin/orgs/${orgId}/plan`, payload, withGlobalScope(options));
+}
+
+export async function patchAdminOrgCredits(orgId, payload, options = {}) {
+  return inboxApi.patch(`/admin/orgs/${orgId}/credits`, payload, withGlobalScope(options));
+}
+
+export async function getPlanSummary(orgId, options = {}) {
+  return inboxApi.get(`/orgs/${orgId}/plan/summary`, options);
+}
+
 export default inboxApi;
 export { setOrgIdHeaderProvider } from "./orgHeader.js";

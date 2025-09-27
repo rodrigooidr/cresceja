@@ -48,6 +48,41 @@ const state = {
       { name: "No-show", count: 5 }
     ]
   },
+  adminOrgs: [
+    {
+      id: "org-1",
+      name: "Org Demo 1",
+      slug: "org-demo-1",
+      status: "active",
+      plan_id: "starter",
+      plan_name: "Starter",
+      trial_ends_at: "2024-12-31",
+    },
+    {
+      id: "org-2",
+      name: "Org Demo 2",
+      slug: "org-demo-2",
+      status: "inactive",
+      plan_id: "pro",
+      plan_name: "Pro",
+      trial_ends_at: null,
+    },
+  ],
+  planSummaryByOrg: {
+    "org-1": {
+      org: {
+        id: "org-1",
+        name: "Org Demo 1",
+        slug: "org-demo-1",
+        plan_id: "starter",
+        status: "active",
+        trial_ends_at: "2024-12-31",
+      },
+      credits: [
+        { feature_code: "whatsapp", remaining_total: 1000, expires_next: "2025-01-31" },
+      ],
+    },
+  },
   publicPlans: {
     items: [
       { id: "free", name: "Grátis", price_cents: 0, trial_days: 7, features: ["1 usuário", "100 mensagens/mês"] },
@@ -130,6 +165,40 @@ async function _get(path, config = {}) {
         ? await handler({ url, method: 'GET', config })
         : handler;
       return res(out?.data ?? out);
+    }
+  }
+
+  if (url === "/admin/orgs") {
+    const status = config?.params?.status || "active";
+    const q = String(config?.params?.q || config?.params?.search || "").toLowerCase();
+    const rows = state.adminOrgs.filter((org) => {
+      const matchesStatus = status === "all" || org.status === status;
+      if (!matchesStatus) return false;
+      if (!q) return true;
+      const target = `${org.name || ""} ${org.slug || ""} ${org.document_value || ""}`.toLowerCase();
+      return target.includes(q);
+    });
+    return res({ data: rows, count: rows.length });
+  }
+
+  {
+    const m = match(/^\/orgs\/([^/]+)\/plan\/summary$/, url);
+    if (m) {
+      const orgId = m[0];
+      const summary = state.planSummaryByOrg[orgId];
+      if (summary) return res(summary);
+      const fallbackOrg = state.adminOrgs.find((org) => org.id === orgId);
+      return res({
+        org: fallbackOrg || {
+          id: orgId,
+          name: `Org ${orgId}`,
+          slug: orgId,
+          plan_id: null,
+          status: "active",
+          trial_ends_at: null,
+        },
+        credits: [],
+      });
     }
   }
 
@@ -253,6 +322,58 @@ async function _post(path, body = {}, config = {}) {
   return res({ error: "NOT_FOUND", path: url }, 404);
 }
 
+async function _patch(path, body = {}, config = {}) {
+  if (__delayMs) await sleep(__delayMs);
+  const url = parse(path);
+
+  {
+    const route = findRoute('patch', url);
+    if (route) {
+      const handler = route.handler;
+      const out = typeof handler === 'function'
+        ? await handler({ url, method: 'PATCH', body, config })
+        : handler;
+      return res(out?.data ?? out);
+    }
+  }
+
+  {
+    const m = match(/^\/admin\/orgs\/([^/]+)$/, url);
+    if (m) {
+      const orgId = m[0];
+      const idx = state.adminOrgs.findIndex((org) => org.id === orgId);
+      const current = idx >= 0 ? state.adminOrgs[idx] : { id: orgId };
+      const updated = { ...current, ...(body || {}) };
+      if (idx >= 0) state.adminOrgs[idx] = updated; else state.adminOrgs.push(updated);
+      const summary = state.planSummaryByOrg[orgId];
+      if (summary) {
+        summary.org = { ...(summary.org || {}), ...updated };
+      } else {
+        state.planSummaryByOrg[orgId] = { org: { ...updated }, credits: [] };
+      }
+      return res({ ok: true, org: updated });
+    }
+  }
+
+  {
+    const m = match(/^\/admin\/orgs\/([^/]+)\/credits$/, url);
+    if (m) {
+      const orgId = m[0];
+      const summary = state.planSummaryByOrg[orgId] || (state.planSummaryByOrg[orgId] = { org: { id: orgId }, credits: [] });
+      const nextCredit = {
+        feature_code: body?.feature_code || "",
+        remaining_total: body?.delta ?? 0,
+        expires_next: body?.expires_at || null,
+      };
+      if (!Array.isArray(summary.credits)) summary.credits = [];
+      summary.credits.push(nextCredit);
+      return res({ ok: true });
+    }
+  }
+
+  return res({ error: "NOT_FOUND", path: url }, 404);
+}
+
 async function _put(path, body = {}, config = {}) {
   if (__delayMs) await sleep(__delayMs);
   const url = parse(path);
@@ -265,6 +386,25 @@ async function _put(path, body = {}, config = {}) {
         ? await handler({ url, method: 'PUT', body, config })
         : handler;
       return res(out?.data ?? out);
+    }
+  }
+
+  {
+    const m = match(/^\/admin\/orgs\/([^/]+)\/plan$/, url);
+    if (m) {
+      const orgId = m[0];
+      const idx = state.adminOrgs.findIndex((org) => org.id === orgId);
+      const current = idx >= 0 ? state.adminOrgs[idx] : { id: orgId };
+      const planId = body?.plan_id ?? current.plan_id ?? null;
+      const trial = body?.trial_ends_at ?? current.trial_ends_at ?? null;
+      const nextStatus = body?.status ?? current.status ?? "active";
+      const updated = { ...current, plan_id: planId, status: nextStatus, trial_ends_at: trial };
+      if (idx >= 0) state.adminOrgs[idx] = updated; else state.adminOrgs.push(updated);
+
+      const summary = state.planSummaryByOrg[orgId] || (state.planSummaryByOrg[orgId] = { org: { id: orgId }, credits: [] });
+      summary.org = { ...(summary.org || {}), ...updated };
+
+      return res({ ok: true, org: summary.org });
     }
   }
 
@@ -294,6 +434,7 @@ const inboxApi = {
   get: _get,
   post: _post,
   put: _put,
+  patch: _patch,
   delete: _delete,
 
   // utilitários para testes
@@ -304,6 +445,8 @@ const inboxApi = {
     if (partial.kbByOrg) state.kbByOrg = { ...state.kbByOrg, ...partial.kbByOrg };
     if (partial.telemetryFunnel) state.telemetryFunnel = { ...state.telemetryFunnel, ...partial.telemetryFunnel };
     if (partial.publicPlans) state.publicPlans = { ...state.publicPlans, ...partial.publicPlans };
+    if (partial.adminOrgs) state.adminOrgs = Array.isArray(partial.adminOrgs) ? partial.adminOrgs.map((org) => ({ ...org })) : state.adminOrgs;
+    if (partial.planSummaryByOrg) state.planSummaryByOrg = { ...state.planSummaryByOrg, ...partial.planSummaryByOrg };
   },
   __mockRoute(...args) {
     const entry = normalizeRouteArgs(...args);
@@ -314,5 +457,58 @@ const inboxApi = {
     state.routes.length = 0;
   }
 };
+
+function callListAdminOrgs(status = "active", options = {}) {
+  const cfg = { ...(options || {}) };
+  cfg.params = { ...(cfg.params || {}), status };
+  return inboxApi.get(`/admin/orgs`, cfg);
+}
+
+function callPatchAdminOrg(orgId, payload, options = {}) {
+  return inboxApi.patch(`/admin/orgs/${orgId}`, payload, options);
+}
+
+function callPutAdminOrgPlan(orgId, payload, options = {}) {
+  return inboxApi.put(`/admin/orgs/${orgId}/plan`, payload, options);
+}
+
+function callPatchAdminOrgCredits(orgId, payload, options = {}) {
+  return inboxApi.patch(`/admin/orgs/${orgId}/credits`, payload, options);
+}
+
+function callGetPlanSummary(orgId, options = {}) {
+  return inboxApi.get(`/orgs/${orgId}/plan/summary`, options);
+}
+
+export const listAdminOrgs =
+  typeof jest !== "undefined"
+    ? jest.fn(callListAdminOrgs)
+    : callListAdminOrgs;
+
+export const patchAdminOrg =
+  typeof jest !== "undefined"
+    ? jest.fn(callPatchAdminOrg)
+    : callPatchAdminOrg;
+
+export const putAdminOrgPlan =
+  typeof jest !== "undefined"
+    ? jest.fn(callPutAdminOrgPlan)
+    : callPutAdminOrgPlan;
+
+export const patchAdminOrgCredits =
+  typeof jest !== "undefined"
+    ? jest.fn(callPatchAdminOrgCredits)
+    : callPatchAdminOrgCredits;
+
+export const getPlanSummary =
+  typeof jest !== "undefined"
+    ? jest.fn(callGetPlanSummary)
+    : callGetPlanSummary;
+
+inboxApi.listAdminOrgs = listAdminOrgs;
+inboxApi.patchAdminOrg = patchAdminOrg;
+inboxApi.putAdminOrgPlan = putAdminOrgPlan;
+inboxApi.patchAdminOrgCredits = patchAdminOrgCredits;
+inboxApi.getPlanSummary = getPlanSummary;
 
 export default inboxApi;

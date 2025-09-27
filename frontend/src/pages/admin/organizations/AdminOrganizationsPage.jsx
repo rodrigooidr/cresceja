@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import inboxApi from "../../../api/inboxApi";
+import inboxApi, { listAdminOrgs, patchAdminOrg } from "../../../api/inboxApi";
 import AdminOrgEditModal from "./AdminOrgEditModal.jsx";
 
 const STATUS_FILTERS = [
@@ -37,13 +37,12 @@ export default function AdminOrganizationsPage() {
     (async () => {
       setState((prev) => ({ ...prev, loading: true, error: "" }));
       try {
-        const { data } = await inboxApi.get("/admin/orgs", {
+        const response = await listAdminOrgs(statusFilter, {
           params: {
-            status: statusFilter,
             q: debouncedSearch || undefined,
           },
-          meta: { scope: "global" },
         });
+        const { data } = response || {};
         if (cancelled) return;
         const list = Array.isArray(data?.data)
           ? data.data
@@ -74,11 +73,7 @@ export default function AdminOrganizationsPage() {
     if (!org?.id) return;
     const nextStatus = org.status === "active" ? "inactive" : "active";
     try {
-      await inboxApi.patch(
-        `/admin/orgs/${org.id}`,
-        { status: nextStatus },
-        { meta: { scope: "global" } },
-      );
+      await patchAdminOrg(org.id, { status: nextStatus });
       setState((prev) => ({
         ...prev,
         items: prev.items.map((item) =>

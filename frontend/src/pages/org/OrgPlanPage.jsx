@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import inboxApi from "../../api/inboxApi";
+import inboxApi, { getPlanSummary } from "../../api/inboxApi";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 
 function formatDate(value) {
@@ -27,7 +27,7 @@ export default function OrgPlanPage() {
     setState((s) => ({ ...s, loading: true, error: "" }));
     try {
       const [summaryRes, plansRes] = await Promise.all([
-        inboxApi.get(`/orgs/${selected}/plan/summary`),
+        getPlanSummary(selected),
         inboxApi.get("/public/plans", { meta: { noAuth: true } }),
       ]);
 
@@ -141,7 +141,7 @@ export default function OrgPlanPage() {
         {state.loading && !state.summary ? (
           <div className="mt-4 text-sm text-gray-500">Carregando…</div>
         ) : !state.summary?.credits?.length ? (
-          <div className="mt-4 text-sm text-gray-500">Nenhum crédito registrado.</div>
+          <div className="mt-4 text-sm text-gray-500">Sem créditos.</div>
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
