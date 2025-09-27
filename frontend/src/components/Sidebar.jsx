@@ -98,8 +98,14 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         {sidebar.map((section) => {
           const items = section.items.filter((item) => {
             if (!authSource) return false;
-            if (item.orgRoles && !hasOrgRole(item.orgRoles, authSource)) return false;
-            if (item.globalRoles && !hasGlobalRole(item.globalRoles, authSource)) return false;
+            const okOrg = item.orgRoles ? hasOrgRole(item.orgRoles, authSource) : false;
+            const okGlobal = item.globalRoles ? hasGlobalRole(item.globalRoles, authSource) : false;
+            if (item.orgRoles && item.globalRoles) {
+              if (!okOrg && !okGlobal) return false;
+            } else {
+              if (item.orgRoles && !okOrg) return false;
+              if (item.globalRoles && !okGlobal) return false;
+            }
             if (!hasFeature(item.feature)) return false;
             if (item.perm && !hasPerm(item.perm, authSource)) return false;
             return true;

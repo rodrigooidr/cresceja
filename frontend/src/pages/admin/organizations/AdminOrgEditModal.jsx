@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
-import inboxApi from "../../../api/inboxApi";
+import inboxApi, {
+  patchAdminOrg,
+  patchAdminOrgCredits,
+  putAdminOrgPlan,
+} from "../../../api/inboxApi";
 
 function toInputDate(value) {
   if (!value) return "";
@@ -195,9 +199,7 @@ export default function AdminOrgEditModal({ open, org, onClose, onSaved }) {
         payload.meta = {};
       }
 
-      const { data } = await inboxApi.patch(`/admin/orgs/${org.id}`, payload, {
-        meta: { scope: "global" },
-      });
+      const { data } = await patchAdminOrg(org.id, payload);
 
       if (data?.org) {
         setForm((prev) => ({
@@ -243,18 +245,14 @@ export default function AdminOrgEditModal({ open, org, onClose, onSaved }) {
 
     setHistorySaving(true);
     try {
-      await inboxApi.put(
-        `/admin/orgs/${org.id}/plan`,
-        {
-          plan_id: nextPlanId,
-          status: historyForm.status || "active",
-          start_at: historyForm.start_at || null,
-          end_at: historyForm.end_at || null,
-          trial_ends_at: historyForm.trial_ends_at || null,
-          meta: metaPayload,
-        },
-        { meta: { scope: "global" } },
-      );
+      await putAdminOrgPlan(org.id, {
+        plan_id: nextPlanId,
+        status: historyForm.status || "active",
+        start_at: historyForm.start_at || null,
+        end_at: historyForm.end_at || null,
+        trial_ends_at: historyForm.trial_ends_at || null,
+        meta: metaPayload,
+      });
 
       const nextTrial = historyForm.trial_ends_at || form.trial_ends_at || null;
       setForm((prev) => ({ ...prev, plan_id: nextPlanId || "", trial_ends_at: nextTrial || "" }));
@@ -301,17 +299,13 @@ export default function AdminOrgEditModal({ open, org, onClose, onSaved }) {
 
     setCreditsSaving(true);
     try {
-      await inboxApi.patch(
-        `/admin/orgs/${org.id}/credits`,
-        {
-          feature_code: creditsForm.feature_code.trim(),
-          delta: Number(creditsForm.delta),
-          expires_at: creditsForm.expires_at || null,
-          source: creditsForm.source || null,
-          meta: metaPayload,
-        },
-        { meta: { scope: "global" } },
-      );
+      await patchAdminOrgCredits(org.id, {
+        feature_code: creditsForm.feature_code.trim(),
+        delta: Number(creditsForm.delta),
+        expires_at: creditsForm.expires_at || null,
+        source: creditsForm.source || null,
+        meta: metaPayload,
+      });
 
       setCreditsMessage("Crédito registrado com sucesso.");
       setCreditsForm({ feature_code: "", delta: "", expires_at: "", source: creditsForm.source || "manual", meta: "" });
@@ -499,7 +493,9 @@ export default function AdminOrgEditModal({ open, org, onClose, onSaved }) {
               className="mt-2 w-full rounded border px-3 py-2 font-mono text-sm"
               value={form.metaText}
               onChange={handleField("metaText")}
-              placeholder="{\n  \"notes\": \"...\"\n}"
+              placeholder={`{
+  "notes": "..."
+}`}
             />
             <p className="mt-1 text-xs text-gray-500">Deixe em branco para manter. Envie um objeto JSON válido.</p>
           </section>
