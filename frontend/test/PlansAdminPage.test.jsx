@@ -9,13 +9,14 @@ test('renderiza e carrega primeiro plano', async () => {
   inboxApi.__mockRoute('GET', '/admin/plans', () => ({ data: [{ id: 'plan1', name: 'Plano 1' }] }));
   inboxApi.__mockRoute('GET', /\/admin\/plans\/plan1\/features/, () => ({
     data: [
-      { code: 'whatsapp_numbers', label: 'N\u00fameros WhatsApp', type: 'number', value: { enabled: true, limit: 1 } },
-      { code: 'post_tipo', label: 'Tipo de Post', type: 'enum', options: ['Imagem','V\u00eddeo'], value: 'Imagem' },
+      { code: 'whatsapp_numbers', label: 'Números WhatsApp', type: 'number', value: { enabled: true, limit: 1 } },
+      { code: 'whatsapp_mode_baileys', label: 'Baileys', type: 'boolean', value: { enabled: false } },
     ],
   }));
 
   renderApp(<PlansAdminPage />, { route: '/admin/plans' });
-  const title = await screen.findByRole('heading', { name: /Configura\u00e7\u00f5es do plano/i });
+  const title = await screen.findByTestId('plans-admin-title');
   expect(title).toBeInTheDocument();
   await actTick();
+  expect(await screen.findByTestId('plans-admin-form')).toBeInTheDocument();
 });

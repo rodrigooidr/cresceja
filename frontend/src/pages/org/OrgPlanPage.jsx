@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import inboxApi, { getPlanSummary } from "../../api/inboxApi";
 import { useOrg } from "../../contexts/OrgContext.jsx";
+import { useAuth } from "../../contexts/AuthContext";
+import { hasGlobalRole, hasOrgRole } from "../../auth/roles";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -15,6 +17,11 @@ function formatDate(value) {
 
 export default function OrgPlanPage() {
   const { selected, orgs } = useOrg();
+  const { user } = useAuth();
+  const canViewPlan = useMemo(
+    () => hasOrgRole(["OrgAdmin", "OrgOwner"], user) || hasGlobalRole(["SuperAdmin"], user),
+    [user]
+  );
   const [state, setState] = useState({
     loading: false,
     error: "",
@@ -23,7 +30,7 @@ export default function OrgPlanPage() {
   });
 
   const load = useCallback(async () => {
-    if (!selected) return;
+    if (!selected || !canViewPlan) return;
     setState((s) => ({ ...s, loading: true, error: "" }));
     try {
       const [summaryRes, plansRes] = await Promise.all([
@@ -51,15 +58,19 @@ export default function OrgPlanPage() {
         "Não foi possível carregar agora.";
       setState((s) => ({ ...s, loading: false, error: message, summary: null }));
     }
-  }, [selected]);
+  }, [selected, canViewPlan]);
 
   useEffect(() => {
+    if (!canViewPlan) {
+      setState((s) => ({ ...s, summary: null, error: "" }));
+      return;
+    }
     if (!selected) {
       setState((s) => ({ ...s, summary: null }));
       return;
     }
     load();
-  }, [selected, load]);
+  }, [selected, load, canViewPlan]);
 
   const planLabel = useMemo(() => {
     const org = state.summary?.org;
@@ -71,6 +82,15 @@ export default function OrgPlanPage() {
     const org = orgs?.find((item) => item.id === selected);
     return org?.name || state.summary?.org?.name || "";
   }, [orgs, selected, state.summary]);
+
+  if (!canViewPlan) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold mb-2">Meu Plano</h1>
+        <p className="text-sm text-gray-600">Você não tem permissão para visualizar os detalhes do plano.</p>
+      </div>
+    );
+  }
 
   if (!selected) {
     return (

@@ -3,6 +3,23 @@ import inboxApi, { listAdminOrgs } from "../api/inboxApi";
 import { useAuth } from "../contexts/AuthContext";
 import { hasGlobalRole } from "../auth/roles";
 
+async function loadAdminOrgs(status = "active") {
+  const res = await listAdminOrgs(status);
+  const data = res?.data;
+  const raw = Array.isArray(data?.data)
+    ? data.data
+    : Array.isArray(data?.items)
+    ? data.items
+    : Array.isArray(data)
+    ? data
+    : [];
+  return raw.map((org) => ({
+    id: org.id,
+    name: org.name ?? org.company?.name ?? "Org",
+    slug: org.slug ?? org.handle ?? null,
+  }));
+}
+
 export default function WorkspaceSwitcher({ collapsed = false }) {
   const [orgs, setOrgs] = useState([]);
   const [current, setCurrent] = useState('');
@@ -18,22 +35,10 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
 
     (async () => {
       try {
-        if (hasGlobalRole(['SuperAdmin', 'Support'], user)) {
-          const response = await listAdminOrgs('active');
+        const isGlobalAdmin = hasGlobalRole(['SuperAdmin', 'Support'], user);
+        if (isGlobalAdmin) {
+          const mapped = await loadAdminOrgs('active');
           if (!alive) return;
-          const payload = response?.data;
-          const rows = Array.isArray(payload?.data)
-            ? payload.data
-            : Array.isArray(payload?.items)
-            ? payload.items
-            : Array.isArray(payload)
-            ? payload
-            : [];
-          const mapped = rows.map((org) => ({
-            id: org.id,
-            name: org.name ?? org.company?.name ?? 'Org',
-            slug: org.slug ?? org.handle ?? null,
-          }));
           const storedCurrent = localStorage.getItem('org_id') || localStorage.getItem('active_org_id') || '';
           const nextCurrent = storedCurrent || (mapped[0]?.id ?? '');
           setOrgs(mapped);
