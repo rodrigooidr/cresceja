@@ -17,6 +17,8 @@ const ROLES =
 
 const r = Router();
 
+r.use(requireRole(ROLES.SuperAdmin, ROLES.Support));
+
 function buildOrgFilters(query) {
   const params = [];
   const parts = [];
@@ -64,6 +66,7 @@ r.get('/orgs', async (req, res, next) => {
         o.name,
         o.slug,
         o.status,
+        (o.status = 'active') AS active,
         o.plan_id,
         p.name AS plan_name,
         p.price_cents,
@@ -175,6 +178,7 @@ r.patch('/orgs/:orgId', async (req, res, next) => {
          o.name,
          o.slug,
          o.status,
+         (o.status = 'active') AS active,
          o.plan_id,
          p.name AS plan_name,
          o.trial_ends_at,
