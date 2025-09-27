@@ -124,7 +124,9 @@ router.get(
       const { orgId } = req.params;
 
       const { rows: orgRows } = await client.query(
-        `SELECT id, name, status, plan_id, trial_ends_at FROM public.organizations WHERE id=$1`,
+        `SELECT id, name, slug, status, plan_id, trial_ends_at
+           FROM public.organizations
+          WHERE id=$1`,
         [orgId],
       );
 
