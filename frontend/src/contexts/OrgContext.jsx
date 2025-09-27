@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import inboxApi, { setActiveOrg } from "../api/inboxApi";
+import inboxApi, { listAdminOrgs, setActiveOrg } from "../api/inboxApi";
 import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
@@ -88,7 +88,6 @@ export function OrgProvider({ children }) {
 
       setLoading(true);
       try {
-        const endpoint = visibility === "all" ? "admin/orgs" : "orgs/accessible"; // sem barra inicial
         const params = {
           q: qArg || undefined,
           search: qArg || undefined,     // manda ambos para compatibilidade
@@ -97,23 +96,27 @@ export function OrgProvider({ children }) {
           status: visibility === 'all' ? 'all' : undefined,
         };
 
-        // Use inboxApi e marque escopo global (sem X-Org-Id)
         let data;
-        try {
-          ({ data } = await inboxApi.get(endpoint, {
+        if (visibility === "all") {
+          const statusArg = params.status || "all";
+          try {
+            const response = await listAdminOrgs(statusArg, { params });
+            data = response?.data;
+          } catch (err) {
+            if (err?.response?.status === 403) {
+              ({ data } = await inboxApi.get("orgs/accessible", {
+                params,
+                meta: { scope: "global" },
+              }));
+            } else {
+              throw err;
+            }
+          }
+        } else {
+          ({ data } = await inboxApi.get("orgs/accessible", {
             params,
             meta: { scope: "global" },
           }));
-        } catch (err) {
-          // Se /admin/orgs for 403, tenta /orgs/accessible
-          if (visibility === "all" && err?.response?.status === 403) {
-            ({ data } = await inboxApi.get("orgs/accessible", {
-              params,
-              meta: { scope: "global" },
-            }));
-          } else {
-            throw err;
-          }
         }
 
         // Normaliza vários formatos: {items,total} | {data,count} | array

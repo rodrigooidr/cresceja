@@ -83,6 +83,42 @@ const state = {
       ],
     },
   },
+  adminPlans: [
+    { id: "starter", name: "Starter", period: "monthly", price_cents: 0 },
+    { id: "pro", name: "Pro", period: "monthly", price_cents: 9900 },
+  ],
+  planFeaturesByPlan: {
+    starter: [
+      { code: "posts", label: "Posts", type: "number", value: { enabled: true, limit: 50 } },
+      {
+        code: "whatsapp_numbers",
+        label: "Números WhatsApp",
+        type: "number",
+        value: { enabled: true, limit: 1 },
+      },
+      {
+        code: "whatsapp_mode_baileys",
+        label: "Baileys",
+        type: "boolean",
+        value: { enabled: false },
+      },
+    ],
+    pro: [
+      { code: "posts", label: "Posts", type: "number", value: { enabled: true, limit: 500 } },
+      {
+        code: "whatsapp_numbers",
+        label: "Números WhatsApp",
+        type: "number",
+        value: { enabled: true, limit: 5 },
+      },
+      {
+        code: "whatsapp_mode_baileys",
+        label: "Baileys",
+        type: "boolean",
+        value: { enabled: true },
+      },
+    ],
+  },
   publicPlans: {
     items: [
       { id: "free", name: "Grátis", price_cents: 0, trial_days: 7, features: ["1 usuário", "100 mensagens/mês"] },
@@ -181,6 +217,33 @@ async function _get(path, config = {}) {
     return res({ data: rows, count: rows.length });
   }
 
+  if (url === "/admin/plans") {
+    const rows = state.adminPlans.map((plan) => ({ ...plan }));
+    return res({ data: rows, count: rows.length });
+  }
+
+  {
+    const m = match(/^\/admin\/plans\/([^/]+)\/features$/, url);
+    if (m) {
+      const planId = m[0];
+      const features = state.planFeaturesByPlan[planId];
+      if (features) {
+        const cloned = features.map((f) => {
+          const value = f?.value;
+          if (Array.isArray(value)) {
+            return { ...f, value: value.map((item) => (item && typeof item === 'object' ? { ...item } : item)) };
+          }
+          if (value && typeof value === 'object') {
+            return { ...f, value: { ...value } };
+          }
+          return { ...f };
+        });
+        return res({ data: cloned });
+      }
+      return res({ data: [] });
+    }
+  }
+
   {
     const m = match(/^\/orgs\/([^/]+)\/plan\/summary$/, url);
     if (m) {
@@ -266,6 +329,37 @@ async function _post(path, body = {}, config = {}) {
     if (m) {
       return res({ ok: true, indexed: (state.kbByOrg[m[0]] || []).length });
     }
+  }
+
+  if (url === "/admin/plans") {
+    const now = Date.now();
+    const name = body?.name || `Plano ${state.adminPlans.length + 1}`;
+    const id = body?.id || body?.slug || `plan-${now}`;
+    const plan = {
+      id,
+      name,
+      period: body?.period || "monthly",
+      price_cents: body?.price_cents ?? 0,
+    };
+    state.adminPlans.push(plan);
+    if (!state.planFeaturesByPlan[id]) {
+      state.planFeaturesByPlan[id] = [
+        { code: "posts", label: "Posts", type: "number", value: { enabled: true, limit: 50 } },
+        {
+          code: "whatsapp_numbers",
+          label: "Números WhatsApp",
+          type: "number",
+          value: { enabled: true, limit: 1 },
+        },
+        {
+          code: "whatsapp_mode_baileys",
+          label: "Baileys",
+          type: "boolean",
+          value: { enabled: false },
+        },
+      ];
+    }
+    return res(plan, 201);
   }
 
   // POST /orgs/:id/ai/test
@@ -390,6 +484,44 @@ async function _put(path, body = {}, config = {}) {
   }
 
   {
+    const m = match(/^\/admin\/plans\/([^/]+)$/, url);
+    if (m) {
+      const planId = m[0];
+      const idx = state.adminPlans.findIndex((plan) => plan.id === planId);
+      const current = idx >= 0 ? state.adminPlans[idx] : { id: planId };
+      const updated = {
+        ...current,
+        ...(body || {}),
+        id: planId,
+      };
+      if (idx >= 0) state.adminPlans[idx] = updated;
+      else state.adminPlans.push(updated);
+      return res(updated);
+    }
+  }
+
+  {
+    const m = match(/^\/admin\/plans\/([^/]+)\/features$/, url);
+    if (m) {
+      const planId = m[0];
+      const raw = Array.isArray(body?.features)
+        ? body.features
+        : Array.isArray(body)
+        ? body
+        : [];
+      const normalized = raw.map((feature) => {
+        const value = feature?.value;
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          return { ...feature, value: { ...value } };
+        }
+        return { ...feature };
+      });
+      state.planFeaturesByPlan[planId] = normalized;
+      return res({ ok: true, data: normalized });
+    }
+  }
+
+  {
     const m = match(/^\/admin\/orgs\/([^/]+)\/plan$/, url);
     if (m) {
       const orgId = m[0];
@@ -447,6 +579,8 @@ const inboxApi = {
     if (partial.publicPlans) state.publicPlans = { ...state.publicPlans, ...partial.publicPlans };
     if (partial.adminOrgs) state.adminOrgs = Array.isArray(partial.adminOrgs) ? partial.adminOrgs.map((org) => ({ ...org })) : state.adminOrgs;
     if (partial.planSummaryByOrg) state.planSummaryByOrg = { ...state.planSummaryByOrg, ...partial.planSummaryByOrg };
+    if (partial.adminPlans) state.adminPlans = Array.isArray(partial.adminPlans) ? partial.adminPlans.map((plan) => ({ ...plan })) : state.adminPlans;
+    if (partial.planFeaturesByPlan) state.planFeaturesByPlan = { ...state.planFeaturesByPlan, ...partial.planFeaturesByPlan };
   },
   __mockRoute(...args) {
     const entry = normalizeRouteArgs(...args);
@@ -480,6 +614,26 @@ function callGetPlanSummary(orgId, options = {}) {
   return inboxApi.get(`/orgs/${orgId}/plan/summary`, options);
 }
 
+function callListAdminPlans(options = {}) {
+  return inboxApi.get(`/admin/plans`, options);
+}
+
+function callCreatePlan(payload, options = {}) {
+  return inboxApi.post(`/admin/plans`, payload, options);
+}
+
+function callUpdatePlan(planId, payload, options = {}) {
+  return inboxApi.put(`/admin/plans/${planId}`, payload, options);
+}
+
+function callGetPlanFeatures(planId, options = {}) {
+  return inboxApi.get(`/admin/plans/${planId}/features`, options);
+}
+
+function callSetPlanFeatures(planId, features, options = {}) {
+  return inboxApi.put(`/admin/plans/${planId}/features`, features, options);
+}
+
 export const listAdminOrgs =
   typeof jest !== "undefined"
     ? jest.fn(callListAdminOrgs)
@@ -505,10 +659,40 @@ export const getPlanSummary =
     ? jest.fn(callGetPlanSummary)
     : callGetPlanSummary;
 
+export const listAdminPlans =
+  typeof jest !== "undefined"
+    ? jest.fn(callListAdminPlans)
+    : callListAdminPlans;
+
+export const createPlan =
+  typeof jest !== "undefined"
+    ? jest.fn(callCreatePlan)
+    : callCreatePlan;
+
+export const updatePlan =
+  typeof jest !== "undefined"
+    ? jest.fn(callUpdatePlan)
+    : callUpdatePlan;
+
+export const getPlanFeatures =
+  typeof jest !== "undefined"
+    ? jest.fn(callGetPlanFeatures)
+    : callGetPlanFeatures;
+
+export const setPlanFeatures =
+  typeof jest !== "undefined"
+    ? jest.fn(callSetPlanFeatures)
+    : callSetPlanFeatures;
+
 inboxApi.listAdminOrgs = listAdminOrgs;
 inboxApi.patchAdminOrg = patchAdminOrg;
 inboxApi.putAdminOrgPlan = putAdminOrgPlan;
 inboxApi.patchAdminOrgCredits = patchAdminOrgCredits;
 inboxApi.getPlanSummary = getPlanSummary;
+inboxApi.listAdminPlans = listAdminPlans;
+inboxApi.createPlan = createPlan;
+inboxApi.updatePlan = updatePlan;
+inboxApi.getPlanFeatures = getPlanFeatures;
+inboxApi.setPlanFeatures = setPlanFeatures;
 
 export default inboxApi;

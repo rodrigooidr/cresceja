@@ -4,7 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import sidebar from '../config/sidebar';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
-import inboxApi from '../api/inboxApi';
+import inboxApi, { listAdminOrgs } from '../api/inboxApi';
 import { hasPerm } from '@/auth/permCompat';
 import { hasGlobalRole, hasOrgRole } from '@/auth/roles';
 
@@ -17,6 +17,8 @@ export default function Sidebar({ collapsed = false, onToggle }) {
   const isAdminRoute = location.pathname.startsWith('/admin');
   const hasFeature = (flag) => !flag || user?.features?.[flag];
   const [me, setMe] = useState(null);
+  const [adminOrgs, setAdminOrgs] = useState([]);
+  const [adminLoading, setAdminLoading] = useState(false);
 
   const authSource = useMemo(() => {
     if (me) return me;
@@ -52,6 +54,46 @@ export default function Sidebar({ collapsed = false, onToggle }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const canLoad = hasGlobalRole(['SuperAdmin', 'Support'], authSource);
+    if (!canLoad) {
+      setAdminOrgs([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setAdminLoading(true);
+    (async () => {
+      try {
+        const mapped = await loadAdminOrgs();
+        if (!cancelled) setAdminOrgs(mapped);
+      } catch {
+        if (!cancelled) setAdminOrgs([]);
+      } finally {
+        if (!cancelled) setAdminLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authSource]);
+
+  async function loadAdminOrgs(status = 'active') {
+    const res = await listAdminOrgs(status);
+    const payload = res?.data;
+    const raw = Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload?.items)
+      ? payload.items
+      : Array.isArray(payload)
+      ? payload
+      : [];
+    return raw.map((org) => ({ id: org.id, name: org.name ?? 'Org', slug: org.slug ?? null }));
+  }
 
   const showAdmin = authSource ? hasGlobalRole(['SuperAdmin', 'Support'], authSource) : false;
 
@@ -149,7 +191,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
             }
             title={collapsed ? 'Empresas' : undefined}
           >
-            {collapsed ? 'E' : 'Empresas'}
+            {collapsed
+              ? 'E'
+              : `Empresas${adminLoading ? '…' : adminOrgs.length ? ` (${adminOrgs.length})` : ''}`}
           </NavLink>
         )}
       </nav>

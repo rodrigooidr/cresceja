@@ -334,5 +334,25 @@ export async function getPlanSummary(orgId, options = {}) {
   return inboxApi.get(`/orgs/${orgId}/plan/summary`, options);
 }
 
+export async function listAdminPlans(options = {}) {
+  return inboxApi.get(`/admin/plans`, withGlobalScope(options));
+}
+
+export async function createPlan(payload, options = {}) {
+  return inboxApi.post(`/admin/plans`, payload, withGlobalScope(options));
+}
+
+export async function updatePlan(planId, payload, options = {}) {
+  return inboxApi.put(`/admin/plans/${planId}`, payload, withGlobalScope(options));
+}
+
+export async function getPlanFeatures(planId, options = {}) {
+  return inboxApi.get(`/admin/plans/${planId}/features`, withGlobalScope(options));
+}
+
+export async function setPlanFeatures(planId, features, options = {}) {
+  return inboxApi.put(`/admin/plans/${planId}/features`, features, withGlobalScope(options));
+}
+
 export default inboxApi;
 export { setOrgIdHeaderProvider } from "./orgHeader.js";
