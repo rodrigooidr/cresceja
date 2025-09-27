@@ -3,11 +3,13 @@ import { Router } from 'express';
 import db, { query } from '#db';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
 import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
+import { auth as authRequired } from '../../middleware/auth.js';
 import { requireGlobalRole } from '../../middleware/requireRole.js';
 
 const r = Router();
 
 // Somente SuperAdmin/Support
+r.use(authRequired);
 r.use(requireGlobalRole(['SuperAdmin', 'Support']));
 
 // GET /api/admin/orgs?status=active|inactive|all
