@@ -40,7 +40,8 @@ export function requireRole(...roles) {
         return res.status(401).json({ error: 'UNAUTHENTICATED' });
       }
       if (!userHasAnyRole(req.user, required)) {
-        return res.status(403).json({ error: 'FORBIDDEN', required });
+        req.log?.warn({ user: req.user, need: roles, path: req.originalUrl }, 'RBAC deny');
+        return res.status(403).json({ error: 'forbidden' });
       }
       return next();
     } catch (e) {
@@ -60,8 +61,8 @@ export function requireGlobalRole(roles = []) {
       if (isAllowed) {
         return next();
       }
-      req.log?.warn({ user: req.user, need: roles }, 'RBAC deny');
-      return res.status(403).json({ error: 'FORBIDDEN', required });
+      req.log?.warn({ user: req.user, need: roles, path: req.originalUrl }, 'RBAC deny');
+      return res.status(403).json({ error: 'forbidden' });
     } catch (e) {
       return next(e);
     }

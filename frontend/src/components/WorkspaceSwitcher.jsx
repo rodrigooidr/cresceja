@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import inboxApi, { adminListOrgs } from "../api/inboxApi";
-import { useAuth } from "../contexts/AuthContext";
-import { hasGlobalRole } from "../auth/roles";
+import inboxApi, { adminListOrgs } from "@/api/inboxApi";
+import { useAuth } from "@/contexts/AuthContext";
+import { hasGlobalRole } from "@/auth/roles";
 
 export default function WorkspaceSwitcher({ collapsed = false }) {
-  const [orgs, setOrgs] = useState([]);
+  const [items, setItems] = useState([]);
   const [current, setCurrent] = useState('');
   const [loading, setLoading] = useState(false);
-  const { user } = useAuth();
+  const { user: me } = useAuth();
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -18,8 +18,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
 
     (async () => {
       try {
-        const isGlobalAdmin = hasGlobalRole(['SuperAdmin', 'Support'], user);
-        if (isGlobalAdmin) {
+        if (hasGlobalRole(['SuperAdmin', 'Support'], me)) {
           const data = await adminListOrgs({ status: 'active' });
           if (!alive) return;
           const mapped = (Array.isArray(data) ? data : []).map((org) => ({
@@ -29,7 +28,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
           }));
           const storedCurrent = localStorage.getItem('org_id') || localStorage.getItem('active_org_id') || '';
           const nextCurrent = storedCurrent || (mapped[0]?.id ?? '');
-          setOrgs(mapped);
+          setItems(mapped);
           setCurrent(nextCurrent);
           if (nextCurrent) localStorage.setItem('org_id', nextCurrent);
         } else {
@@ -39,13 +38,13 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
           const list = Array.isArray(data?.orgs) ? data.orgs : [];
           const curr = data?.currentOrgId || '';
 
-          setOrgs(list);
+          setItems(list);
           setCurrent(curr);
           if (curr) localStorage.setItem('org_id', curr);
         }
       } catch {
         if (alive) {
-          setOrgs([]);
+          setItems([]);
           setCurrent('');
         }
       } finally {
@@ -54,7 +53,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
     })();
 
     return () => { alive = false; };
-  }, [user]);
+  }, [me]);
 
   const handleChange = async (e) => {
     const orgId = e.target.value;
@@ -72,7 +71,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
   // não renderiza sem token ou enquanto carrega, ou se só existe 0/1 organização
   if (!localStorage.getItem('token')) return null;
   if (loading) return null;
-  if (!orgs?.length || orgs.length <= 1) return null;
+  if (!items?.length || items.length <= 1) return null;
 
   return (
     <select
@@ -81,7 +80,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
       className="w-full border rounded px-2 py-1 text-sm"
       aria-label="Selecionar organização"
     >
-      {orgs.map((org) => (
+      {items.map((org) => (
         <option key={org.id} value={org.id}>
           {collapsed ? (org.name?.charAt(0) ?? '?') : org.name}
         </option>

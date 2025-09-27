@@ -635,7 +635,7 @@ function callPatchAdminOrgCredits(orgId, payload, options = {}) {
   return inboxApi.patch(`/admin/orgs/${orgId}/credits`, payload, options);
 }
 
-function callGetPlanSummary(orgId, options = {}) {
+function callGetOrgPlanSummary(orgId, options = {}) {
   return inboxApi.get(`/orgs/${orgId}/plan/summary`, options);
 }
 
@@ -684,10 +684,10 @@ export const patchAdminOrgCredits =
     ? jest.fn(callPatchAdminOrgCredits)
     : callPatchAdminOrgCredits;
 
-export const getPlanSummary =
+export const getOrgPlanSummary =
   typeof jest !== "undefined"
-    ? jest.fn(callGetPlanSummary)
-    : callGetPlanSummary;
+    ? jest.fn(callGetOrgPlanSummary)
+    : callGetOrgPlanSummary;
 
 export const listAdminPlans =
   typeof jest !== "undefined"
@@ -755,7 +755,7 @@ inboxApi.adminListOrgs = adminListOrgs;
 inboxApi.patchAdminOrg = patchAdminOrg;
 inboxApi.putAdminOrgPlan = putAdminOrgPlan;
 inboxApi.patchAdminOrgCredits = patchAdminOrgCredits;
-inboxApi.getPlanSummary = getPlanSummary;
+inboxApi.getOrgPlanSummary = getOrgPlanSummary;
 inboxApi.listAdminPlans = listAdminPlans;
 inboxApi.adminListPlans = adminListPlans;
 inboxApi.createPlan = createPlan;

@@ -313,12 +313,11 @@ function withGlobalScope(options = {}) {
   return next;
 }
 
-export async function adminListOrgs(params = {}, options = {}) {
-  const config = withGlobalScope(options);
+export async function adminListOrgs(params = {}) {
   const normalizedParams = { status: 'active', ...(params || {}) };
   const queryParams = new URLSearchParams(normalizedParams).toString();
   const url = `/admin/orgs${queryParams ? `?${queryParams}` : ''}`;
-  const res = await client.get(url, config);
+  const res = await client.get(url, withGlobalScope());
   if (res?.status !== 200) throw new Error(`admin/orgs ${res?.status}`);
   const data = res?.data?.data ?? res?.data;
   if (!Array.isArray(data)) throw new Error('admin/orgs payload inválido');
@@ -343,7 +342,7 @@ export async function patchAdminOrgCredits(orgId, payload, options = {}) {
   return inboxApi.patch(`/admin/orgs/${orgId}/credits`, payload, withGlobalScope(options));
 }
 
-export async function getPlanSummary(orgId, options = {}) {
+export async function getOrgPlanSummary(orgId, options = {}) {
   return inboxApi.get(`/orgs/${orgId}/plan/summary`, options);
 }
 
@@ -351,8 +350,8 @@ export async function listAdminPlans(options = {}) {
   return inboxApi.get(`/admin/plans`, withGlobalScope(options));
 }
 
-export async function adminListPlans(options = {}) {
-  const res = await client.get('/admin/plans', withGlobalScope(options));
+export async function adminListPlans() {
+  const res = await client.get('/admin/plans', withGlobalScope());
   if (res?.status !== 200) throw new Error(`admin/plans ${res?.status}`);
   const data = res?.data?.data ?? res?.data;
   if (!Array.isArray(data)) throw new Error('admin/plans payload inválido');

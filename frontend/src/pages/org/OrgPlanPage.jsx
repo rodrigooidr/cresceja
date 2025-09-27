@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import inboxApi, { getPlanSummary } from "../../api/inboxApi";
-import { useOrg } from "../../contexts/OrgContext.jsx";
-import { useAuth } from "../../contexts/AuthContext";
-import { hasGlobalRole, hasOrgRole } from "../../auth/roles";
+import inboxApi, { getOrgPlanSummary } from "@/api/inboxApi";
+import { useOrg } from "@/contexts/OrgContext.jsx";
+import { useAuth } from "@/contexts/AuthContext";
+import { hasGlobalRole, hasOrgRole } from "@/auth/roles";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -19,7 +19,7 @@ export default function OrgPlanPage() {
   const { selected, orgs } = useOrg();
   const { user } = useAuth();
   const canViewPlan = useMemo(
-    () => hasOrgRole(["OrgAdmin", "OrgOwner"], user) || hasGlobalRole(["SuperAdmin"], user),
+    () => hasOrgRole(["OrgAdmin", "OrgOwner"], user) || hasGlobalRole("SuperAdmin", user),
     [user]
   );
   const [state, setState] = useState({
@@ -34,7 +34,7 @@ export default function OrgPlanPage() {
     setState((s) => ({ ...s, loading: true, error: "" }));
     try {
       const [summaryRes, plansRes] = await Promise.all([
-        getPlanSummary(selected),
+        getOrgPlanSummary(selected),
         inboxApi.get("/public/plans", { meta: { noAuth: true } }),
       ]);
 
