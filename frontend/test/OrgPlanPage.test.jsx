@@ -1,12 +1,12 @@
 import React from "react";
 import { screen, waitFor } from "@testing-library/react";
 import { renderApp } from "./utils/renderApp.jsx";
-import inboxApi, { getPlanSummary } from "../src/api/inboxApi";
+import inboxApi, { getOrgPlanSummary } from "../src/api/inboxApi";
 import OrgPlanPage from "../src/pages/org/OrgPlanPage.jsx";
 
 beforeEach(() => {
   inboxApi.__resetRoutes?.();
-  getPlanSummary.mockClear?.();
+  getOrgPlanSummary.mockClear?.();
   localStorage.clear();
   localStorage.setItem("token", "test-token");
 });
@@ -45,8 +45,8 @@ test("exibe resumo do plano e créditos", async () => {
     user: { id: "user", role: "OrgAdmin", roles: [] },
   });
 
-  await waitFor(() => expect(getPlanSummary).toHaveBeenCalled());
-  expect(getPlanSummary.mock.calls[0][0]).toBe("org-1");
+  await waitFor(() => expect(getOrgPlanSummary).toHaveBeenCalled());
+  expect(getOrgPlanSummary.mock.calls[0][0]).toBe("org-1");
 
   expect(await screen.findByText("Pro")).toBeInTheDocument();
   expect(screen.getByText(/Org One/)).toBeInTheDocument();
@@ -83,7 +83,7 @@ test("mostra mensagem quando não há créditos", async () => {
     user: { id: "user", role: "OrgOwner", roles: [] },
   });
 
-  await waitFor(() => expect(getPlanSummary).toHaveBeenCalled());
+  await waitFor(() => expect(getOrgPlanSummary).toHaveBeenCalled());
 
   expect(await screen.findByText(/Sem créditos\./i)).toBeInTheDocument();
 });

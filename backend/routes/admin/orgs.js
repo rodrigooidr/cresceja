@@ -16,12 +16,6 @@ r.use(requireGlobalRole(['SuperAdmin', 'Support']));
 r.get('/', async (req, res, next) => {
   try {
     const status = String(req.query?.status ?? 'active').toLowerCase();
-    const where =
-      status === 'all'
-        ? '1=1'
-        : status === 'inactive'
-        ? "o.status = 'inactive'"
-        : "o.status = 'active'";
 
     const { rows } = await query(
       `
@@ -36,9 +30,15 @@ r.get('/', async (req, res, next) => {
         p.id_legacy_text AS plan_slug
       FROM public.organizations o
       LEFT JOIN public.plans p ON p.id = o.plan_id
-      WHERE ${where}
+      WHERE
+        CASE
+          WHEN $1 = 'inactive' THEN o.status = 'inactive'
+          WHEN $1 = 'all' THEN 1=1
+          ELSE o.status = 'active'
+        END
       ORDER BY o.name ASC
       `,
+      [status],
     );
 
     res.json({ data: rows });
