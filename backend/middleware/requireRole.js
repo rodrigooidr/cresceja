@@ -49,6 +49,23 @@ export function requireRole(...roles) {
   };
 }
 
+export function requireGlobalRole(roles = []) {
+  const required = Array.isArray(roles) ? roles.flat().filter(Boolean) : [roles].filter(Boolean);
+  return (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ error: 'UNAUTHENTICATED' });
+      }
+      if (!required.length || hasGlobalRole(req.user, required)) {
+        return next();
+      }
+      return res.status(403).json({ error: 'FORBIDDEN', required });
+    } catch (e) {
+      return next(e);
+    }
+  };
+}
+
 /**
  * Checks if a support user has the given scope.
  * Accepts: user.supportScopes | user.support_scopes | user.scopes
@@ -105,6 +122,7 @@ export function requireScope(scope) {
 const legacyExport = Object.assign(requireRole, {
   ROLES,
   requireRole,
+  requireGlobalRole,
   requireScope,
   hasSupportScope,
 });

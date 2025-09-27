@@ -1,22 +1,18 @@
-import React from 'react';
-import { screen } from '@testing-library/react';
-import { renderApp } from './utils/renderApp.jsx';
-import inboxApi from '../src/api/inboxApi';
-import PlansAdminPage from '../src/pages/admin/PlansAdminPage.jsx';
-import { actTick } from './utils/actUtils';
+import { render, screen, waitFor } from "@testing-library/react";
+import PlansPage from "@/pages/admin/plans/PlansPage";
+import * as api from "@/api/inboxApi";
 
-test('renderiza e carrega primeiro plano', async () => {
-  inboxApi.__mockRoute('GET', '/admin/plans', () => ({ data: [{ id: 'plan1', name: 'Plano 1' }] }));
-  inboxApi.__mockRoute('GET', /\/admin\/plans\/plan1\/features/, () => ({
-    data: [
-      { code: 'whatsapp_numbers', label: 'Números WhatsApp', type: 'number', value: { enabled: true, limit: 1 } },
-      { code: 'whatsapp_mode_baileys', label: 'Baileys', type: 'boolean', value: { enabled: false } },
-    ],
-  }));
+afterEach(() => {
+  jest.restoreAllMocks();
+});
 
-  renderApp(<PlansAdminPage />, { route: '/admin/plans' });
-  const title = await screen.findByTestId('plans-admin-title');
-  expect(title).toBeInTheDocument();
-  await actTick();
-  expect(await screen.findByTestId('plans-admin-form')).toBeInTheDocument();
+test("carrega e lista planos", async () => {
+  jest.spyOn(api, "adminListPlans").mockResolvedValue([
+    { id: "p1", name: "Starter", currency: "BRL", monthly_price: 79, is_active: true },
+  ]);
+  jest.spyOn(api, "adminGetPlanFeatures").mockResolvedValue([]);
+
+  render(<PlansPage />);
+
+  await waitFor(() => expect(screen.getByText("Starter")).toBeInTheDocument());
 });
