@@ -5,6 +5,6 @@ import adminPlansRouter from './routes/admin/plans.js';
 const app = express();
 app.use(express.json());
 app.use('/api/admin/plans', adminPlansRouter);
-app.use('/api/admin', adminOrgsRouter);
+app.use('/api/admin/orgs', adminOrgsRouter);
 
 export default app;

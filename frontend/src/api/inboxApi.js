@@ -7,6 +7,7 @@ export const API_BASE_URL =
 export const apiUrl = API_BASE_URL; // alias
 
 const inboxApi = axios.create({ baseURL: API_BASE_URL });
+export const client = inboxApi;
 
 // ===== Helpers (headers) =====
 function setHeader(config, name, value) {
@@ -310,6 +311,15 @@ function withGlobalScope(options = {}) {
   next.meta = { ...(options?.meta || {}) };
   if (!next.meta.scope) next.meta.scope = "global";
   return next;
+}
+
+export async function adminListOrgs(params = {}, options = {}) {
+  const config = withGlobalScope(options);
+  const normalizedParams = { status: 'active', ...(params || {}) };
+  const queryParams = new URLSearchParams(normalizedParams).toString();
+  const url = `/admin/orgs${queryParams ? `?${queryParams}` : ''}`;
+  const res = await inboxApi.get(url, config);
+  return res?.data?.data ?? res?.data ?? [];
 }
 
 export async function listAdminOrgs(status = "active", options = {}) {
