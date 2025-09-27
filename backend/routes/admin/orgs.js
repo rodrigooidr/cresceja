@@ -3,57 +3,262 @@ import { Router } from 'express';
 import db from '#db';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
 import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
+import * as requireRoleModule from '../../middleware/requireRole.js';
+
+const requireRole =
+  requireRoleModule.requireRole ??
+  requireRoleModule.default?.requireRole ??
+  requireRoleModule.default ??
+  requireRoleModule;
+const ROLES =
+  requireRoleModule.ROLES ??
+  requireRoleModule.default?.ROLES ??
+  requireRoleModule.ROLES;
 
 const r = Router();
 
-// GET /api/admin/orgs?page=1&pageSize=20&q=term
+function buildOrgFilters(query) {
+  const params = [];
+  const parts = [];
+  const statusRaw = String(query.status ?? 'active').toLowerCase();
+  const status = ['active', 'inactive', 'all'].includes(statusRaw) ? statusRaw : 'active';
+
+  if (status === 'active' || status === 'inactive') {
+    const idx = params.length + 1;
+    params.push(status);
+    parts.push(`o.status = $${idx}`);
+  }
+
+  const search = (query.q ?? query.search ?? '').trim();
+  if (search) {
+    const idx = params.length + 1;
+    params.push(`%${search}%`);
+    parts.push(`(o.name ILIKE $${idx} OR o.slug ILIKE $${idx} OR o.document_value ILIKE $${idx})`);
+  }
+
+  return {
+    clause: parts.length ? `WHERE ${parts.join(' AND ')}` : '',
+    params,
+    status,
+  };
+}
+
+// GET /api/admin/orgs?status=active|inactive|all
 r.get('/orgs', async (req, res, next) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page ?? '1', 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize ?? '20', 10)));
-    const q = (req.query.q ?? '').trim() || null;
+    const filters = buildOrgFilters(req.query ?? {});
+    const wantsPagination =
+      Object.prototype.hasOwnProperty.call(req.query ?? {}, 'page') ||
+      Object.prototype.hasOwnProperty.call(req.query ?? {}, 'pageSize') ||
+      Object.prototype.hasOwnProperty.call(req.query ?? {}, 'limit');
 
-    const { rows: [{ count }] } = await db.query(
-      `SELECT COUNT(*)::int AS count
-         FROM organizations o
-        WHERE ($1::text IS NULL OR
-               o.name ILIKE '%'||$1||'%' OR
-               o.slug ILIKE '%'||$1||'%' OR
-               o.document_value ILIKE '%'||$1||'%')`, [q]
+    const rawPageSize = req.query?.pageSize ?? req.query?.limit;
+    const pageSize = wantsPagination
+      ? Math.max(1, Math.min(200, parseInt(rawPageSize ?? '50', 10) || 50))
+      : null;
+    const page = wantsPagination ? Math.max(1, parseInt(req.query?.page ?? '1', 10) || 1) : 1;
+
+    let sql = `
+      SELECT
+        o.id,
+        o.name,
+        o.slug,
+        o.status,
+        o.plan_id,
+        p.name AS plan_name,
+        p.price_cents,
+        p.currency,
+        o.trial_ends_at,
+        o.document_type,
+        o.document_value,
+        o.email,
+        o.phone,
+        o.whatsapp_baileys_enabled,
+        o.whatsapp_baileys_status,
+        o.whatsapp_baileys_phone,
+        o.photo_url,
+        o.meta,
+        o.created_at,
+        o.updated_at
+      FROM public.organizations o
+      LEFT JOIN public.plans p ON p.id = o.plan_id
+      ${filters.clause}
+      ORDER BY o.name
+    `;
+
+    const dataParams = [...filters.params];
+    if (wantsPagination) {
+      const limitIdx = dataParams.length + 1;
+      dataParams.push(pageSize);
+      const offsetIdx = dataParams.length + 1;
+      dataParams.push((page - 1) * pageSize);
+      sql += ` LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
+    }
+
+    const { rows } = await db.query(sql, dataParams);
+
+    let total = rows.length;
+    if (wantsPagination) {
+      const countSql = `SELECT COUNT(*)::int AS count FROM public.organizations o ${filters.clause}`;
+      const { rows: countRows } = await db.query(countSql, filters.params);
+      total = countRows[0]?.count ?? 0;
+    }
+
+    const payload = {
+      data: rows,
+      items: rows,
+      count: total,
+      total,
+      status: filters.status,
+    };
+    if (wantsPagination) {
+      payload.page = page;
+      payload.pageSize = pageSize;
+    }
+
+    res.json(payload);
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/admin/orgs/:orgId
+r.patch('/orgs/:orgId', async (req, res, next) => {
+  try {
+    const { orgId } = req.params;
+    const up = req.body || {};
+    const allow = [
+      'name',
+      'slug',
+      'status',
+      'plan_id',
+      'trial_ends_at',
+      'document_type',
+      'document_value',
+      'email',
+      'phone',
+      'whatsapp_baileys_enabled',
+      'whatsapp_baileys_status',
+      'whatsapp_baileys_phone',
+      'photo_url',
+      'meta',
+    ];
+
+    const sets = [];
+    const params = [];
+
+    allow.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(up, key)) {
+        let value = up[key];
+        if (key === 'plan_id' && !value) value = null;
+        if (key === 'trial_ends_at' && !value) value = null;
+        if (key === 'meta' && value !== null && value !== undefined && typeof value !== 'string') {
+          value = JSON.stringify(value);
+        }
+        if (['whatsapp_baileys_enabled'].includes(key)) {
+          value = !!value;
+        }
+        params.push(value);
+        sets.push(`${key}=$${params.length}`);
+      }
+    });
+
+    if (!sets.length) return res.status(400).json({ error: 'no_fields_to_update' });
+
+    params.push(orgId);
+    await db.query(
+      `UPDATE public.organizations SET ${sets.join(', ')}, updated_at=now() WHERE id=$${params.length}`,
+      params,
     );
 
-    const { rows: items } = await db.query(
-      `WITH last_pay AS (
-         SELECT DISTINCT ON (org_id)
-           org_id, status, amount_cents, paid_at
-         FROM payments
-         ORDER BY org_id, paid_at DESC NULLS LAST
-       )
-       SELECT
-         o.id, o.name, o.slug, o.photo_url, o.document_type, o.document_value,
-         o.email, o.phone,
-         p.id AS plan_id, p.name AS plan_name, p.price_cents,
-         s.status AS subscription_status, o.trial_ends_at,
-         lp.status AS last_payment_status,
-         lp.amount_cents AS last_payment_amount_cents,
-         lp.paid_at AS last_payment_paid_at,
-         (SELECT COUNT(*) FROM payments  pp WHERE pp.org_id = o.id) AS payments_count,
-         (SELECT COUNT(*) FROM purchases pu WHERE pu.org_id = o.id) AS purchases_count,
-         o.whatsapp_baileys_enabled, o.whatsapp_baileys_status, o.whatsapp_baileys_phone
-       FROM organizations o
-       LEFT JOIN subscriptions s ON s.org_id=o.id AND s.status IN ('trialing','active','past_due')
-       LEFT JOIN plans p ON p.id = COALESCE(o.plan_id, s.plan_id)
-       LEFT JOIN last_pay lp ON lp.org_id=o.id
-       WHERE ($1::text IS NULL OR
-              o.name ILIKE '%'||$1||'%' OR
-              o.slug ILIKE '%'||$1||'%' OR
-              o.document_value ILIKE '%'||$1||'%')
-       ORDER BY o.created_at DESC
-       OFFSET $2 LIMIT $3`,
-      [q, (page - 1) * pageSize, pageSize]
+    const { rows: [org] } = await db.query(
+      `SELECT
+         o.id,
+         o.name,
+         o.slug,
+         o.status,
+         o.plan_id,
+         p.name AS plan_name,
+         o.trial_ends_at,
+         o.document_type,
+         o.document_value,
+         o.email,
+         o.phone,
+         o.whatsapp_baileys_enabled,
+         o.whatsapp_baileys_status,
+         o.whatsapp_baileys_phone,
+         o.photo_url,
+         o.meta,
+         o.updated_at
+       FROM public.organizations o
+       LEFT JOIN public.plans p ON p.id = o.plan_id
+       WHERE o.id = $1`,
+      [orgId],
     );
 
-    res.json({ page, pageSize, total: count, items });
+    return res.json({ ok: true, org: org || null });
+  } catch (e) { next(e); }
+});
+
+// PUT /api/admin/orgs/:orgId/plan
+r.put('/orgs/:orgId/plan', async (req, res, next) => {
+  try {
+    const { orgId } = req.params;
+    const { plan_id, status = 'active', start_at, end_at, trial_ends_at, meta } = req.body || {};
+    if (!plan_id) return res.status(400).json({ error: 'plan_id_required' });
+
+    await db.query(
+      `UPDATE public.organizations
+          SET plan_id=$1,
+              trial_ends_at=COALESCE($2, trial_ends_at),
+              updated_at=now()
+        WHERE id=$3`,
+      [plan_id, trial_ends_at || null, orgId],
+    );
+
+    await db.query(
+      `INSERT INTO public.org_plan_history (org_id, plan_id, status, start_at, end_at, source, meta)
+       VALUES ($1,$2,$3,COALESCE($4, now()), $5, 'manual', COALESCE($6,'{}'::jsonb))`,
+      [
+        orgId,
+        plan_id,
+        status,
+        start_at || null,
+        end_at || null,
+        meta === undefined || meta === null ? null : JSON.stringify(meta),
+      ],
+    );
+
+    return res.json({ ok: true });
+  } catch (e) { next(e); }
+});
+
+// PATCH /api/admin/orgs/:orgId/credits
+r.patch('/orgs/:orgId/credits', async (req, res, next) => {
+  try {
+    const { orgId } = req.params;
+    const { feature_code, delta, expires_at, source, meta } = req.body || {};
+    if (!feature_code || delta === undefined || delta === null) {
+      return res.status(400).json({ error: 'feature_code_and_delta_required' });
+    }
+
+    const deltaNumber = Number(delta);
+    if (!Number.isFinite(deltaNumber) || Number.isNaN(deltaNumber)) {
+      return res.status(400).json({ error: 'delta_must_be_number' });
+    }
+
+    await db.query(
+      `INSERT INTO public.org_credits (org_id, feature_code, delta, expires_at, source, meta)
+       VALUES ($1,$2,$3,$4,COALESCE($5,'manual'),COALESCE($6,'{}'::jsonb))`,
+      [
+        orgId,
+        feature_code,
+        Math.trunc(deltaNumber),
+        expires_at || null,
+        source || null,
+        meta === undefined || meta === null ? null : JSON.stringify(meta),
+      ],
+    );
+
+    return res.json({ ok: true });
   } catch (e) { next(e); }
 });
 

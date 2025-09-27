@@ -53,7 +53,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
     };
   }, []);
 
-  const showAdmin = authSource ? hasGlobalRole(['SuperAdmin'], authSource) : false;
+  const showAdmin = authSource ? hasGlobalRole(['SuperAdmin', 'Support'], authSource) : false;
 
   return (
     <aside
@@ -133,7 +133,7 @@ export default function Sidebar({ collapsed = false, onToggle }) {
         })}
         {showAdmin && (
           <NavLink
-            to="/admin/orgs"
+            to="/admin/organizations"
             className={({ isActive }) =>
               `block px-2 py-2 text-sm rounded ${
                 isActive
@@ -141,9 +141,9 @@ export default function Sidebar({ collapsed = false, onToggle }) {
                   : 'text-gray-700 hover:bg-gray-50'
               }`
             }
-            title={collapsed ? 'Organizações / Clientes' : undefined}
+            title={collapsed ? 'Empresas' : undefined}
           >
-            {collapsed ? 'O' : 'Organizações / Clientes'}
+            {collapsed ? 'E' : 'Empresas'}
           </NavLink>
         )}
       </nav>

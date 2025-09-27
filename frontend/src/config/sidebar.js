@@ -64,7 +64,12 @@ const sidebar = [
       { label: 'Canais', to: '/app/settings/channels', orgRoles: ['OrgAdmin', 'OrgOwner'] },
       { label: 'Permissões', to: '/app/settings/permissions', orgRoles: ['OrgAdmin', 'OrgOwner'] },
       { label: 'Agenda & Serviços', to: '/settings/agenda', orgRoles: ['OrgAdmin', 'OrgOwner'], perm: 'settings:agenda' },
-      { label: 'Plano', to: '/app/settings/plan', orgRoles: ['OrgOwner'] },
+      {
+        label: 'Meu Plano',
+        to: '/settings/plan',
+        orgRoles: ['OrgAdmin', 'OrgOwner'],
+        globalRoles: ['SuperAdmin'],
+      },
     ],
   },
 ];

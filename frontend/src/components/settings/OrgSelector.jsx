@@ -13,9 +13,19 @@ export default function OrgSelector({ onChanged }) {
       setLoading(true);
       setError('');
       try {
-        const { data } = await inboxApi.get('/orgs/admin/orgs');
+        const { data } = await inboxApi.get('/admin/orgs', {
+          params: { status: 'active' },
+          meta: { scope: 'global' },
+        });
         if (!mounted) return;
-        setOrgs(Array.isArray(data?.items) ? data.items : []);
+        const list = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data)
+          ? data
+          : [];
+        setOrgs(list);
       } catch (e) {
         setError('Falha ao carregar sua organização.');
       } finally {

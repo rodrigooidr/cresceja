@@ -94,6 +94,7 @@ export function OrgProvider({ children }) {
           search: qArg || undefined,     // manda ambos para compatibilidade
           limit: pageSize,
           page: p,
+          status: visibility === 'all' ? 'all' : undefined,
         };
 
         // Use inboxApi e marque escopo global (sem X-Org-Id)

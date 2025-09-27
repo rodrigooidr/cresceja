@@ -1,6 +1,17 @@
 // backend/routes/orgs.js
 import { Router } from 'express';
 import { pool } from '#db';
+import * as requireRoleModule from '../middleware/requireRole.js';
+
+const requireRole =
+  requireRoleModule.requireRole ??
+  requireRoleModule.default?.requireRole ??
+  requireRoleModule.default ??
+  requireRoleModule;
+const ROLES =
+  requireRoleModule.ROLES ??
+  requireRoleModule.default?.ROLES ??
+  requireRoleModule.ROLES;
 
 const router = Router();
 
@@ -100,5 +111,38 @@ router.get('/', async (req, res) => {
     if (mustRelease) client.release();
   }
 });
+
+router.get(
+  '/:orgId/plan/summary',
+  requireRole(ROLES.OrgAdmin, ROLES.OrgOwner, ROLES.Support, ROLES.SuperAdmin),
+  async (req, res, next) => {
+    const existingClient = req.db || null;
+    const client = existingClient || (await pool.connect());
+    const mustRelease = !existingClient;
+
+    try {
+      const { orgId } = req.params;
+
+      const { rows: orgRows } = await client.query(
+        `SELECT id, name, status, plan_id, trial_ends_at FROM public.organizations WHERE id=$1`,
+        [orgId],
+      );
+
+      const { rows: creditsRows } = await client.query(
+        `SELECT org_id, feature_code, remaining_total, expires_next
+           FROM public.v_org_credits
+          WHERE org_id=$1
+          ORDER BY feature_code`,
+        [orgId],
+      );
+
+      res.json({ org: orgRows[0] || null, credits: creditsRows });
+    } catch (e) {
+      next(e);
+    } finally {
+      if (mustRelease) client.release();
+    }
+  },
+);
 
 export default router;

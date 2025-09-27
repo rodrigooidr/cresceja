@@ -265,7 +265,7 @@ function configureApp() {
   app.use(
     '/api/admin',
     authRequired,
-    requireRole(ROLES.SuperAdmin),
+    requireRole(ROLES.SuperAdmin, ROLES.Support),
     adminContext,
     adminOrgsRouter
   );
