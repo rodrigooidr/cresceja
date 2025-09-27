@@ -799,23 +799,14 @@ CREATE TABLE IF NOT EXISTS organizations (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS org_members (
+CREATE TABLE IF NOT EXISTS org_memberships (
   org_id uuid NOT NULL,
   user_id uuid NOT NULL,
-  role text NOT NULL DEFAULT 'OrgViewer',  -- OrgViewer | OrgAgent | OrgAdmin | OrgOwner
+  role text NOT NULL DEFAULT 'Viewer',  -- OrgOwner | OrgAdmin | Manager | Agent | Viewer
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (org_id, user_id),
-  CONSTRAINT org_members_org_fk
+  CONSTRAINT org_memberships_org_fk
     FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS user_global_roles (
-  user_id uuid NOT NULL,
-  role text NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, role),
-  CONSTRAINT user_global_roles_user_fk
-    FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE
 );
 
 -- Adiciona FK para users(id) se a tabela existir
@@ -827,21 +818,11 @@ BEGIN
   ) THEN
     PERFORM 1
     FROM pg_constraint c
-    WHERE c.conname = 'org_members_user_fk';
+    WHERE c.conname = 'org_memberships_user_fk';
 
     IF NOT FOUND THEN
-      ALTER TABLE org_members
-        ADD CONSTRAINT org_members_user_fk
-        FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-    END IF;
-
-    PERFORM 1
-    FROM pg_constraint c
-    WHERE c.conname = 'user_global_roles_user_fk';
-
-    IF NOT FOUND THEN
-      ALTER TABLE user_global_roles
-        ADD CONSTRAINT user_global_roles_user_fk
+      ALTER TABLE org_memberships
+        ADD CONSTRAINT org_memberships_user_fk
         FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
     END IF;
   END IF;
@@ -849,13 +830,12 @@ END$$;
 
 -- ===== Índices =====
 CREATE INDEX IF NOT EXISTS idx_orgs_name ON organizations (name);
-CREATE INDEX IF NOT EXISTS idx_members_user ON org_members (user_id);
-CREATE INDEX IF NOT EXISTS idx_members_org ON org_members (org_id);
-CREATE INDEX IF NOT EXISTS idx_global_roles_user ON user_global_roles (user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_user ON org_memberships (user_id);
+CREATE INDEX IF NOT EXISTS idx_memberships_org ON org_memberships (org_id);
 
 -- ===== RLS =====
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE org_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org_memberships ENABLE ROW LEVEL SECURITY;
 
 -- Policies: membros veem suas orgs
 DROP POLICY IF EXISTS orgs_member_sel ON organizations;
@@ -864,7 +844,7 @@ FOR SELECT
 USING (
   EXISTS (
     SELECT 1
-    FROM org_members m
+    FROM org_memberships m
     WHERE m.org_id = organizations.id
       AND app.current_user_id() IS NOT NULL
       AND m.user_id = app.current_user_id()
@@ -878,8 +858,8 @@ FOR SELECT
 USING ( app.current_role() IN ('SuperAdmin','Support') );
 
 -- Memberships: o próprio usuário enxerga seus vínculos; superusers veem tudo
-DROP POLICY IF EXISTS mem_self_sel ON org_members;
-CREATE POLICY mem_self_sel ON org_members
+DROP POLICY IF EXISTS mem_self_sel ON org_memberships;
+CREATE POLICY mem_self_sel ON org_memberships
 FOR SELECT
 USING (
   app.current_role() IN ('SuperAdmin','Support')
@@ -902,7 +882,7 @@ BEGIN
   SELECT id INTO v_user_id FROM public.users WHERE email = 'rodrigooidr@hotmail.com' LIMIT 1;
 
   IF v_user_id IS NOT NULL THEN
-    INSERT INTO org_members (org_id, user_id, role)
+    INSERT INTO org_memberships (org_id, user_id, role)
     VALUES ('00000000-0000-0000-0000-000000000001', v_user_id, 'OrgOwner')
     ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role;
   END IF;
@@ -1229,3 +1209,205 @@ WHERE org_id = $1
   AND schedule_at <  ($2::date + INTERVAL '1 month')
 GROUP BY 1;
 
+BEGIN;
+
+-- Tabela de papéis globais
+CREATE TABLE IF NOT EXISTS public.user_global_roles (
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  role    text NOT NULL,
+  PRIMARY KEY (user_id, role)
+);
+
+-- Constraint de transição (aceita legado + PascalCase)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname='user_global_roles_role_check'
+       AND conrelid='public.user_global_roles'::regclass
+  ) THEN
+    ALTER TABLE public.user_global_roles DROP CONSTRAINT user_global_roles_role_check;
+  END IF;
+END$$;
+
+ALTER TABLE public.user_global_roles
+  ADD CONSTRAINT user_global_roles_role_check
+  CHECK (role IN (
+    -- alvo (PascalCase)
+    'Support','SuperAdmin','BillingAdmin',
+    -- legados que migraremos
+    'support','super_admin','billing_admin'
+  ));
+
+-- Migração de dados legado -> PascalCase
+UPDATE public.user_global_roles
+   SET role = CASE role
+     WHEN 'support'       THEN 'Support'
+     WHEN 'super_admin'   THEN 'SuperAdmin'
+     WHEN 'billing_admin' THEN 'BillingAdmin'
+     ELSE role
+   END
+ WHERE role IN ('support','super_admin','billing_admin');
+
+-- Fecha a constraint somente para PascalCase
+ALTER TABLE public.user_global_roles DROP CONSTRAINT user_global_roles_role_check;
+ALTER TABLE public.user_global_roles
+  ADD CONSTRAINT user_global_roles_role_check
+  CHECK (role IN ('Support','SuperAdmin','BillingAdmin'));
+
+CREATE INDEX IF NOT EXISTS idx_user_global_roles_role ON public.user_global_roles(role);
+
+COMMIT;
+
+BEGIN;
+
+------------------------------------------------------------
+-- 1) ORG MEMBERS: enum -> text, normalização e CHECK
+------------------------------------------------------------
+
+-- 1.1) converter enum org_role -> text mantendo dados
+ALTER TABLE public.org_members
+  ALTER COLUMN role DROP DEFAULT;
+
+ALTER TABLE public.org_members
+  ALTER COLUMN role TYPE text
+  USING (role::text);
+
+-- 1.2) normalizar snake_case -> PascalCase
+UPDATE public.org_members
+SET role = CASE role
+  WHEN 'org_viewer' THEN 'OrgViewer'
+  WHEN 'org_agent'  THEN 'OrgAgent'
+  WHEN 'org_admin'  THEN 'OrgAdmin'
+  WHEN 'org_owner'  THEN 'OrgOwner'
+  ELSE role
+END
+WHERE role IN ('org_viewer','org_agent','org_admin','org_owner');
+
+-- 1.3) recriar CHECK apenas com papéis da organização
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.org_members'::regclass
+      AND conname  = 'org_members_role_check'
+  ) THEN
+    ALTER TABLE public.org_members DROP CONSTRAINT org_members_role_check;
+  END IF;
+END$$;
+
+ALTER TABLE public.org_members
+  ADD CONSTRAINT org_members_role_check
+  CHECK (role IN ('OrgViewer','OrgAgent','OrgAdmin','OrgOwner'));
+
+-- (opcional) default: escolha se quer algum
+-- ALTER TABLE public.org_members ALTER COLUMN role SET DEFAULT 'OrgAgent';
+
+
+------------------------------------------------------------
+-- 2) ORG MEMBERSHIPS: corrigir default/valores e CHECK
+------------------------------------------------------------
+
+-- 2.1) normalizar valores legados
+UPDATE public.org_memberships
+SET role = CASE role
+  WHEN 'org_viewer' THEN 'OrgViewer'
+  WHEN 'org_agent'  THEN 'OrgAgent'
+  WHEN 'org_admin'  THEN 'OrgAdmin'
+  WHEN 'org_owner'  THEN 'OrgOwner'
+  WHEN 'Viewer'     THEN 'OrgViewer'
+  WHEN 'Agent'      THEN 'OrgAgent'
+  WHEN 'Admin'      THEN 'OrgAdmin'
+  WHEN 'Owner'      THEN 'OrgOwner'
+  ELSE role
+END
+WHERE role IN ('org_viewer','org_agent','org_admin','org_owner',
+               'Viewer','Agent','Admin','Owner');
+
+-- 2.2) default coerente
+ALTER TABLE public.org_memberships
+  ALTER COLUMN role SET DEFAULT 'OrgViewer';
+
+-- 2.3) CHECK apenas com papéis da organização
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.org_memberships'::regclass
+      AND conname  = 'org_memberships_role_check'
+  ) THEN
+    ALTER TABLE public.org_memberships DROP CONSTRAINT org_memberships_role_check;
+  END IF;
+END$$;
+
+ALTER TABLE public.org_memberships
+  ADD CONSTRAINT org_memberships_role_check
+  CHECK (role IN ('OrgViewer','OrgAgent','OrgAdmin','OrgOwner'));
+
+
+------------------------------------------------------------
+-- 3) ORG USERS: corrigir CHECK (somente papéis de org)
+------------------------------------------------------------
+
+-- Remover CHECK antiga que mistura globais
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.org_users'::regclass
+      AND conname  = 'org_users_role_check'
+  ) THEN
+    ALTER TABLE public.org_users DROP CONSTRAINT org_users_role_check;
+  END IF;
+END$$;
+
+-- Criar CHECK correta
+ALTER TABLE public.org_users
+  ADD CONSTRAINT org_users_role_check
+  CHECK (role IN ('OrgViewer','OrgAgent','OrgAdmin','OrgOwner'));
+
+
+------------------------------------------------------------
+-- 4) USER GLOBAL ROLES: tirar BillingAdmin e normalizar
+------------------------------------------------------------
+
+-- Normalizar quaisquer legados para PascalCase (só por garantia)
+UPDATE public.user_global_roles
+SET role = CASE role
+  WHEN 'support'     THEN 'Support'
+  WHEN 'super_admin' THEN 'SuperAdmin'
+  ELSE role
+END
+WHERE role IN ('support','super_admin');
+
+-- Remover CHECK antiga (que incluía BillingAdmin)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'public.user_global_roles'::regclass
+      AND conname  = 'user_global_roles_role_check'
+  ) THEN
+    ALTER TABLE public.user_global_roles DROP CONSTRAINT user_global_roles_role_check;
+  END IF;
+END$$;
+
+-- CHECK final: apenas Support e SuperAdmin
+ALTER TABLE public.user_global_roles
+  ADD CONSTRAINT user_global_roles_role_check
+  CHECK (role IN ('Support','SuperAdmin'));
+
+COMMIT;
+
+DROP TYPE public.org_role;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE t.typname = 'org_role' AND n.nspname = 'public'
+  ) THEN
+    EXECUTE 'DROP TYPE public.org_role';
+  END IF;
+END$$;
