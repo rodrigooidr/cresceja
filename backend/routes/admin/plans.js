@@ -1,22 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query as rootQuery } from '#db';
-import * as requireRoleModule from '../../middleware/requireRole.js';
+import { auth as authRequired } from '../../middleware/auth.js';
+import { requireGlobalRole } from '../../middleware/requireRole.js';
 import { upsertPlanFeatures } from '../../services/plans.js';
-
-const baseRequireRole =
-  requireRoleModule.requireRole ??
-  requireRoleModule.default?.requireRole ??
-  requireRoleModule.default ??
-  requireRoleModule;
-
-const requireGlobalRoleFn =
-  requireRoleModule.requireGlobalRole ??
-  requireRoleModule.default?.requireGlobalRole ??
-  ((roles) => {
-    const normalized = Array.isArray(roles) ? roles : [roles];
-    return baseRequireRole(...normalized);
-  });
 
 const router = Router();
 
@@ -75,7 +62,8 @@ function buildPlanFeaturesSelect(columns) {
   return parts.join(',\n         ');
 }
 
-router.use(requireGlobalRoleFn(['SuperAdmin', 'Support']));
+router.use(authRequired);
+router.use(requireGlobalRole(['SuperAdmin', 'Support']));
 
 router.get('/', async (req, res, next) => {
   try {

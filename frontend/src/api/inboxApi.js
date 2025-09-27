@@ -318,8 +318,11 @@ export async function adminListOrgs(params = {}, options = {}) {
   const normalizedParams = { status: 'active', ...(params || {}) };
   const queryParams = new URLSearchParams(normalizedParams).toString();
   const url = `/admin/orgs${queryParams ? `?${queryParams}` : ''}`;
-  const res = await inboxApi.get(url, config);
-  return res?.data?.data ?? res?.data ?? [];
+  const res = await client.get(url, config);
+  if (res?.status !== 200) throw new Error(`admin/orgs ${res?.status}`);
+  const data = res?.data?.data ?? res?.data;
+  if (!Array.isArray(data)) throw new Error('admin/orgs payload inválido');
+  return data;
 }
 
 export async function listAdminOrgs(status = "active", options = {}) {
@@ -349,8 +352,11 @@ export async function listAdminPlans(options = {}) {
 }
 
 export async function adminListPlans(options = {}) {
-  const res = await listAdminPlans(options);
-  return res?.data?.data ?? res?.data ?? [];
+  const res = await client.get('/admin/plans', withGlobalScope(options));
+  if (res?.status !== 200) throw new Error(`admin/plans ${res?.status}`);
+  const data = res?.data?.data ?? res?.data;
+  if (!Array.isArray(data)) throw new Error('admin/plans payload inválido');
+  return data;
 }
 
 export async function createPlan(payload, options = {}) {

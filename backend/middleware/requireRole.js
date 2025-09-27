@@ -56,9 +56,11 @@ export function requireGlobalRole(roles = []) {
       if (!req.user) {
         return res.status(401).json({ error: 'UNAUTHENTICATED' });
       }
-      if (!required.length || hasGlobalRole(req.user, required)) {
+      const isAllowed = !required.length || hasGlobalRole(req.user, required);
+      if (isAllowed) {
         return next();
       }
+      req.log?.warn({ user: req.user, need: roles }, 'RBAC deny');
       return res.status(403).json({ error: 'FORBIDDEN', required });
     } catch (e) {
       return next(e);
