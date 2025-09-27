@@ -1,130 +1,52 @@
 // backend/routes/admin/orgs.js
 import { Router } from 'express';
-import db from '#db';
+import db, { query } from '#db';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
 import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
-import * as requireRoleModule from '../../middleware/requireRole.js';
-
-const requireRole =
-  requireRoleModule.requireRole ??
-  requireRoleModule.default?.requireRole ??
-  requireRoleModule.default ??
-  requireRoleModule;
-const ROLES =
-  requireRoleModule.ROLES ??
-  requireRoleModule.default?.ROLES ??
-  requireRoleModule.ROLES;
+import { requireGlobalRole } from '../../middleware/requireRole.js';
 
 const r = Router();
 
-r.use(requireRole(ROLES.SuperAdmin, ROLES.Support));
-
-function buildOrgFilters(query) {
-  const params = [];
-  const parts = [];
-  const statusRaw = String(query.status ?? 'active').toLowerCase();
-  const status = ['active', 'inactive', 'all'].includes(statusRaw) ? statusRaw : 'active';
-
-  if (status === 'active' || status === 'inactive') {
-    const idx = params.length + 1;
-    params.push(status);
-    parts.push(`o.status = $${idx}`);
-  }
-
-  const search = (query.q ?? query.search ?? '').trim();
-  if (search) {
-    const idx = params.length + 1;
-    params.push(`%${search}%`);
-    parts.push(`(o.name ILIKE $${idx} OR o.slug ILIKE $${idx} OR o.document_value ILIKE $${idx})`);
-  }
-
-  return {
-    clause: parts.length ? `WHERE ${parts.join(' AND ')}` : '',
-    params,
-    status,
-  };
-}
+// Somente SuperAdmin/Support
+r.use(requireGlobalRole(['SuperAdmin', 'Support']));
 
 // GET /api/admin/orgs?status=active|inactive|all
-r.get('/orgs', async (req, res, next) => {
+r.get('/', async (req, res, next) => {
   try {
-    const filters = buildOrgFilters(req.query ?? {});
-    const wantsPagination =
-      Object.prototype.hasOwnProperty.call(req.query ?? {}, 'page') ||
-      Object.prototype.hasOwnProperty.call(req.query ?? {}, 'pageSize') ||
-      Object.prototype.hasOwnProperty.call(req.query ?? {}, 'limit');
+    const status = String(req.query?.status ?? 'active').toLowerCase();
+    const where =
+      status === 'all'
+        ? '1=1'
+        : status === 'inactive'
+        ? "o.status = 'inactive'"
+        : "o.status = 'active'";
 
-    const rawPageSize = req.query?.pageSize ?? req.query?.limit;
-    const pageSize = wantsPagination
-      ? Math.max(1, Math.min(200, parseInt(rawPageSize ?? '50', 10) || 50))
-      : null;
-    const page = wantsPagination ? Math.max(1, parseInt(req.query?.page ?? '1', 10) || 1) : 1;
-
-    let sql = `
+    const { rows } = await query(
+      `
       SELECT
         o.id,
         o.name,
         o.slug,
         o.status,
-        (o.status = 'active') AS active,
         o.plan_id,
-        p.name AS plan_name,
-        p.price_cents,
-        p.currency,
         o.trial_ends_at,
-        o.document_type,
-        o.document_value,
-        o.email,
-        o.phone,
-        o.whatsapp_baileys_enabled,
-        o.whatsapp_baileys_status,
-        o.whatsapp_baileys_phone,
-        o.photo_url,
-        o.meta,
-        o.created_at,
-        o.updated_at
+        p.name AS plan_name,
+        p.id_legacy_text AS plan_slug
       FROM public.organizations o
       LEFT JOIN public.plans p ON p.id = o.plan_id
-      ${filters.clause}
-      ORDER BY o.name
-    `;
+      WHERE ${where}
+      ORDER BY o.name ASC
+      `,
+    );
 
-    const dataParams = [...filters.params];
-    if (wantsPagination) {
-      const limitIdx = dataParams.length + 1;
-      dataParams.push(pageSize);
-      const offsetIdx = dataParams.length + 1;
-      dataParams.push((page - 1) * pageSize);
-      sql += ` LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
-    }
-
-    const { rows } = await db.query(sql, dataParams);
-
-    let total = rows.length;
-    if (wantsPagination) {
-      const countSql = `SELECT COUNT(*)::int AS count FROM public.organizations o ${filters.clause}`;
-      const { rows: countRows } = await db.query(countSql, filters.params);
-      total = countRows[0]?.count ?? 0;
-    }
-
-    const payload = {
-      data: rows,
-      items: rows,
-      count: total,
-      total,
-      status: filters.status,
-    };
-    if (wantsPagination) {
-      payload.page = page;
-      payload.pageSize = pageSize;
-    }
-
-    res.json(payload);
-  } catch (e) { next(e); }
+    res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // PATCH /api/admin/orgs/:orgId
-r.patch('/orgs/:orgId', async (req, res, next) => {
+r.patch('/:orgId', async (req, res, next) => {
   try {
     const { orgId } = req.params;
     const up = req.body || {};
@@ -203,7 +125,7 @@ r.patch('/orgs/:orgId', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:orgId/plan
-r.put('/orgs/:orgId/plan', async (req, res, next) => {
+r.put('/:orgId/plan', async (req, res, next) => {
   try {
     const { orgId } = req.params;
     const { plan_id, status = 'active', start_at, end_at, trial_ends_at, meta } = req.body || {};
@@ -236,7 +158,7 @@ r.put('/orgs/:orgId/plan', async (req, res, next) => {
 });
 
 // PATCH /api/admin/orgs/:orgId/credits
-r.patch('/orgs/:orgId/credits', async (req, res, next) => {
+r.patch('/:orgId/credits', async (req, res, next) => {
   try {
     const { orgId } = req.params;
     const { feature_code, delta, expires_at, source, meta } = req.body || {};
@@ -267,7 +189,7 @@ r.patch('/orgs/:orgId/credits', async (req, res, next) => {
 });
 
 // POST /api/admin/orgs
-r.post('/orgs', async (req, res, next) => {
+r.post('/', async (req, res, next) => {
   try {
     const payload = OrgCreateSchema.parse(req.body);
 
@@ -344,7 +266,7 @@ r.post('/orgs', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id
-r.get('/orgs/:id', async (req, res, next) => {
+r.get('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [org] } = await db.query(
@@ -366,7 +288,7 @@ r.get('/orgs/:id', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/overview
-r.get('/orgs/:id/overview', async (req, res, next) => {
+r.get('/:id/overview', async (req, res, next) => {
   try {
     const { id } = req.params;
     const org = await db.oneOrNone(
@@ -379,7 +301,7 @@ r.get('/orgs/:id/overview', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/billing
-r.get('/orgs/:id/billing', async (req, res, next) => {
+r.get('/:id/billing', async (req, res, next) => {
   try {
     const { id } = req.params;
     const payments = await db.any(
@@ -391,7 +313,7 @@ r.get('/orgs/:id/billing', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/users
-r.get('/orgs/:id/users', async (req, res, next) => {
+r.get('/:id/users', async (req, res, next) => {
   try {
     const { id } = req.params;
     const users = await db.any(
@@ -407,7 +329,7 @@ r.get('/orgs/:id/users', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/logs
-r.get('/orgs/:id/logs', async (req, res, next) => {
+r.get('/:id/logs', async (req, res, next) => {
   try {
     const { id } = req.params;
     const logs = await db.any(
@@ -424,7 +346,7 @@ r.get('/orgs/:id/logs', async (req, res, next) => {
 
 // ----- Settings -----
 // GET /api/admin/orgs/:id/settings
-r.get('/orgs/:id/settings', async (req, res, next) => {
+r.get('/:id/settings', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [settings] } = await db.query(
@@ -436,7 +358,7 @@ r.get('/orgs/:id/settings', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:id/settings { allow_baileys:boolean }
-r.put('/orgs/:id/settings', async (req, res, next) => {
+r.put('/:id/settings', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { allow_baileys } = req.body ?? {};
@@ -456,7 +378,7 @@ r.put('/orgs/:id/settings', async (req, res, next) => {
 
 // ----- Baileys connection -----
 // POST /api/admin/orgs/:id/baileys/connect { phone, allowed_test_emails }
-r.post('/orgs/:id/baileys/connect', async (req, res, next) => {
+r.post('/:id/baileys/connect', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { phone, allowed_test_emails } = req.body ?? {};
@@ -516,7 +438,7 @@ r.post('/orgs/:id/baileys/connect', async (req, res, next) => {
 });
 
 // POST /api/admin/orgs/:id/baileys/disconnect
-r.post('/orgs/:id/baileys/disconnect', async (req, res, next) => {
+r.post('/:id/baileys/disconnect', async (req, res, next) => {
   try {
     const { id } = req.params;
     await stopForOrg(id);
@@ -529,7 +451,7 @@ r.post('/orgs/:id/baileys/disconnect', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/baileys/status
-r.get('/orgs/:id/baileys/status', async (req, res, next) => {
+r.get('/:id/baileys/status', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [org] } = await db.query(
@@ -546,7 +468,7 @@ r.get('/orgs/:id/baileys/status', async (req, res, next) => {
 
 // ----- API WhatsApp connection -----
 // POST /api/admin/orgs/:id/api-whatsapp/connect
-r.post('/orgs/:id/api-whatsapp/connect', async (req, res, next) => {
+r.post('/:id/api-whatsapp/connect', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [settings] } = await db.query(
@@ -567,7 +489,7 @@ r.post('/orgs/:id/api-whatsapp/connect', async (req, res, next) => {
 });
 
 // POST /api/admin/orgs/:id/api-whatsapp/disconnect
-r.post('/orgs/:id/api-whatsapp/disconnect', async (req, res, next) => {
+r.post('/:id/api-whatsapp/disconnect', async (req, res, next) => {
   try {
     const { id } = req.params;
     await db.query(
@@ -579,7 +501,7 @@ r.post('/orgs/:id/api-whatsapp/disconnect', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/api-whatsapp/status
-r.get('/orgs/:id/api-whatsapp/status', async (req, res, next) => {
+r.get('/:id/api-whatsapp/status', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [settings] } = await db.query(
@@ -591,7 +513,7 @@ r.get('/orgs/:id/api-whatsapp/status', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/whatsapp/status
-r.get('/orgs/:id/whatsapp/status', async (req, res, next) => {
+r.get('/:id/whatsapp/status', async (req, res, next) => {
   try {
     const { id } = req.params;
     const [{ rows: [settings] }, { rows: [org] }, { rows: [apiCh] }] = await Promise.all([
@@ -616,7 +538,7 @@ r.get('/orgs/:id/whatsapp/status', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:id/whatsapp/allow_baileys
-r.put('/orgs/:id/whatsapp/allow_baileys', async (req, res, next) => {
+r.put('/:id/whatsapp/allow_baileys', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { allow } = req.body ?? {};

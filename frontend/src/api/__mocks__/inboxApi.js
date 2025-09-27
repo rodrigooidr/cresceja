@@ -192,6 +192,12 @@ function match(re, path) {
 async function _get(path, config = {}) {
   if (__delayMs) await sleep(__delayMs);
   const url = parse(path);
+  let searchParams;
+  try {
+    searchParams = new URL(path, apiUrl).searchParams;
+  } catch {
+    searchParams = new URLSearchParams();
+  }
 
   {
     const route = findRoute('get', url);
@@ -205,8 +211,11 @@ async function _get(path, config = {}) {
   }
 
   if (url === "/admin/orgs") {
-    const status = config?.params?.status || "active";
-    const q = String(config?.params?.q || config?.params?.search || "").toLowerCase();
+    const status =
+      config?.params?.status || searchParams.get('status') || "active";
+    const q = String(
+      config?.params?.q || config?.params?.search || searchParams.get('q') || ''
+    ).toLowerCase();
     const rows = state.adminOrgs.filter((org) => {
       const matchesStatus = status === "all" || org.status === status;
       if (!matchesStatus) return false;
@@ -598,6 +607,22 @@ function callListAdminOrgs(status = "active", options = {}) {
   return inboxApi.get(`/admin/orgs`, cfg);
 }
 
+async function callAdminListOrgs(params = {}, options = {}) {
+  const cfg = { ...(options || {}) };
+  const normalized = { status: 'active', ...(params || {}) };
+  const query = new URLSearchParams(normalized).toString();
+  const response = await inboxApi.get(`/admin/orgs${query ? `?${query}` : ''}`, cfg);
+  const payload = response?.data;
+  const list = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload?.items)
+    ? payload.items
+    : Array.isArray(payload)
+    ? payload
+    : [];
+  return list.map((org) => ({ ...org }));
+}
+
 function callPatchAdminOrg(orgId, payload, options = {}) {
   return inboxApi.patch(`/admin/orgs/${orgId}`, payload, options);
 }
@@ -638,6 +663,11 @@ export const listAdminOrgs =
   typeof jest !== "undefined"
     ? jest.fn(callListAdminOrgs)
     : callListAdminOrgs;
+
+export const adminListOrgs =
+  typeof jest !== "undefined"
+    ? jest.fn(callAdminListOrgs)
+    : callAdminListOrgs;
 
 export const patchAdminOrg =
   typeof jest !== "undefined"
@@ -721,6 +751,7 @@ export const setPlanFeatures =
     : callSetPlanFeatures;
 
 inboxApi.listAdminOrgs = listAdminOrgs;
+inboxApi.adminListOrgs = adminListOrgs;
 inboxApi.patchAdminOrg = patchAdminOrg;
 inboxApi.putAdminOrgPlan = putAdminOrgPlan;
 inboxApi.patchAdminOrgCredits = patchAdminOrgCredits;
@@ -733,4 +764,5 @@ inboxApi.getPlanFeatures = getPlanFeatures;
 inboxApi.adminGetPlanFeatures = adminGetPlanFeatures;
 inboxApi.setPlanFeatures = setPlanFeatures;
 
+export const client = inboxApi;
 export default inboxApi;
