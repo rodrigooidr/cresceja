@@ -4,7 +4,7 @@ import AppLayout from "./ui/layout/AppLayout.jsx";
 import RequireAuth from "./auth/RequireAuth.jsx";
 import ActiveOrgGate from "./hooks/ActiveOrgGate.jsx";
 import RoleGate from "./auth/RoleGate.jsx";
-import { canViewOrganizationsAdmin } from "./auth/roles";
+import { canViewOrgPlan, canViewOrganizationsAdmin } from "./auth/roles";
 
 // públicas
 import LandingPage from "./pages/LandingPage.jsx";
@@ -28,6 +28,7 @@ import TelemetryPage from "./pages/governanca/TelemetryPage.jsx";
 import AdminOrganizationsPage from "./pages/admin/organizations/AdminOrganizationsPage.jsx";
 import OrgDetailsPage from "./pages/admin/OrgDetailsPage.jsx"; // ← detalhe da org
 import PlansAdminPage from "./pages/admin/PlansAdminPage.jsx";
+import OrgPlanPage from "./pages/org/OrgPlanPage.jsx";
 
 export default function App() {
   return (
@@ -51,6 +52,9 @@ export default function App() {
               <Route path="/marketing/instagram" element={<InstagramPublisher />} />
               <Route path="/marketing/facebook" element={<FacebookPublisher />} />
               <Route path="/marketing/calendar" element={<ContentCalendar />} />
+              <Route element={<RoleGate allow={canViewOrgPlan} redirectTo="/inbox" />}>
+                <Route path="/settings/plan" element={<OrgPlanPage />} />
+              </Route>
             </Route>
 
             {/* rotas que não dependem da org ativa */}
