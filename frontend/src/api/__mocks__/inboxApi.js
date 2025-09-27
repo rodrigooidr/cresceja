@@ -664,6 +664,11 @@ export const listAdminPlans =
     ? jest.fn(callListAdminPlans)
     : callListAdminPlans;
 
+export const adminListPlans =
+  typeof jest !== "undefined"
+    ? jest.fn(async () => state.adminPlans.map((plan) => ({ ...plan })))
+    : async () => state.adminPlans.map((plan) => ({ ...plan }));
+
 export const createPlan =
   typeof jest !== "undefined"
     ? jest.fn(callCreatePlan)
@@ -679,6 +684,37 @@ export const getPlanFeatures =
     ? jest.fn(callGetPlanFeatures)
     : callGetPlanFeatures;
 
+export const adminGetPlanFeatures =
+  typeof jest !== "undefined"
+    ? jest.fn(async (planId) => {
+        const list = state.planFeaturesByPlan[planId] || [];
+        return list.map((feature) => ({
+          ...feature,
+          value:
+            feature?.value && typeof feature.value === "object"
+              ? Array.isArray(feature.value)
+                ? feature.value.map((item) =>
+                    item && typeof item === "object" ? { ...item } : item
+                  )
+                : { ...feature.value }
+              : feature.value,
+        }));
+      })
+    : async (planId) => {
+        const list = state.planFeaturesByPlan[planId] || [];
+        return list.map((feature) => ({
+          ...feature,
+          value:
+            feature?.value && typeof feature.value === "object"
+              ? Array.isArray(feature.value)
+                ? feature.value.map((item) =>
+                    item && typeof item === "object" ? { ...item } : item
+                  )
+                : { ...feature.value }
+              : feature.value,
+        }));
+      };
+
 export const setPlanFeatures =
   typeof jest !== "undefined"
     ? jest.fn(callSetPlanFeatures)
@@ -690,9 +726,11 @@ inboxApi.putAdminOrgPlan = putAdminOrgPlan;
 inboxApi.patchAdminOrgCredits = patchAdminOrgCredits;
 inboxApi.getPlanSummary = getPlanSummary;
 inboxApi.listAdminPlans = listAdminPlans;
+inboxApi.adminListPlans = adminListPlans;
 inboxApi.createPlan = createPlan;
 inboxApi.updatePlan = updatePlan;
 inboxApi.getPlanFeatures = getPlanFeatures;
+inboxApi.adminGetPlanFeatures = adminGetPlanFeatures;
 inboxApi.setPlanFeatures = setPlanFeatures;
 
 export default inboxApi;

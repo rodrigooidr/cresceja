@@ -338,6 +338,11 @@ export async function listAdminPlans(options = {}) {
   return inboxApi.get(`/admin/plans`, withGlobalScope(options));
 }
 
+export async function adminListPlans(options = {}) {
+  const res = await listAdminPlans(options);
+  return res?.data?.data ?? res?.data ?? [];
+}
+
 export async function createPlan(payload, options = {}) {
   return inboxApi.post(`/admin/plans`, payload, withGlobalScope(options));
 }
@@ -348,6 +353,11 @@ export async function updatePlan(planId, payload, options = {}) {
 
 export async function getPlanFeatures(planId, options = {}) {
   return inboxApi.get(`/admin/plans/${planId}/features`, withGlobalScope(options));
+}
+
+export async function adminGetPlanFeatures(planId, options = {}) {
+  const res = await getPlanFeatures(planId, options);
+  return res?.data?.data ?? res?.data ?? [];
 }
 
 export async function setPlanFeatures(planId, features, options = {}) {

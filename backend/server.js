@@ -84,7 +84,7 @@ import funnelRouter from './routes/crm.funnel.js';
 import debugRouter from './routes/debug.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import plansRouter from './routes/plans.js';
-import adminPlansFeaturesRouter from './routes/admin/plans.features.js';
+import adminPlansRouter from './routes/admin/plans.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import calendarRemindersRouter from './routes/calendar.reminders.js';
 import createCalendarRemindersOneRouter from './routes/calendar.reminders.one.js';
@@ -253,13 +253,7 @@ function configureApp() {
   app.use('/api', plansRouter);
 
   // Rotas administrativas de planos (SuperAdmin/Support)
-  app.use(
-    '/api/admin/plans',
-    authRequired,
-    requireRole(ROLES.SuperAdmin, ROLES.Support),
-    adminContext,
-    adminPlansFeaturesRouter
-  );
+  app.use('/api/admin/plans', authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support), adminContext, adminPlansRouter);
 
   // Demais rotas administrativas (SuperAdmin)
   app.use(
