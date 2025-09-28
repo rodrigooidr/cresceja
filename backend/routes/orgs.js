@@ -1,6 +1,6 @@
 // backend/routes/orgs.js
 import { Router } from 'express';
-import { pool } from '#db';
+import { pool, query } from '#db';
 import authRequired from '../middleware/auth.js';
 import * as requireRoleModule from '../middleware/requireRole.js';
 
@@ -19,6 +19,35 @@ const ROLES =
   requireRoleModule.ROLES;
 
 const router = Router();
+
+/**
+ * GET /api/orgs/accessible?limit=50&page=1
+ * Lista organizações às quais o usuário logado tem acesso (pelo vínculo em org_members),
+ * retornando apenas as com status 'active'.
+ */
+router.get('/accessible', authRequired, async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.sub;
+    const limit = Math.min(parseInt(req.query.limit ?? '50', 10) || 50, 200);
+    const page = Math.max(parseInt(req.query.page ?? '1', 10) || 1, 1);
+    const offset = (page - 1) * limit;
+
+    const sql = `
+      SELECT o.id, o.name, o.slug, o.status
+      FROM public.org_members m
+      JOIN public.organizations o ON o.id = m.org_id
+      WHERE m.user_id = $1
+        AND o.status = 'active'
+      ORDER BY o.created_at ASC
+      LIMIT $2 OFFSET $3
+    `;
+    const { rows } = await query(sql, [userId, limit, offset]);
+
+    res.json({ data: rows, page, limit });
+  } catch (err) {
+    next(err);
+  }
+});
 
 /**
  * GET /api/orgs?visibility=mine|all&q=&page=1&pageSize=50
