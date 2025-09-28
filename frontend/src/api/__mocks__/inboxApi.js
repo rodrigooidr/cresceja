@@ -79,8 +79,30 @@ const state = {
     },
   },
   adminPlans: [
-    { id: "starter", name: "Starter", period: "monthly", price_cents: 0 },
-    { id: "pro", name: "Pro", period: "monthly", price_cents: 9900 },
+    {
+      id: "starter",
+      id_legacy_text: "starter",
+      name: "Starter",
+      monthly_price: 79,
+      currency: "BRL",
+      modules: {},
+      is_published: true,
+      is_active: true,
+      price_cents: 7900,
+      sort_order: 2,
+    },
+    {
+      id: "pro",
+      id_legacy_text: "pro",
+      name: "Pro",
+      monthly_price: 199,
+      currency: "BRL",
+      modules: {},
+      is_published: true,
+      is_active: true,
+      price_cents: 19900,
+      sort_order: 3,
+    },
   ],
   planFeaturesByPlan: {
     starter: [

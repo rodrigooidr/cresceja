@@ -40,21 +40,24 @@ router.use(requireGlobalRole(['SuperAdmin', 'Support']));
 
 router.get('/', async (req, res, next) => {
   try {
-    const q = getQuery(req);
-    const { rows } = await q(
-      `SELECT id, id_legacy_text, name, monthly_price, currency, modules
-         FROM public.plans
-        ORDER BY sort_order NULLS LAST, name ASC`
-    );
-    const payload = rows.map((row) => ({
-      id: row.id,
-      id_legacy_text: row.id_legacy_text ?? null,
-      name: row.name,
-      monthly_price: row.monthly_price,
-      currency: row.currency,
-      modules: row.modules ?? null,
-    }));
-    res.json(payload);
+    const { rows } = await rootQuery(`
+        SELECT
+          id,
+          id_legacy_text,
+          name,
+          monthly_price,
+          currency,
+          modules,
+          is_published,
+          is_active,
+          price_cents,
+          sort_order
+        FROM public.plans
+        ORDER BY
+          COALESCE(sort_order, 9999) ASC,
+          created_at ASC
+      `);
+    res.json({ data: rows });
   } catch (err) {
     next(err);
   }

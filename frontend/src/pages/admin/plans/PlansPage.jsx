@@ -4,6 +4,8 @@ import {
   adminListPlans,
   adminPutPlanFeatures,
 } from "@/api/inboxApi";
+import { hasGlobalRole } from "@/auth/roles";
+import { useAuth } from "@/contexts/AuthContext";
 
 function formatCurrency(currency, price) {
   if (price === null || price === undefined) return "—";
@@ -49,6 +51,11 @@ function normalizeFeatures(list = []) {
 }
 
 export default function PlansPage() {
+  const { user } = useAuth();
+  const canView = useMemo(
+    () => hasGlobalRole(["SuperAdmin", "Support"], user),
+    [user]
+  );
   const [plans, setPlans] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState("");
@@ -69,7 +76,18 @@ export default function PlansPage() {
   const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
+    if (!canView) {
+      setPlans([]);
+      setSelectedPlanId(null);
+      setPlansError("");
+      setPlansLoading(false);
+      return;
+    }
+
     let isMounted = true;
+    setPlansLoading(true);
+    setPlansError("");
+
     (async () => {
       try {
         const data = await adminListPlans();
@@ -78,8 +96,9 @@ export default function PlansPage() {
         setPlans(safeData);
         if (safeData.length) {
           setSelectedPlanId((current) => current || safeData[0].id);
+        } else {
+          setSelectedPlanId(null);
         }
-        setPlansError("");
       } catch (err) {
         if (!isMounted) return;
         const message =
@@ -88,6 +107,8 @@ export default function PlansPage() {
           err?.message ||
           "Não foi possível carregar os planos.";
         setPlansError(message);
+        setPlans([]);
+        setSelectedPlanId(null);
       } finally {
         if (isMounted) setPlansLoading(false);
       }
@@ -95,7 +116,7 @@ export default function PlansPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [canView]);
 
   useEffect(() => {
     if (!selectedPlanId) {
@@ -217,6 +238,14 @@ export default function PlansPage() {
     }
   };
 
+  if (!canView) {
+    return (
+      <div className="p-6 text-sm text-gray-600">
+        Você não tem permissão para visualizar esta página.
+      </div>
+    );
+  }
+
   if (plansLoading) {
     return <div className="p-6 text-sm text-gray-600">Carregando planos…</div>;
   }
@@ -253,7 +282,7 @@ export default function PlansPage() {
                   </div>
                 </li>
               ))}
-              {!plans.length && (
+              {!plans.length && !plansError && (
                 <li className="px-4 py-3 text-sm text-gray-500">Nenhum plano disponível.</li>
               )}
             </ul>
