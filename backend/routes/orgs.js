@@ -8,6 +8,10 @@ const requireRole =
   requireRoleModule.default?.requireRole ??
   requireRoleModule.default ??
   requireRoleModule;
+const requireOrgRole =
+  requireRoleModule.requireOrgRole ??
+  requireRoleModule.default?.requireOrgRole ??
+  requireRoleModule.requireRole;
 const ROLES =
   requireRoleModule.ROLES ??
   requireRoleModule.default?.ROLES ??
@@ -114,7 +118,7 @@ router.get('/', async (req, res) => {
 
 router.get(
   '/:orgId/plan/summary',
-  requireRole(ROLES.OrgAdmin, ROLES.OrgOwner, ROLES.Support, ROLES.SuperAdmin),
+  requireOrgRole([ROLES.OrgAdmin, ROLES.OrgOwner]),
   async (req, res, next) => {
     const existingClient = req.db || null;
     const client = existingClient || (await pool.connect());

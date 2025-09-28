@@ -1,6 +1,17 @@
 export const ORG_ROLES = Object.freeze(['OrgViewer', 'OrgAgent', 'OrgAdmin', 'OrgOwner']);
 export const GLOBAL_ROLES = Object.freeze(['Support', 'SuperAdmin']);
 
+export function normalizeOrgRole(role) {
+  if (!role) return ORG_ROLES[0];
+  const match = ORG_ROLES.find((item) => item === role);
+  return match ?? ORG_ROLES[0];
+}
+
+export function normalizeGlobalRoles(list) {
+  if (!Array.isArray(list)) return [];
+  return list.filter((role) => GLOBAL_ROLES.includes(role));
+}
+
 export function decodeJwt() {
   try {
     const raw = localStorage.getItem('token') || sessionStorage.getItem('token');
@@ -16,18 +27,22 @@ export function decodeJwt() {
 }
 
 export const hasOrgRole = (wanted, source) => {
-  const target = Array.isArray(wanted) ? wanted : [wanted].filter(Boolean);
+  const target = (Array.isArray(wanted) ? wanted : [wanted])
+    .filter(Boolean)
+    .map((role) => normalizeOrgRole(role));
   const context = source ?? decodeJwt();
-  const role = context?.role;
+  const role = context?.role ? normalizeOrgRole(context.role) : null;
   if (!role) return false;
   return target.some((item) => item === role);
 };
 
 export const hasGlobalRole = (wanted, source) => {
-  const target = Array.isArray(wanted) ? wanted : [wanted].filter(Boolean);
+  const target = (Array.isArray(wanted) ? wanted : [wanted])
+    .filter(Boolean)
+    .map((role) => String(role));
   if (!target.length) return false;
   const context = source ?? decodeJwt();
-  const roles = Array.isArray(context?.roles) ? context.roles : [];
+  const roles = normalizeGlobalRoles(context?.roles);
   return target.some((role) => roles.includes(role));
 };
 

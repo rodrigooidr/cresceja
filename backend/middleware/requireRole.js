@@ -50,6 +50,41 @@ export function requireRole(...roles) {
   };
 }
 
+export function requireOrgRole(roles = [], options = {}) {
+  const required = Array.isArray(roles) ? roles.flat().filter(Boolean) : [roles].filter(Boolean);
+  const alsoAllowGlobal = Array.isArray(options.alsoAllowGlobal)
+    ? options.alsoAllowGlobal.filter(Boolean)
+    : options.alsoAllowGlobal
+    ? [options.alsoAllowGlobal].filter(Boolean)
+    : [ROLES.SuperAdmin, ROLES.Support];
+
+  return (req, res, next) => {
+    try {
+      const user = req.user;
+      if (!user) {
+        return res.status(401).json({ error: 'UNAUTHENTICATED' });
+      }
+
+      if (!required.length) {
+        return next();
+      }
+
+      if (alsoAllowGlobal.length && hasGlobalRole(user, alsoAllowGlobal)) {
+        return next();
+      }
+
+      if (hasOrgRole(user, required)) {
+        return next();
+      }
+
+      req.log?.warn({ user, need: required, path: req.originalUrl }, 'RBAC org deny');
+      return res.status(403).json({ error: 'forbidden' });
+    } catch (err) {
+      return next(err);
+    }
+  };
+}
+
 export function requireGlobalRole(roles = []) {
   const required = Array.isArray(roles) ? roles.flat().filter(Boolean) : [roles].filter(Boolean);
   return (req, res, next) => {
@@ -125,6 +160,7 @@ export function requireScope(scope) {
 const legacyExport = Object.assign(requireRole, {
   ROLES,
   requireRole,
+  requireOrgRole,
   requireGlobalRole,
   requireScope,
   hasSupportScope,
