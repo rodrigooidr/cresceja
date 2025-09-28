@@ -14,14 +14,9 @@ beforeEach(() => {
 test("exibe resumo do plano e créditos", async () => {
   inboxApi.__mockRoute("GET", "/orgs/org-1/plan/summary", () => ({
     data: {
-      org: {
-        id: "org-1",
-        name: "Org One",
-        slug: "org-one",
-        status: "active",
-        plan_id: "pro",
-        trial_ends_at: "2024-05-20T00:00:00.000Z",
-      },
+      org_id: "org-1",
+      plan_id: "pro",
+      trial_ends_at: "2024-05-20T00:00:00.000Z",
       credits: [
         {
           feature_code: "sms",
@@ -58,14 +53,9 @@ test("exibe resumo do plano e créditos", async () => {
 test("mostra mensagem quando não há créditos", async () => {
   inboxApi.__mockRoute("GET", "/orgs/org-1/plan/summary", () => ({
     data: {
-      org: {
-        id: "org-1",
-        name: "Org Sem Créditos",
-        slug: "org-sem",
-        status: "active",
-        plan_id: "starter",
-        trial_ends_at: null,
-      },
+      org_id: "org-1",
+      plan_id: "starter",
+      trial_ends_at: null,
       credits: [],
     },
   }));

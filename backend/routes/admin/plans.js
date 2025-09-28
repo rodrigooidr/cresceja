@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { query as rootQuery } from '#db';
 import { auth as authRequired } from '../../middleware/auth.js';
 import { requireGlobalRole } from '../../middleware/requireRole.js';
-import { upsertPlanFeatures } from '../../services/plans.js';
+import { getPlanFeatures, upsertPlanFeatures } from '../../services/plans.js';
 
 const router = Router();
 
@@ -15,51 +15,24 @@ function getQuery(req) {
   return (sql, params) => rootQuery(sql, params);
 }
 
-async function resolvePlanFeaturesMeta(q) {
-  const tables = ['plan_features', 'plans_features'];
-  for (const table of tables) {
-    const { rows } = await q('SELECT to_regclass($1) AS oid', [`public.${table}`]);
-    if (rows?.[0]?.oid) {
-      const { rows: cols } = await q(
-        `SELECT column_name
-           FROM information_schema.columns
-          WHERE table_schema = 'public' AND table_name = $1`,
-        [table]
-      );
-      const columns = new Set(cols.map((c) => c.column_name));
-      return { table, columns };
+function normalizeEnumOptions(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (err) {
+      // ignore parsing errors, fallback to comma separated string
     }
+    return trimmed
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
-  return null;
-}
-
-function buildPlanFeaturesSelect(columns) {
-  const parts = ['plan_id'];
-  const hasFeatureCode = columns.has('feature_code');
-  const hasCode = columns.has('code');
-  if (hasFeatureCode && hasCode) {
-    parts.push('COALESCE(feature_code, code) AS code');
-  } else if (hasFeatureCode) {
-    parts.push('feature_code AS code');
-  } else if (hasCode) {
-    parts.push('code');
-  } else {
-    parts.push('NULL::text AS code');
-  }
-
-  if (columns.has('type')) {
-    parts.push('type');
-  } else {
-    parts.push('NULL::text AS type');
-  }
-
-  if (columns.has('value')) {
-    parts.push('value');
-  } else {
-    parts.push('NULL::jsonb AS value');
-  }
-
-  return parts.join(',\n         ');
+  return [];
 }
 
 router.use(authRequired);
@@ -69,26 +42,19 @@ router.get('/', async (req, res, next) => {
   try {
     const q = getQuery(req);
     const { rows } = await q(
-      `SELECT
-         id,
-         id_legacy_text AS slug,
-         name,
-         monthly_price,
-         currency,
-         modules,
-         is_published,
-         is_active,
-         is_free,
-         trial_days,
-         billing_period_months,
-         price_cents,
-         sort_order,
-         created_at,
-         updated_at
-       FROM public.plans
-       ORDER BY sort_order NULLS LAST, name ASC`
+      `SELECT id, id_legacy_text, name, monthly_price, currency, modules
+         FROM public.plans
+        ORDER BY sort_order NULLS LAST, name ASC`
     );
-    res.json({ data: rows });
+    const payload = rows.map((row) => ({
+      id: row.id,
+      id_legacy_text: row.id_legacy_text ?? null,
+      name: row.name,
+      monthly_price: row.monthly_price,
+      currency: row.currency,
+      modules: row.modules ?? null,
+    }));
+    res.json(payload);
   } catch (err) {
     next(err);
   }
@@ -96,21 +62,8 @@ router.get('/', async (req, res, next) => {
 
 router.get('/:id/features', async (req, res, next) => {
   try {
-    const q = getQuery(req);
-    const meta = await resolvePlanFeaturesMeta(q);
-    if (!meta) {
-      return res.json({ data: [] });
-    }
-    const selectClause = buildPlanFeaturesSelect(meta.columns);
-    const { rows } = await q(
-      `SELECT
-         ${selectClause}
-       FROM public.${meta.table}
-       WHERE plan_id = $1
-       ORDER BY code`,
-      [req.params.id]
-    );
-    res.json({ data: rows });
+    const features = await getPlanFeatures(req.params.id, req.db);
+    res.json(features);
   } catch (err) {
     next(err);
   }
@@ -118,53 +71,92 @@ router.get('/:id/features', async (req, res, next) => {
 
 router.put('/:id/features', async (req, res, next) => {
   try {
-    const schema = z.object({ features: z.record(z.any()) });
-    const { features } = schema.parse(req.body || {});
-    const codes = Object.keys(features);
-    if (!codes.length) {
+    const schema = z.array(
+      z.object({
+        code: z.string().min(1),
+        label: z.string().optional(),
+        type: z.enum(['number', 'boolean', 'string', 'enum']),
+        value: z.any(),
+        options: z.any().optional(),
+      })
+    );
+
+    const rawPayload = Array.isArray(req.body) ? req.body : req.body?.features;
+    const parsedInput = schema.parse(rawPayload ?? []);
+    if (!parsedInput.length) {
       return res.json({ ok: true });
     }
 
     const q = getQuery(req);
+    const codes = parsedInput.map((item) => item.code);
     const { rows: defs } = await q(
-      'SELECT code, type FROM feature_defs WHERE code = ANY($1)',
+      `SELECT code, type, enum_options
+         FROM feature_defs
+        WHERE code = ANY($1)`,
       [codes]
     );
-    const defsMap = Object.fromEntries(defs.map((d) => [d.code, d]));
 
-    const parsed = {};
-    for (const code of codes) {
-      const def = defsMap[code];
+    const defsMap = new Map(defs.map((item) => [item.code, item]));
+    const validated = [];
+    const details = [];
+
+    for (const feature of parsedInput) {
+      const def = defsMap.get(feature.code);
       if (!def) {
-        return res.status(404).json({ error: 'feature_not_found', code });
+        return res.status(404).json({ error: 'feature_not_found', code: feature.code });
       }
-      const val = features[code] || {};
-      if (def.type === 'number') {
-        const limit = val.limit ?? null;
-        if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
-          return res
-            .status(422)
-            .json({ error: 'validation', details: [{ code, message: 'limit_invalid' }] });
-        }
-        parsed[code] =
-          limit === 0
-            ? { enabled: false, limit: 0 }
-            : limit === null
-            ? { enabled: true }
-            : { enabled: true, limit };
-      } else if (def.type === 'boolean') {
-        if (typeof val.enabled !== 'boolean') {
-          return res
-            .status(422)
-            .json({ error: 'validation', details: [{ code, message: 'enabled_invalid' }] });
-        }
-        parsed[code] = { enabled: val.enabled };
-      } else {
-        return res.status(422).json({ error: 'unsupported_type', code });
+
+      const type = def.type;
+      if (!['number', 'boolean', 'string', 'enum'].includes(type)) {
+        details.push({ code: feature.code, message: 'unsupported_type' });
+        continue;
       }
+
+      let value = feature.value;
+      let options = normalizeEnumOptions(def.enum_options);
+
+      if (type === 'number') {
+        if (value === null || value === undefined || value === '') {
+          details.push({ code: feature.code, message: 'required' });
+          continue;
+        }
+        if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) {
+          details.push({ code: feature.code, message: 'invalid_number' });
+          continue;
+        }
+      } else if (type === 'boolean') {
+        if (typeof value !== 'boolean') {
+          details.push({ code: feature.code, message: 'invalid_boolean' });
+          continue;
+        }
+      } else if (type === 'string') {
+        if (typeof value !== 'string') {
+          details.push({ code: feature.code, message: 'invalid_string' });
+          continue;
+        }
+      } else if (type === 'enum') {
+        const incomingOptions = Array.isArray(feature.options)
+          ? feature.options
+          : options;
+        options = normalizeEnumOptions(incomingOptions);
+        if (!options.length) {
+          details.push({ code: feature.code, message: 'enum_options_required' });
+          continue;
+        }
+        if (typeof value !== 'string' || !options.includes(value)) {
+          details.push({ code: feature.code, message: 'enum_invalid_value' });
+          continue;
+        }
+      }
+
+      validated.push({ code: feature.code, value });
     }
 
-    await upsertPlanFeatures(req.params.id, parsed, req.db);
+    if (details.length) {
+      return res.status(422).json({ error: 'validation', details });
+    }
+
+    await upsertPlanFeatures(req.params.id, validated, req.db);
     res.json({ ok: true });
   } catch (err) {
     if (err instanceof z.ZodError) {

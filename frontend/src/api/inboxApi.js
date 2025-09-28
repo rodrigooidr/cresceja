@@ -350,10 +350,10 @@ export async function listAdminPlans(options = {}) {
   return inboxApi.get(`/admin/plans`, withGlobalScope(options));
 }
 
-export async function adminListPlans() {
-  const res = await client.get('/admin/plans', withGlobalScope());
+export async function adminListPlans(options = {}) {
+  const res = await client.get('/admin/plans', withGlobalScope(options));
   if (res?.status !== 200) throw new Error(`admin/plans ${res?.status}`);
-  const data = res?.data?.data ?? res?.data;
+  const data = res?.data;
   if (!Array.isArray(data)) throw new Error('admin/plans payload inválido');
   return data;
 }
@@ -366,16 +366,16 @@ export async function updatePlan(planId, payload, options = {}) {
   return inboxApi.put(`/admin/plans/${planId}`, payload, withGlobalScope(options));
 }
 
-export async function getPlanFeatures(planId, options = {}) {
-  return inboxApi.get(`/admin/plans/${planId}/features`, withGlobalScope(options));
-}
-
 export async function adminGetPlanFeatures(planId, options = {}) {
-  const res = await getPlanFeatures(planId, options);
-  return res?.data?.data ?? res?.data ?? [];
+  if (!planId) return [];
+  const res = await client.get(`/admin/plans/${planId}/features`, withGlobalScope(options));
+  if (res?.status !== 200) throw new Error(`admin/plans/${planId}/features ${res?.status}`);
+  const data = res?.data;
+  if (!Array.isArray(data)) throw new Error('admin/plans features payload inválido');
+  return data;
 }
 
-export async function setPlanFeatures(planId, features, options = {}) {
+export async function adminPutPlanFeatures(planId, features, options = {}) {
   return inboxApi.put(`/admin/plans/${planId}/features`, features, withGlobalScope(options));
 }
 

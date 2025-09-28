@@ -70,14 +70,9 @@ const state = {
   ],
   planSummaryByOrg: {
     "org-1": {
-      org: {
-        id: "org-1",
-        name: "Org Demo 1",
-        slug: "org-demo-1",
-        plan_id: "starter",
-        status: "active",
-        trial_ends_at: "2024-12-31",
-      },
+      org_id: "org-1",
+      plan_id: "starter",
+      trial_ends_at: "2024-12-31",
       credits: [
         { feature_code: "whatsapp", remaining_total: 1000, expires_next: "2025-01-31" },
       ],
@@ -89,34 +84,30 @@ const state = {
   ],
   planFeaturesByPlan: {
     starter: [
-      { code: "posts", label: "Posts", type: "number", value: { enabled: true, limit: 50 } },
+      { code: "posts", label: "Posts", type: "number", value: 50 },
+      { code: "whatsapp_numbers", label: "Números WhatsApp", type: "number", value: 1 },
+      { code: "whatsapp_mode_baileys", label: "Baileys", type: "boolean", value: false },
       {
-        code: "whatsapp_numbers",
-        label: "Números WhatsApp",
-        type: "number",
-        value: { enabled: true, limit: 1 },
+        code: "channel",
+        label: "Canal",
+        type: "enum",
+        value: "basic",
+        options: ["basic", "advanced"],
       },
-      {
-        code: "whatsapp_mode_baileys",
-        label: "Baileys",
-        type: "boolean",
-        value: { enabled: false },
-      },
+      { code: "notes", label: "Notas", type: "string", value: "Padrão" },
     ],
     pro: [
-      { code: "posts", label: "Posts", type: "number", value: { enabled: true, limit: 500 } },
+      { code: "posts", label: "Posts", type: "number", value: 500 },
+      { code: "whatsapp_numbers", label: "Números WhatsApp", type: "number", value: 5 },
+      { code: "whatsapp_mode_baileys", label: "Baileys", type: "boolean", value: true },
       {
-        code: "whatsapp_numbers",
-        label: "Números WhatsApp",
-        type: "number",
-        value: { enabled: true, limit: 5 },
+        code: "channel",
+        label: "Canal",
+        type: "enum",
+        value: "advanced",
+        options: ["basic", "advanced"],
       },
-      {
-        code: "whatsapp_mode_baileys",
-        label: "Baileys",
-        type: "boolean",
-        value: { enabled: true },
-      },
+      { code: "notes", label: "Notas", type: "string", value: "Plano Pro" },
     ],
   },
   publicPlans: {
@@ -228,7 +219,7 @@ async function _get(path, config = {}) {
 
   if (url === "/admin/plans") {
     const rows = state.adminPlans.map((plan) => ({ ...plan }));
-    return res({ data: rows, count: rows.length });
+    return res(rows);
   }
 
   {
@@ -237,19 +228,13 @@ async function _get(path, config = {}) {
       const planId = m[0];
       const features = state.planFeaturesByPlan[planId];
       if (features) {
-        const cloned = features.map((f) => {
-          const value = f?.value;
-          if (Array.isArray(value)) {
-            return { ...f, value: value.map((item) => (item && typeof item === 'object' ? { ...item } : item)) };
-          }
-          if (value && typeof value === 'object') {
-            return { ...f, value: { ...value } };
-          }
-          return { ...f };
-        });
-        return res({ data: cloned });
+        const cloned = features.map((f) => ({
+          ...f,
+          options: Array.isArray(f.options) ? [...f.options] : undefined,
+        }));
+        return res(cloned);
       }
-      return res({ data: [] });
+      return res([]);
     }
   }
 
@@ -261,14 +246,9 @@ async function _get(path, config = {}) {
       if (summary) return res(summary);
       const fallbackOrg = state.adminOrgs.find((org) => org.id === orgId);
       return res({
-        org: fallbackOrg || {
-          id: orgId,
-          name: `Org ${orgId}`,
-          slug: orgId,
-          plan_id: null,
-          status: "active",
-          trial_ends_at: null,
-        },
+        org_id: fallbackOrg?.id || orgId,
+        plan_id: fallbackOrg?.plan_id || null,
+        trial_ends_at: fallbackOrg?.trial_ends_at || null,
         credits: [],
       });
     }
@@ -450,9 +430,20 @@ async function _patch(path, body = {}, config = {}) {
       if (idx >= 0) state.adminOrgs[idx] = updated; else state.adminOrgs.push(updated);
       const summary = state.planSummaryByOrg[orgId];
       if (summary) {
-        summary.org = { ...(summary.org || {}), ...updated };
+        summary.org_id = updated.id ?? summary.org_id ?? orgId;
+        if (Object.prototype.hasOwnProperty.call(updated, 'plan_id')) {
+          summary.plan_id = updated.plan_id;
+        }
+        if (Object.prototype.hasOwnProperty.call(updated, 'trial_ends_at')) {
+          summary.trial_ends_at = updated.trial_ends_at;
+        }
       } else {
-        state.planSummaryByOrg[orgId] = { org: { ...updated }, credits: [] };
+        state.planSummaryByOrg[orgId] = {
+          org_id: updated.id ?? orgId,
+          plan_id: updated.plan_id ?? null,
+          trial_ends_at: updated.trial_ends_at ?? null,
+          credits: [],
+        };
       }
       return res({ ok: true, org: updated });
     }
@@ -462,7 +453,14 @@ async function _patch(path, body = {}, config = {}) {
     const m = match(/^\/admin\/orgs\/([^/]+)\/credits$/, url);
     if (m) {
       const orgId = m[0];
-      const summary = state.planSummaryByOrg[orgId] || (state.planSummaryByOrg[orgId] = { org: { id: orgId }, credits: [] });
+      const summary =
+        state.planSummaryByOrg[orgId] ||
+        (state.planSummaryByOrg[orgId] = {
+          org_id: orgId,
+          plan_id: null,
+          trial_ends_at: null,
+          credits: [],
+        });
       const nextCredit = {
         feature_code: body?.feature_code || "",
         remaining_total: body?.delta ?? 0,
@@ -518,13 +516,13 @@ async function _put(path, body = {}, config = {}) {
         : Array.isArray(body)
         ? body
         : [];
-      const normalized = raw.map((feature) => {
-        const value = feature?.value;
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-          return { ...feature, value: { ...value } };
-        }
-        return { ...feature };
-      });
+      const normalized = raw.map((feature) => ({
+        code: feature.code,
+        label: feature.label ?? feature.code,
+        type: feature.type,
+        value: feature.value,
+        options: Array.isArray(feature.options) ? [...feature.options] : undefined,
+      }));
       state.planFeaturesByPlan[planId] = normalized;
       return res({ ok: true, data: normalized });
     }
@@ -542,10 +540,28 @@ async function _put(path, body = {}, config = {}) {
       const updated = { ...current, plan_id: planId, status: nextStatus, trial_ends_at: trial };
       if (idx >= 0) state.adminOrgs[idx] = updated; else state.adminOrgs.push(updated);
 
-      const summary = state.planSummaryByOrg[orgId] || (state.planSummaryByOrg[orgId] = { org: { id: orgId }, credits: [] });
-      summary.org = { ...(summary.org || {}), ...updated };
+      const summary =
+        state.planSummaryByOrg[orgId] ||
+        (state.planSummaryByOrg[orgId] = {
+          org_id: orgId,
+          plan_id: null,
+          trial_ends_at: null,
+          credits: [],
+        });
+      summary.org_id = orgId;
+      summary.plan_id = planId;
+      summary.trial_ends_at = trial;
+      if (!Array.isArray(summary.credits)) summary.credits = [];
 
-      return res({ ok: true, org: summary.org });
+      return res({
+        ok: true,
+        org: {
+          id: orgId,
+          plan_id: planId,
+          trial_ends_at: trial,
+          status: nextStatus,
+        },
+      });
     }
   }
 
@@ -651,14 +667,6 @@ function callUpdatePlan(planId, payload, options = {}) {
   return inboxApi.put(`/admin/plans/${planId}`, payload, options);
 }
 
-function callGetPlanFeatures(planId, options = {}) {
-  return inboxApi.get(`/admin/plans/${planId}/features`, options);
-}
-
-function callSetPlanFeatures(planId, features, options = {}) {
-  return inboxApi.put(`/admin/plans/${planId}/features`, features, options);
-}
-
 export const listAdminOrgs =
   typeof jest !== "undefined"
     ? jest.fn(callListAdminOrgs)
@@ -709,46 +717,47 @@ export const updatePlan =
     ? jest.fn(callUpdatePlan)
     : callUpdatePlan;
 
-export const getPlanFeatures =
-  typeof jest !== "undefined"
-    ? jest.fn(callGetPlanFeatures)
-    : callGetPlanFeatures;
-
 export const adminGetPlanFeatures =
   typeof jest !== "undefined"
     ? jest.fn(async (planId) => {
         const list = state.planFeaturesByPlan[planId] || [];
         return list.map((feature) => ({
           ...feature,
-          value:
-            feature?.value && typeof feature.value === "object"
-              ? Array.isArray(feature.value)
-                ? feature.value.map((item) =>
-                    item && typeof item === "object" ? { ...item } : item
-                  )
-                : { ...feature.value }
-              : feature.value,
+          options: Array.isArray(feature.options) ? [...feature.options] : undefined,
         }));
       })
     : async (planId) => {
         const list = state.planFeaturesByPlan[planId] || [];
         return list.map((feature) => ({
           ...feature,
-          value:
-            feature?.value && typeof feature.value === "object"
-              ? Array.isArray(feature.value)
-                ? feature.value.map((item) =>
-                    item && typeof item === "object" ? { ...item } : item
-                  )
-                : { ...feature.value }
-              : feature.value,
+          options: Array.isArray(feature.options) ? [...feature.options] : undefined,
         }));
       };
 
-export const setPlanFeatures =
+export const adminPutPlanFeatures =
   typeof jest !== "undefined"
-    ? jest.fn(callSetPlanFeatures)
-    : callSetPlanFeatures;
+    ? jest.fn(async (planId, features = []) => {
+        const normalized = (Array.isArray(features) ? features : []).map((feature) => ({
+          code: feature.code,
+          label: feature.label ?? feature.code,
+          type: feature.type,
+          value: feature.value,
+          options: Array.isArray(feature.options) ? [...feature.options] : undefined,
+        }));
+        state.planFeaturesByPlan[planId] = normalized;
+        return { ok: true, data: normalized };
+      })
+    : async (planId, features = []) => {
+        const normalized = (Array.isArray(features) ? features : []).map((feature) => ({
+          code: feature.code,
+          label: feature.label ?? feature.code,
+          type: feature.type,
+          value: feature.value,
+          options: Array.isArray(feature.options) ? [...feature.options] : undefined,
+        }));
+        state.planFeaturesByPlan[planId] = normalized;
+        return { ok: true, data: normalized };
+      };
 
 inboxApi.listAdminOrgs = listAdminOrgs;
 inboxApi.adminListOrgs = adminListOrgs;
@@ -760,9 +769,8 @@ inboxApi.listAdminPlans = listAdminPlans;
 inboxApi.adminListPlans = adminListPlans;
 inboxApi.createPlan = createPlan;
 inboxApi.updatePlan = updatePlan;
-inboxApi.getPlanFeatures = getPlanFeatures;
 inboxApi.adminGetPlanFeatures = adminGetPlanFeatures;
-inboxApi.setPlanFeatures = setPlanFeatures;
+inboxApi.adminPutPlanFeatures = adminPutPlanFeatures;
 
 export const client = inboxApi;
 export default inboxApi;
