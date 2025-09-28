@@ -351,11 +351,20 @@ export async function listAdminPlans(options = {}) {
 }
 
 export async function adminListPlans(options = {}) {
-  const res = await client.get('/admin/plans', withGlobalScope(options));
+  const res = await client.get("/admin/plans", withGlobalScope(options));
   if (res?.status !== 200) throw new Error(`admin/plans ${res?.status}`);
-  const data = res?.data;
-  if (!Array.isArray(data)) throw new Error('admin/plans payload inválido');
-  return data;
+
+  const payload = res?.data;
+  const list = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : null;
+
+  if (!Array.isArray(list)) {
+    const dbg = typeof payload === "object" ? JSON.stringify(payload) : String(payload);
+    const err = new Error("admin/plans payload inválido");
+    err.meta = { received: dbg };
+    throw err;
+  }
+
+  return list;
 }
 
 export async function createPlan(payload, options = {}) {
