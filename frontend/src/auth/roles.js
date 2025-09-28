@@ -57,5 +57,5 @@ export const canViewOrganizationsAdmin = (source) =>
   hasGlobalRole(['SuperAdmin', 'Support'], source);
 
 export const canViewOrgPlan = (source) =>
-  hasGlobalRole(['SuperAdmin'], source) ||
+  hasGlobalRole(['SuperAdmin', 'Support'], source) ||
   hasOrgRole(['OrgAdmin', 'OrgOwner'], source);

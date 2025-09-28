@@ -1,6 +1,7 @@
 // backend/routes/orgs.js
 import { Router } from 'express';
 import { pool } from '#db';
+import authRequired from '../middleware/auth.js';
 import * as requireRoleModule from '../middleware/requireRole.js';
 
 const requireRole =
@@ -118,6 +119,7 @@ router.get('/', async (req, res) => {
 
 router.get(
   '/:orgId/plan/summary',
+  authRequired,
   requireOrgRole([ROLES.OrgAdmin, ROLES.OrgOwner]),
   async (req, res, next) => {
     const existingClient = req.db || null;
@@ -128,21 +130,37 @@ router.get(
       const { orgId } = req.params;
 
       const { rows: orgRows } = await client.query(
-        `SELECT id, name, slug, status, plan_id, trial_ends_at
+        `SELECT id, plan_id, trial_ends_at
            FROM public.organizations
-          WHERE id=$1`,
+          WHERE id = $1`,
         [orgId],
       );
 
+      if (!orgRows.length) {
+        return res.status(404).json({ error: 'org_not_found' });
+      }
+
+      const org = orgRows[0];
       const { rows: creditsRows } = await client.query(
         `SELECT org_id, feature_code, remaining_total, expires_next
            FROM public.v_org_credits
-          WHERE org_id=$1
+          WHERE org_id = $1
           ORDER BY feature_code`,
         [orgId],
       );
 
-      res.json({ org: orgRows[0] || null, credits: creditsRows });
+      const summary = {
+        org_id: org.id,
+        plan_id: org.plan_id ?? null,
+        trial_ends_at: org.trial_ends_at ?? null,
+        credits: creditsRows.map((credit) => ({
+          feature_code: credit.feature_code,
+          remaining_total: credit.remaining_total ?? 0,
+          expires_next: credit.expires_next ?? null,
+        })),
+      };
+
+      res.json(summary);
     } catch (e) {
       next(e);
     } finally {

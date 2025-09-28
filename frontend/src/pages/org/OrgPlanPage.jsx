@@ -19,7 +19,9 @@ export default function OrgPlanPage() {
   const { selected, orgs } = useOrg();
   const { user } = useAuth();
   const canViewPlan = useMemo(
-    () => hasOrgRole(["OrgAdmin", "OrgOwner"], user) || hasGlobalRole("SuperAdmin", user),
+    () =>
+      hasOrgRole(["OrgAdmin", "OrgOwner"], user) ||
+      hasGlobalRole(["SuperAdmin", "Support"], user),
     [user]
   );
   const [state, setState] = useState({
@@ -47,7 +49,7 @@ export default function OrgPlanPage() {
       setState({
         loading: false,
         error: "",
-        summary: summaryRes?.data ?? null,
+        summary: summaryRes?.data ?? summaryRes ?? null,
         planLabels,
       });
     } catch (e) {
@@ -73,15 +75,15 @@ export default function OrgPlanPage() {
   }, [selected, load, canViewPlan]);
 
   const planLabel = useMemo(() => {
-    const org = state.summary?.org;
-    if (!org?.plan_id) return "—";
-    return state.planLabels[org.plan_id] || org.plan_id;
+    const planId = state.summary?.plan_id;
+    if (!planId) return "Sem plano";
+    return state.planLabels[planId] || planId;
   }, [state.summary, state.planLabels]);
 
   const currentOrgName = useMemo(() => {
     const org = orgs?.find((item) => item.id === selected);
-    return org?.name || state.summary?.org?.name || "";
-  }, [orgs, selected, state.summary]);
+    return org?.name || "";
+  }, [orgs, selected]);
 
   if (!canViewPlan) {
     return (
@@ -130,7 +132,7 @@ export default function OrgPlanPage() {
         <h2 className="text-lg font-semibold">Plano atual</h2>
         {state.loading && !state.summary ? (
           <div className="mt-4 text-sm text-gray-500">Carregando…</div>
-        ) : !state.summary?.org ? (
+        ) : !state.summary ? (
           <div className="mt-4 text-sm text-gray-500">Nenhuma informação de plano encontrada.</div>
         ) : (
           <div className="mt-4 grid gap-4 md:grid-cols-3 text-sm">
@@ -139,15 +141,9 @@ export default function OrgPlanPage() {
               <div className="mt-1 text-base font-semibold">{planLabel}</div>
             </div>
             <div className="rounded border bg-gray-50 p-3">
-              <div className="text-xs uppercase text-gray-500">Status</div>
-              <div className="mt-1 text-base font-semibold">
-                {state.summary.org.status || "—"}
-              </div>
-            </div>
-            <div className="rounded border bg-gray-50 p-3">
               <div className="text-xs uppercase text-gray-500">Teste / Trial até</div>
               <div className="mt-1 text-base font-semibold">
-                {formatDate(state.summary.org.trial_ends_at)}
+                {formatDate(state.summary.trial_ends_at)}
               </div>
             </div>
           </div>
