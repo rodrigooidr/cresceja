@@ -1,3 +1,13 @@
+try {
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
+    configurable: true,
+    value: true,
+    writable: true,
+  });
+} catch {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+}
+
 // 1) Força mock APENAS do inboxApi (NÃO mockar '@/api/index' aqui)
 try { jest.mock('@/api/inboxApi'); } catch {}
 
