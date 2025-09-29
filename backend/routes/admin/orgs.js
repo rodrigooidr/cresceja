@@ -1,88 +1,100 @@
 // backend/routes/admin/orgs.js
 import { Router } from 'express';
-import db from '#db';
-import { startForOrg, stopForOrg } from '../../services/baileysService.js';
+import { z } from 'zod';
+import dbModule, { query } from '#db';
+import { withOrgId } from '../../middleware/withOrgId.js';
 import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
-import { authRequired } from '../../middleware/auth.js';
-import * as requireRoleModule from '../../middleware/requireRole.js';
-
-const requireRole =
-  requireRoleModule.requireRole ??
-  requireRoleModule.default?.requireRole ??
-  requireRoleModule.default;
-const FALLBACK_ROLES = { SuperAdmin: 'SuperAdmin', Support: 'Support' };
-const ROLES =
-  requireRoleModule.ROLES ??
-  requireRoleModule.default?.ROLES ??
-  FALLBACK_ROLES;
+import { startForOrg, stopForOrg } from '../../services/baileysService.js';
 
 const router = Router();
+const StatusSchema = z.enum(['active', 'inactive', 'all']).default('active');
 
-// Somente SuperAdmin/Support
-router.use(authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support));
+const baseQuery =
+  typeof dbModule?.query === 'function'
+    ? dbModule.query.bind(dbModule)
+    : typeof query === 'function'
+    ? query
+    : null;
+
+async function execQuery(sql, params) {
+  if (!baseQuery) {
+    const err = new Error('database_unavailable');
+    err.status = 500;
+    throw err;
+  }
+  return baseQuery(sql, params);
+}
+
+async function queryRows(sql, params) {
+  const result = await execQuery(sql, params);
+  return result?.rows ?? [];
+}
+
+async function queryOneOrNone(sql, params) {
+  const rows = await queryRows(sql, params);
+  return rows[0] ?? null;
+}
+
+async function queryOne(sql, params) {
+  const row = await queryOneOrNone(sql, params);
+  if (!row) {
+    const err = new Error('not_found');
+    err.status = 404;
+    throw err;
+  }
+  return row;
+}
+
+async function queryNone(sql, params) {
+  await execQuery(sql, params);
+}
+
+const db = {
+  query: execQuery,
+  any: queryRows,
+  oneOrNone: queryOneOrNone,
+  one: queryOne,
+  none: queryNone,
+};
 
 // GET /api/admin/orgs?status=active|inactive|all
-router.get('/', async (req, res) => {
-  const ACTIVE_STATUSES = ['active', 'ativo', 'ativa', 'enabled'];
-  const rawStatus = (req.query.status || '').toString().toLowerCase();
-  const filter = rawStatus === 'active' ? 'active' : rawStatus === 'inactive' ? 'inactive' : null;
-
-  let sql = `
-    SELECT
-      id,
-      name,
-      slug,
-      plan_id,
-      trial_ends_at,
-      (LOWER(status) = ANY($1::text[])) AS is_active
-    FROM public.organizations
-  `;
-  const params = [ACTIVE_STATUSES];
-
-  if (filter === 'active') {
-    sql += ` WHERE (LOWER(status) = ANY($1::text[])) `;
-  } else if (filter === 'inactive') {
-    sql += ` WHERE NOT (LOWER(status) = ANY($1::text[])) `;
-  }
-  sql += ` ORDER BY LOWER(name) LIMIT 500 `;
-
-  const query =
-    typeof req.pool?.query === 'function'
-      ? req.pool.query.bind(req.pool)
-      : typeof db.query === 'function'
-      ? db.query.bind(db)
-      : null;
-
-  if (!query) {
-    req.log?.error(
-      { route: 'GET /api/admin/orgs', query: req.query },
-      'admin orgs missing query function',
-    );
-    return res.status(500).json({ error: 'internal_error' });
-  }
-
+router.get('/', async (req, res, next) => {
   try {
+    const rawStatus = (req.query.status ?? 'active').toString().toLowerCase();
+    const status = StatusSchema.parse(rawStatus);
+    const params = [];
+    const where = [];
+
+    if (status !== 'all') {
+      params.push(status);
+      where.push(`LOWER(o.status) = $${params.length}::text`);
+    }
+
+    const sql = `
+      SELECT
+        o.id,
+        o.name,
+        o.slug,
+        o.plan_id,
+        o.trial_ends_at,
+        o.status
+      FROM public.organizations o
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY o.created_at DESC
+      LIMIT 200
+    `;
+
     const { rows } = await query(sql, params);
-    return res.json({
-      data: rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        slug: r.slug,
-        plan_id: r.plan_id,
-        trial_ends_at: r.trial_ends_at,
-        is_active: !!r.is_active,
-      })),
-    });
+    res.json({ items: rows ?? [] });
   } catch (err) {
-    req.log?.error({ err, route: 'GET /api/admin/orgs', query: req.query }, 'admin orgs failed');
-    return res.status(500).json({ error: 'internal_error' });
+    next(err);
   }
 });
 
 // PATCH /api/admin/orgs/:orgId
-router.patch('/:orgId', async (req, res, next) => {
+router.patch('/:orgId', withOrgId, async (req, res, next) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const up = req.body || {};
     const allow = [
       'name',
@@ -159,9 +171,9 @@ router.patch('/:orgId', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:orgId/plan
-router.put('/:orgId/plan', async (req, res, next) => {
+router.put('/:orgId/plan', withOrgId, async (req, res, next) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { plan_id, status = 'active', start_at, end_at, trial_ends_at, meta } = req.body || {};
     if (!plan_id) return res.status(400).json({ error: 'plan_id_required' });
 
@@ -192,9 +204,9 @@ router.put('/:orgId/plan', async (req, res, next) => {
 });
 
 // PATCH /api/admin/orgs/:orgId/credits
-router.patch('/:orgId/credits', async (req, res, next) => {
+router.patch('/:orgId/credits', withOrgId, async (req, res, next) => {
   try {
-    const { orgId } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { feature_code, delta, expires_at, source, meta } = req.body || {};
     if (!feature_code || delta === undefined || delta === null) {
       return res.status(400).json({ error: 'feature_code_and_delta_required' });
@@ -227,7 +239,7 @@ router.post('/', async (req, res, next) => {
   try {
     const payload = OrgCreateSchema.parse(req.body);
 
-    const dup = await db.oneOrNone(
+    const { rows: dupRows } = await query(
       `SELECT 1
          FROM organizations
         WHERE util_digits(cnpj) = util_digits($1)
@@ -236,9 +248,9 @@ router.post('/', async (req, res, next) => {
         LIMIT 1`,
       [payload.cnpj, payload.email || null, payload.phone_e164 || null]
     );
-    if (dup) return res.status(409).json({ error: 'duplicate_org_key' });
+    if (dupRows?.length) return res.status(409).json({ error: 'duplicate_org_key' });
 
-    const org = await db.one(
+    const { rows: inserted } = await query(
       `INSERT INTO organizations (
          id, cnpj, razao_social, nome_fantasia, ie, ie_isento,
          site, email, phone_e164, status,
@@ -277,8 +289,11 @@ router.post('/', async (req, res, next) => {
       ]
     );
 
+    const org = inserted?.[0];
+    if (!org) return res.status(500).json({ error: 'failed_to_create_org' });
+
     if (payload.plano?.plan_id) {
-      await db.none(
+      await query(
         `INSERT INTO org_subscriptions (id, org_id, plan_id, period, trial_start, trial_end, created_at)
            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())`,
         [
@@ -300,21 +315,21 @@ router.post('/', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id
-router.get('/:id', async (req, res, next) => {
+router.get('/:orgId', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { rows: [org] } = await db.query(
-      `SELECT * FROM organizations WHERE id = $1`, [id]
+      `SELECT * FROM organizations WHERE id = $1`, [orgId]
     );
     if (!org) return res.status(404).json({ error: 'not_found' });
 
     const { rows: payments }  = await db.query(
       `SELECT id, status, amount_cents, currency, paid_at, created_at
-         FROM payments WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`, [id]
+         FROM payments WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`, [orgId]
     );
     const { rows: purchases } = await db.query(
       `SELECT id, item, qty, amount_cents, created_at
-         FROM purchases WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`, [id]
+         FROM purchases WHERE org_id = $1 ORDER BY created_at DESC LIMIT 100`, [orgId]
     );
 
     res.json({ org, payments, purchases });
@@ -322,12 +337,12 @@ router.get('/:id', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/overview
-router.get('/:id/overview', async (req, res, next) => {
+router.get('/:orgId/overview', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const org = await db.oneOrNone(
       'SELECT id, name, razao_social, cnpj, status, created_at FROM organizations WHERE id = $1',
-      [id]
+      [orgId]
     );
     if (!org) return res.status(404).json({ error: 'not_found' });
     res.json({ overview: org });
@@ -335,44 +350,44 @@ router.get('/:id/overview', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/billing
-router.get('/:id/billing', async (req, res, next) => {
+router.get('/:orgId/billing', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const payments = await db.any(
       'SELECT id, status, amount_cents, paid_at FROM payments WHERE org_id = $1 ORDER BY created_at DESC LIMIT 20',
-      [id]
+      [orgId]
     );
     res.json({ payments });
   } catch (e) { next(e); }
 });
 
 // GET /api/admin/orgs/:id/users
-router.get('/:id/users', async (req, res, next) => {
+router.get('/:orgId/users', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const users = await db.any(
       `SELECT u.id, u.email, ou.role
          FROM org_users ou JOIN users u ON u.id = ou.user_id
         WHERE ou.org_id = $1
         ORDER BY u.email ASC
         LIMIT 50`,
-      [id]
+      [orgId]
     );
     res.json({ users });
   } catch (e) { next(e); }
 });
 
 // GET /api/admin/orgs/:id/logs
-router.get('/:id/logs', async (req, res, next) => {
+router.get('/:orgId/logs', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const logs = await db.any(
       `SELECT id, path, method, created_at
          FROM support_audit_logs
         WHERE target_org_id = $1
         ORDER BY created_at DESC
         LIMIT 50`,
-      [id]
+      [orgId]
     );
     res.json({ logs });
   } catch (e) { next(e); }
@@ -380,21 +395,21 @@ router.get('/:id/logs', async (req, res, next) => {
 
 // ----- Settings -----
 // GET /api/admin/orgs/:id/settings
-router.get('/:id/settings', async (req, res, next) => {
+router.get('/:orgId/settings', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { rows: [settings] } = await db.query(
       `SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
-      [id]
+      [orgId]
     );
     res.json(settings || { allow_baileys: false, whatsapp_active_mode: 'none' });
   } catch (e) { next(e); }
 });
 
 // PUT /api/admin/orgs/:id/settings { allow_baileys:boolean }
-router.put('/:id/settings', async (req, res, next) => {
+router.put('/:orgId/settings', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { allow_baileys } = req.body ?? {};
     await db.query(
       `INSERT INTO org_settings (org_id, allow_baileys)
@@ -404,7 +419,7 @@ router.put('/:id/settings', async (req, res, next) => {
     );
     const { rows: [settings] } = await db.query(
       `SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
-      [id]
+      [orgId]
     );
     res.json(settings);
   } catch (e) { next(e); }
@@ -412,15 +427,15 @@ router.put('/:id/settings', async (req, res, next) => {
 
 // ----- Baileys connection -----
 // POST /api/admin/orgs/:id/baileys/connect { phone, allowed_test_emails }
-router.post('/:id/baileys/connect', async (req, res, next) => {
+router.post('/:orgId/baileys/connect', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { phone, allowed_test_emails } = req.body ?? {};
     if (!phone) return res.status(400).json({ error: 'phone_required' });
 
     const { rows: [settings] } = await db.query(
       `SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
-      [id]
+      [orgId]
     );
     if (!settings?.allow_baileys) {
       return res.status(403).json({ error: 'baileys_not_allowed' });
@@ -452,7 +467,7 @@ router.post('/:id/baileys/connect', async (req, res, next) => {
         `INSERT INTO org_settings (org_id, whatsapp_active_mode)
            VALUES ($1,'baileys')
            ON CONFLICT (org_id) DO UPDATE SET whatsapp_active_mode='baileys'`,
-        [id]
+        [orgId]
       );
       await db.query('COMMIT');
     } catch (e) {
@@ -463,7 +478,7 @@ router.post('/:id/baileys/connect', async (req, res, next) => {
     const { rows: [org] } = await db.query(
       `SELECT whatsapp_baileys_enabled, whatsapp_baileys_status, whatsapp_baileys_phone
          FROM organizations WHERE id=$1`,
-      [id]
+      [orgId]
     );
     res.json({ ok: true, baileys: org, mode: 'baileys' });
   } catch (e) {
@@ -472,29 +487,29 @@ router.post('/:id/baileys/connect', async (req, res, next) => {
 });
 
 // POST /api/admin/orgs/:id/baileys/disconnect
-router.post('/:id/baileys/disconnect', async (req, res, next) => {
+router.post('/:orgId/baileys/disconnect', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     await stopForOrg(id);
     await db.query(
       `UPDATE org_settings SET whatsapp_active_mode='none' WHERE org_id=$1 AND whatsapp_active_mode='baileys'`,
-      [id]
+      [orgId]
     );
     res.json({ ok: true, mode: 'none' });
   } catch (e) { next(e); }
 });
 
 // GET /api/admin/orgs/:id/baileys/status
-router.get('/:id/baileys/status', async (req, res, next) => {
+router.get('/:orgId/baileys/status', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { rows: [org] } = await db.query(
       `SELECT whatsapp_baileys_enabled, whatsapp_baileys_status, whatsapp_baileys_phone FROM organizations WHERE id=$1`,
-      [id]
+      [orgId]
     );
     const { rows: [settings] } = await db.query(
       `SELECT whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
-      [id]
+      [orgId]
     );
     res.json({ ...org, mode: settings?.whatsapp_active_mode || 'none' });
   } catch (e) { next(e); }
@@ -502,12 +517,12 @@ router.get('/:id/baileys/status', async (req, res, next) => {
 
 // ----- API WhatsApp connection -----
 // POST /api/admin/orgs/:id/api-whatsapp/connect
-router.post('/:id/api-whatsapp/connect', async (req, res, next) => {
+router.post('/:orgId/api-whatsapp/connect', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { rows: [settings] } = await db.query(
       `SELECT whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
-      [id]
+      [orgId]
     );
     if (settings?.whatsapp_active_mode === 'baileys') {
       return res.status(409).json({ error: 'ExclusiveMode', active: 'baileys', trying: 'api' });
@@ -516,44 +531,44 @@ router.post('/:id/api-whatsapp/connect', async (req, res, next) => {
       `INSERT INTO org_settings (org_id, whatsapp_active_mode)
          VALUES ($1,'api')
          ON CONFLICT (org_id) DO UPDATE SET whatsapp_active_mode='api'`,
-      [id]
+      [orgId]
     );
     res.json({ ok: true, mode: 'api' });
   } catch (e) { next(e); }
 });
 
 // POST /api/admin/orgs/:id/api-whatsapp/disconnect
-router.post('/:id/api-whatsapp/disconnect', async (req, res, next) => {
+router.post('/:orgId/api-whatsapp/disconnect', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     await db.query(
       `UPDATE org_settings SET whatsapp_active_mode='none' WHERE org_id=$1 AND whatsapp_active_mode='api'`,
-      [id]
+      [orgId]
     );
     res.json({ ok: true, mode: 'none' });
   } catch (e) { next(e); }
 });
 
 // GET /api/admin/orgs/:id/api-whatsapp/status
-router.get('/:id/api-whatsapp/status', async (req, res, next) => {
+router.get('/:orgId/api-whatsapp/status', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { rows: [settings] } = await db.query(
       `SELECT whatsapp_active_mode FROM org_settings WHERE org_id=$1`,
-      [id]
+      [orgId]
     );
     res.json({ mode: settings?.whatsapp_active_mode || 'none' });
   } catch (e) { next(e); }
 });
 
 // GET /api/admin/orgs/:id/whatsapp/status
-router.get('/:id/whatsapp/status', async (req, res, next) => {
+router.get('/:orgId/whatsapp/status', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const [{ rows: [settings] }, { rows: [org] }, { rows: [apiCh] }] = await Promise.all([
-      db.query(`SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`, [id]),
-      db.query(`SELECT whatsapp_baileys_status, updated_at FROM organizations WHERE id=$1`, [id]),
-      db.query(`SELECT status, updated_at FROM channels WHERE org_id=$1 AND type='whatsapp'`, [id])
+      db.query(`SELECT allow_baileys, whatsapp_active_mode FROM org_settings WHERE org_id=$1`, [orgId]),
+      db.query(`SELECT whatsapp_baileys_status, updated_at FROM organizations WHERE id=$1`, [orgId]),
+      db.query(`SELECT status, updated_at FROM channels WHERE org_id=$1 AND type='whatsapp'`, [orgId])
     ]);
     const now = new Date().toISOString();
     res.json({
@@ -572,9 +587,9 @@ router.get('/:id/whatsapp/status', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:id/whatsapp/allow_baileys
-router.put('/:id/whatsapp/allow_baileys', async (req, res, next) => {
+router.put('/:orgId/whatsapp/allow_baileys', withOrgId, async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const orgId = req.orgId || req.params.orgId;
     const { allow } = req.body ?? {};
     await db.query(
       `INSERT INTO org_settings (org_id, allow_baileys)

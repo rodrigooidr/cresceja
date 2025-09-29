@@ -252,17 +252,13 @@ function configureApp() {
   // Rotas de planos (públicas e admin)
   app.use('/api', plansRouter);
 
-  // Rotas administrativas de planos (SuperAdmin/Support)
-  app.use('/api/admin/plans', authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support), adminContext, adminPlansRouter);
+  const adminAuthStack = [authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support), adminContext];
 
-  // Demais rotas administrativas (SuperAdmin)
-  app.use(
-    '/api/admin',
-    authRequired,
-    requireRole(ROLES.SuperAdmin, ROLES.Support),
-    adminContext,
-    adminOrgsRouter
-  );
+  // Rotas administrativas de planos (SuperAdmin/Support)
+  app.use('/api/admin/plans', ...adminAuthStack, adminPlansRouter);
+
+  // Rotas administrativas de organizações
+  app.use('/api/admin/orgs', ...adminAuthStack, adminOrgsRouter);
 
   // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
