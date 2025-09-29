@@ -83,6 +83,7 @@ import whatsappCompatRouter from './routes/whatsapp.compat.js';
 import funnelRouter from './routes/crm.funnel.js';
 import debugRouter from './routes/debug.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
+import adminOrgByIdRouter from './routes/admin/orgById.js';
 import plansRouter from './routes/plans.js';
 import adminPlansRouter from './routes/admin/plans.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
@@ -114,6 +115,7 @@ const requireRole =
 const ROLES = requireRoleModule.ROLES ?? requireRoleModule.default?.ROLES ?? requireRoleModule.ROLES;
 
 import { adminContext } from './middleware/adminContext.js';
+import { withOrgId } from './middleware/withOrgId.js';
 import { startNoShowCron } from './jobs/noshow.sweep.cron.js';
 import { resolveDbHealthcheckConfig } from './utils/dbHealthcheckFlag.js';
 
@@ -254,11 +256,22 @@ function configureApp() {
 
   const adminAuthStack = [authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support), adminContext];
 
+  app.use('/api/admin', (req, _res, next) => {
+    req.log?.info(
+      { trace: 'pre-admin', method: req.method, url: req.originalUrl, params: req.params },
+      'incoming admin request',
+    );
+    next();
+  });
+
+  app.use('/api/admin', ...adminAuthStack);
+
   // Rotas administrativas de planos (SuperAdmin/Support)
-  app.use('/api/admin/plans', ...adminAuthStack, adminPlansRouter);
+  app.use('/api/admin/plans', adminPlansRouter);
 
   // Rotas administrativas de organizações
-  app.use('/api/admin/orgs', ...adminAuthStack, adminOrgsRouter);
+  app.use('/api/admin/orgs', adminOrgsRouter);
+  app.use('/api/admin/orgs/:orgId', withOrgId, adminOrgByIdRouter);
 
   // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
