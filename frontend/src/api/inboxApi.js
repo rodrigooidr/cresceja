@@ -337,16 +337,21 @@ function withGlobalScope(options = {}) {
   return next;
 }
 
-export async function adminListOrgs({ status = 'active' } = {}) {
-  const config = withGlobalScope({ params: { status } });
+export async function adminListOrgs(params = {}) {
+  const config = withGlobalScope({ params });
   const { data } = await inboxApi.get(`/admin/orgs`, config);
-  if (!data || !Array.isArray(data.data)) {
-    throw new Error(`adminListOrgs payload inválido`);
-  }
-  return data.data.map((org) => {
-    const active = typeof org?.active === 'boolean' ? org.active : org?.status === 'active';
-    const statusValue = org?.status ?? (typeof active === 'boolean' ? (active ? 'active' : 'inactive') : undefined);
-    return { ...org, active, status: statusValue };
+  const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+  return rows.map((org) => {
+    const normalizedActive =
+      typeof org?.is_active === 'boolean'
+        ? org.is_active
+        : typeof org?.active === 'boolean'
+        ? org.active
+        : org?.status
+        ? String(org.status).toLowerCase() === 'active'
+        : false;
+    const statusValue = org?.status ?? (normalizedActive ? 'active' : 'inactive');
+    return { ...org, active: normalizedActive, status: statusValue };
   });
 }
 
@@ -443,41 +448,25 @@ export async function adminGetPlanFeatures(planId, options = {}) {
 
 export async function adminGetPlanCredits(planId, options = {}) {
   if (!planId) {
-    return { plan_id: planId ?? null, summary: [] };
+    return [];
   }
 
-  const { data } = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
-  const plan_id = data?.plan_id ?? planId;
-
-  let summary;
-  if (Array.isArray(data?.summary)) {
-    summary = data.summary.map((item) => {
+  try {
+    const { data } = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
+    const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+    return rows.map((item) => {
       const limitNumber = Number(item?.limit);
-      const safeLimit = Number.isFinite(limitNumber) ? limitNumber : 0;
       return {
-        code: item?.code ?? '',
-        label: item?.label ?? item?.code ?? '',
-        unit: item?.unit ?? 'count',
-        limit: safeLimit,
+        meter: item?.meter ?? '',
+        limit: Number.isFinite(limitNumber) ? limitNumber : 0,
       };
     });
-  } else if (Array.isArray(data?.credits)) {
-    summary = data.credits.map((item) => {
-      const limitNumber = Number(item?.limit);
-      const safeLimit = Number.isFinite(limitNumber) ? limitNumber : 0;
-      const period = item?.period ? String(item.period) : 'month';
-      return {
-        code: item?.meter ?? '',
-        label: item?.meter ?? '',
-        unit: period,
-        limit: safeLimit,
-      };
-    });
-  } else {
-    throw new Error('adminGetPlanCredits payload inválido');
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return [];
+    }
+    throw error;
   }
-
-  return { plan_id, summary };
 }
 
 export async function adminGetPlanCreditsSummary(planId, options = {}) {
@@ -485,9 +474,15 @@ export async function adminGetPlanCreditsSummary(planId, options = {}) {
     return { plan_id: planId ?? null, credits: [] };
   }
 
-  const { data } = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
-  const credits = Array.isArray(data?.credits) ? data.credits : [];
-  return { plan_id: data?.plan_id ?? planId, credits };
+  try {
+    const credits = await adminGetPlanCredits(planId, options);
+    return { plan_id: planId, credits };
+  } catch (error) {
+    if (error?.response?.status === 404) {
+      return { plan_id: planId, credits: [] };
+    }
+    throw error;
+  }
 }
 
 export async function adminPutPlanFeatures(planId, features, options = {}) {

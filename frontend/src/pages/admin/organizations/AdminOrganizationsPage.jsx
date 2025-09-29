@@ -634,7 +634,6 @@ export default function AdminOrganizationsPage() {
         }
       } catch (err) {
         if (!cancelled) {
-          setItems([]);
           const message = err?.message || "Não foi possível carregar as organizações.";
           setError(message);
           toast({ title: "Erro ao carregar organizações", description: message });

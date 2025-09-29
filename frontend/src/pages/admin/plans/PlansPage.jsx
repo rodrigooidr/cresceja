@@ -3,7 +3,7 @@ import {
   adminCreatePlan,
   adminDeletePlan,
   adminDuplicatePlan,
-  adminGetPlanCreditsSummary,
+  adminGetPlanCredits,
   adminListPlans,
   adminUpdatePlan,
   centsToBRL,
@@ -52,10 +52,10 @@ function PlanCreditsSummary({ planId, refreshKey }) {
     if (!planId) return;
     let alive = true;
     setState({ loading: true, credits: [], error: null });
-    adminGetPlanCreditsSummary(planId)
+    adminGetPlanCredits(planId)
       .then((res) => {
         if (!alive) return;
-        const credits = Array.isArray(res?.credits) ? res.credits : [];
+        const credits = Array.isArray(res) ? res : [];
         setState({ loading: false, credits, error: null });
       })
       .catch((err) => {
@@ -71,20 +71,24 @@ function PlanCreditsSummary({ planId, refreshKey }) {
 
   let content;
   if (state.loading) {
-    content = <p className="text-sm text-slate-500">Carregando créditos…</p>;
+    content = (
+      <div className="space-y-2">
+        <div className="h-4 w-1/3 animate-pulse rounded bg-slate-200" />
+        <div className="h-4 w-1/4 animate-pulse rounded bg-slate-200" />
+        <div className="h-4 w-1/5 animate-pulse rounded bg-slate-200" />
+      </div>
+    );
   } else if (state.error) {
     content = <p className="text-sm text-red-600">Erro ao carregar créditos.</p>;
   } else if (!state.credits.length) {
-    content = <p className="text-sm text-slate-500">Sem créditos configurados para este plano.</p>;
+    content = <p className="text-sm text-slate-500">Sem limites configurados</p>;
   } else {
     content = (
       <ul className="mt-2 space-y-1">
         {state.credits.map((credit) => (
           <li key={credit.meter} className="flex items-center justify-between text-sm">
             <span className="font-medium text-slate-700">{credit.meter}</span>
-            <span className="text-slate-600">
-              {credit.limit} / {credit.period || 'month'}
-            </span>
+            <span className="text-slate-600">{credit.limit}</span>
           </li>
         ))}
       </ul>

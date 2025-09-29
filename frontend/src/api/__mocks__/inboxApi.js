@@ -956,38 +956,29 @@ export const adminGetPlanFeatures =
 export const adminGetPlanCredits =
   typeof jest !== "undefined"
     ? jest.fn(async (planId) => {
+        if (!planId) return [];
         const features = state.planFeaturesByPlan[planId] || [];
-        const summary = features
+        return features
           .filter((feature) => (feature.type || "").toLowerCase() === "number")
           .map((feature) => ({
-            code: feature.code,
-            label: feature.label ?? feature.code,
-            unit: "count",
+            meter: feature.code,
             limit: Number.isFinite(Number(feature.value)) ? Number(feature.value) : 0,
           }));
-        return { plan_id: planId, summary };
       })
     : async (planId) => {
+        if (!planId) return [];
         const features = state.planFeaturesByPlan[planId] || [];
-        const summary = features
+        return features
           .filter((feature) => (feature.type || "").toLowerCase() === "number")
           .map((feature) => ({
-            code: feature.code,
-            label: feature.label ?? feature.code,
-            unit: "count",
+            meter: feature.code,
             limit: Number.isFinite(Number(feature.value)) ? Number(feature.value) : 0,
           }));
-        return { plan_id: planId, summary };
       };
 
 export async function adminGetPlanCreditsSummary(planId) {
-  return {
-    plan_id: planId,
-    credits: [
-      { meter: 'ai_tokens', limit: 100000, period: 'month' },
-      { meter: 'ai_messages', limit: 2000, period: 'month' },
-    ],
-  };
+  const credits = await adminGetPlanCredits(planId);
+  return { plan_id: planId, credits };
 }
 
 export const adminPutPlanFeatures =
