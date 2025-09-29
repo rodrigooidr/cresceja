@@ -7,6 +7,25 @@ import { getPlanFeatures, upsertPlanFeatures } from '../../services/plans.js';
 
 const router = Router();
 
+function normalizePlan(row) {
+  return {
+    id: row.id,
+    id_legacy_text: row.id_legacy_text ?? null,
+    name: row.name,
+    currency: row.currency ?? 'BRL',
+    price_cents: Number(row.price_cents ?? 0),
+    monthly_price: row.monthly_price ?? null,
+    modules: row.modules ?? {},
+    is_active: Boolean(row.is_active),
+    is_published: Boolean(row.is_published),
+    billing_period_months: Number(row.billing_period_months ?? 1),
+    trial_days: Number(row.trial_days ?? 0),
+    sort_order: row.sort_order ?? null,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
 function getQuery(req) {
   const db = req.db;
   if (db && typeof db.query === 'function') {
@@ -40,25 +59,61 @@ router.use(requireGlobalRole(['SuperAdmin', 'Support']));
 
 router.get('/', async (req, res, next) => {
   try {
-    const { rows } = await rootQuery(
-      `SELECT id,
-              id_legacy_text,
-              name,
-              monthly_price,
-              currency,
-              modules,
-              is_published,
-              is_active,
-              price_cents,
-              billing_period_months,
-              trial_days,
-              sort_order,
-              created_at,
-              updated_at
-         FROM public.plans
-        ORDER BY COALESCE(sort_order, 999999), name ASC`
-    );
-    res.json({ data: rows });
+    const q = getQuery(req);
+    const [{ rows: plans = [] }, { rows: feature_defs = [] }, { rows: plan_features = [] }] = await Promise.all([
+      q(
+        `SELECT id,
+                id_legacy_text,
+                name,
+                monthly_price,
+                currency,
+                modules,
+                is_published,
+                is_active,
+                price_cents,
+                billing_period_months,
+                trial_days,
+                sort_order,
+                created_at,
+                updated_at
+           FROM public.plans
+          ORDER BY COALESCE(sort_order, 999999), name ASC`
+      ),
+      q(
+        `SELECT code,
+                label,
+                type,
+                enum_options,
+                description,
+                unit,
+                category,
+                sort_order,
+                is_public,
+                show_as_tick,
+                created_at,
+                updated_at
+           FROM feature_defs
+          ORDER BY sort_order, code`
+      ),
+      q(
+        `SELECT plan_id,
+                feature_code,
+                value,
+                created_at,
+                updated_at
+           FROM plan_features`
+      ),
+    ]);
+
+    const normalized = Array.isArray(plans) ? plans.map(normalizePlan) : [];
+
+    return res.json({
+      data: normalized,
+      meta: {
+        feature_defs: feature_defs ?? [],
+        plan_features: plan_features ?? [],
+      },
+    });
   } catch (err) {
     next(err);
   }
