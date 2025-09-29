@@ -337,15 +337,17 @@ function withGlobalScope(options = {}) {
   return next;
 }
 
-export async function adminListOrgs(params = {}) {
-  const normalizedParams = { status: 'active', ...(params || {}) };
-  const queryParams = new URLSearchParams(normalizedParams).toString();
-  const url = `/admin/orgs${queryParams ? `?${queryParams}` : ''}`;
-  const res = await client.get(url, withGlobalScope());
-  if (res?.status !== 200) throw new Error(`admin/orgs ${res?.status}`);
-  const data = res?.data?.data ?? res?.data;
-  if (!Array.isArray(data)) throw new Error('admin/orgs payload inválido');
-  return data;
+export async function adminListOrgs({ status = 'active' } = {}) {
+  const config = withGlobalScope({ params: { status } });
+  const { data } = await inboxApi.get(`/admin/orgs`, config);
+  if (!data || !Array.isArray(data.data)) {
+    throw new Error(`adminListOrgs payload inválido`);
+  }
+  return data.data.map((org) => {
+    const active = typeof org?.active === 'boolean' ? org.active : org?.status === 'active';
+    const statusValue = org?.status ?? (typeof active === 'boolean' ? (active ? 'active' : 'inactive') : undefined);
+    return { ...org, active, status: statusValue };
+  });
 }
 
 export async function listAdminOrgs(status = "active", options = {}) {
@@ -437,6 +439,31 @@ export async function adminGetPlanFeatures(planId, options = {}) {
   const data = res?.data;
   if (!Array.isArray(data)) throw new Error('admin/plans features payload inválido');
   return data;
+}
+
+export async function adminGetPlanCredits(planId, options = {}) {
+  if (!planId) {
+    return { plan_id: planId ?? null, summary: [] };
+  }
+
+  const { data } = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
+  if (!data || !Array.isArray(data.summary)) {
+    throw new Error('adminGetPlanCredits payload inválido');
+  }
+
+  const plan_id = data.plan_id ?? planId;
+  const summary = data.summary.map((item) => {
+    const limitNumber = Number(item?.limit);
+    const safeLimit = Number.isFinite(limitNumber) ? limitNumber : 0;
+    return {
+      code: item?.code ?? '',
+      label: item?.label ?? item?.code ?? '',
+      unit: item?.unit ?? 'count',
+      limit: safeLimit,
+    };
+  });
+
+  return { plan_id, summary };
 }
 
 export async function adminPutPlanFeatures(planId, features, options = {}) {

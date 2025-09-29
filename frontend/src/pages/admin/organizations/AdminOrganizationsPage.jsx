@@ -6,6 +6,7 @@ import {
   patchAdminOrgCredits,
   putAdminOrgPlan,
 } from "@/api/inboxApi";
+import useToastFallback from "@/hooks/useToastFallback";
 
 function toInputDate(value) {
   if (!value) return "";
@@ -39,6 +40,14 @@ function fromInputDate(value) {
   } catch {
     return null;
   }
+}
+
+function normalizeOrgData(org) {
+  if (!org || typeof org !== "object") return org;
+  const active = typeof org.active === "boolean" ? org.active : org.status === "active";
+  const statusValue =
+    org.status ?? (typeof active === "boolean" ? (active ? "active" : "inactive") : undefined);
+  return { ...org, active, status: statusValue };
 }
 
 function fromInputDateTime(value) {
@@ -610,6 +619,8 @@ export default function AdminOrganizationsPage() {
   const [tab, setTab] = useState("active");
   const [items, setItems] = useState([]);
   const [editingOrg, setEditingOrg] = useState(null);
+  const [error, setError] = useState("");
+  const toast = useToastFallback();
 
   useEffect(() => {
     let cancelled = false;
@@ -617,21 +628,28 @@ export default function AdminOrganizationsPage() {
       try {
         const data = await adminListOrgs({ status: tab });
         if (!cancelled) {
-          setItems(Array.isArray(data) ? data : []);
+          const list = Array.isArray(data) ? data.map(normalizeOrgData) : [];
+          setItems(list);
+          setError("");
         }
-      } catch {
-        if (!cancelled) setItems([]);
+      } catch (err) {
+        if (!cancelled) {
+          setItems([]);
+          const message = err?.message || "Não foi possível carregar as organizações.";
+          setError(message);
+          toast({ title: "Erro ao carregar organizações", description: message });
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [tab]);
+  }, [tab, toast]);
 
   const handleSaved = (updatedOrg) => {
     if (!updatedOrg?.id) return;
     setItems((prev) =>
-      prev.map((org) => (org.id === updatedOrg.id ? { ...org, ...updatedOrg } : org))
+      prev.map((org) => (org.id === updatedOrg.id ? { ...org, ...normalizeOrgData(updatedOrg) } : org))
     );
     setEditingOrg(null);
   };
@@ -658,6 +676,11 @@ export default function AdminOrganizationsPage() {
           </button>
         ))}
       </div>
+      {error && (
+        <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
       <table className="w-full">
         <thead>
@@ -676,9 +699,9 @@ export default function AdminOrganizationsPage() {
                 <div className="font-medium">{org.name}</div>
                 <div className="text-xs text-gray-500">{org.slug}</div>
               </td>
-              <td>{org.plan_name ?? "—"}</td>
+              <td>{org.plan_name ?? org.plan_id ?? "—"}</td>
               <td>{org.trial_ends_at ? new Date(org.trial_ends_at).toLocaleDateString() : "—"}</td>
-              <td>{org.status === "active" ? "Ativa" : "Inativa"}</td>
+              <td>{org.active ? "Ativa" : "Inativa"}</td>
               <td>
                 <button
                   type="button"
