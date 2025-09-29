@@ -1,11 +1,12 @@
 // backend/routes/admin.plans.js
 import express from "express";
 import { query } from '#db';
+import planCreditsRouter from './admin.plans.credits.js';
 
 const router = express.Router();
 
 // LISTA (admin) – traz tudo, com max_users do plans_meta
-router.get("/plans", async (req, res, next) => {
+router.get("/", async (req, res, next) => {
   try {
     const { rows } = await query(`
       SELECT
@@ -31,7 +32,7 @@ router.get("/plans", async (req, res, next) => {
 });
 
 // CRIAR
-router.post("/plans", async (req, res, next) => {
+router.post("/", async (req, res, next) => {
   try {
     const b = req.body || {};
     const vals = {
@@ -78,7 +79,7 @@ router.post("/plans", async (req, res, next) => {
 });
 
 // ATUALIZAR
-router.patch("/plans/:id", async (req, res, next) => {
+router.patch("/:id", async (req, res, next) => {
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ error: "missing_id" });
@@ -134,7 +135,7 @@ router.patch("/plans/:id", async (req, res, next) => {
 });
 
 // PUBLICAR/DESPUBLICAR
-router.post("/plans/:id/publish", async (req, res, next) => {
+router.post("/:id/publish", async (req, res, next) => {
   try {
     const id = String(req.params.id || "").trim();
     const value = !!req.body?.is_published;
@@ -146,7 +147,7 @@ router.post("/plans/:id/publish", async (req, res, next) => {
 });
 
 // REMOVER
-router.delete("/plans/:id", async (req, res, next) => {
+router.delete("/:id", async (req, res, next) => {
   try {
     const id = String(req.params.id || "").trim();
     if (!id) return res.status(400).json({ error: "missing_id" });
@@ -157,5 +158,8 @@ router.delete("/plans/:id", async (req, res, next) => {
     next(e);
   }
 });
+
+// Créditos de IA (GET/PUT) por plano
+router.use('/:id/credits', planCreditsRouter);
 
 export default router;
