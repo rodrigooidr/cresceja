@@ -354,40 +354,56 @@ export async function adminListPlans(options = {}) {
   const { data: resp, status } = await client.get("/admin/plans", withGlobalScope(options));
   if (status !== 200) throw new Error(`admin/plans ${status}`);
 
-  // Formatos aceitos:
-  // 1) { data: [...], meta: {...} }  ✅ (preferido)
-  // 2) [...array]                     ✅ (fallback raro)
-  // 3) { plans:[...], feature_defs:[], plan_features:[] } ❌ (depreciado no backend; mantemos fallback por segurança)
-  let plans = [];
-  let meta = { feature_defs: [], plan_features: [] };
-
-  if (Array.isArray(resp)) {
-    plans = resp;
-  } else if (resp && Array.isArray(resp.data)) {
-    plans = resp.data;
-    if (resp.meta) {
-      meta.feature_defs = Array.isArray(resp.meta.feature_defs) ? resp.meta.feature_defs : [];
-      meta.plan_features = Array.isArray(resp.meta.plan_features) ? resp.meta.plan_features : [];
-    }
-  } else if (resp && Array.isArray(resp.plans)) {
-    // fallback para ambientes que ainda retornam o formato antigo
-    plans = resp.plans;
-    meta.feature_defs = Array.isArray(resp.feature_defs) ? resp.feature_defs : [];
-    meta.plan_features = Array.isArray(resp.plan_features) ? resp.plan_features : [];
-  } else {
-    const keys = resp && typeof resp === "object" ? Object.keys(resp) : [];
-    throw new Error(`admin/plans payload inválido - got: ${keys.join(",")}`);
+  // Formatos aceitos (ordem de prioridade):
+  // 1) { data: { plans: [], feature_defs: [], plan_features: [] } }
+  // 2) { plans: [], feature_defs: [], plan_features: [] }
+  // 3) { data: [...], meta: { feature_defs, plan_features } }
+  // 4) [...array] (legado)
+  if (resp?.data && typeof resp.data === "object") {
+    const plans = Array.isArray(resp.data.plans) ? resp.data.plans : [];
+    const feature_defs = Array.isArray(resp.data.feature_defs) ? resp.data.feature_defs : [];
+    const plan_features = Array.isArray(resp.data.plan_features) ? resp.data.plan_features : [];
+    return { plans, feature_defs, plan_features };
   }
 
-  return { plans, meta };
+  if (resp && Array.isArray(resp.plans)) {
+    return {
+      plans: resp.plans,
+      feature_defs: Array.isArray(resp.feature_defs) ? resp.feature_defs : [],
+      plan_features: Array.isArray(resp.plan_features) ? resp.plan_features : [],
+    };
+  }
+
+  if (resp && Array.isArray(resp.data)) {
+    return {
+      plans: resp.data,
+      feature_defs: Array.isArray(resp.meta?.feature_defs) ? resp.meta.feature_defs : [],
+      plan_features: Array.isArray(resp.meta?.plan_features) ? resp.meta.plan_features : [],
+    };
+  }
+
+  if (Array.isArray(resp)) {
+    return { plans: resp, feature_defs: [], plan_features: [] };
+  }
+
+  const keys = resp && typeof resp === "object" ? Object.keys(resp) : [];
+  throw new Error(`admin/plans payload inválido - got: ${keys.join(",")}`);
 }
 
-export async function createPlan(payload, options = {}) {
+export async function adminCreatePlan(payload, options = {}) {
   return inboxApi.post(`/admin/plans`, payload, withGlobalScope(options));
 }
 
-export async function updatePlan(planId, payload, options = {}) {
-  return inboxApi.put(`/admin/plans/${planId}`, payload, withGlobalScope(options));
+export async function adminUpdatePlan(planId, payload, options = {}) {
+  return inboxApi.patch(`/admin/plans/${planId}`, payload, withGlobalScope(options));
+}
+
+export async function adminDuplicatePlan(planId, options = {}) {
+  return inboxApi.post(`/admin/plans/${planId}/duplicate`, {}, withGlobalScope(options));
+}
+
+export async function adminDeletePlan(planId, options = {}) {
+  return inboxApi.delete(`/admin/plans/${planId}`, withGlobalScope(options));
 }
 
 export async function adminGetPlanFeatures(planId, options = {}) {
@@ -404,4 +420,8 @@ export async function adminPutPlanFeatures(planId, features, options = {}) {
 }
 
 export default inboxApi;
+export {
+  adminCreatePlan as createPlan,
+  adminUpdatePlan as updatePlan,
+};
 export { setOrgIdHeaderProvider } from "./orgHeader.js";
