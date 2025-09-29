@@ -827,47 +827,149 @@ router.put('/:id/features', async (req, res, next) => {
   }
 });
 
-// GET /api/admin/plans/:id/credits
-router.get('/:id/credits', async (req, res) => {
-  const planId = req.params.id;
-
-  const sql = `
-    SELECT
-      pf.feature_code AS meter,
-      COALESCE(pf.credit_limit, 0) AS limit
-    FROM public.plan_features pf
-    WHERE pf.plan_id = $1
-      AND (
-        pf.feature_code ILIKE 'ai_%'
-        OR pf.feature_code ILIKE 'gpt_%'
-        OR pf.feature_code ILIKE '%tokens%'
-        OR pf.feature_code ILIKE '%credits%'
-        OR pf.is_meter = TRUE
-      )
-    ORDER BY lower(pf.feature_code) ASC
-  `;
-
-  const query =
-    typeof req.pool?.query === 'function'
-      ? req.pool.query.bind(req.pool)
-      : typeof req.db?.query === 'function'
-      ? req.db.query.bind(req.db)
-      : rootQuery;
+async function loadPlanCredits(q, planId) {
+  let planExists = false;
 
   try {
-    const { rows } = await query(sql, [planId]);
-    return res.json({
-      data: rows.map((row) => ({
-        meter: row.meter,
-        limit: Number(row.limit) || 0,
-      })),
-    });
-  } catch (err) {
-    req.log?.error(
-      { err, planId, route: 'GET /api/admin/plans/:id/credits' },
-      'admin.plans.credits failed',
+    const { rows } = await q(
+      'SELECT ai_tokens_limit FROM public.plans WHERE id = $1',
+      [planId]
     );
-    return res.json({ data: [] });
+    if (rows.length) {
+      planExists = true;
+      if (Object.prototype.hasOwnProperty.call(rows[0], 'ai_tokens_limit')) {
+        const raw = rows[0].ai_tokens_limit;
+        const value = Number(raw ?? 0);
+        return {
+          planExists,
+          data: [
+            {
+              meter: 'ai_tokens',
+              limit: Number.isFinite(value) ? value : 0,
+            },
+          ],
+        };
+      }
+    }
+  } catch (err) {
+    if (err.code !== '42703') {
+      throw err;
+    }
+    const { rowCount } = await q('SELECT 1 FROM public.plans WHERE id = $1', [planId]);
+    planExists = rowCount > 0;
+  }
+
+  if (!planExists) {
+    return { planExists: false, data: [{ meter: 'ai_tokens', limit: 0 }] };
+  }
+
+  try {
+    const { rows } = await q(
+      `SELECT pf.value->>'value' AS limit
+         FROM public.plan_features pf
+        WHERE pf.plan_id = $1 AND pf.feature_code = 'ai_tokens_limit'
+        LIMIT 1`,
+      [planId]
+    );
+    if (rows.length) {
+      const raw = rows[0]?.limit ?? 0;
+      const value = Number(raw);
+      return {
+        planExists: true,
+        data: [
+          {
+            meter: 'ai_tokens',
+            limit: Number.isFinite(value) ? value : 0,
+          },
+        ],
+      };
+    }
+  } catch (err) {
+    if (!['42P01', '42703'].includes(err.code)) {
+      throw err;
+    }
+  }
+
+  return { planExists: true, data: [{ meter: 'ai_tokens', limit: 0 }] };
+}
+
+async function savePlanCredits(q, planId, payload, db) {
+  const item = Array.isArray(payload) ? payload.find((m) => m?.meter === 'ai_tokens') : null;
+  const parsed = Number(item?.limit ?? 0);
+  const normalized = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+
+  try {
+    const { rowCount } = await q(
+      `UPDATE public.plans
+          SET ai_tokens_limit = $2,
+              updated_at = now()
+        WHERE id = $1`,
+      [planId, normalized]
+    );
+    if (rowCount === 0) {
+      return { planExists: false, data: [{ meter: 'ai_tokens', limit: normalized }] };
+    }
+    return { planExists: true, data: [{ meter: 'ai_tokens', limit: normalized }] };
+  } catch (err) {
+    if (err.code !== '42703') {
+      throw err;
+    }
+  }
+
+  const { rowCount } = await q('SELECT 1 FROM public.plans WHERE id = $1', [planId]);
+  if (!rowCount) {
+    return { planExists: false, data: [{ meter: 'ai_tokens', limit: normalized }] };
+  }
+
+  await upsertPlanFeatures(
+    planId,
+    [
+      {
+        code: 'ai_tokens_limit',
+        value: normalized,
+      },
+    ],
+    db
+  );
+
+  await q(
+    'UPDATE public.plans SET updated_at = now() WHERE id = $1',
+    [planId]
+  );
+
+  return { planExists: true, data: [{ meter: 'ai_tokens', limit: normalized }] };
+}
+
+router.get('/:id/credits', async (req, res) => {
+  const q = getQuery(req);
+  const planId = req.params.id;
+
+  try {
+    const result = await loadPlanCredits(q, planId);
+    if (!result.planExists) {
+      return res.status(404).json({ error: 'plan_not_found' });
+    }
+    return res.json({ data: result.data });
+  } catch (err) {
+    req.log?.error({ err, planId }, 'admin/plans credits GET failed');
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+router.put('/:id/credits', async (req, res) => {
+  const q = getQuery(req);
+  const planId = req.params.id;
+  const payload = Array.isArray(req.body?.data) ? req.body.data : [];
+
+  try {
+    const result = await savePlanCredits(q, planId, payload, req.db);
+    if (!result.planExists) {
+      return res.status(404).json({ error: 'plan_not_found' });
+    }
+    return res.json({ data: result.data });
+  } catch (err) {
+    req.log?.error({ err, planId }, 'admin/plans credits PUT failed');
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 

@@ -4,6 +4,7 @@ import {
   adminDeletePlan,
   adminDuplicatePlan,
   adminGetPlanCredits,
+  adminUpdatePlanCredits,
   adminListPlans,
   adminUpdatePlan,
   centsToBRL,
@@ -45,22 +46,35 @@ function NumberQuotaSelect({ value = 0, onChange, id, label, hint }) {
   );
 }
 
-function PlanCreditsSummary({ planId, refreshKey }) {
-  const [state, setState] = useState({ loading: true, credits: [], error: null });
+function PlanCreditsSummary({ planId, refreshKey, toast }) {
+  const [aiTokens, setAiTokens] = useState("0");
+  const [initialAiTokens, setInitialAiTokens] = useState("0");
+  const [loadingCredits, setLoadingCredits] = useState(true);
+  const [savingCredits, setSavingCredits] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!planId) return;
     let alive = true;
-    setState({ loading: true, credits: [], error: null });
+    setLoadingCredits(true);
+    setError("");
     adminGetPlanCredits(planId)
-      .then((res) => {
+      .then((arr) => {
         if (!alive) return;
-        const credits = Array.isArray(res) ? res : [];
-        setState({ loading: false, credits, error: null });
+        const item = (arr || []).find((m) => m?.meter === "ai_tokens");
+        const limit = item ? Number(item.limit ?? 0) : 0;
+        const value = Number.isFinite(limit) ? String(limit) : "0";
+        setAiTokens(value);
+        setInitialAiTokens(value);
       })
-      .catch((err) => {
+      .catch(() => {
         if (!alive) return;
-        setState({ loading: false, credits: [], error: err || new Error('failed') });
+        setAiTokens("0");
+        setInitialAiTokens("0");
+        setError("Não foi possível carregar os limites de IA.");
+      })
+      .finally(() => {
+        if (alive) setLoadingCredits(false);
       });
     return () => {
       alive = false;
@@ -69,43 +83,89 @@ function PlanCreditsSummary({ planId, refreshKey }) {
 
   if (!planId) return null;
 
-  let content;
-  if (state.loading) {
-    content = (
-      <div className="space-y-2">
-        <div className="h-4 w-1/3 animate-pulse rounded bg-slate-200" />
-        <div className="h-4 w-1/4 animate-pulse rounded bg-slate-200" />
-        <div className="h-4 w-1/5 animate-pulse rounded bg-slate-200" />
-      </div>
-    );
-  } else if (state.error) {
-    content = <p className="text-sm text-red-600">Erro ao carregar créditos.</p>;
-  } else if (!state.credits.length) {
-    content = <p className="text-sm text-slate-500">Sem limites configurados</p>;
-  } else {
-    content = (
-      <ul className="mt-2 space-y-1">
-        {state.credits.map((credit) => (
-          <li key={credit.meter} className="flex items-center justify-between text-sm">
-            <span className="font-medium text-slate-700">{credit.meter}</span>
-            <span className="text-slate-600">{credit.limit}</span>
-          </li>
-        ))}
-      </ul>
-    );
-  }
+  const handleChange = (event) => {
+    const normalized = event.target.value.replace(/[^\d]/g, "");
+    setAiTokens(normalized);
+  };
+
+  const handleSave = async () => {
+    if (!planId || savingCredits) return;
+    setSavingCredits(true);
+    setError("");
+    try {
+      const numericLimit = Number(aiTokens || 0);
+      await adminUpdatePlanCredits(planId, [
+        { meter: "ai_tokens", limit: numericLimit },
+      ]);
+      const normalized = String(Number.isFinite(numericLimit) ? numericLimit : 0);
+      setAiTokens(normalized);
+      setInitialAiTokens(normalized);
+      if (typeof toast === "function") {
+        toast({ title: "Limites de IA salvos" });
+      }
+    } catch (err) {
+      const message =
+        err?.response?.status === 404
+          ? "Plano não encontrado."
+          : "Não foi possível salvar os limites.";
+      setError(message);
+      if (typeof toast === "function") {
+        toast({ title: message, status: "error" });
+      }
+    } finally {
+      setSavingCredits(false);
+    }
+  };
+
+  const hasChanges = aiTokens !== initialAiTokens;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Resumo de créditos
           </h3>
-          <p className="text-xs text-slate-500">Limites principais configurados para este plano.</p>
+          <p className="text-xs text-slate-500">Defina os limites principais deste plano.</p>
         </div>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+          onClick={handleSave}
+          disabled={!hasChanges || savingCredits || loadingCredits}
+        >
+          {savingCredits ? "Salvando..." : "Salvar limites"}
+        </button>
       </div>
-      <div className="mt-3">{content}</div>
+
+      <div className="mt-4 space-y-3">
+        {loadingCredits ? (
+          <div className="space-y-2">
+            <div className="h-4 w-1/3 animate-pulse rounded bg-slate-200" />
+            <div className="h-10 w-48 animate-pulse rounded bg-slate-200" />
+          </div>
+        ) : (
+          <label className="flex flex-col gap-1 text-sm text-slate-600">
+            <span className="font-medium text-slate-700">Tokens de IA (mês)</span>
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={aiTokens}
+              onChange={handleChange}
+              className="w-48 rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              placeholder="ex.: 200000"
+              disabled={savingCredits}
+            />
+          </label>
+        )}
+
+        {error && (
+          <p className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -808,6 +868,7 @@ export default function PlansPage() {
                   <PlanCreditsSummary
                     planId={selectedPlan.id}
                     refreshKey={selectedPlan.updated_at}
+                    toast={toast}
                   />
                 )}
                 <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
