@@ -19,13 +19,14 @@ router.get('/', async (req, res, next) => {
       [id]
     );
 
-    if (!rows[0]) return res.status(404).json({ code: 'not_found' });
+    const [row] = rows;
+    if (!row) return res.status(404).json({ code: 'not_found' });
 
     res.json({
-      plan_id: rows[0].plan_id,
+      plan_id: row.plan_id,
       ai: {
-        attendance_monthly: rows[0].ai_attendance_monthly,
-        content_monthly: rows[0].ai_content_monthly,
+        attendance_monthly: row.ai_attendance_monthly,
+        content_monthly: row.ai_content_monthly,
       }
     });
   } catch (err) {
@@ -67,11 +68,13 @@ router.put('/', async (req, res, next) => {
       [id, attendance, content]
     );
 
+    const [row] = rows;
+
     res.json({
-      plan_id: rows[0].plan_id,
+      plan_id: row.plan_id,
       ai: {
-        attendance_monthly: rows[0].ai_attendance_monthly,
-        content_monthly: rows[0].ai_content_monthly,
+        attendance_monthly: row.ai_attendance_monthly,
+        content_monthly: row.ai_content_monthly,
       }
     });
   } catch (err) {
