@@ -1,19 +1,24 @@
 // backend/middleware/pgRlsContext.js
 import { pool, als } from '#db';
+import { isUuid } from '../utils/isUuid.js';
 
 export async function pgRlsContext(req, res, next) {
   try {
     const role   = req.user?.role || 'user';
     const userId = req.user?.id   || null;
 
-    // 1) Header SEMPRE prevalece (permite trocar org sem renovar token)
-    const hdrOrg =
-      req.get('X-Impersonate-Org-Id') ||
-      req.get('X-Org-Id') ||
-      null;
+    const headerOrgId = (() => {
+      const headerValue =
+        req.get('X-Impersonate-Org-Id') ||
+        req.get('X-Org-Id') ||
+        null;
+      return isUuid(headerValue) ? headerValue : null;
+    })();
 
-    const tokenOrg = req.user?.org_id || null;
-    const orgId = hdrOrg || tokenOrg || null;
+    const impersonatedOrgId = isUuid(req.impersonatedOrgId) ? req.impersonatedOrgId : null;
+    const validatedOrgId = req.orgScopeValidated && isUuid(req.orgId) ? req.orgId : null;
+    const tokenOrgId = isUuid(req.user?.org_id) ? req.user.org_id : null;
+    const orgId = validatedOrgId || impersonatedOrgId || headerOrgId || tokenOrgId || null;
 
     if (!userId) return res.status(401).json({ error: 'unauthorized', message: 'missing user id' });
     if (!orgId)   return res.status(401).json({ error: 'org_required',  message: 'missing organization id' });
@@ -26,7 +31,7 @@ export async function pgRlsContext(req, res, next) {
         await client.query('BEGIN');
 
         // 2) Membership check (exceto SuperAdmin/Support)
-        if (!['SuperAdmin', 'Support'].includes(role)) {
+        if (isUuid(orgId) && !['SuperAdmin', 'Support'].includes(role)) {
           const { rows } = await client.query(
             `SELECT 1 FROM public.org_users WHERE org_id = $1 AND user_id = $2 LIMIT 1`,
             [orgId, userId]
@@ -39,14 +44,25 @@ export async function pgRlsContext(req, res, next) {
         }
 
         // 3) Parâmetros de sessão da transação (GUCs)
-        await client.query(
-          `SELECT
-             set_config('app.org_id',  $1, true),
-             set_config('app.user_id', $2, true),
-             set_config('app.role',    $3, true),
-             set_config('TimeZone',    'UTC', true)`,
-          [orgId, userId, role]
-        );
+        if (isUuid(orgId)) {
+          await client.query(
+            `SELECT
+               set_config('app.org_id',  $1, true),
+               set_config('app.user_id', $2, true),
+               set_config('app.role',    $3, true),
+               set_config('TimeZone',    'UTC', true)`,
+            [orgId, userId, role]
+          );
+        } else {
+          await client.query(
+            `SELECT
+               set_config('app.org_id',  '',  true),
+               set_config('app.user_id', $1, true),
+               set_config('app.role',    $2, true),
+               set_config('TimeZone',    'UTC', true)`,
+            [userId, role]
+          );
+        }
 
         if (process.env.PG_STATEMENT_TIMEOUT_MS) {
           await client.query(`SET LOCAL statement_timeout = $1`, [Number(process.env.PG_STATEMENT_TIMEOUT_MS)]);

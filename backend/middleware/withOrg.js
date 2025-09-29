@@ -1,4 +1,5 @@
 import { pool } from '#db';
+import { isUuid } from '../utils/isUuid.js';
 
 export async function withOrg(req, res, next) {
   try {
@@ -7,7 +8,7 @@ export async function withOrg(req, res, next) {
     if (user.is_superadmin && req.headers['x-impersonate-org']) {
       orgId = req.headers['x-impersonate-org'];
     }
-    if (!orgId) {
+    if (!isUuid(orgId)) {
       return res.status(400).json({ error: 'org_required' });
     }
 
@@ -16,6 +17,7 @@ export async function withOrg(req, res, next) {
       await client.query('BEGIN');
       await client.query('SET LOCAL app.org_id = $1', [orgId]);
       req.orgId = orgId;
+      req.orgScopeValidated = true;
       req.db = client;
       const { rows } = await client.query(
         'SELECT role FROM org_users WHERE org_id = $1 AND user_id = $2',
