@@ -3,7 +3,7 @@ import {
   adminCreatePlan,
   adminDeletePlan,
   adminDuplicatePlan,
-  adminGetPlanCredits,
+  adminGetPlanCreditsSummary,
   adminListPlans,
   adminUpdatePlan,
   centsToBRL,
@@ -42,6 +42,67 @@ function NumberQuotaSelect({ value = 0, onChange, id, label, hint }) {
         ))}
       </select>
     </label>
+  );
+}
+
+function PlanCreditsSummary({ planId, refreshKey }) {
+  const [state, setState] = useState({ loading: true, credits: [], error: null });
+
+  useEffect(() => {
+    if (!planId) return;
+    let alive = true;
+    setState({ loading: true, credits: [], error: null });
+    adminGetPlanCreditsSummary(planId)
+      .then((res) => {
+        if (!alive) return;
+        const credits = Array.isArray(res?.credits) ? res.credits : [];
+        setState({ loading: false, credits, error: null });
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setState({ loading: false, credits: [], error: err || new Error('failed') });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [planId, refreshKey]);
+
+  if (!planId) return null;
+
+  let content;
+  if (state.loading) {
+    content = <p className="text-sm text-slate-500">Carregando créditos…</p>;
+  } else if (state.error) {
+    content = <p className="text-sm text-red-600">Erro ao carregar créditos.</p>;
+  } else if (!state.credits.length) {
+    content = <p className="text-sm text-slate-500">Sem créditos configurados para este plano.</p>;
+  } else {
+    content = (
+      <ul className="mt-2 space-y-1">
+        {state.credits.map((credit) => (
+          <li key={credit.meter} className="flex items-center justify-between text-sm">
+            <span className="font-medium text-slate-700">{credit.meter}</span>
+            <span className="text-slate-600">
+              {credit.limit} / {credit.period || 'month'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Resumo de créditos
+          </h3>
+          <p className="text-xs text-slate-500">Limites principais configurados para este plano.</p>
+        </div>
+      </div>
+      <div className="mt-3">{content}</div>
+    </div>
   );
 }
 
@@ -245,11 +306,6 @@ export default function PlansPage() {
   });
   const [priceStr, setPriceStr] = useState(centsToBRL(0, "BRL"));
   const [featureForm, setFeatureForm] = useState([]);
-  const [creditSummary, setCreditSummary] = useState([]);
-  const [creditsLoading, setCreditsLoading] = useState(false);
-  const [creditsError, setCreditsError] = useState("");
-  const [creditsVersion, setCreditsVersion] = useState(0);
-
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -414,7 +470,6 @@ export default function PlansPage() {
       };
       await adminUpdatePlan(selectedPlanId, payload);
       await loadPlans();
-      setCreditsVersion((version) => version + 1);
       setSaveSuccess(true);
       setDirty(false);
       toast({ title: "Plano salvo" });
@@ -615,47 +670,6 @@ export default function PlansPage() {
     setPageError("");
   }, [selectedPlan, featureDefs, featuresByPlan]);
 
-  useEffect(() => {
-    if (!selectedPlanId) {
-      setCreditSummary([]);
-      setCreditsError("");
-      setCreditsLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setCreditsLoading(true);
-    setCreditsError("");
-
-    (async () => {
-      try {
-        const { summary } = await adminGetPlanCredits(selectedPlanId);
-        if (!cancelled) {
-          setCreditSummary(Array.isArray(summary) ? summary : []);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          const message =
-            error?.response?.data?.message ||
-            error?.response?.data?.error ||
-            error?.message ||
-            "Não foi possível carregar os créditos do plano.";
-          setCreditSummary([]);
-          setCreditsError(message);
-          toast({ title: "Erro ao carregar créditos", description: message });
-        }
-      } finally {
-        if (!cancelled) {
-          setCreditsLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedPlanId, selectedPlan?.updated_at, creditsVersion, toast]);
-
   if (!canView) {
     return (
       <div className="p-6">
@@ -786,43 +800,12 @@ export default function PlansPage() {
               <p className="text-sm text-slate-500">Selecione um plano para editar.</p>
             ) : (
               <div className="space-y-6">
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                        Resumo de créditos
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Limites principais configurados para este plano.
-                      </p>
-                    </div>
-                    {creditsLoading && (
-                      <span className="text-xs text-slate-500">Carregando…</span>
-                    )}
-                  </div>
-                  {creditsError ? (
-                    <p className="mt-3 text-sm text-red-600">{creditsError}</p>
-                  ) : creditSummary.length === 0 ? (
-                    <p className="mt-3 text-sm text-slate-500">
-                      Nenhum limite numérico configurado.
-                    </p>
-                  ) : (
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {creditSummary.map((item) => (
-                        <span
-                          key={item.code || item.label}
-                          className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
-                        >
-                          <span className="font-medium">{item.label || item.code}</span>
-                          <span>
-                            {item.limit}
-                            {item.unit && item.unit !== "count" ? ` ${item.unit}` : ""}
-                          </span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {selectedPlan?.id && (
+                  <PlanCreditsSummary
+                    planId={selectedPlan.id}
+                    refreshKey={selectedPlan.updated_at}
+                  />
+                )}
                 <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="flex flex-col gap-1 text-sm">
