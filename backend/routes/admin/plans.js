@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import slugify from 'slugify';
+import { randomBytes } from 'crypto';
 import { query as rootQuery } from '#db';
 import { auth as authRequired } from '../../middleware/auth.js';
 import { requireGlobalRole } from '../../middleware/requireRole.js';
@@ -64,18 +66,18 @@ function parseBRLToCents(input) {
     .replace(/^R\$/i, '')
     .replace(/\./g, '')
     .replace(',', '.');
+  if (!norm) return 0;
   const num = Number(norm);
   if (!Number.isFinite(num)) return null;
   return Math.round(num * 100);
 }
 
-function toSlug(s) {
-  return String(s || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+function makeLegacyId(name) {
+  const slug = slugify(String(name || ''), { lower: true, strict: true, trim: true });
+  if (slug && slug.length > 0) {
+    return slug;
+  }
+  return `plan-${randomBytes(4).toString('hex')}`;
 }
 
 function parseCurrency(value, { required = false } = {}) {
@@ -481,34 +483,63 @@ router.post('/', async (req, res) => {
     const payload = req.body || {};
     const { name, price_cents, price_brl, monthly_price, currency, is_active } = payload;
 
-    if (!name || String(name).trim().length < 2) {
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!trimmedName) {
       return res.status(400).json({ error: 'bad_request', message: 'name_required' });
     }
 
-    const providedPrices = [price_cents, price_brl, monthly_price];
-    let cents = Number.isInteger(price_cents) ? price_cents : null;
-    if (cents == null && monthly_price != null) cents = parseBRLToCents(monthly_price);
-    if (cents == null && price_brl != null) cents = parseBRLToCents(price_brl);
-    const hasPriceInput = providedPrices.some(
-      (value) => value !== undefined && value !== null && value !== ''
-    );
-    if (cents == null) {
-      if (hasPriceInput) {
+    const priceCandidates = [price_cents, monthly_price, price_brl];
+    let cents = null;
+    let sawCandidate = false;
+
+    for (const candidate of priceCandidates) {
+      if (candidate === undefined || candidate === null || candidate === '') continue;
+      sawCandidate = true;
+      if (typeof candidate === 'number') {
+        if (Number.isFinite(candidate)) {
+          cents = Math.round(candidate);
+          break;
+        }
+        continue;
+      }
+      const parsed = parseBRLToCents(candidate);
+      if (Number.isFinite(parsed)) {
+        cents = parsed;
+        break;
+      }
+    }
+
+    if (cents === null) {
+      if (sawCandidate) {
         return res.status(400).json({ error: 'bad_request', message: 'invalid_price' });
       }
       cents = 0;
     }
-    if (cents < 0 || cents > 9_999_999_99) {
+
+    if (!Number.isFinite(cents) || cents < 0) {
+      return res.status(400).json({ error: 'bad_request', message: 'invalid_price' });
+    }
+    if (cents > 9_999_999_99) {
       return res.status(400).json({ error: 'bad_request', message: 'price_out_of_range' });
     }
 
-    const idLegacy = toSlug(name) || `plan-${Date.now()}`;
-    const currencyInput =
-      typeof currency === 'string' ? currency.trim().toUpperCase() : null;
-    const cur = currencyInput && SUPPORTED_CURRENCIES.has(currencyInput)
-      ? currencyInput
-      : 'BRL';
-    const active = is_active !== false;
+    let normalizedCurrency;
+    try {
+      normalizedCurrency = parseCurrency(currency ?? 'BRL', { required: true });
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'invalid_currency' });
+    }
+
+    let active = true;
+    if (is_active !== undefined) {
+      try {
+        active = parseBoolean(is_active);
+      } catch (err) {
+        return res.status(400).json({ error: err.message || 'invalid_boolean' });
+      }
+    }
+
+    const idLegacy = makeLegacyId(trimmedName);
 
     const { rows } = await q(
       `INSERT INTO public.plans (id_legacy_text, name, price_cents, currency, is_active)
@@ -527,7 +558,7 @@ router.post('/', async (req, res) => {
                  sort_order,
                  created_at,
                  updated_at`,
-      [idLegacy, name, cents, cur, active]
+      [idLegacy, trimmedName, cents, normalizedCurrency, active]
     );
 
     const planRow = rows[0];
@@ -588,8 +619,9 @@ router.post('/:id/duplicate', async (req, res) => {
     }
 
     const duplicateName = `${source.name} (cópia)`;
-    const duplicateLegacyBase = toSlug(duplicateName) || 'plan';
-    const duplicateLegacy = `${duplicateLegacyBase}-${Date.now()}`.slice(0, 60);
+    const duplicateLegacy = makeLegacyId(
+      `${source.name || 'plan'}-copy-${randomBytes(2).toString('hex')}`
+    );
     const { rows: inserted } = await q(
       `INSERT INTO public.plans (
          id,

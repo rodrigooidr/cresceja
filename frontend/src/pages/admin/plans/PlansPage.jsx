@@ -5,6 +5,7 @@ import {
   adminDuplicatePlan,
   adminListPlans,
   adminUpdatePlan,
+  centsToBRL,
   parseBRLToCents,
 } from "@/api/inboxApi";
 import { hasGlobalRole } from "@/auth/roles";
@@ -58,25 +59,9 @@ function mapPlanErrorMessage(message) {
 }
 
 function formatCurrencyDisplay(currency, cents) {
-  const safeCurrency = currency || "BRL";
   if (cents === null || cents === undefined) return "";
-  const value = Number(cents) / 100;
-  try {
-    const locale = safeCurrency === "USD" ? "en-US" : "pt-BR";
-    return new Intl.NumberFormat(locale, {
-      style: "currency",
-      currency: safeCurrency,
-      minimumFractionDigits: 2,
-    }).format(value);
-  } catch {
-    return `${safeCurrency} ${value.toFixed(2)}`;
-  }
-}
-
-function computePriceState(raw, currency) {
-  const stringValue = raw == null ? "" : String(raw);
-  const cents = parseBRLToCents(stringValue);
-  return { cents, display: formatCurrencyDisplay(currency, cents) };
+  const numeric = Number(cents);
+  return centsToBRL(Number.isFinite(numeric) ? numeric : 0, currency || "BRL");
 }
 
 function normalizeEnumOptions(raw) {
@@ -226,7 +211,6 @@ function createModalState() {
   return {
     name: "",
     currency: "BRL",
-    priceInput: formatCurrencyDisplay("BRL", 0),
     is_active: true,
   };
 }
@@ -256,9 +240,9 @@ export default function PlansPage() {
   const [form, setForm] = useState({
     name: "",
     currency: "BRL",
-    priceInput: formatCurrencyDisplay("BRL", 0),
     is_active: true,
   });
+  const [priceStr, setPriceStr] = useState(centsToBRL(0, "BRL"));
   const [featureForm, setFeatureForm] = useState([]);
 
   const [dirty, setDirty] = useState(false);
@@ -269,6 +253,7 @@ export default function PlansPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalForm, setModalForm] = useState(createModalState);
+  const [modalPriceStr, setModalPriceStr] = useState(centsToBRL(0, "BRL"));
   const [modalError, setModalError] = useState("");
   const [modalSaving, setModalSaving] = useState(false);
   const [pageError, setPageError] = useState("");
@@ -302,18 +287,27 @@ export default function PlansPage() {
     setForm((prev) => ({
       ...prev,
       currency,
-      priceInput: formatCurrencyDisplay(currency, parseBRLToCents(prev.priceInput || "0")),
     }));
+    setPriceStr((prevValue) => {
+      const cents = parseBRLToCents(prevValue);
+      const safeCents = Number.isFinite(cents) && cents >= 0 ? cents : 0;
+      return centsToBRL(safeCents, currency);
+    });
     markDirty();
   };
 
   const handlePriceChange = (event) => {
     const raw = event.target.value;
-    setForm((prev) => {
-      const { display } = computePriceState(raw, prev.currency);
-      return { ...prev, priceInput: display };
-    });
-    markDirty();
+    if (/^[\d.,\sR$]*$/.test(raw) || raw === "") {
+      setPriceStr(raw);
+      markDirty();
+    }
+  };
+
+  const handlePriceBlur = () => {
+    const cents = parseBRLToCents(priceStr);
+    const safeCents = Number.isFinite(cents) && cents >= 0 ? cents : 0;
+    setPriceStr(centsToBRL(safeCents, form.currency));
   };
 
   const handleActiveToggle = (event) => {
@@ -398,9 +392,17 @@ export default function PlansPage() {
     setPageError("");
     setSaveSuccess(false);
     try {
+      const priceCents = parseBRLToCents(priceStr);
+      if (!Number.isFinite(priceCents) || priceCents < 0) {
+        const message = mapPlanErrorMessage("invalid_price");
+        setPageError(message);
+        toast({ title: message, status: "error" });
+        setSaving(false);
+        return;
+      }
       const payload = {
         name: form.name?.trim(),
-        price_cents: parseBRLToCents(form.priceInput || "0"),
+        price_cents: priceCents,
         currency: form.currency,
         is_active: !!form.is_active,
         features: featureForm.map(featureToPayload),
@@ -480,6 +482,7 @@ export default function PlansPage() {
 
   const openModal = () => {
     setModalForm(createModalState());
+    setModalPriceStr(centsToBRL(0, "BRL"));
     setModalError("");
     setModalOpen(true);
   };
@@ -499,16 +502,25 @@ export default function PlansPage() {
     setModalForm((prev) => ({
       ...prev,
       currency,
-      priceInput: formatCurrencyDisplay(currency, parseBRLToCents(prev.priceInput || "0")),
     }));
+    setModalPriceStr((prevValue) => {
+      const cents = parseBRLToCents(prevValue);
+      const safeCents = Number.isFinite(cents) && cents >= 0 ? cents : 0;
+      return centsToBRL(safeCents, currency);
+    });
   };
 
   const handleModalPriceChange = (event) => {
     const raw = event.target.value;
-    setModalForm((prev) => {
-      const { display } = computePriceState(raw, prev.currency);
-      return { ...prev, priceInput: display };
-    });
+    if (/^[\d.,\sR$]*$/.test(raw) || raw === "") {
+      setModalPriceStr(raw);
+    }
+  };
+
+  const handleModalPriceBlur = () => {
+    const cents = parseBRLToCents(modalPriceStr);
+    const safeCents = Number.isFinite(cents) && cents >= 0 ? cents : 0;
+    setModalPriceStr(centsToBRL(safeCents, modalForm.currency));
   };
 
   const handleModalActiveToggle = (event) => {
@@ -522,17 +534,23 @@ export default function PlansPage() {
       setModalError("Informe o nome do plano.");
       return;
     }
+    const priceCents = parseBRLToCents(modalPriceStr);
+    if (!Number.isFinite(priceCents) || priceCents < 0) {
+      setModalError(mapPlanErrorMessage("invalid_price"));
+      return;
+    }
     setModalSaving(true);
     try {
       const response = await adminCreatePlan({
         name,
         currency: modalForm.currency,
-        price_cents: parseBRLToCents(modalForm.priceInput || "0"),
+        price_cents: priceCents,
         is_active: !!modalForm.is_active,
       });
       const created = response?.data?.data;
       setModalOpen(false);
       setModalForm(createModalState());
+      setModalPriceStr(centsToBRL(0, "BRL"));
       await loadPlans();
       if (created?.id) setSelectedPlanId(created.id);
       toast({ title: "Plano criado" });
@@ -568,9 +586,9 @@ export default function PlansPage() {
       setForm({
         name: "",
         currency: "BRL",
-        priceInput: formatCurrencyDisplay("BRL", 0),
         is_active: true,
       });
+      setPriceStr(centsToBRL(0, "BRL"));
       setFeatureForm([]);
       setDirty(false);
       setSaveSuccess(false);
@@ -582,9 +600,9 @@ export default function PlansPage() {
     setForm({
       name: selectedPlan.name || "",
       currency,
-      priceInput: formatCurrencyDisplay(currency, priceCents),
       is_active: Boolean(selectedPlan.is_active),
     });
+    setPriceStr(centsToBRL(priceCents, currency));
     setFeatureForm(buildFeatureForm(featureDefs, selectedPlan.id, featuresByPlan));
     setDirty(false);
     setSaveSuccess(false);
@@ -737,8 +755,11 @@ export default function PlansPage() {
                       <span className="font-medium text-slate-700">Preço</span>
                       <input
                         type="text"
-                        value={form.priceInput}
+                        inputMode="decimal"
+                        pattern="[0-9.,]*"
+                        value={priceStr}
                         onChange={handlePriceChange}
+                        onBlur={handlePriceBlur}
                         className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                         placeholder="R$ 0,00"
                       />
@@ -959,8 +980,11 @@ export default function PlansPage() {
               <span className="font-medium text-slate-700">Preço</span>
               <input
                 type="text"
-                value={modalForm.priceInput}
+                inputMode="decimal"
+                pattern="[0-9.,]*"
+                value={modalPriceStr}
                 onChange={handleModalPriceChange}
+                onBlur={handleModalPriceBlur}
                 className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                 placeholder="R$ 0,00"
               />

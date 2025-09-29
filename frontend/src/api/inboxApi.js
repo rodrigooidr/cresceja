@@ -10,15 +10,27 @@ const inboxApi = axios.create({ baseURL: API_BASE_URL });
 export const client = inboxApi;
 
 export function parseBRLToCents(input) {
-  if (typeof input === "number") return Math.round(input * 100);
-  if (typeof input !== "string") return 0;
+  if (typeof input === "number") {
+    return Number.isFinite(input) ? Math.round(input * 100) : NaN;
+  }
+  if (typeof input !== "string") return NaN;
   const norm = input
     .replace(/\s/g, "")
     .replace(/^R\$/i, "")
     .replace(/\./g, "")
     .replace(",", ".");
+  if (!norm) return 0;
   const num = Number(norm);
-  return Number.isFinite(num) ? Math.round(num * 100) : 0;
+  return Number.isFinite(num) ? Math.round(num * 100) : NaN;
+}
+
+export function centsToBRL(cents = 0, currency = "BRL") {
+  const value = Number.isFinite(cents) ? cents / 100 : 0;
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
+  } catch {
+    return `R$ ${value.toFixed(2).replace(".", ",")}`;
+  }
 }
 
 // ===== Helpers (headers) =====
