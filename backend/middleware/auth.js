@@ -9,6 +9,7 @@ import {
   normalizeGlobalRoles,
   normalizeOrgRole,
 } from '../lib/permissions.js';
+import { isUuid } from '../utils/isUuid.js';
 
 /**
  * Autenticação por JWT. Preenche req.user.
@@ -48,7 +49,7 @@ export function auth(req, res, next) {
  */
 export function impersonationGuard(req, res, next) {
   // Headers de impersonação explícita (aceita variações)
-  const hdrImpersonate =
+  const hdrImpersonateRaw =
     req.get("X-Impersonate-Org-Id") ||
     req.get("X-Impersonate-Org") ||
     req.headers["x-impersonate-org-id"] ||
@@ -56,6 +57,11 @@ export function impersonationGuard(req, res, next) {
     req.headers["x_impersonate_org_id"] ||
     req.headers["x_impersonate_org"] ||
     null;
+  const hdrImpersonate = isUuid(hdrImpersonateRaw) ? String(hdrImpersonateRaw) : null;
+
+  if (hdrImpersonateRaw && !hdrImpersonate) {
+    return res.status(400).json({ message: "invalid impersonation org id" });
+  }
 
   if (hdrImpersonate) {
     const canImpersonate = hasGlobalRole(req.user, [ROLES.SuperAdmin, ROLES.Support]);
@@ -63,7 +69,7 @@ export function impersonationGuard(req, res, next) {
       return res.status(403).json({ message: "impersonation not allowed" });
     }
     // deixa anotado para middlewares/rotas posteriores, sem sobrescrever o token
-    req.impersonatedOrgId = String(hdrImpersonate);
+    req.impersonatedOrgId = hdrImpersonate;
   }
 
   // IMPORTANTe: X-Org-Id NÃO é impersonação; deixe seguir.
@@ -103,18 +109,16 @@ export function requireRole(...allowed) {
  * Mantido para compat; no projeto atual o pgRlsContext já cuida do org_id.
  */
 export function orgScope(req, res, next) {
-  const orgId = req.user?.org_id;
-  if (!orgId) {
-    if (hasGlobalRole(req.user, [ROLES.SuperAdmin, ROLES.Support])) {
-      const headerOrg = req.headers['x-org-id'] || null;
-      if (headerOrg) {
-        req.orgId = headerOrg;
-        return next();
-      }
+  let orgId = req.user?.org_id;
+  if (!isUuid(orgId) && hasGlobalRole(req.user, [ROLES.SuperAdmin, ROLES.Support])) {
+    const headerOrg = req.headers['x-org-id'] || null;
+    if (isUuid(headerOrg)) {
+      orgId = headerOrg;
     }
-    return res.status(401).json({ message: "org_id missing in token" });
   }
+  if (!isUuid(orgId)) return res.status(401).json({ message: "org_id missing in token" });
   req.orgId = orgId;
+  req.orgScopeValidated = true;
   next();
 }
 
