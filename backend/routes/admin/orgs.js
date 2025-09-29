@@ -57,17 +57,24 @@ const db = {
   none: queryNone,
 };
 
-// GET /api/admin/orgs?status=active|inactive|all
+// GET /api/admin/orgs?status=active|inactive|all&q=foo
 router.get('/', async (req, res, next) => {
   try {
-    const rawStatus = (req.query.status ?? 'active').toString().toLowerCase();
+    const rawStatus = String(req.query.status ?? 'active').toLowerCase();
     const status = StatusSchema.parse(rawStatus);
+    const q = String(req.query.q ?? '').trim();
+
     const params = [];
     const where = [];
 
     if (status !== 'all') {
       params.push(status);
-      where.push(`LOWER(o.status) = $${params.length}::text`);
+      where.push(`o.status = $${params.length}::text`);
+    }
+
+    if (q) {
+      params.push(`%${q}%`);
+      where.push(`o.name ILIKE $${params.length}`);
     }
 
     const sql = `

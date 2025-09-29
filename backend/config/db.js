@@ -56,17 +56,28 @@ export async function query(text, params) {
   const store = als.getStore();
   const client = store?.client;
   const start = Date.now();
-
-  const res = client ? await client.query(text, params) : await pool.query(text, params);
-
-  const dur = Date.now() - start;
   const slowMs = Number(process.env.PG_SLOW_MS || 250);
-  if (dur > slowMs) {
-    // Loga só a 1ª linha do SQL para não poluir
-    // eslint-disable-next-line no-console
-    console.warn('[pg] slow query', dur, 'ms →', String(text).split('\n')[0]);
+  try {
+    const res = client ? await client.query(text, params) : await pool.query(text, params);
+
+    const dur = Date.now() - start;
+    if (dur > slowMs) {
+      // Loga só a 1ª linha do SQL para não poluir
+      // eslint-disable-next-line no-console
+      console.warn('[pg] slow query', dur, 'ms →', String(text).split('\n')[0]);
+    }
+    return res;
+  } catch (err) {
+    if (err?.code === '22P02') {
+      // eslint-disable-next-line no-console
+      console.error('[pg] 22P02 invalid_text_representation');
+      // eslint-disable-next-line no-console
+      console.error('[pg] 22P02 text:', text);
+      // eslint-disable-next-line no-console
+      console.error('[pg] 22P02 params:', params);
+    }
+    throw err;
   }
-  return res;
 }
 
 /** Healthcheck simples, útil no boot do servidor */
