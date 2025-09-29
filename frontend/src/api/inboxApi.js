@@ -452,21 +452,28 @@ export async function adminGetPlanCredits(planId, options = {}) {
   }
 
   try {
-    const { data } = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
-    const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-    return rows.map((item) => {
-      const limitNumber = Number(item?.limit);
-      return {
-        meter: item?.meter ?? '',
-        limit: Number.isFinite(limitNumber) ? limitNumber : 0,
-      };
-    });
+    const r = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
+    return Array.isArray(r.data?.data) ? r.data.data : [];
   } catch (error) {
     if (error?.response?.status === 404) {
       return [];
     }
     throw error;
   }
+}
+
+export async function adminUpdatePlanCredits(planId, credits, options = {}) {
+  if (!planId) {
+    return [];
+  }
+
+  const payload = Array.isArray(credits) ? credits : [];
+  const r = await inboxApi.put(
+    `/admin/plans/${planId}/credits`,
+    { data: payload },
+    withGlobalScope(options)
+  );
+  return Array.isArray(r.data?.data) ? r.data.data : [];
 }
 
 export async function adminGetPlanCreditsSummary(planId, options = {}) {
