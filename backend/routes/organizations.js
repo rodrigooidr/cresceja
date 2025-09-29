@@ -100,13 +100,13 @@ router.get('/', async (req, res) => {
       // Lista direto da tabela orgs
       sqlList = `
         SELECT o.id, o.name, NULL::text AS slug, o.status, o.created_at
-        FROM orgs o
+        FROM organizations o
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY o.name ASC
         LIMIT $${i} OFFSET $${i + 1}`;
       sqlCount = `
         SELECT COUNT(*)::int AS total
-        FROM orgs o
+        FROM organizations o
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`;
       params.push(limit, offset);
     } else {
@@ -117,14 +117,14 @@ router.get('/', async (req, res) => {
       sqlList = `
         SELECT o.id, o.name, NULL::text AS slug, o.status, o.created_at
         FROM org_users m
-        JOIN orgs o ON o.id = m.org_id
+        JOIN organizations o ON o.id = m.org_id
         ${whereMine.length ? `WHERE ${whereMine.join(' AND ')}` : ''}
         ORDER BY o.name ASC
         LIMIT $${i} OFFSET $${i + 1}`;
       sqlCount = `
         SELECT COUNT(*)::int AS total
         FROM org_users m
-        JOIN orgs o ON o.id = m.org_id
+        JOIN organizations o ON o.id = m.org_id
         ${whereMine.length ? `WHERE ${whereMine.join(' AND ')}` : ''}`;
       params.push(limit, offset);
     }

@@ -48,7 +48,7 @@ import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
 import metaOauthIntegrationRouter from './routes/integrations/meta.oauth.js';
 import googleCalendarRouter from './routes/integrations/google.calendar.js';
-import orgsRouter from './routes/orgs.js';
+import organizationsRouter from './routes/organizations.js';
 import orgFeaturesRouter from './routes/orgs.features.js';
 import orgWhatsappRouter from './routes/orgs.whatsapp.js';
 import orgsCalendarRouter from './routes/orgs.calendar.js';
@@ -304,6 +304,10 @@ function configureApp() {
   app.use('/api', crmCompatRouter);
   app.use('/api', aiCompatRouter);
   app.use('/api', aiActionsRouter);
+  app.use('/orgs', (req, res) => {
+    const target = req.originalUrl.replace(/^\/orgs/, '/organizations');
+    return res.redirect(308, target);
+  });
   app.use('/', aiProfileRouter);
   app.use('/', aiKbRouter);
   app.use('/', aiTestRouter);
@@ -353,7 +357,9 @@ function configureApp() {
   app.use('/api', telemetryAppointmentsExportRouter);
   app.use('/api', telemetryAppointmentsFunnelRouter);
   app.use('/api', telemetryAppointmentsFunnelExportRouter);
-  app.use('/api/orgs', orgsRouter);
+  app.use('/api/organizations', organizationsRouter);
+  app.use('/organizations', organizationsRouter);
+  app.use('/api/orgs', organizationsRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
 
