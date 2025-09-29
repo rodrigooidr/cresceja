@@ -829,14 +829,12 @@ router.put('/:id/features', async (req, res, next) => {
 
 // GET /api/admin/plans/:id/credits
 router.get('/:id/credits', async (req, res) => {
-  const pool = req.pool;
   const planId = req.params.id;
 
   const sql = `
     SELECT
       pf.feature_code AS meter,
-      COALESCE(pf.credit_limit, 0)        AS limit,
-      COALESCE(pf.credit_period, 'month') AS period
+      COALESCE(pf.credit_limit, 0) AS limit
     FROM public.plan_features pf
     WHERE pf.plan_id = $1
       AND (
@@ -849,19 +847,27 @@ router.get('/:id/credits', async (req, res) => {
     ORDER BY lower(pf.feature_code) ASC
   `;
 
+  const query =
+    typeof req.pool?.query === 'function'
+      ? req.pool.query.bind(req.pool)
+      : typeof req.db?.query === 'function'
+      ? req.db.query.bind(req.db)
+      : rootQuery;
+
   try {
-    const { rows } = await pool.query(sql, [planId]);
+    const { rows } = await query(sql, [planId]);
     return res.json({
-      plan_id: planId,
-      credits: rows.map((row) => ({
+      data: rows.map((row) => ({
         meter: row.meter,
         limit: Number(row.limit) || 0,
-        period: row.period || 'month',
       })),
     });
   } catch (err) {
-    req.log?.error({ err, planId }, 'admin.plans.credits failed');
-    return res.json({ plan_id: planId, credits: [] });
+    req.log?.error(
+      { err, planId, route: 'GET /api/admin/plans/:id/credits' },
+      'admin.plans.credits failed',
+    );
+    return res.json({ data: [] });
   }
 });
 

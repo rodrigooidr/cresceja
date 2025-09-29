@@ -23,80 +23,58 @@ router.use(authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support));
 
 // GET /api/admin/orgs?status=active|inactive|all
 router.get('/', async (req, res) => {
-  const pool = req.pool;
-  const { status = 'active' } = req.query;
-  const normalizedStatus = String(status || 'active').toLowerCase();
-  const allowed = new Set(['active', 'inactive', 'all']);
-  const wanted = allowed.has(normalizedStatus) ? normalizedStatus : 'active';
+  const ACTIVE_STATUSES = ['active', 'ativo', 'ativa', 'enabled'];
+  const rawStatus = (req.query.status || '').toString().toLowerCase();
+  const filter = rawStatus === 'active' ? 'active' : rawStatus === 'inactive' ? 'inactive' : null;
 
-  const orgsWhere =
-    wanted === 'all'
-      ? 'TRUE'
-      : wanted === 'active'
-      ? "o.status = 'active'"
-      : "o.status <> 'active'";
-
-  const legacyWhere =
-    wanted === 'all'
-      ? 'TRUE'
-      : wanted === 'active'
-      ? 'o.active = TRUE'
-      : 'o.active = FALSE';
-
-  const sqlOrganizations = `
+  let sql = `
     SELECT
-      o.id,
-      o.name,
-      o.slug,
-      o.plan_id,
-      o.trial_ends_at,
-      (o.status = 'active') AS is_active
-    FROM public.organizations o
-    WHERE ${orgsWhere}
-    ORDER BY lower(o.name) ASC
-    LIMIT 500
+      id,
+      name,
+      slug,
+      plan_id,
+      trial_ends_at,
+      (LOWER(status) = ANY($1::text[])) AS is_active
+    FROM public.organizations
   `;
+  const params = [ACTIVE_STATUSES];
 
-  const sqlOrgsFallback = `
-    SELECT
-      o.id,
-      o.name,
-      o.slug,
-      o.plan_id,
-      o.trial_ends_at,
-      o.active AS is_active
-    FROM public.orgs o
-    WHERE ${legacyWhere}
-    ORDER BY lower(o.name) ASC
-    LIMIT 500
-  `;
+  if (filter === 'active') {
+    sql += ` WHERE (LOWER(status) = ANY($1::text[])) `;
+  } else if (filter === 'inactive') {
+    sql += ` WHERE NOT (LOWER(status) = ANY($1::text[])) `;
+  }
+  sql += ` ORDER BY LOWER(name) LIMIT 500 `;
+
+  const query =
+    typeof req.pool?.query === 'function'
+      ? req.pool.query.bind(req.pool)
+      : typeof db.query === 'function'
+      ? db.query.bind(db)
+      : null;
+
+  if (!query) {
+    req.log?.error(
+      { route: 'GET /api/admin/orgs', query: req.query },
+      'admin orgs missing query function',
+    );
+    return res.status(500).json({ error: 'internal_error' });
+  }
 
   try {
-    let rows;
-    try {
-      const { rows: primaryRows } = await pool.query(sqlOrganizations);
-      rows = primaryRows;
-    } catch (err) {
-      if (err?.code === '42P01' || err?.code === '42703') {
-        const { rows: fallbackRows } = await pool.query(sqlOrgsFallback);
-        rows = fallbackRows;
-      } else {
-        throw err;
-      }
-    }
-
-    const data = rows.map((row) => ({
-      ...row,
-      is_active:
-        row.is_active === true ||
-        row.is_active === 't' ||
-        row.is_active === 1 ||
-        row.is_active === '1',
-    }));
-
-    return res.json({ data });
+    const { rows } = await query(sql, params);
+    return res.json({
+      data: rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        plan_id: r.plan_id,
+        trial_ends_at: r.trial_ends_at,
+        is_active: !!r.is_active,
+      })),
+    });
   } catch (err) {
-    req.log?.error({ err }, 'admin.orgs.list failed');
+    req.log?.error({ err, route: 'GET /api/admin/orgs', query: req.query }, 'admin orgs failed');
     return res.status(500).json({ error: 'internal_error' });
   }
 });
