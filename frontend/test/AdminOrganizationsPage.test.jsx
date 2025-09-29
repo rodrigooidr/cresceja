@@ -51,9 +51,26 @@ test("carrega organizações ativas por padrão", async () => {
     });
   });
 
-  await waitFor(() => expect(adminListOrgs).toHaveBeenCalledWith({ status: "active" }));
+  await waitFor(() =>
+    expect(adminListOrgs).toHaveBeenCalledWith(expect.objectContaining({ status: "active", q: "" }))
+  );
   expect(await screen.findByText("Empresa A")).toBeInTheDocument();
   await waitFor(() => expect(screen.getByText("Empresa B")).toBeInTheDocument());
+});
+
+test("mostra estado vazio quando nenhuma organização é retornada", async () => {
+  adminListOrgs.mockResolvedValueOnce([]);
+
+  await act(async () => {
+    renderApp(<AdminOrganizationsPage />, {
+      route: "/admin/organizations",
+      user: { id: "admin", role: "SuperAdmin", roles: ["SuperAdmin"] },
+    });
+  });
+
+  await waitFor(() => expect(adminListOrgs).toHaveBeenCalled());
+  expect(await screen.findByText("Nenhuma organização.")).toBeInTheDocument();
+  expect(screen.queryByText("Não foi possível carregar as organizações.")).not.toBeInTheDocument();
 });
 
 test("edita dados básicos da organização", async () => {

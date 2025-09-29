@@ -322,7 +322,7 @@ async function _get(path, config = {}) {
       const target = `${org.name || ""} ${org.slug || ""} ${org.document_value || ""}`.toLowerCase();
       return target.includes(q);
     });
-    return res({ data: rows, count: rows.length });
+    return res({ items: rows, count: rows.length });
   }
 
   if (url === "/admin/plans") {
@@ -733,11 +733,14 @@ function callListAdminOrgs(status = "active", options = {}) {
 
 async function callAdminListOrgs(params = {}, options = {}) {
   const cfg = { ...(options || {}) };
-  const normalized = { status: 'active', ...(params || {}) };
+  const normalized = { status: 'active', q: '', ...(params || {}) };
   cfg.params = { ...(cfg.params || {}), status: normalized.status };
+  if (normalized.q) cfg.params.q = normalized.q;
   const response = await inboxApi.get(`/admin/orgs`, cfg);
   const payload = response?.data;
-  const list = Array.isArray(payload?.data)
+  const list = Array.isArray(payload?.items)
+    ? payload.items
+    : Array.isArray(payload?.data)
     ? payload.data
     : Array.isArray(payload)
     ? payload

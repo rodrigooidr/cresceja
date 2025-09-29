@@ -337,10 +337,14 @@ function withGlobalScope(options = {}) {
   return next;
 }
 
-export async function adminListOrgs(params = {}) {
-  const config = withGlobalScope({ params });
-  const { data } = await inboxApi.get(`/admin/orgs`, config);
-  const rows = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+export async function adminListOrgs({ status = 'active', q = '' } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (q) params.set('q', q);
+  const search = params.toString();
+  const url = search ? `/admin/orgs?${search}` : '/admin/orgs';
+  const res = await client.get(url, withGlobalScope());
+  const rows = Array.isArray(res?.data?.items) ? res.data.items : [];
   return rows.map((org) => {
     const normalizedActive =
       typeof org?.is_active === 'boolean'
