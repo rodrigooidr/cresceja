@@ -67,12 +67,25 @@ export async function upsertPlanFeatures(planId, features, db) {
   await runner('BEGIN');
   try {
     for (const feature of features) {
+      const jsonValue =
+        feature && Object.prototype.hasOwnProperty.call(feature, 'value')
+          ? feature.value
+          : extractStoredValue(feature);
       await runner(
-        `INSERT INTO plan_features (plan_id, feature_code, value, updated_at)
-         VALUES ($1, $2, $3::jsonb, now())
+        `INSERT INTO plan_features (plan_id, feature_code, value, ai_meter_code, ai_monthly_quota, updated_at)
+         VALUES ($1, $2, $3::jsonb, $4, $5, now())
          ON CONFLICT (plan_id, feature_code)
-         DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-        [planId, feature.code, JSON.stringify({ value: feature.value })]
+         DO UPDATE SET value = EXCLUDED.value,
+                       ai_meter_code = EXCLUDED.ai_meter_code,
+                       ai_monthly_quota = EXCLUDED.ai_monthly_quota,
+                       updated_at = now()`,
+        [
+          planId,
+          feature.code,
+          JSON.stringify({ value: jsonValue }),
+          feature.ai_meter_code ?? null,
+          feature.ai_monthly_quota ?? null,
+        ]
       );
     }
     await runner('COMMIT');

@@ -54,13 +54,111 @@ function normalizeEnumOptions(raw) {
   return [];
 }
 
+const SUPPORTED_CURRENCIES = new Set(['BRL', 'USD']);
+
+function parseCurrency(value, { required = false } = {}) {
+  if (value === undefined || value === null || value === '') {
+    if (required) throw new Error('currency_required');
+    return undefined;
+  }
+  const normalized = String(value).trim().toUpperCase();
+  if (!SUPPORTED_CURRENCIES.has(normalized)) {
+    throw new Error('invalid_currency');
+  }
+  return normalized;
+}
+
+function parseCents(value, { required = false } = {}) {
+  if (value === undefined) {
+    if (required) throw new Error('price_required');
+    return undefined;
+  }
+  if (value === null || value === '') {
+    return null;
+  }
+  const normalized = typeof value === 'number' ? value : Number(String(value).replace(/[^0-9-]+/g, ''));
+  if (!Number.isFinite(normalized)) throw new Error('invalid_price_cents');
+  if (normalized < 0) throw new Error('invalid_price_cents');
+  return Math.round(normalized);
+}
+
+function parseBoolean(value) {
+  if (value === undefined) return undefined;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase();
+    if (['true', '1', 'yes', 'sim'].includes(trimmed)) return true;
+    if (['false', '0', 'no', 'nao', 'não'].includes(trimmed)) return false;
+  }
+  throw new Error('invalid_boolean');
+}
+
+function parseQuota(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const numeric = typeof value === 'number' ? value : Number(String(value).replace(/[^0-9.,-]+/g, '').replace(',', '.'));
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new Error('invalid_ai_quota');
+  }
+  return numeric;
+}
+
+function normalizeFeatureValue(raw, def) {
+  const type = def?.type;
+  if (!type) return null;
+
+  if (type === 'boolean') {
+    if (raw.value_bool !== undefined) return Boolean(raw.value_bool);
+    if (typeof raw.value === 'boolean') return raw.value;
+    if (typeof raw.value === 'number') return raw.value !== 0;
+    if (typeof raw.value === 'string') {
+      return ['true', '1', 'yes', 'sim'].includes(raw.value.trim().toLowerCase());
+    }
+    return Boolean(raw.value);
+  }
+
+  if (type === 'number') {
+    const source = raw.value_number ?? raw.value ?? null;
+    if (source === null || source === undefined || source === '') return null;
+    const numeric = typeof source === 'number' ? source : Number(String(source).replace(/[^0-9.,-]+/g, '').replace(',', '.'));
+    if (!Number.isFinite(numeric)) {
+      throw new Error('invalid_number');
+    }
+    return numeric;
+  }
+
+  if (type === 'enum') {
+    const options = normalizeEnumOptions(def.enum_options);
+    const source = raw.value ?? raw.value_text ?? raw.value_enum ?? '';
+    const str = String(source ?? '').trim();
+    if (!str && options.length) return options[0];
+    if (options.length && !options.includes(str)) {
+      throw new Error('invalid_enum');
+    }
+    return str;
+  }
+
+  if (type === 'string') {
+    const source = raw.value_text ?? raw.value ?? '';
+    return source === null || source === undefined ? '' : String(source);
+  }
+
+  // fallback: keep whatever came as value
+  return raw.value ?? null;
+}
+
 router.use(authRequired);
 router.use(requireGlobalRole(['SuperAdmin', 'Support']));
 
 router.get('/', async (req, res, next) => {
   try {
     const q = getQuery(req);
-    const [{ rows: plans = [] }, { rows: feature_defs = [] }, { rows: plan_features = [] }] = await Promise.all([
+    const [
+      { rows: plans = [] },
+      { rows: feature_defs = [] },
+      { rows: plan_features = [] },
+    ] = await Promise.all([
       q(
         `SELECT id,
                 id_legacy_text,
@@ -99,6 +197,8 @@ router.get('/', async (req, res, next) => {
         `SELECT plan_id,
                 feature_code,
                 value,
+                ai_meter_code,
+                ai_monthly_quota,
                 created_at,
                 updated_at
            FROM plan_features`
@@ -108,8 +208,8 @@ router.get('/', async (req, res, next) => {
     const normalized = Array.isArray(plans) ? plans.map(normalizePlan) : [];
 
     return res.json({
-      data: normalized,
-      meta: {
+      data: {
+        plans: normalized,
         feature_defs: feature_defs ?? [],
         plan_features: plan_features ?? [],
       },
@@ -123,6 +223,446 @@ router.get('/:id/features', async (req, res, next) => {
   try {
     const features = await getPlanFeatures(req.params.id, req.db);
     res.json(features);
+  } catch (err) {
+    next(err);
+  }
+});
+
+async function buildFeatureUpdates(q, featuresInput = []) {
+  const list = Array.isArray(featuresInput) ? featuresInput : [];
+  if (!list.length) return [];
+
+  const codes = Array.from(new Set(list.map((item) => item?.feature_code).filter(Boolean)));
+  if (!codes.length) return [];
+
+  const meterCodes = Array.from(
+    new Set(
+      list
+        .map((item) => item?.ai_meter_code)
+        .filter((item) => typeof item === 'string' && item.trim())
+    )
+  );
+
+  const [{ rows: defs }, meterResult] = await Promise.all([
+    q(
+      `SELECT code, type, enum_options, category
+         FROM feature_defs
+        WHERE code = ANY($1)`,
+      [codes]
+    ),
+    meterCodes.length
+      ? q(
+          `SELECT code
+             FROM ai_meters
+            WHERE code = ANY($1)`,
+          [meterCodes]
+        )
+      : Promise.resolve({ rows: [] }),
+  ]);
+
+  const defMap = new Map(defs.map((item) => [item.code, item]));
+  const meterSet = new Set(meterResult.rows.map((item) => item.code));
+
+  const normalized = [];
+
+  for (const item of list) {
+    if (!item || !item.feature_code) continue;
+    const def = defMap.get(item.feature_code);
+    if (!def) {
+      const err = new Error('feature_not_found');
+      err.status = 404;
+      err.extra = { feature_code: item.feature_code };
+      throw err;
+    }
+
+    let value;
+    try {
+      value = normalizeFeatureValue(item, def);
+    } catch (err) {
+      const e = new Error(err.message || 'invalid_feature_value');
+      e.status = 400;
+      e.extra = { feature_code: item.feature_code };
+      throw e;
+    }
+
+    const aiMeterCodeRaw = item.ai_meter_code ?? item.aiMeterCode ?? null;
+    const aiMeterCode = aiMeterCodeRaw ? String(aiMeterCodeRaw).trim() : null;
+    let aiQuota;
+    try {
+      aiQuota = parseQuota(item.ai_monthly_quota ?? item.aiMonthlyQuota);
+    } catch (err) {
+      const e = new Error('invalid_ai_quota');
+      e.status = 400;
+      e.extra = { feature_code: item.feature_code };
+      throw e;
+    }
+
+    if (aiMeterCode && !meterSet.has(aiMeterCode)) {
+      const err = new Error('invalid_ai_meter_code');
+      err.status = 400;
+      err.extra = { feature_code: item.feature_code, ai_meter_code: aiMeterCode };
+      throw err;
+    }
+
+    normalized.push({
+      code: item.feature_code,
+      value,
+      ai_meter_code: aiMeterCode,
+      ai_monthly_quota: aiQuota,
+    });
+  }
+
+  return normalized;
+}
+
+router.patch('/:id', async (req, res, next) => {
+  const planId = req.params.id;
+  try {
+    const q = getQuery(req);
+    const payload = req.body || {};
+
+    const updates = {};
+    if (payload.name !== undefined) {
+      const name = String(payload.name || '').trim();
+      if (!name) {
+        return res.status(400).json({ error: 'name_required' });
+      }
+      updates.name = name;
+    }
+
+    try {
+      const price = parseCents(payload.price_cents ?? payload.priceCents);
+      if (price !== undefined) updates.price_cents = price;
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'invalid_price_cents' });
+    }
+
+    try {
+      const currency = parseCurrency(payload.currency ?? payload.Currency ?? payload.currencyCode ?? undefined);
+      if (currency !== undefined) updates.currency = currency;
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'invalid_currency' });
+    }
+
+    if (payload.is_active !== undefined) {
+      try {
+        const value = parseBoolean(payload.is_active ?? payload.isActive);
+        updates.is_active = value;
+      } catch (err) {
+        return res.status(400).json({ error: err.message || 'invalid_boolean' });
+      }
+    }
+
+    const featuresPayload = await buildFeatureUpdates(q, payload.features);
+
+    let planRow = null;
+    if (Object.keys(updates).length) {
+      const fields = [];
+      const values = [];
+      let idx = 1;
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === undefined) continue;
+        fields.push(`${key} = $${idx}`);
+        values.push(value);
+        idx += 1;
+      }
+      if (fields.length) {
+        fields.push('updated_at = now()');
+        values.push(planId);
+        const { rows } = await q(
+          `UPDATE public.plans
+              SET ${fields.join(', ')}
+            WHERE id = $${idx}
+        RETURNING id,
+                  id_legacy_text,
+                  name,
+                  monthly_price,
+                  currency,
+                  modules,
+                  is_published,
+                  is_active,
+                  price_cents,
+                  billing_period_months,
+                  trial_days,
+                  sort_order,
+                  created_at,
+                  updated_at`,
+          values
+        );
+        planRow = rows[0] ?? null;
+      }
+    }
+
+    if (!planRow) {
+      const { rows } = await q(
+        `SELECT id,
+                id_legacy_text,
+                name,
+                monthly_price,
+                currency,
+                modules,
+                is_published,
+                is_active,
+                price_cents,
+                billing_period_months,
+                trial_days,
+                sort_order,
+                created_at,
+                updated_at
+           FROM public.plans
+          WHERE id = $1`,
+        [planId]
+      );
+      planRow = rows[0] ?? null;
+    }
+
+    if (!planRow) {
+      return res.status(404).json({ error: 'plan_not_found' });
+    }
+
+    if (featuresPayload.length) {
+      await upsertPlanFeatures(
+        planId,
+        featuresPayload.map((item) => ({
+          code: item.code,
+          value: item.value,
+          ai_meter_code: item.ai_meter_code,
+          ai_monthly_quota: item.ai_monthly_quota,
+        })),
+        req.db
+      );
+    }
+
+    return res.json({
+      data: {
+        plan: normalizePlan(planRow),
+        updated_features: featuresPayload.length,
+      },
+    });
+  } catch (err) {
+    if (err?.status) {
+      return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
+    }
+    next(err);
+  }
+});
+
+router.post('/', async (req, res, next) => {
+  try {
+    const q = getQuery(req);
+    const payload = req.body || {};
+
+    const name = String(payload.name || '').trim();
+    if (!name) {
+      return res.status(400).json({ error: 'name_required' });
+    }
+
+    let priceCents;
+    try {
+      priceCents = parseCents(payload.price_cents ?? payload.priceCents, { required: true });
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'invalid_price_cents' });
+    }
+
+    let currency;
+    try {
+      currency = parseCurrency(payload.currency, { required: true });
+    } catch (err) {
+      return res.status(400).json({ error: err.message || 'invalid_currency' });
+    }
+
+    let isActive = true;
+    if (payload.is_active !== undefined) {
+      try {
+        isActive = parseBoolean(payload.is_active ?? payload.isActive);
+      } catch (err) {
+        return res.status(400).json({ error: err.message || 'invalid_boolean' });
+      }
+    }
+
+    const sortOrder = payload.sort_order ?? payload.sortOrder ?? null;
+
+    const { rows } = await q(
+      `INSERT INTO public.plans (
+         id,
+         name,
+         price_cents,
+         currency,
+         is_active,
+         sort_order,
+         created_at,
+         updated_at
+       )
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now(), now())
+       RETURNING id,
+                 id_legacy_text,
+                 name,
+                 monthly_price,
+                 currency,
+                 modules,
+                 is_published,
+                 is_active,
+                 price_cents,
+                 billing_period_months,
+                 trial_days,
+                 sort_order,
+                 created_at,
+                 updated_at`,
+      [name, priceCents, currency, isActive, sortOrder]
+    );
+
+    const planRow = rows[0];
+    if (!planRow) {
+      return res.status(500).json({ error: 'plan_not_created' });
+    }
+
+    const featuresPayload = await buildFeatureUpdates(q, payload.features);
+    if (featuresPayload.length) {
+      await upsertPlanFeatures(
+        planRow.id,
+        featuresPayload.map((item) => ({
+          code: item.code,
+          value: item.value,
+          ai_meter_code: item.ai_meter_code,
+          ai_monthly_quota: item.ai_monthly_quota,
+        })),
+        req.db
+      );
+    }
+
+    return res.status(201).json({
+      data: {
+        plan: normalizePlan(planRow),
+        created_features: featuresPayload.length,
+      },
+    });
+  } catch (err) {
+    if (err?.status) {
+      return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
+    }
+    next(err);
+  }
+});
+
+router.post('/:id/duplicate', async (req, res, next) => {
+  try {
+    const q = getQuery(req);
+    const planId = req.params.id;
+
+    const { rows: plans } = await q(
+      `SELECT id,
+              name,
+              price_cents,
+              currency,
+              is_active,
+              monthly_price,
+              modules,
+              is_published,
+              billing_period_months,
+              trial_days,
+              sort_order
+         FROM public.plans
+        WHERE id = $1`,
+      [planId]
+    );
+
+    const source = plans[0];
+    if (!source) {
+      return res.status(404).json({ error: 'plan_not_found' });
+    }
+
+    const duplicateName = `${source.name} (cópia)`;
+    const { rows: inserted } = await q(
+      `INSERT INTO public.plans (
+         id,
+         name,
+         price_cents,
+         currency,
+         is_active,
+         monthly_price,
+         modules,
+         is_published,
+         billing_period_months,
+         trial_days,
+         sort_order,
+         created_at,
+         updated_at
+       )
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())
+       RETURNING id,
+                 id_legacy_text,
+                 name,
+                 monthly_price,
+                 currency,
+                 modules,
+                 is_published,
+                 is_active,
+                 price_cents,
+                 billing_period_months,
+                 trial_days,
+                 sort_order,
+                 created_at,
+                 updated_at`,
+      [
+        duplicateName,
+        source.price_cents ?? 0,
+        source.currency ?? 'BRL',
+        source.is_active ?? true,
+        source.monthly_price ?? null,
+        source.modules ?? {},
+        source.is_published ?? false,
+        source.billing_period_months ?? 1,
+        source.trial_days ?? 0,
+        source.sort_order ?? null,
+      ]
+    );
+
+    const duplicated = inserted[0];
+    if (!duplicated) {
+      return res.status(500).json({ error: 'plan_not_duplicated' });
+    }
+
+    await q(
+      `INSERT INTO plan_features (plan_id, feature_code, value, ai_meter_code, ai_monthly_quota, created_at, updated_at)
+       SELECT $1, feature_code, value, ai_meter_code, ai_monthly_quota, now(), now()
+         FROM plan_features
+        WHERE plan_id = $2`,
+      [duplicated.id, planId]
+    );
+
+    return res.status(201).json({
+      data: {
+        plan: normalizePlan(duplicated),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const q = getQuery(req);
+    const planId = req.params.id;
+
+    const { rows: usage } = await q(
+      `SELECT 1
+         FROM public.organizations
+        WHERE plan_id = $1
+        LIMIT 1`,
+      [planId]
+    );
+
+    if (usage.length) {
+      return res.status(409).json({ error: 'plan_in_use' });
+    }
+
+    const { rowCount } = await q(`DELETE FROM public.plans WHERE id = $1`, [planId]);
+    if (!rowCount) {
+      return res.status(404).json({ error: 'plan_not_found' });
+    }
+
+    return res.json({ data: { deleted: true } });
   } catch (err) {
     next(err);
   }

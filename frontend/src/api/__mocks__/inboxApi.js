@@ -124,6 +124,21 @@ const state = {
     },
   },
   adminPlans: __mockPlans.map((plan) => ({ ...plan })),
+  featureDefs: [
+    { code: "posts", label: "Posts", type: "number", category: "content", sort_order: 10 },
+    { code: "support", label: "Suporte", type: "string", category: "support", sort_order: 20 },
+    { code: "whatsapp_numbers", label: "Números WhatsApp", type: "number", category: "channels", sort_order: 30 },
+    { code: "whatsapp_mode_baileys", label: "Baileys", type: "boolean", category: "channels", sort_order: 31 },
+    {
+      code: "channel",
+      label: "Canal",
+      type: "enum",
+      category: "general",
+      sort_order: 40,
+      enum_options: ["basic", "advanced"],
+    },
+    { code: "notes", label: "Notas", type: "string", category: "general", sort_order: 50 },
+  ],
   planFeaturesByPlan: {
     p_free: [
       { code: "posts", label: "Posts", type: "number", value: 10 },
@@ -172,6 +187,53 @@ const res = (data, status = 200, headers = { "x-mock": "inboxApi" }) => ({ data,
 
 function registerRouteEntry(entry) {
   state.routes.push(entry);
+}
+
+function normalizeFeatureForState(feature = {}) {
+  const code = feature.feature_code ?? feature.code;
+  if (!code) return null;
+  let value;
+  if (Object.prototype.hasOwnProperty.call(feature, "value")) value = feature.value;
+  else if (Object.prototype.hasOwnProperty.call(feature, "value_bool")) value = feature.value_bool;
+  else if (Object.prototype.hasOwnProperty.call(feature, "value_number")) value = feature.value_number;
+  else if (Object.prototype.hasOwnProperty.call(feature, "value_text")) value = feature.value_text;
+  else if (Object.prototype.hasOwnProperty.call(feature, "value_enum")) value = feature.value_enum;
+  else value = null;
+
+  return {
+    code,
+    label: feature.label ?? code,
+    type: feature.type ?? feature.value_type ?? "string",
+    value,
+    options: Array.isArray(feature.options) ? [...feature.options] : undefined,
+    ai_meter_code: feature.ai_meter_code ?? null,
+    ai_monthly_quota: feature.ai_monthly_quota ?? null,
+  };
+}
+
+function storePlanFeatures(planId, features = []) {
+  const normalized = (Array.isArray(features) ? features : [])
+    .map(normalizeFeatureForState)
+    .filter(Boolean);
+  state.planFeaturesByPlan[planId] = normalized;
+  return normalized;
+}
+
+function buildPlanFeaturesResponse() {
+  const list = [];
+  for (const [planId, features] of Object.entries(state.planFeaturesByPlan)) {
+    for (const feature of features) {
+      list.push({
+        plan_id: planId,
+        feature_code: feature.code,
+        value: { value: feature.value },
+        ai_meter_code: feature.ai_meter_code ?? null,
+        ai_monthly_quota: feature.ai_monthly_quota ?? null,
+        value_type: feature.type ?? null,
+      });
+    }
+  }
+  return list;
 }
 
 function normalizeRouteArgs(a, b, c) {
@@ -705,12 +767,20 @@ function callListAdminPlans(options = {}) {
   return inboxApi.get(`/admin/plans`, options);
 }
 
-function callCreatePlan(payload, options = {}) {
+function callAdminCreatePlan(payload, options = {}) {
   return inboxApi.post(`/admin/plans`, payload, options);
 }
 
-function callUpdatePlan(planId, payload, options = {}) {
-  return inboxApi.put(`/admin/plans/${planId}`, payload, options);
+function callAdminUpdatePlan(planId, payload, options = {}) {
+  return inboxApi.patch(`/admin/plans/${planId}`, payload, options);
+}
+
+function callAdminDuplicatePlan(planId, options = {}) {
+  return inboxApi.post(`/admin/plans/${planId}/duplicate`, {}, options);
+}
+
+function callAdminDeletePlan(planId, options = {}) {
+  return inboxApi.delete(`/admin/plans/${planId}`, options);
 }
 
 export const listAdminOrgs =
@@ -752,22 +822,117 @@ export const adminListPlans =
   typeof jest !== "undefined"
     ? jest.fn(async () => ({
         plans: state.adminPlans.map((plan) => ({ ...plan })),
-        meta: { feature_defs: [], plan_features: [] },
+        feature_defs: Array.isArray(state.featureDefs)
+          ? state.featureDefs.map((def) => ({ ...def }))
+          : [],
+        plan_features: buildPlanFeaturesResponse(),
       }))
     : async () => ({
         plans: state.adminPlans.map((plan) => ({ ...plan })),
-        meta: { feature_defs: [], plan_features: [] },
+        feature_defs: Array.isArray(state.featureDefs)
+          ? state.featureDefs.map((def) => ({ ...def }))
+          : [],
+        plan_features: buildPlanFeaturesResponse(),
       });
 
-export const createPlan =
+export const adminCreatePlan =
   typeof jest !== "undefined"
-    ? jest.fn(callCreatePlan)
-    : callCreatePlan;
+    ? jest.fn(async (payload = {}) => {
+        const now = new Date().toISOString();
+        const plan = {
+          id: payload.id ?? `plan_${Date.now()}`,
+          id_legacy_text: null,
+          name: payload.name ?? "Novo plano",
+          price_cents: payload.price_cents ?? 0,
+          currency: payload.currency ?? "BRL",
+          is_active: payload.is_active ?? true,
+          monthly_price: payload.monthly_price ?? null,
+          modules: payload.modules ?? {},
+          is_published: payload.is_published ?? false,
+          billing_period_months: payload.billing_period_months ?? 1,
+          trial_days: payload.trial_days ?? 0,
+          sort_order: payload.sort_order ?? null,
+          created_at: now,
+          updated_at: now,
+        };
+        state.adminPlans.push(plan);
+        if (Array.isArray(payload.features) && payload.features.length) {
+          storePlanFeatures(plan.id, payload.features);
+        } else {
+          state.planFeaturesByPlan[plan.id] = [];
+        }
+        return { data: { plan } };
+      })
+    : callAdminCreatePlan;
 
-export const updatePlan =
+export const adminUpdatePlan =
   typeof jest !== "undefined"
-    ? jest.fn(callUpdatePlan)
-    : callUpdatePlan;
+    ? jest.fn(async (planId, payload = {}) => {
+        const plan = state.adminPlans.find((item) => item.id === planId);
+        if (!plan) {
+          const error = new Error("plan_not_found");
+          error.response = { status: 404, data: { error: "plan_not_found" } };
+          throw error;
+        }
+        if (payload.name !== undefined) plan.name = payload.name;
+        if (payload.price_cents !== undefined) plan.price_cents = payload.price_cents;
+        if (payload.currency !== undefined) plan.currency = payload.currency;
+        if (payload.is_active !== undefined) plan.is_active = payload.is_active;
+        plan.updated_at = new Date().toISOString();
+        if (Array.isArray(payload.features)) {
+          storePlanFeatures(planId, payload.features);
+        }
+        return { data: { plan } };
+      })
+    : callAdminUpdatePlan;
+
+export const adminDuplicatePlan =
+  typeof jest !== "undefined"
+    ? jest.fn(async (planId) => {
+        const source = state.adminPlans.find((item) => item.id === planId);
+        if (!source) {
+          const error = new Error("plan_not_found");
+          error.response = { status: 404, data: { error: "plan_not_found" } };
+          throw error;
+        }
+        const now = new Date().toISOString();
+        const duplicated = {
+          ...source,
+          id: `plan_${Date.now()}`,
+          name: `${source.name} (cópia)`,
+          created_at: now,
+          updated_at: now,
+        };
+        state.adminPlans.push(duplicated);
+        const features = state.planFeaturesByPlan[planId] || [];
+        storePlanFeatures(duplicated.id, features);
+        return { data: { plan: duplicated } };
+      })
+    : callAdminDuplicatePlan;
+
+export const adminDeletePlan =
+  typeof jest !== "undefined"
+    ? jest.fn(async (planId) => {
+        const inUse = state.adminOrgs.some((org) => org.plan_id === planId);
+        if (inUse) {
+          const error = new Error("plan_in_use");
+          error.response = { status: 409, data: { error: "plan_in_use" } };
+          throw error;
+        }
+        const index = state.adminPlans.findIndex((item) => item.id === planId);
+        if (index === -1) {
+          const error = new Error("plan_not_found");
+          error.response = { status: 404, data: { error: "plan_not_found" } };
+          throw error;
+        }
+        state.adminPlans.splice(index, 1);
+        delete state.planFeaturesByPlan[planId];
+        return { data: { deleted: true } };
+      })
+    : callAdminDeletePlan;
+
+export const createPlan = adminCreatePlan;
+export const updatePlan = adminUpdatePlan;
 
 export const adminGetPlanFeatures =
   typeof jest !== "undefined"
@@ -819,6 +984,10 @@ inboxApi.patchAdminOrgCredits = patchAdminOrgCredits;
 inboxApi.getOrgPlanSummary = getOrgPlanSummary;
 inboxApi.listAdminPlans = listAdminPlans;
 inboxApi.adminListPlans = adminListPlans;
+inboxApi.adminCreatePlan = adminCreatePlan;
+inboxApi.adminUpdatePlan = adminUpdatePlan;
+inboxApi.adminDuplicatePlan = adminDuplicatePlan;
+inboxApi.adminDeletePlan = adminDeletePlan;
 inboxApi.createPlan = createPlan;
 inboxApi.updatePlan = updatePlan;
 inboxApi.adminGetPlanFeatures = adminGetPlanFeatures;
