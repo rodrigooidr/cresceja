@@ -119,15 +119,9 @@ function EditOrgModal({ org, onClose, onSaved }) {
     setLoadingPlans(true);
     (async () => {
       try {
-        const data = await adminListPlans();
+        const { plans: planList } = await adminListPlans();
         if (!cancelled) {
-          const list = Array.isArray(data)
-            ? data
-            : Array.isArray(data?.data)
-            ? data.data
-            : Array.isArray(data?.plans)
-            ? data.plans
-            : [];
+          const list = Array.isArray(planList) ? planList : [];
           setPlans(list);
         }
       } catch {

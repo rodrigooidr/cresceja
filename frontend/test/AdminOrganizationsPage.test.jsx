@@ -32,10 +32,13 @@ beforeEach(() => {
 });
 
 test("carrega organizações ativas por padrão", async () => {
-  adminListPlans.mockImplementationOnce(() => [
-    { id: "plan-1", name: "Plano Starter" },
-    { id: "plan-2", name: "Plano Pro" },
-  ]);
+  adminListPlans.mockImplementationOnce(() => ({
+    plans: [
+      { id: "plan-1", name: "Plano Starter" },
+      { id: "plan-2", name: "Plano Pro" },
+    ],
+    meta: { feature_defs: [], plan_features: [] },
+  }));
   adminListOrgs.mockResolvedValueOnce([
     { id: "org-1", name: "Empresa A", slug: "empresa-a", status: "active" },
     { id: "org-2", name: "Empresa B", slug: "empresa-b", status: "inactive" },
@@ -55,10 +58,13 @@ test("carrega organizações ativas por padrão", async () => {
 
 test("edita dados básicos da organização", async () => {
   const user = userEvent.setup();
-  adminListPlans.mockImplementationOnce(() => [
-    { id: "plan-1", name: "Plano Starter" },
-    { id: "plan-2", name: "Plano Pro" },
-  ]);
+  adminListPlans.mockImplementationOnce(() => ({
+    plans: [
+      { id: "plan-1", name: "Plano Starter" },
+      { id: "plan-2", name: "Plano Pro" },
+    ],
+    meta: { feature_defs: [], plan_features: [] },
+  }));
   adminListOrgs.mockResolvedValueOnce([
     { id: "org-1", name: "Empresa A", slug: "empresa-a", status: "active" },
   ]);
@@ -99,10 +105,13 @@ test("edita dados básicos da organização", async () => {
 
 test("registra novo plano manualmente", async () => {
   const user = userEvent.setup();
-  adminListPlans.mockResolvedValueOnce([
-    { id: "plan-1", name: "Plano Starter" },
-    { id: "plan-2", name: "Plano Pro" },
-  ]);
+  adminListPlans.mockResolvedValueOnce({
+    plans: [
+      { id: "plan-1", name: "Plano Starter" },
+      { id: "plan-2", name: "Plano Pro" },
+    ],
+    meta: { feature_defs: [], plan_features: [] },
+  });
   adminListOrgs.mockResolvedValueOnce([
     { id: "org-1", name: "Empresa A", slug: "empresa-a", status: "active", plan_id: "plan-1" },
   ]);
@@ -157,10 +166,13 @@ test("registra novo plano manualmente", async () => {
 
 test("aplica créditos extras", async () => {
   const user = userEvent.setup();
-  adminListPlans.mockResolvedValueOnce([
-    { id: "plan-1", name: "Plano Starter" },
-    { id: "plan-2", name: "Plano Pro" },
-  ]);
+  adminListPlans.mockResolvedValueOnce({
+    plans: [
+      { id: "plan-1", name: "Plano Starter" },
+      { id: "plan-2", name: "Plano Pro" },
+    ],
+    meta: { feature_defs: [], plan_features: [] },
+  });
   adminListOrgs.mockResolvedValueOnce([
     { id: "org-1", name: "Empresa A", slug: "empresa-a", status: "active" },
   ]);

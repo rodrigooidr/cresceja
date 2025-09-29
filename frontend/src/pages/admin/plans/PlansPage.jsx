@@ -20,6 +20,36 @@ function formatCurrency(currency, price) {
   }
 }
 
+function normalizeEnumOptions(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // ignore JSON parse errors and fallback to comma separated values
+    }
+    return trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function extractFeatureValue(raw) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    if (Object.prototype.hasOwnProperty.call(raw, "value")) {
+      return raw.value;
+    }
+  }
+  return raw;
+}
+
 function normalizeFeatures(list = []) {
   return list.map((feature) => {
     const options = Array.isArray(feature.options) ? feature.options : [];
@@ -50,6 +80,28 @@ function normalizeFeatures(list = []) {
   });
 }
 
+function buildFeaturesFromMeta(planId, defs = [], planFeatures = []) {
+  if (!planId || !Array.isArray(defs) || defs.length === 0) return [];
+  const valueMap = new Map();
+  for (const item of Array.isArray(planFeatures) ? planFeatures : []) {
+    if (!item || item.plan_id !== planId) continue;
+    valueMap.set(item.feature_code, extractFeatureValue(item.value));
+  }
+
+  return defs
+    .map((def) => {
+      if (!def || !def.code) return null;
+      return {
+        code: def.code,
+        label: def.label ?? def.code,
+        type: def.type ?? "string",
+        value: valueMap.has(def.code) ? valueMap.get(def.code) : null,
+        options: normalizeEnumOptions(def.enum_options),
+      };
+    })
+    .filter(Boolean);
+}
+
 export default function PlansPage() {
   const { user } = useAuth();
   const canView = useMemo(
@@ -57,6 +109,8 @@ export default function PlansPage() {
     [user]
   );
   const [plans, setPlans] = useState([]);
+  const [featureDefs, setFeatureDefs] = useState([]);
+  const [planFeatures, setPlanFeatures] = useState([]);
   const [plansLoading, setPlansLoading] = useState(true);
   const [plansError, setPlansError] = useState("");
 
@@ -90,12 +144,14 @@ export default function PlansPage() {
 
     (async () => {
       try {
-        const data = await adminListPlans();
+        const { plans: planList, meta } = await adminListPlans();
         if (!isMounted) return;
-        const safeData = Array.isArray(data) ? data : [];
-        setPlans(safeData);
-        if (safeData.length) {
-          setSelectedPlanId((current) => current || safeData[0].id);
+        const safePlans = Array.isArray(planList) ? planList : [];
+        setPlans(safePlans);
+        setFeatureDefs(Array.isArray(meta?.feature_defs) ? meta.feature_defs : []);
+        setPlanFeatures(Array.isArray(meta?.plan_features) ? meta.plan_features : []);
+        if (safePlans.length) {
+          setSelectedPlanId((current) => current || safePlans[0].id);
         } else {
           setSelectedPlanId(null);
         }
@@ -119,6 +175,17 @@ export default function PlansPage() {
   }, [canView]);
 
   useEffect(() => {
+    if (!selectedPlanId) return;
+    const fallback = buildFeaturesFromMeta(selectedPlanId, featureDefs, planFeatures);
+    if (!fallback.length) return;
+    setFeatures((prev) => {
+      if (prev.length) return prev;
+      return normalizeFeatures(fallback);
+    });
+    setHasChanges(false);
+  }, [selectedPlanId, featureDefs, planFeatures]);
+
+  useEffect(() => {
     if (!selectedPlanId) {
       setFeatures([]);
       setFeaturesError("");
@@ -136,7 +203,21 @@ export default function PlansPage() {
       try {
         const items = await adminGetPlanFeatures(selectedPlanId);
         if (!isMounted) return;
-        setFeatures(normalizeFeatures(items));
+        const enhanced = Array.isArray(items)
+          ? items.map((feature) => {
+              const def = Array.isArray(featureDefs)
+                ? featureDefs.find((item) => item?.code === feature.code)
+                : null;
+              const options = feature.options ?? (def ? normalizeEnumOptions(def.enum_options) : undefined);
+              return {
+                ...feature,
+                label: feature.label ?? def?.label ?? feature.code,
+                type: feature.type ?? def?.type ?? feature.type ?? "string",
+                options,
+              };
+            })
+          : [];
+        setFeatures(normalizeFeatures(enhanced));
         setHasChanges(false);
       } catch (err) {
         if (!isMounted) return;
@@ -146,7 +227,13 @@ export default function PlansPage() {
           err?.message ||
           "Não foi possível carregar as funcionalidades.";
         setFeaturesError(message);
-        setFeatures([]);
+        const fallback = buildFeaturesFromMeta(selectedPlanId, featureDefs, planFeatures);
+        if (fallback.length) {
+          setFeatures(normalizeFeatures(fallback));
+          setHasChanges(false);
+        } else {
+          setFeatures([]);
+        }
       } finally {
         if (isMounted) setFeaturesLoading(false);
       }

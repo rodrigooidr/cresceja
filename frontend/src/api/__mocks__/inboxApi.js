@@ -7,6 +7,51 @@ export const apiUrl = "http://mock.local";
 export const setOrgIdHeaderProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
 export const setTokenProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
 
+export const __mockPlans = [
+  {
+    id: "p_free",
+    id_legacy_text: "free",
+    name: "Free",
+    price_cents: 0,
+    monthly_price: 0,
+    currency: "BRL",
+    modules: {},
+    is_active: true,
+    is_published: true,
+    billing_period_months: 1,
+    trial_days: 14,
+    sort_order: 10,
+  },
+  {
+    id: "starter",
+    id_legacy_text: "starter",
+    name: "Starter",
+    price_cents: 7900,
+    monthly_price: 79,
+    currency: "BRL",
+    modules: {},
+    is_active: true,
+    is_published: true,
+    billing_period_months: 1,
+    trial_days: 14,
+    sort_order: 20,
+  },
+  {
+    id: "pro",
+    id_legacy_text: "pro",
+    name: "Pro",
+    price_cents: 19900,
+    monthly_price: 199,
+    currency: "BRL",
+    modules: {},
+    is_active: true,
+    is_published: true,
+    billing_period_months: 1,
+    trial_days: 14,
+    sort_order: 30,
+  },
+];
+
 // ---- Estado em memória (pode ser sobrescrito via __seed) ----
 const state = {
   profilesByOrg: {
@@ -78,33 +123,12 @@ const state = {
       ],
     },
   },
-  adminPlans: [
-    {
-      id: "starter",
-      id_legacy_text: "starter",
-      name: "Starter",
-      monthly_price: 79,
-      currency: "BRL",
-      modules: {},
-      is_published: true,
-      is_active: true,
-      price_cents: 7900,
-      sort_order: 2,
-    },
-    {
-      id: "pro",
-      id_legacy_text: "pro",
-      name: "Pro",
-      monthly_price: 199,
-      currency: "BRL",
-      modules: {},
-      is_published: true,
-      is_active: true,
-      price_cents: 19900,
-      sort_order: 3,
-    },
-  ],
+  adminPlans: __mockPlans.map((plan) => ({ ...plan })),
   planFeaturesByPlan: {
+    p_free: [
+      { code: "posts", label: "Posts", type: "number", value: 10 },
+      { code: "support", label: "Suporte", type: "string", value: "Comunidade" },
+    ],
     starter: [
       { code: "posts", label: "Posts", type: "number", value: 50 },
       { code: "whatsapp_numbers", label: "Números WhatsApp", type: "number", value: 1 },
@@ -726,8 +750,14 @@ export const listAdminPlans =
 
 export const adminListPlans =
   typeof jest !== "undefined"
-    ? jest.fn(async () => state.adminPlans.map((plan) => ({ ...plan })))
-    : async () => state.adminPlans.map((plan) => ({ ...plan }));
+    ? jest.fn(async () => ({
+        plans: state.adminPlans.map((plan) => ({ ...plan })),
+        meta: { feature_defs: [], plan_features: [] },
+      }))
+    : async () => ({
+        plans: state.adminPlans.map((plan) => ({ ...plan })),
+        meta: { feature_defs: [], plan_features: [] },
+      });
 
 export const createPlan =
   typeof jest !== "undefined"

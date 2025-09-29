@@ -7,10 +7,13 @@ afterEach(() => {
 });
 
 test("carrega e lista planos", async () => {
-  jest.spyOn(api, "adminListPlans").mockResolvedValue([
-    { id: "p1", name: "Starter", currency: "BRL", monthly_price: 79 },
-    { id: "p2", name: "Pro", currency: "BRL", monthly_price: 199 },
-  ]);
+  jest.spyOn(api, "adminListPlans").mockResolvedValue({
+    plans: [
+      { id: "p1", name: "Starter", currency: "BRL", monthly_price: 79 },
+      { id: "p2", name: "Pro", currency: "BRL", monthly_price: 199 },
+    ],
+    meta: { feature_defs: [], plan_features: [] },
+  });
   jest.spyOn(api, "adminGetPlanFeatures").mockResolvedValue([
     { code: "posts", label: "Posts", type: "number", value: 10 },
   ]);
@@ -23,9 +26,12 @@ test("carrega e lista planos", async () => {
 });
 
 test("abre plano, altera feature e salva", async () => {
-  jest.spyOn(api, "adminListPlans").mockResolvedValue([
-    { id: "p1", name: "Starter", currency: "BRL", monthly_price: 79 },
-  ]);
+  jest.spyOn(api, "adminListPlans").mockResolvedValue({
+    plans: [
+      { id: "p1", name: "Starter", currency: "BRL", monthly_price: 79 },
+    ],
+    meta: { feature_defs: [], plan_features: [] },
+  });
   jest.spyOn(api, "adminGetPlanFeatures").mockResolvedValue([
     { code: "posts", label: "Posts", type: "number", value: 10 },
     { code: "whatsapp", label: "WhatsApp", type: "boolean", value: true },

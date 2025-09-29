@@ -38,14 +38,8 @@ export default function AdminPlans() {
   const load = async () => {
     try {
       setLoading(true);
-      const data = await adminListPlans();
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.plans)
-        ? data.plans
-        : [];
+      const { plans: planList } = await adminListPlans();
+      const list = Array.isArray(planList) ? planList : [];
       const normalized = list.map((p) => ({
         ...DEFAULT_PLAN(),
         ...p,

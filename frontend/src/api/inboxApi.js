@@ -351,22 +351,35 @@ export async function listAdminPlans(options = {}) {
 }
 
 export async function adminListPlans(options = {}) {
-  const res = await client.get("/admin/plans", withGlobalScope(options));
-  if (res?.status !== 200) throw new Error(`admin/plans ${res?.status}`);
+  const { data: resp, status } = await client.get("/admin/plans", withGlobalScope(options));
+  if (status !== 200) throw new Error(`admin/plans ${status}`);
 
-  const payload = res?.data;
-  const list = Array.isArray(payload?.data)
-    ? payload.data
-    : Array.isArray(payload)
-    ? payload
-    : null;
+  // Formatos aceitos:
+  // 1) { data: [...], meta: {...} }  ✅ (preferido)
+  // 2) [...array]                     ✅ (fallback raro)
+  // 3) { plans:[...], feature_defs:[], plan_features:[] } ❌ (depreciado no backend; mantemos fallback por segurança)
+  let plans = [];
+  let meta = { feature_defs: [], plan_features: [] };
 
-  if (!list) {
-    const meta = typeof payload === "object" ? Object.keys(payload || {}) : typeof payload;
-    throw new Error("admin/plans payload inválido - got: " + String(meta));
+  if (Array.isArray(resp)) {
+    plans = resp;
+  } else if (resp && Array.isArray(resp.data)) {
+    plans = resp.data;
+    if (resp.meta) {
+      meta.feature_defs = Array.isArray(resp.meta.feature_defs) ? resp.meta.feature_defs : [];
+      meta.plan_features = Array.isArray(resp.meta.plan_features) ? resp.meta.plan_features : [];
+    }
+  } else if (resp && Array.isArray(resp.plans)) {
+    // fallback para ambientes que ainda retornam o formato antigo
+    plans = resp.plans;
+    meta.feature_defs = Array.isArray(resp.feature_defs) ? resp.feature_defs : [];
+    meta.plan_features = Array.isArray(resp.plan_features) ? resp.plan_features : [];
+  } else {
+    const keys = resp && typeof resp === "object" ? Object.keys(resp) : [];
+    throw new Error(`admin/plans payload inválido - got: ${keys.join(",")}`);
   }
 
-  return list;
+  return { plans, meta };
 }
 
 export async function createPlan(payload, options = {}) {
