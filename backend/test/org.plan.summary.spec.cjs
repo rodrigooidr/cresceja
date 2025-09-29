@@ -34,7 +34,7 @@ describe('GET /api/orgs/:orgId/plan/summary', () => {
         next();
       },
     }));
-    router = (await import('../routes/orgs.js')).default;
+    router = (await import('../routes/organizations.js')).default;
   });
 
   function buildApp(mockDb) {

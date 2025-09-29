@@ -61,7 +61,7 @@ export async function reactivate(req, res, next) {
     if (invoice_id) {
       await rootQuery(`UPDATE invoices SET status='paid', paid_at=NOW() WHERE id=$1 AND org_id=$2`, [invoice_id, orgId]);
     }
-    await rootQuery(`UPDATE orgs SET status='active' WHERE id=$1`, [orgId]);
+    await rootQuery(`UPDATE organizations SET status='active' WHERE id=$1`, [orgId]);
     await auditLog(req.db, { user_email: req.user.email, action: 'reactivate_org', entity: 'org', entity_id: orgId });
     res.json({ ok: true });
   } catch (err) {

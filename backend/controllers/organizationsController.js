@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 export async function getMe(req, res, next) {
   try {
     const { rows } = await req.db.query(
-      'SELECT id, name FROM orgs WHERE id = $1',
+      'SELECT id, name FROM organizations WHERE id = $1',
       [req.orgId]
     );
     const org = rows[0] || null;
@@ -17,7 +17,7 @@ export async function getMe(req, res, next) {
 export async function adminList(req, res, next) {
   try {
     const { rows } = await query(
-      'SELECT id, name FROM orgs ORDER BY created_at DESC'
+      'SELECT id, name FROM organizations ORDER BY created_at DESC'
     );
     res.json({ items: rows });
   } catch (err) {
@@ -31,7 +31,7 @@ export async function adminCreate(req, res, next) {
     if (!name) return res.status(400).json({ error: 'name_required' });
     const id = randomUUID();
     await query(
-      'INSERT INTO orgs (id, name, plan_id) VALUES ($1, $2, $3)',
+      'INSERT INTO organizations (id, name, plan_id) VALUES ($1, $2, $3)',
       [id, name, plan_id]
     );
     res.status(201).json({ id, name, plan_id });

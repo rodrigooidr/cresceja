@@ -34,7 +34,7 @@ async function processor() {
       } else if (diff === 2) {
         await sendEmail({ to: 'owner@example.com', subject: 'Fatura em atraso', html: 'Sua fatura está em atraso.', orgId: inv.org_id });
       } else if (diff >= 8) {
-        await client.query('UPDATE orgs SET status=$1 WHERE id=$2', ['inactive', inv.org_id]);
+        await client.query('UPDATE organizations SET status=$1 WHERE id=$2', ['inactive', inv.org_id]);
       }
     }
     return { processed: rows.length };
