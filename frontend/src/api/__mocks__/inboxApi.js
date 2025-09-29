@@ -734,17 +734,19 @@ function callListAdminOrgs(status = "active", options = {}) {
 async function callAdminListOrgs(params = {}, options = {}) {
   const cfg = { ...(options || {}) };
   const normalized = { status: 'active', ...(params || {}) };
-  const query = new URLSearchParams(normalized).toString();
-  const response = await inboxApi.get(`/admin/orgs${query ? `?${query}` : ''}`, cfg);
+  cfg.params = { ...(cfg.params || {}), status: normalized.status };
+  const response = await inboxApi.get(`/admin/orgs`, cfg);
   const payload = response?.data;
   const list = Array.isArray(payload?.data)
     ? payload.data
-    : Array.isArray(payload?.items)
-    ? payload.items
     : Array.isArray(payload)
     ? payload
     : [];
-  return list.map((org) => ({ ...org }));
+  return list.map((org) => {
+    const active = typeof org?.active === 'boolean' ? org.active : org?.status === 'active';
+    const statusValue = org?.status ?? (typeof active === 'boolean' ? (active ? 'active' : 'inactive') : undefined);
+    return { ...org, active, status: statusValue };
+  });
 }
 
 function callPatchAdminOrg(orgId, payload, options = {}) {
@@ -951,6 +953,33 @@ export const adminGetPlanFeatures =
         }));
       };
 
+export const adminGetPlanCredits =
+  typeof jest !== "undefined"
+    ? jest.fn(async (planId) => {
+        const features = state.planFeaturesByPlan[planId] || [];
+        const summary = features
+          .filter((feature) => (feature.type || "").toLowerCase() === "number")
+          .map((feature) => ({
+            code: feature.code,
+            label: feature.label ?? feature.code,
+            unit: "count",
+            limit: Number.isFinite(Number(feature.value)) ? Number(feature.value) : 0,
+          }));
+        return { plan_id: planId, summary };
+      })
+    : async (planId) => {
+        const features = state.planFeaturesByPlan[planId] || [];
+        const summary = features
+          .filter((feature) => (feature.type || "").toLowerCase() === "number")
+          .map((feature) => ({
+            code: feature.code,
+            label: feature.label ?? feature.code,
+            unit: "count",
+            limit: Number.isFinite(Number(feature.value)) ? Number(feature.value) : 0,
+          }));
+        return { plan_id: planId, summary };
+      };
+
 export const adminPutPlanFeatures =
   typeof jest !== "undefined"
     ? jest.fn(async (planId, features = []) => {
@@ -991,6 +1020,7 @@ inboxApi.adminDeletePlan = adminDeletePlan;
 inboxApi.createPlan = createPlan;
 inboxApi.updatePlan = updatePlan;
 inboxApi.adminGetPlanFeatures = adminGetPlanFeatures;
+inboxApi.adminGetPlanCredits = adminGetPlanCredits;
 inboxApi.adminPutPlanFeatures = adminPutPlanFeatures;
 
 export const client = inboxApi;

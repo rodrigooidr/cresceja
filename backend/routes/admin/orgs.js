@@ -1,54 +1,77 @@
 // backend/routes/admin/orgs.js
 import { Router } from 'express';
-import db, { query } from '#db';
+import db from '#db';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
 import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
-import { auth as authRequired } from '../../middleware/auth.js';
-import { requireGlobalRole } from '../../middleware/requireRole.js';
+import { authRequired } from '../../middleware/auth.js';
+import * as requireRoleModule from '../../middleware/requireRole.js';
 
-const r = Router();
+const requireRole =
+  requireRoleModule.requireRole ??
+  requireRoleModule.default?.requireRole ??
+  requireRoleModule.default;
+const FALLBACK_ROLES = { SuperAdmin: 'SuperAdmin', Support: 'Support' };
+const ROLES =
+  requireRoleModule.ROLES ??
+  requireRoleModule.default?.ROLES ??
+  FALLBACK_ROLES;
+
+const router = Router();
 
 // Somente SuperAdmin/Support
-r.use(authRequired);
-r.use(requireGlobalRole(['SuperAdmin', 'Support']));
+router.use(authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support));
 
 // GET /api/admin/orgs?status=active|inactive|all
-r.get('/', async (req, res, next) => {
+router.get('/', async (req, res) => {
+  const pool = req.pool;
+  const statusQ = String(req.query.status || 'active').toLowerCase();
+
+  const allowed = new Set(['active', 'inactive', 'all']);
+  const status = allowed.has(statusQ) ? statusQ : 'active';
+
+  let where = '';
+  if (status === 'active') where = 'WHERE o.active = TRUE';
+  if (status === 'inactive') where = 'WHERE o.active = FALSE';
+
+  const sqlOrganizations = `
+    SELECT o.id, o.name, o.slug, o.active, o.plan_id, o.trial_ends_at
+    FROM public.organizations o
+    ${where}
+    ORDER BY o.name ASC
+    LIMIT 500
+  `;
+
+  const sqlOrgsFallback = `
+    SELECT o.id, o.name, o.slug, o.active, o.plan_id, o.trial_ends_at
+    FROM public.orgs o
+    ${where}
+    ORDER BY o.name ASC
+    LIMIT 500
+  `;
+
   try {
-    const status = String(req.query?.status ?? 'active').toLowerCase();
+    let rows;
+    try {
+      const { rows: r1 } = await pool.query(sqlOrganizations);
+      rows = r1;
+    } catch (e) {
+      if (e?.code === '42P01') {
+        const { rows: r2 } = await pool.query(sqlOrgsFallback);
+        rows = r2;
+      } else {
+        throw e;
+      }
+    }
 
-    const { rows } = await query(
-      `
-      SELECT
-        o.id,
-        o.name,
-        o.slug,
-        o.status,
-        o.plan_id,
-        o.trial_ends_at,
-        p.name AS plan_name,
-        p.id_legacy_text AS plan_slug
-      FROM public.organizations o
-      LEFT JOIN public.plans p ON p.id = o.plan_id
-      WHERE
-        CASE
-          WHEN $1 = 'inactive' THEN o.status = 'inactive'
-          WHEN $1 = 'all' THEN 1=1
-          ELSE o.status = 'active'
-        END
-      ORDER BY o.name ASC
-      `,
-      [status],
-    );
-
-    res.json({ data: rows });
+    return res.json({ data: rows });
   } catch (err) {
-    next(err);
+    req.log?.error({ err }, 'admin/orgs list failed');
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
 // PATCH /api/admin/orgs/:orgId
-r.patch('/:orgId', async (req, res, next) => {
+router.patch('/:orgId', async (req, res, next) => {
   try {
     const { orgId } = req.params;
     const up = req.body || {};
@@ -127,7 +150,7 @@ r.patch('/:orgId', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:orgId/plan
-r.put('/:orgId/plan', async (req, res, next) => {
+router.put('/:orgId/plan', async (req, res, next) => {
   try {
     const { orgId } = req.params;
     const { plan_id, status = 'active', start_at, end_at, trial_ends_at, meta } = req.body || {};
@@ -160,7 +183,7 @@ r.put('/:orgId/plan', async (req, res, next) => {
 });
 
 // PATCH /api/admin/orgs/:orgId/credits
-r.patch('/:orgId/credits', async (req, res, next) => {
+router.patch('/:orgId/credits', async (req, res, next) => {
   try {
     const { orgId } = req.params;
     const { feature_code, delta, expires_at, source, meta } = req.body || {};
@@ -191,7 +214,7 @@ r.patch('/:orgId/credits', async (req, res, next) => {
 });
 
 // POST /api/admin/orgs
-r.post('/', async (req, res, next) => {
+router.post('/', async (req, res, next) => {
   try {
     const payload = OrgCreateSchema.parse(req.body);
 
@@ -268,7 +291,7 @@ r.post('/', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id
-r.get('/:id', async (req, res, next) => {
+router.get('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [org] } = await db.query(
@@ -290,7 +313,7 @@ r.get('/:id', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/overview
-r.get('/:id/overview', async (req, res, next) => {
+router.get('/:id/overview', async (req, res, next) => {
   try {
     const { id } = req.params;
     const org = await db.oneOrNone(
@@ -303,7 +326,7 @@ r.get('/:id/overview', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/billing
-r.get('/:id/billing', async (req, res, next) => {
+router.get('/:id/billing', async (req, res, next) => {
   try {
     const { id } = req.params;
     const payments = await db.any(
@@ -315,7 +338,7 @@ r.get('/:id/billing', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/users
-r.get('/:id/users', async (req, res, next) => {
+router.get('/:id/users', async (req, res, next) => {
   try {
     const { id } = req.params;
     const users = await db.any(
@@ -331,7 +354,7 @@ r.get('/:id/users', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/logs
-r.get('/:id/logs', async (req, res, next) => {
+router.get('/:id/logs', async (req, res, next) => {
   try {
     const { id } = req.params;
     const logs = await db.any(
@@ -348,7 +371,7 @@ r.get('/:id/logs', async (req, res, next) => {
 
 // ----- Settings -----
 // GET /api/admin/orgs/:id/settings
-r.get('/:id/settings', async (req, res, next) => {
+router.get('/:id/settings', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [settings] } = await db.query(
@@ -360,7 +383,7 @@ r.get('/:id/settings', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:id/settings { allow_baileys:boolean }
-r.put('/:id/settings', async (req, res, next) => {
+router.put('/:id/settings', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { allow_baileys } = req.body ?? {};
@@ -380,7 +403,7 @@ r.put('/:id/settings', async (req, res, next) => {
 
 // ----- Baileys connection -----
 // POST /api/admin/orgs/:id/baileys/connect { phone, allowed_test_emails }
-r.post('/:id/baileys/connect', async (req, res, next) => {
+router.post('/:id/baileys/connect', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { phone, allowed_test_emails } = req.body ?? {};
@@ -440,7 +463,7 @@ r.post('/:id/baileys/connect', async (req, res, next) => {
 });
 
 // POST /api/admin/orgs/:id/baileys/disconnect
-r.post('/:id/baileys/disconnect', async (req, res, next) => {
+router.post('/:id/baileys/disconnect', async (req, res, next) => {
   try {
     const { id } = req.params;
     await stopForOrg(id);
@@ -453,7 +476,7 @@ r.post('/:id/baileys/disconnect', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/baileys/status
-r.get('/:id/baileys/status', async (req, res, next) => {
+router.get('/:id/baileys/status', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [org] } = await db.query(
@@ -470,7 +493,7 @@ r.get('/:id/baileys/status', async (req, res, next) => {
 
 // ----- API WhatsApp connection -----
 // POST /api/admin/orgs/:id/api-whatsapp/connect
-r.post('/:id/api-whatsapp/connect', async (req, res, next) => {
+router.post('/:id/api-whatsapp/connect', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [settings] } = await db.query(
@@ -491,7 +514,7 @@ r.post('/:id/api-whatsapp/connect', async (req, res, next) => {
 });
 
 // POST /api/admin/orgs/:id/api-whatsapp/disconnect
-r.post('/:id/api-whatsapp/disconnect', async (req, res, next) => {
+router.post('/:id/api-whatsapp/disconnect', async (req, res, next) => {
   try {
     const { id } = req.params;
     await db.query(
@@ -503,7 +526,7 @@ r.post('/:id/api-whatsapp/disconnect', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/api-whatsapp/status
-r.get('/:id/api-whatsapp/status', async (req, res, next) => {
+router.get('/:id/api-whatsapp/status', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { rows: [settings] } = await db.query(
@@ -515,7 +538,7 @@ r.get('/:id/api-whatsapp/status', async (req, res, next) => {
 });
 
 // GET /api/admin/orgs/:id/whatsapp/status
-r.get('/:id/whatsapp/status', async (req, res, next) => {
+router.get('/:id/whatsapp/status', async (req, res, next) => {
   try {
     const { id } = req.params;
     const [{ rows: [settings] }, { rows: [org] }, { rows: [apiCh] }] = await Promise.all([
@@ -540,7 +563,7 @@ r.get('/:id/whatsapp/status', async (req, res, next) => {
 });
 
 // PUT /api/admin/orgs/:id/whatsapp/allow_baileys
-r.put('/:id/whatsapp/allow_baileys', async (req, res, next) => {
+router.put('/:id/whatsapp/allow_baileys', async (req, res, next) => {
   try {
     const { id } = req.params;
     const { allow } = req.body ?? {};
@@ -554,4 +577,4 @@ r.put('/:id/whatsapp/allow_baileys', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-export default r;
+export default router;

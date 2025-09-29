@@ -827,4 +827,44 @@ router.put('/:id/features', async (req, res, next) => {
   }
 });
 
+router.get('/:id/credits', async (req, res) => {
+  const pool = req.pool;
+  const planId = req.params.id;
+
+  if (!pool?.query) {
+    req.log?.error('admin/plans credits missing pool');
+    return res.status(500).json({ error: 'internal_error' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `
+      SELECT feature_code AS code,
+             CASE
+               WHEN feature_code = 'whatsapp_numbers' THEN 'WhatsApp – Números'
+               WHEN feature_code = 'instagram_accounts' THEN 'Instagram – Contas'
+               WHEN feature_code = 'instagram_publish_daily_quota' THEN 'Instagram – Publicações/dia'
+               WHEN feature_code = 'facebook_pages' THEN 'Facebook – Páginas'
+               WHEN feature_code = 'google_calendar_accounts' THEN 'Google Calendar – Contas conectadas'
+               ELSE feature_code
+             END AS label,
+             'count'::text AS unit,
+             COALESCE(
+               NULLIF(regexp_replace(value::text, '[^0-9-]', '', 'g'), '')::int,
+               0
+             ) AS limit
+        FROM public.plan_features
+       WHERE plan_id = $1 AND (type = 'number' OR type IS NULL)
+       ORDER BY 1 ASC
+      `,
+      [planId],
+    );
+
+    res.json({ plan_id: planId, summary: rows });
+  } catch (err) {
+    req.log?.error({ err }, 'admin/plans credits failed');
+    res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 export default router;

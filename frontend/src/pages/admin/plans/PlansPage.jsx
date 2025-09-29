@@ -3,6 +3,7 @@ import {
   adminCreatePlan,
   adminDeletePlan,
   adminDuplicatePlan,
+  adminGetPlanCredits,
   adminListPlans,
   adminUpdatePlan,
   centsToBRL,
@@ -244,6 +245,10 @@ export default function PlansPage() {
   });
   const [priceStr, setPriceStr] = useState(centsToBRL(0, "BRL"));
   const [featureForm, setFeatureForm] = useState([]);
+  const [creditSummary, setCreditSummary] = useState([]);
+  const [creditsLoading, setCreditsLoading] = useState(false);
+  const [creditsError, setCreditsError] = useState("");
+  const [creditsVersion, setCreditsVersion] = useState(0);
 
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -409,6 +414,7 @@ export default function PlansPage() {
       };
       await adminUpdatePlan(selectedPlanId, payload);
       await loadPlans();
+      setCreditsVersion((version) => version + 1);
       setSaveSuccess(true);
       setDirty(false);
       toast({ title: "Plano salvo" });
@@ -609,6 +615,47 @@ export default function PlansPage() {
     setPageError("");
   }, [selectedPlan, featureDefs, featuresByPlan]);
 
+  useEffect(() => {
+    if (!selectedPlanId) {
+      setCreditSummary([]);
+      setCreditsError("");
+      setCreditsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCreditsLoading(true);
+    setCreditsError("");
+
+    (async () => {
+      try {
+        const { summary } = await adminGetPlanCredits(selectedPlanId);
+        if (!cancelled) {
+          setCreditSummary(Array.isArray(summary) ? summary : []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const message =
+            error?.response?.data?.message ||
+            error?.response?.data?.error ||
+            error?.message ||
+            "Não foi possível carregar os créditos do plano.";
+          setCreditSummary([]);
+          setCreditsError(message);
+          toast({ title: "Erro ao carregar créditos", description: message });
+        }
+      } finally {
+        if (!cancelled) {
+          setCreditsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlanId, selectedPlan?.updated_at, creditsVersion, toast]);
+
   if (!canView) {
     return (
       <div className="p-6">
@@ -739,6 +786,43 @@ export default function PlansPage() {
               <p className="text-sm text-slate-500">Selecione um plano para editar.</p>
             ) : (
               <div className="space-y-6">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                        Resumo de créditos
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        Limites principais configurados para este plano.
+                      </p>
+                    </div>
+                    {creditsLoading && (
+                      <span className="text-xs text-slate-500">Carregando…</span>
+                    )}
+                  </div>
+                  {creditsError ? (
+                    <p className="mt-3 text-sm text-red-600">{creditsError}</p>
+                  ) : creditSummary.length === 0 ? (
+                    <p className="mt-3 text-sm text-slate-500">
+                      Nenhum limite numérico configurado.
+                    </p>
+                  ) : (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {creditSummary.map((item) => (
+                        <span
+                          key={item.code || item.label}
+                          className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+                        >
+                          <span className="font-medium">{item.label || item.code}</span>
+                          <span>
+                            {item.limit}
+                            {item.unit && item.unit !== "count" ? ` ${item.unit}` : ""}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="flex flex-col gap-1 text-sm">
