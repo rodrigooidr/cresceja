@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   adminListOrgs,
   adminListPlans,
@@ -6,7 +6,6 @@ import {
   patchAdminOrgCredits,
   putAdminOrgPlan,
 } from "@/api/inboxApi";
-import useToastFallback from "@/hooks/useToastFallback";
 
 function toInputDate(value) {
   if (!value) return "";
@@ -616,34 +615,73 @@ function EditOrgModal({ org, onClose, onSaved }) {
 }
 
 export default function AdminOrganizationsPage() {
-  const [tab, setTab] = useState("active");
+  const [status, setStatus] = useState("active");
+  const [searchInput, setSearchInput] = useState("");
+  const [query, setQuery] = useState("");
   const [items, setItems] = useState([]);
   const [editingOrg, setEditingOrg] = useState(null);
-  const [error, setError] = useState("");
-  const toast = useToastFallback();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(
+    async (overrides = {}) => {
+      const currentStatus = overrides.status ?? status;
+      const currentQuery = overrides.q ?? query;
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await adminListOrgs({ status: currentStatus, q: currentQuery });
+        const list = Array.isArray(data) ? data.map(normalizeOrgData) : [];
+        setItems(list);
+      } catch (err) {
+        const statusCode = err?.response?.status;
+        if (!statusCode || statusCode >= 400) {
+          setError("Não foi possível carregar as organizações.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [query, status],
+  );
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await adminListOrgs({ status: tab });
-        if (!cancelled) {
-          const list = Array.isArray(data) ? data.map(normalizeOrgData) : [];
-          setItems(list);
-          setError("");
+    load();
+  }, [load]);
+
+  const handleStatusChange = useCallback(
+    (nextStatus) => {
+      setStatus((prev) => {
+        if (prev === nextStatus) {
+          load({ status: nextStatus });
+          return prev;
         }
-      } catch (err) {
-        if (!cancelled) {
-          const message = err?.message || "Não foi possível carregar as organizações.";
-          setError(message);
-          toast({ title: "Erro ao carregar organizações", description: message });
-        }
+        return nextStatus;
+      });
+    },
+    [load],
+  );
+
+  const handleSearch = useCallback(() => {
+    const nextQuery = searchInput.trim();
+    setQuery((prev) => {
+      if (prev === nextQuery) {
+        load({ q: nextQuery });
+        return prev;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tab, toast]);
+      return nextQuery;
+    });
+  }, [load, searchInput]);
+
+  const handleSearchKeyDown = useCallback(
+    (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        handleSearch();
+      }
+    },
+    [handleSearch],
+  );
 
   const handleSaved = (updatedOrg) => {
     if (!updatedOrg?.id) return;
@@ -655,7 +693,7 @@ export default function AdminOrganizationsPage() {
 
   return (
     <div className="p-4">
-      <div className="mb-4 flex gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         {[
           { value: "active", label: "Ativas" },
           { value: "inactive", label: "Inativas" },
@@ -664,9 +702,9 @@ export default function AdminOrganizationsPage() {
           <button
             key={option.value}
             type="button"
-            onClick={() => setTab(option.value)}
+            onClick={() => handleStatusChange(option.value)}
             className={`rounded-full border px-4 py-1 text-sm ${
-              tab === option.value
+              status === option.value
                 ? "border-blue-600 bg-blue-50 text-blue-700"
                 : "border-gray-200 text-gray-600 hover:border-blue-200"
             }`}
@@ -674,53 +712,66 @@ export default function AdminOrganizationsPage() {
             {option.label}
           </button>
         ))}
+        <div className="ml-auto flex gap-2">
+          <input
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Buscar por nome…"
+            className="input input-bordered"
+            type="search"
+          />
+          <button type="button" onClick={handleSearch} className="btn">
+            Buscar
+          </button>
+        </div>
       </div>
-      {error && (
+      {loading && (
+        <div className="mb-4 text-sm text-gray-500">Carregando…</div>
+      )}
+      {!loading && error && (
         <div className="mb-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {error}
         </div>
       )}
-
-      <table className="w-full">
-        <thead>
-          <tr>
-            <th>Nome</th>
-            <th>Plano</th>
-            <th>Trial</th>
-            <th>Status</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((org) => (
-            <tr key={org.id}>
-              <td>
-                <div className="font-medium">{org.name}</div>
-                <div className="text-xs text-gray-500">{org.slug}</div>
-              </td>
-              <td>{org.plan_name ?? org.plan_id ?? "—"}</td>
-              <td>{org.trial_ends_at ? new Date(org.trial_ends_at).toLocaleDateString() : "—"}</td>
-              <td>{org.active ? "Ativa" : "Inativa"}</td>
-              <td>
-                <button
-                  type="button"
-                  className="text-blue-600"
-                  onClick={() => setEditingOrg(org)}
-                >
-                  Editar
-                </button>
-              </td>
-            </tr>
-          ))}
-          {items.length === 0 && (
+      {!loading && !error && items.length === 0 && (
+        <div className="text-sm text-gray-500">Nenhuma organização.</div>
+      )}
+      {!loading && !error && items.length > 0 && (
+        <table className="w-full">
+          <thead>
             <tr>
-              <td colSpan={5} className="p-4 text-gray-500">
-                Nenhuma organização.
-              </td>
+              <th>Nome</th>
+              <th>Plano</th>
+              <th>Trial</th>
+              <th>Status</th>
+              <th>Ações</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {items.map((org) => (
+              <tr key={org.id}>
+                <td>
+                  <div className="font-medium">{org.name}</div>
+                  <div className="text-xs text-gray-500">{org.slug}</div>
+                </td>
+                <td>{org.plan_name ?? org.plan_id ?? "—"}</td>
+                <td>{org.trial_ends_at ? new Date(org.trial_ends_at).toLocaleDateString() : "—"}</td>
+                <td>{org.active ? "Ativa" : "Inativa"}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="text-blue-600"
+                    onClick={() => setEditingOrg(org)}
+                  >
+                    Editar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
 
       {editingOrg && (
         <EditOrgModal

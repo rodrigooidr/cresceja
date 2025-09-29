@@ -60,6 +60,10 @@ const db = {
 // GET /api/admin/orgs?status=active|inactive|all&q=foo
 router.get('/', async (req, res, next) => {
   try {
+    req.log?.info(
+      { route: 'admin.orgs.list', query: { status: req.query?.status, q: req.query?.q } },
+      'admin orgs list request',
+    );
     const rawStatus = String(req.query.status ?? 'active').toLowerCase();
     const status = StatusSchema.parse(rawStatus);
     const q = String(req.query.q ?? '').trim();
@@ -94,6 +98,13 @@ router.get('/', async (req, res, next) => {
     const { rows } = await query(sql, params);
     res.json({ items: rows ?? [] });
   } catch (err) {
+    req.log?.error(
+      {
+        route: 'admin.orgs.list',
+        err: { message: err?.message, code: err?.code },
+      },
+      'admin orgs list failed',
+    );
     next(err);
   }
 });
