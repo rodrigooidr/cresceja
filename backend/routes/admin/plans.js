@@ -56,6 +56,28 @@ function normalizeEnumOptions(raw) {
 
 const SUPPORTED_CURRENCIES = new Set(['BRL', 'USD']);
 
+function parseBRLToCents(input) {
+  if (typeof input === 'number') return Math.round(input * 100);
+  if (typeof input !== 'string') return null;
+  const norm = input
+    .replace(/\s/g, '')
+    .replace(/^R\$/i, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+  const num = Number(norm);
+  if (!Number.isFinite(num)) return null;
+  return Math.round(num * 100);
+}
+
+function toSlug(s) {
+  return String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function parseCurrency(value, { required = false } = {}) {
   if (value === undefined || value === null || value === '') {
     if (required) throw new Error('currency_required');
@@ -441,59 +463,56 @@ router.patch('/:id', async (req, res, next) => {
     });
   } catch (err) {
     if (err?.status) {
+      req.log.error({ err, body: req.body, params: req.params }, 'admin/plans update error');
       return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
     }
-    next(err);
+    req.log.error({ err, body: req.body, params: req.params }, 'admin/plans update error');
+    const pgCodes400 = new Set(['22P02', '23502', '23503', '42703']);
+    if (pgCodes400.has(err.code)) {
+      return res.status(400).json({ error: 'bad_request', message: err.detail || err.message });
+    }
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', async (req, res) => {
   try {
     const q = getQuery(req);
     const payload = req.body || {};
+    const { name, price_cents, price_brl, monthly_price, currency, is_active } = payload;
 
-    const name = String(payload.name || '').trim();
-    if (!name) {
-      return res.status(400).json({ error: 'name_required' });
+    if (!name || String(name).trim().length < 2) {
+      return res.status(400).json({ error: 'bad_request', message: 'name_required' });
     }
 
-    let priceCents;
-    try {
-      priceCents = parseCents(payload.price_cents ?? payload.priceCents, { required: true });
-    } catch (err) {
-      return res.status(400).json({ error: err.message || 'invalid_price_cents' });
-    }
-
-    let currency;
-    try {
-      currency = parseCurrency(payload.currency, { required: true });
-    } catch (err) {
-      return res.status(400).json({ error: err.message || 'invalid_currency' });
-    }
-
-    let isActive = true;
-    if (payload.is_active !== undefined) {
-      try {
-        isActive = parseBoolean(payload.is_active ?? payload.isActive);
-      } catch (err) {
-        return res.status(400).json({ error: err.message || 'invalid_boolean' });
+    const providedPrices = [price_cents, price_brl, monthly_price];
+    let cents = Number.isInteger(price_cents) ? price_cents : null;
+    if (cents == null && monthly_price != null) cents = parseBRLToCents(monthly_price);
+    if (cents == null && price_brl != null) cents = parseBRLToCents(price_brl);
+    const hasPriceInput = providedPrices.some(
+      (value) => value !== undefined && value !== null && value !== ''
+    );
+    if (cents == null) {
+      if (hasPriceInput) {
+        return res.status(400).json({ error: 'bad_request', message: 'invalid_price' });
       }
+      cents = 0;
+    }
+    if (cents < 0 || cents > 9_999_999_99) {
+      return res.status(400).json({ error: 'bad_request', message: 'price_out_of_range' });
     }
 
-    const sortOrder = payload.sort_order ?? payload.sortOrder ?? null;
+    const idLegacy = toSlug(name) || `plan-${Date.now()}`;
+    const currencyInput =
+      typeof currency === 'string' ? currency.trim().toUpperCase() : null;
+    const cur = currencyInput && SUPPORTED_CURRENCIES.has(currencyInput)
+      ? currencyInput
+      : 'BRL';
+    const active = is_active !== false;
 
     const { rows } = await q(
-      `INSERT INTO public.plans (
-         id,
-         name,
-         price_cents,
-         currency,
-         is_active,
-         sort_order,
-         created_at,
-         updated_at
-       )
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now(), now())
+      `INSERT INTO public.plans (id_legacy_text, name, price_cents, currency, is_active)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id,
                  id_legacy_text,
                  name,
@@ -508,7 +527,7 @@ router.post('/', async (req, res, next) => {
                  sort_order,
                  created_at,
                  updated_at`,
-      [name, priceCents, currency, isActive, sortOrder]
+      [idLegacy, name, cents, cur, active]
     );
 
     const planRow = rows[0];
@@ -530,21 +549,18 @@ router.post('/', async (req, res, next) => {
       );
     }
 
-    return res.status(201).json({
-      data: {
-        plan: normalizePlan(planRow),
-        created_features: featuresPayload.length,
-      },
-    });
+    return res.status(201).json({ data: normalizePlan(planRow) });
   } catch (err) {
-    if (err?.status) {
-      return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
+    req.log.error({ err, body: req.body }, 'admin/plans create error');
+    const pgCodes400 = new Set(['22P02', '23502', '23503', '42703']);
+    if (pgCodes400.has(err.code)) {
+      return res.status(400).json({ error: 'bad_request', message: err.detail || err.message });
     }
-    next(err);
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
-router.post('/:id/duplicate', async (req, res, next) => {
+router.post('/:id/duplicate', async (req, res) => {
   try {
     const q = getQuery(req);
     const planId = req.params.id;
@@ -572,9 +588,12 @@ router.post('/:id/duplicate', async (req, res, next) => {
     }
 
     const duplicateName = `${source.name} (cópia)`;
+    const duplicateLegacyBase = toSlug(duplicateName) || 'plan';
+    const duplicateLegacy = `${duplicateLegacyBase}-${Date.now()}`.slice(0, 60);
     const { rows: inserted } = await q(
       `INSERT INTO public.plans (
          id,
+         id_legacy_text,
          name,
          price_cents,
          currency,
@@ -588,7 +607,7 @@ router.post('/:id/duplicate', async (req, res, next) => {
          created_at,
          updated_at
        )
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())
        RETURNING id,
                  id_legacy_text,
                  name,
@@ -604,6 +623,7 @@ router.post('/:id/duplicate', async (req, res, next) => {
                  created_at,
                  updated_at`,
       [
+        duplicateLegacy,
         duplicateName,
         source.price_cents ?? 0,
         source.currency ?? 'BRL',
@@ -630,17 +650,22 @@ router.post('/:id/duplicate', async (req, res, next) => {
       [duplicated.id, planId]
     );
 
-    return res.status(201).json({
-      data: {
-        plan: normalizePlan(duplicated),
-      },
-    });
+    return res.status(201).json({ data: normalizePlan(duplicated) });
   } catch (err) {
-    next(err);
+    if (err?.status) {
+      req.log.error({ err, body: req.body, params: req.params }, 'admin/plans duplicate error');
+      return res.status(err.status).json({ error: err.message, ...(err.extra || {}) });
+    }
+    req.log.error({ err, body: req.body, params: req.params }, 'admin/plans duplicate error');
+    const pgCodes400 = new Set(['22P02', '23502', '23503', '42703']);
+    if (pgCodes400.has(err.code)) {
+      return res.status(400).json({ error: 'bad_request', message: err.detail || err.message });
+    }
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', async (req, res) => {
   try {
     const q = getQuery(req);
     const planId = req.params.id;
@@ -664,7 +689,12 @@ router.delete('/:id', async (req, res, next) => {
 
     return res.json({ data: { deleted: true } });
   } catch (err) {
-    next(err);
+    req.log.error({ err, body: req.body, params: req.params }, 'admin/plans delete error');
+    const pgCodes400 = new Set(['22P02', '23502', '23503', '42703']);
+    if (pgCodes400.has(err.code)) {
+      return res.status(400).json({ error: 'bad_request', message: err.detail || err.message });
+    }
+    return res.status(500).json({ error: 'internal_error' });
   }
 });
 

@@ -5,9 +5,11 @@ import {
   adminDuplicatePlan,
   adminListPlans,
   adminUpdatePlan,
+  parseBRLToCents,
 } from "@/api/inboxApi";
 import { hasGlobalRole } from "@/auth/roles";
 import { useAuth } from "@/contexts/AuthContext";
+import useToastFallback from "@/hooks/useToastFallback";
 
 const AI_METER_OPTIONS = [
   { value: "", label: "Selecione" },
@@ -15,6 +17,45 @@ const AI_METER_OPTIONS = [
   { value: "assist_tokens", label: "Tokens do assistente" },
   { value: "speech_seconds", label: "Segundos de fala" },
 ];
+
+const NUMBER_QUOTA_OPTIONS = Array.from({ length: 100 }, (_, index) => index);
+
+function NumberQuotaSelect({ value = 0, onChange, id, label, hint }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-sm font-medium text-slate-600">
+        {label}{" "}
+        {hint && <em className="text-xs text-slate-400">({hint})</em>}
+      </span>
+      <select
+        id={id}
+        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+        value={String(value ?? 0)}
+        onChange={(event) => onChange(Number(event.target.value))}
+      >
+        {NUMBER_QUOTA_OPTIONS.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function mapPlanErrorMessage(message) {
+  if (!message) return "Falha ao processar a operação.";
+  if (message === "price_out_of_range") {
+    return "Preço inválido. Insira um valor entre 0 e 9.999.999,99.";
+  }
+  if (message === "invalid_price") {
+    return "Preço inválido. Insira um número válido.";
+  }
+  if (message === "name_required") {
+    return "Informe o nome do plano.";
+  }
+  return message;
+}
 
 function formatCurrencyDisplay(currency, cents) {
   const safeCurrency = currency || "BRL";
@@ -34,8 +75,7 @@ function formatCurrencyDisplay(currency, cents) {
 
 function computePriceState(raw, currency) {
   const stringValue = raw == null ? "" : String(raw);
-  const digits = stringValue.replace(/[^0-9]/g, "");
-  const cents = digits ? Number(digits) : 0;
+  const cents = parseBRLToCents(stringValue);
   return { cents, display: formatCurrencyDisplay(currency, cents) };
 }
 
@@ -105,7 +145,8 @@ function buildFeatureForm(defs = [], planId, featuresByPlan = {}) {
       if (type === "boolean") {
         value = stored.value === null || stored.value === undefined ? false : Boolean(stored.value);
       } else if (type === "number") {
-        value = stored.value === null || stored.value === undefined ? "" : String(stored.value);
+        const numeric = Number(stored.value ?? 0);
+        value = Number.isFinite(numeric) ? numeric : 0;
       } else if (type === "enum") {
         const defaultValue = options.length ? options[0] : "";
         value = stored.value === null || stored.value === undefined ? defaultValue : String(stored.value);
@@ -118,6 +159,7 @@ function buildFeatureForm(defs = [], planId, featuresByPlan = {}) {
         type,
         category: def.category ?? "geral",
         options,
+        unit: def.unit ?? null,
         sort_order: def.sort_order ?? 0,
         value,
         supportsAi: supportsAi(def),
@@ -155,10 +197,10 @@ function featureToPayload(feature) {
   if (feature.type === "boolean") {
     payload.value_bool = Boolean(feature.value);
   } else if (feature.type === "number") {
-    if (feature.value === null || feature.value === undefined || feature.value === "") {
+    if (feature.value === null || feature.value === undefined) {
       payload.value_number = null;
     } else {
-      const normalized = Number(String(feature.value).replace(/,/g, "."));
+      const normalized = Number(feature.value);
       payload.value_number = Number.isFinite(normalized) ? normalized : null;
     }
   } else if (feature.type === "enum" || feature.type === "string") {
@@ -184,7 +226,6 @@ function createModalState() {
   return {
     name: "",
     currency: "BRL",
-    price_cents: 0,
     priceInput: formatCurrencyDisplay("BRL", 0),
     is_active: true,
   };
@@ -197,6 +238,7 @@ function formatCategoryLabel(category) {
 
 export default function PlansPage() {
   const { user } = useAuth();
+  const toast = useToastFallback();
   const canView = useMemo(() => hasGlobalRole(["SuperAdmin", "Support"], user), [user]);
 
   const [plans, setPlans] = useState([]);
@@ -214,7 +256,6 @@ export default function PlansPage() {
   const [form, setForm] = useState({
     name: "",
     currency: "BRL",
-    price_cents: 0,
     priceInput: formatCurrencyDisplay("BRL", 0),
     is_active: true,
   });
@@ -222,105 +263,29 @@ export default function PlansPage() {
 
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   const [actionLoading, setActionLoading] = useState(false);
-  const [actionError, setActionError] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalForm, setModalForm] = useState(createModalState);
   const [modalError, setModalError] = useState("");
   const [modalSaving, setModalSaving] = useState(false);
-
-  const loadPlans = useCallback(async () => {
-    setPlansLoading(true);
-    try {
-      const { plans: planList, feature_defs, plan_features } = await adminListPlans();
-      const safePlans = Array.isArray(planList) ? planList : [];
-      setPlans(safePlans);
-      setFeatureDefs(Array.isArray(feature_defs) ? feature_defs : []);
-      setFeaturesByPlan(buildPlanFeaturesMap(plan_features));
-      setPlansError("");
-      setActionError("");
-      if (safePlans.length) {
-        setSelectedPlanId((current) => {
-          if (current && safePlans.some((plan) => plan.id === current)) return current;
-          return safePlans[0].id;
-        });
-      } else {
-        setSelectedPlanId(null);
-      }
-    } catch (error) {
-      const message =
-        error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        error?.message ||
-        "Não foi possível carregar os planos.";
-      setPlansError(message);
-      setPlans([]);
-      setFeatureDefs([]);
-      setFeaturesByPlan({});
-      setSelectedPlanId(null);
-    } finally {
-      setPlansLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!canView) {
-      setPlans([]);
-      setFeatureDefs([]);
-      setFeaturesByPlan({});
-      setPlansLoading(false);
-      setPlansError("");
-      setSelectedPlanId(null);
-      return;
-    }
-    loadPlans();
-  }, [canView, loadPlans]);
-
-  useEffect(() => {
-    if (!selectedPlan) {
-      setForm({
-        name: "",
-        currency: "BRL",
-        price_cents: 0,
-        priceInput: formatCurrencyDisplay("BRL", 0),
-        is_active: true,
-      });
-      setFeatureForm([]);
-      setDirty(false);
-      setSaveError("");
-      setSaveSuccess(false);
-      return;
-    }
-    const currency = selectedPlan.currency || "BRL";
-    const priceCents = Number(selectedPlan.price_cents ?? 0);
-    setForm({
-      name: selectedPlan.name || "",
-      currency,
-      price_cents: priceCents,
-      priceInput: formatCurrencyDisplay(currency, priceCents),
-      is_active: Boolean(selectedPlan.is_active),
-    });
-    setFeatureForm(buildFeatureForm(featureDefs, selectedPlan.id, featuresByPlan));
-    setDirty(false);
-    setSaveError("");
-    setSaveSuccess(false);
-  }, [selectedPlan, featureDefs, featuresByPlan]);
+  const [pageError, setPageError] = useState("");
 
   const groupedFeatures = useMemo(() => groupFeaturesByCategory(featureForm), [featureForm]);
 
   const markDirty = useCallback(() => {
     setDirty(true);
-    setSaveError("");
     setSaveSuccess(false);
+    setPageError("");
   }, []);
 
   const applyFeatureUpdate = useCallback(
     (code, updater) => {
-      setFeatureForm((prev) => prev.map((item) => (item.code === code ? { ...item, ...updater(item) } : item)));
+      setFeatureForm((prev) =>
+        prev.map((item) => (item.code === code ? { ...item, ...updater(item) } : item))
+      );
       markDirty();
     },
     [markDirty]
@@ -337,14 +302,17 @@ export default function PlansPage() {
     setForm((prev) => ({
       ...prev,
       currency,
-      priceInput: formatCurrencyDisplay(currency, prev.price_cents),
+      priceInput: formatCurrencyDisplay(currency, parseBRLToCents(prev.priceInput || "0")),
     }));
     markDirty();
   };
 
   const handlePriceChange = (event) => {
-    const { cents, display } = computePriceState(event.target.value, form.currency);
-    setForm((prev) => ({ ...prev, price_cents: cents, priceInput: display }));
+    const raw = event.target.value;
+    setForm((prev) => {
+      const { display } = computePriceState(raw, prev.currency);
+      return { ...prev, priceInput: display };
+    });
     markDirty();
   };
 
@@ -361,9 +329,8 @@ export default function PlansPage() {
   );
 
   const handleFeatureNumberChange = useCallback(
-    (code, raw) => {
-      const sanitized = raw.replace(/[^0-9.,-]/g, "");
-      applyFeatureUpdate(code, () => ({ value: sanitized }));
+    (code, value) => {
+      applyFeatureUpdate(code, () => ({ value }));
     },
     [applyFeatureUpdate]
   );
@@ -389,32 +356,71 @@ export default function PlansPage() {
     },
     [applyFeatureUpdate]
   );
+
+  const loadPlans = useCallback(async () => {
+    setPlansLoading(true);
+    try {
+      const { plans: planList, feature_defs, plan_features } = await adminListPlans();
+      const safePlans = Array.isArray(planList) ? planList : [];
+      setPlans(safePlans);
+      setFeatureDefs(Array.isArray(feature_defs) ? feature_defs : []);
+      setFeaturesByPlan(buildPlanFeaturesMap(plan_features));
+      setPlansError("");
+      setPageError("");
+      if (safePlans.length) {
+        setSelectedPlanId((current) => {
+          if (current && safePlans.some((plan) => plan.id === current)) return current;
+          return safePlans[0].id;
+        });
+      } else {
+        setSelectedPlanId(null);
+      }
+    } catch (error) {
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Não foi possível carregar os planos.";
+      setPlansError(message);
+      setPlans([]);
+      setFeatureDefs([]);
+      setFeaturesByPlan({});
+      setSelectedPlanId(null);
+      setPageError(message);
+    } finally {
+      setPlansLoading(false);
+    }
+  }, []);
+
   const handleSave = async () => {
     if (!selectedPlanId) return;
     setSaving(true);
-    setSaveError("");
+    setPageError("");
     setSaveSuccess(false);
     try {
       const payload = {
-        name: form.name,
-        price_cents: form.price_cents,
+        name: form.name?.trim(),
+        price_cents: parseBRLToCents(form.priceInput || "0"),
         currency: form.currency,
-        is_active: form.is_active,
+        is_active: !!form.is_active,
         features: featureForm.map(featureToPayload),
       };
       await adminUpdatePlan(selectedPlanId, payload);
       await loadPlans();
       setSaveSuccess(true);
       setDirty(false);
+      toast({ title: "Plano salvo" });
     } catch (error) {
       const code = error?.response?.data?.error;
+      const detail = error?.response?.data?.message;
       const message =
         code === "invalid_ai_meter_code"
           ? "Medidor de IA inválido."
           : code === "invalid_ai_quota"
           ? "Cota de IA inválida."
-          : error?.message || "Falha ao salvar plano.";
-      setSaveError(message);
+          : mapPlanErrorMessage(detail || error?.message || "Falha ao salvar plano.");
+      setPageError(message);
+      toast({ title: message, status: "error" });
     } finally {
       setSaving(false);
     }
@@ -423,18 +429,24 @@ export default function PlansPage() {
   const handleDuplicate = async () => {
     if (!selectedPlanId) return;
     setActionLoading(true);
-    setActionError("");
+    setPageError("");
     try {
       const response = await adminDuplicatePlan(selectedPlanId);
-      const newId = response?.data?.data?.plan?.id;
+      const duplicated = response?.data?.data;
       await loadPlans();
-      if (newId) setSelectedPlanId(newId);
+      if (duplicated?.id) {
+        setSelectedPlanId(duplicated.id);
+      }
+      toast({ title: "Plano duplicado" });
     } catch (error) {
-      const message =
-        error?.response?.data?.error ||
-        error?.message ||
-        "Falha ao duplicar plano.";
-      setActionError(message);
+      const message = mapPlanErrorMessage(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Falha ao duplicar plano."
+      );
+      setPageError(message);
+      toast({ title: message, status: "error" });
     } finally {
       setActionLoading(false);
     }
@@ -444,16 +456,23 @@ export default function PlansPage() {
     if (!selectedPlanId) return;
     if (!window.confirm("Deseja realmente excluir este plano?")) return;
     setActionLoading(true);
-    setActionError("");
+    setPageError("");
     try {
       await adminDeletePlan(selectedPlanId);
       await loadPlans();
+      toast({ title: "Plano excluído" });
     } catch (error) {
       const message =
         error?.response?.status === 409
           ? "Plano em uso por organizações"
-          : error?.response?.data?.error || error?.message || "Falha ao excluir plano.";
-      setActionError(message);
+          : mapPlanErrorMessage(
+              error?.response?.data?.message ||
+                error?.response?.data?.error ||
+                error?.message ||
+                "Falha ao excluir plano."
+            );
+      setPageError(message);
+      toast({ title: message, status: "error" });
     } finally {
       setActionLoading(false);
     }
@@ -480,13 +499,16 @@ export default function PlansPage() {
     setModalForm((prev) => ({
       ...prev,
       currency,
-      priceInput: formatCurrencyDisplay(currency, prev.price_cents),
+      priceInput: formatCurrencyDisplay(currency, parseBRLToCents(prev.priceInput || "0")),
     }));
   };
 
   const handleModalPriceChange = (event) => {
-    const { cents, display } = computePriceState(event.target.value, modalForm.currency);
-    setModalForm((prev) => ({ ...prev, price_cents: cents, priceInput: display }));
+    const raw = event.target.value;
+    setModalForm((prev) => {
+      const { display } = computePriceState(raw, prev.currency);
+      return { ...prev, priceInput: display };
+    });
   };
 
   const handleModalActiveToggle = (event) => {
@@ -505,45 +527,105 @@ export default function PlansPage() {
       const response = await adminCreatePlan({
         name,
         currency: modalForm.currency,
-        price_cents: modalForm.price_cents,
-        is_active: modalForm.is_active,
+        price_cents: parseBRLToCents(modalForm.priceInput || "0"),
+        is_active: !!modalForm.is_active,
       });
-      const newId = response?.data?.data?.plan?.id;
+      const created = response?.data?.data;
       setModalOpen(false);
       setModalForm(createModalState());
       await loadPlans();
-      if (newId) setSelectedPlanId(newId);
+      if (created?.id) setSelectedPlanId(created.id);
+      toast({ title: "Plano criado" });
     } catch (error) {
-      const message = error?.response?.data?.error || error?.message || "Falha ao criar plano.";
+      const message = mapPlanErrorMessage(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Falha ao criar plano."
+      );
       setModalError(message);
+      toast({ title: message, status: "error" });
     } finally {
       setModalSaving(false);
     }
   };
 
+  useEffect(() => {
+    if (!canView) {
+      setPlans([]);
+      setFeatureDefs([]);
+      setFeaturesByPlan({});
+      setPlansLoading(false);
+      setPlansError("");
+      setSelectedPlanId(null);
+      return;
+    }
+    loadPlans();
+  }, [canView, loadPlans]);
+
+  useEffect(() => {
+    if (!selectedPlan) {
+      setForm({
+        name: "",
+        currency: "BRL",
+        priceInput: formatCurrencyDisplay("BRL", 0),
+        is_active: true,
+      });
+      setFeatureForm([]);
+      setDirty(false);
+      setSaveSuccess(false);
+      setPageError("");
+      return;
+    }
+    const currency = selectedPlan.currency || "BRL";
+    const priceCents = Number(selectedPlan.price_cents ?? 0);
+    setForm({
+      name: selectedPlan.name || "",
+      currency,
+      priceInput: formatCurrencyDisplay(currency, priceCents),
+      is_active: Boolean(selectedPlan.is_active),
+    });
+    setFeatureForm(buildFeatureForm(featureDefs, selectedPlan.id, featuresByPlan));
+    setDirty(false);
+    setSaveSuccess(false);
+    setPageError("");
+  }, [selectedPlan, featureDefs, featuresByPlan]);
+
   if (!canView) {
     return (
-      <div style={{ padding: "24px" }}>
-        <h1>Planos</h1>
-        <p>Você não possui permissão para visualizar os planos.</p>
+      <div className="p-6">
+        <div className="mx-auto max-w-4xl space-y-2">
+          <h1 className="text-2xl font-semibold text-slate-900">Planos</h1>
+          <p className="text-sm text-slate-500">
+            Você não possui permissão para visualizar os planos.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: "24px", maxWidth: "1200px" }}>
-      <h1 style={{ marginBottom: "16px" }}>Planos</h1>
-      {plansError && (
-        <div style={{ marginBottom: "16px", color: "#b91c1c" }}>{plansError}</div>
-      )}
-      <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
-        <aside style={{ width: "260px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
-            <button type="button" onClick={openModal} disabled={plansLoading || actionLoading}>
+    <div className="p-6">
+      <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold text-slate-900">Planos</h1>
+            <p className="text-sm text-slate-500">
+              Gerencie preços, recursos e disponibilidade de cada plano.
+            </p>
+          </div>
+          <div className="sticky top-2 z-10 flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={openModal}
+              disabled={plansLoading || actionLoading}
+            >
               Novo
             </button>
             <button
               type="button"
+              className="btn"
               onClick={handleDuplicate}
               disabled={!selectedPlanId || actionLoading || plansLoading}
             >
@@ -551,301 +633,373 @@ export default function PlansPage() {
             </button>
             <button
               type="button"
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={!dirty || saving || plansLoading}
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
               onClick={handleDelete}
               disabled={!selectedPlanId || actionLoading || plansLoading}
             >
               Excluir
             </button>
-            {actionError && (
-              <span style={{ color: "#b91c1c", fontSize: "0.875rem" }}>{actionError}</span>
-            )}
           </div>
-          {plansLoading ? (
-            <p>Carregando...</p>
-          ) : plans.length === 0 ? (
-            <p>Nenhum plano cadastrado.</p>
-          ) : (
-            <ul
-              style={{
-                listStyle: "none",
-                padding: 0,
-                margin: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: "8px",
-              }}
-            >
-              {plans.map((plan) => {
-                const priceLabel = formatCurrencyDisplay(
-                  plan.currency || "BRL",
-                  Number(plan.price_cents ?? 0)
-                );
-                const isSelected = plan.id === selectedPlanId;
-                return (
-                  <li key={plan.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPlanId(plan.id)}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "12px",
-                        borderRadius: "8px",
-                        border: isSelected ? "2px solid #2563eb" : "1px solid #d1d5db",
-                        background: isSelected ? "#eff6ff" : "#ffffff",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600 }}>{plan.name}</span>
-                      <span style={{ fontSize: "0.875rem", color: "#4b5563" }}>{priceLabel}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </aside>
+        </header>
 
-        <section style={{ flex: 1 }}>
-          {plansLoading ? (
-            <p>Carregando dados do plano...</p>
-          ) : !selectedPlan ? (
-            <p>Selecione um plano para editar.</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-              <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "16px" }}>
-                <h2 style={{ marginTop: 0 }}>Básico</h2>
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span>Nome</span>
-                    <input type="text" value={form.name} onChange={handleNameChange} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span>Preço</span>
-                    <input type="text" value={form.priceInput} onChange={handlePriceChange} />
-                  </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <span>Moeda</span>
-                    <select value={form.currency} onChange={handleCurrencyChange}>
-                      <option value="BRL">BRL</option>
-                      <option value="USD">USD</option>
-                    </select>
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <input type="checkbox" checked={form.is_active} onChange={handleActiveToggle} />
-                    <span>Plano ativo</span>
-                  </label>
-                </div>
-              </div>
+        {plansError && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {plansError}
+          </div>
+        )}
 
-              <div style={{ border: "1px solid #e5e7eb", borderRadius: "12px", padding: "16px" }}>
-                <h2 style={{ marginTop: 0 }}>Features</h2>
-                {groupedFeatures.length === 0 ? (
-                  <p>Nenhuma feature configurada.</p>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    {groupedFeatures.map((group) => (
-                      <details
-                        key={group.category}
-                        open
-                        style={{ border: "1px solid #f3f4f6", borderRadius: "8px", padding: "8px 12px" }}
+        {pageError && selectedPlanId && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {pageError}
+          </div>
+        )}
+
+        <div className="grid gap-6 lg:grid-cols-[320px,1fr]">
+          <aside className="rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Planos</h2>
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+              {plansLoading ? (
+                <p className="text-sm text-slate-500">Carregando...</p>
+              ) : plans.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhum plano cadastrado.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {plans.map((plan) => {
+                    const priceLabel = formatCurrencyDisplay(
+                      plan.currency || "BRL",
+                      Number(plan.price_cents ?? 0)
+                    );
+                    const isSelected = plan.id === selectedPlanId;
+                    return (
+                      <li key={plan.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedPlanId(plan.id)}
+                          className={`flex w-full flex-col gap-2 rounded-lg border px-4 py-3 text-left transition ${
+                            isSelected
+                              ? "border-blue-500 bg-blue-50 text-blue-900 shadow-sm"
+                              : "border-slate-200 bg-white hover:border-blue-300"
+                          }`}
+                          disabled={plansLoading}
+                        >
+                          <span className="text-sm font-semibold text-slate-800">{plan.name}</span>
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <span>{priceLabel}</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 ${
+                                plan.is_active
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {plan.is_active ? "Ativo" : "Inativo"}
+                            </span>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </aside>
+
+          <section className="space-y-6">
+            {plansLoading ? (
+              <p className="text-sm text-slate-500">Carregando dados do plano...</p>
+            ) : !selectedPlan ? (
+              <p className="text-sm text-slate-500">Selecione um plano para editar.</p>
+            ) : (
+              <div className="space-y-6">
+                <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-slate-700">Nome do plano</span>
+                      <input
+                        type="text"
+                        value={form.name}
+                        onChange={handleNameChange}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        placeholder="Ex.: Plano Premium"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-slate-700">Preço</span>
+                      <input
+                        type="text"
+                        value={form.priceInput}
+                        onChange={handlePriceChange}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                        placeholder="R$ 0,00"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-slate-700">Moeda</span>
+                      <select
+                        value={form.currency}
+                        onChange={handleCurrencyChange}
+                        className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                       >
-                        <summary style={{ cursor: "pointer", fontWeight: 600, marginBottom: "8px" }}>
-                          {formatCategoryLabel(group.category)}
-                        </summary>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                          {group.items.map((feature) => {
-                            const showAi =
-                              feature.supportsAi ||
-                              Boolean(feature.ai_meter_code) ||
-                              (feature.ai_monthly_quota !== null && feature.ai_monthly_quota !== "");
-                            let control = null;
-                            if (feature.type === "boolean") {
-                              control = (
-                                <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                  <input
-                                    type="checkbox"
-                                    checked={Boolean(feature.value)}
-                                    onChange={(event) =>
-                                      handleFeatureBooleanChange(feature.code, event.target.checked)
-                                    }
-                                  />
-                                  <span>{feature.label}</span>
-                                </label>
-                              );
-                            } else if (feature.type === "number") {
-                              control = (
-                                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <span>{feature.label}</span>
-                                  <input
-                                    type="text"
-                                    value={feature.value}
-                                    onChange={(event) =>
-                                      handleFeatureNumberChange(feature.code, event.target.value)
-                                    }
-                                    placeholder="Ex.: 10"
-                                  />
-                                </label>
-                              );
-                            } else if (feature.type === "enum") {
-                              control = (
-                                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <span>{feature.label}</span>
+                        <option value="BRL">BRL</option>
+                        <option value="USD">USD</option>
+                      </select>
+                    </label>
+                    <div className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-slate-700">Status</span>
+                      <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          checked={form.is_active}
+                          onChange={handleActiveToggle}
+                        />
+                        <span>{form.is_active ? "Plano ativo" : "Plano inativo"}</span>
+                      </label>
+                    </div>
+                  </div>
+                  {saveSuccess && (
+                    <div className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      Alterações salvas com sucesso.
+                    </div>
+                  )}
+                </div>
+
+                {groupedFeatures.length > 0 && (
+                  <div className="space-y-6">
+                    {groupedFeatures.map(({ category, items }) => (
+                      <div
+                        key={category}
+                        className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm"
+                      >
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                            {formatCategoryLabel(category)}
+                          </h3>
+                          <span className="text-xs text-slate-400">{items.length} itens</span>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {items.map((feature) => {
+                            const showAi = feature.supportsAi;
+                            const fieldId = `feature-${feature.code}`;
+                            const aiControls = showAi ? (
+                              <div className="grid grid-cols-1 gap-3 text-xs text-slate-600 md:grid-cols-2">
+                                <label className="flex flex-col gap-1">
+                                  <span className="font-medium text-slate-600">Medidor de IA</span>
                                   <select
-                                    value={feature.value}
+                                    value={feature.ai_meter_code}
                                     onChange={(event) =>
-                                      handleFeatureTextChange(feature.code, event.target.value)
+                                      handleFeatureAiMeterChange(feature.code, event.target.value)
                                     }
+                                    className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                                   >
-                                    {feature.options.map((option) => (
-                                      <option key={option} value={option}>
-                                        {option}
+                                    {AI_METER_OPTIONS.map((option) => (
+                                      <option key={option.value} value={option.value}>
+                                        {option.label}
                                       </option>
                                     ))}
                                   </select>
                                 </label>
-                              );
-                            } else {
-                              control = (
-                                <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  <span>{feature.label}</span>
+                                <label className="flex flex-col gap-1">
+                                  <span className="font-medium text-slate-600">Cota mensal</span>
                                   <input
                                     type="text"
-                                    value={feature.value}
+                                    value={feature.ai_monthly_quota ?? ""}
                                     onChange={(event) =>
-                                      handleFeatureTextChange(feature.code, event.target.value)
+                                      handleFeatureAiQuotaChange(feature.code, event.target.value)
                                     }
+                                    className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                    placeholder="Ex.: 50000"
                                   />
                                 </label>
+                              </div>
+                            ) : null;
+
+                            if (feature.type === "boolean") {
+                              return (
+                                <div
+                                  key={feature.code}
+                                  className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-slate-700">{feature.label}</span>
+                                    <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                        checked={!!feature.value}
+                                        onChange={(event) =>
+                                          handleFeatureBooleanChange(feature.code, event.target.checked)
+                                        }
+                                      />
+                                      <span>{feature.value ? "Sim" : "Não"}</span>
+                                    </label>
+                                  </div>
+                                  {aiControls}
+                                </div>
+                              );
+                            }
+
+                            if (feature.type === "number") {
+                              return (
+                                <div
+                                  key={feature.code}
+                                  className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
+                                >
+                                  <NumberQuotaSelect
+                                    id={fieldId}
+                                    label={feature.label}
+                                    hint={feature.unit || undefined}
+                                    value={Number(feature.value ?? 0)}
+                                    onChange={(value) => handleFeatureNumberChange(feature.code, value)}
+                                  />
+                                  {aiControls}
+                                </div>
+                              );
+                            }
+
+                            if (feature.type === "enum") {
+                              return (
+                                <div
+                                  key={feature.code}
+                                  className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
+                                >
+                                  <label
+                                    htmlFor={fieldId}
+                                    className="flex flex-col gap-1 text-sm text-slate-600"
+                                  >
+                                    <span className="font-medium text-slate-700">{feature.label}</span>
+                                    <select
+                                      id={fieldId}
+                                      value={feature.value}
+                                      onChange={(event) =>
+                                        handleFeatureTextChange(feature.code, event.target.value)
+                                      }
+                                      className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                    >
+                                      {feature.options.map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  {aiControls}
+                                </div>
                               );
                             }
 
                             return (
-                              <div key={feature.code} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                {control}
-                                {showAi && (
-                                  <div
-                                    style={{
-                                      display: "grid",
-                                      gridTemplateColumns: "1fr 1fr",
-                                      gap: "12px",
-                                    }}
-                                  >
-                                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                      <span>Medidor de IA</span>
-                                      <select
-                                        value={feature.ai_meter_code}
-                                        onChange={(event) =>
-                                          handleFeatureAiMeterChange(feature.code, event.target.value)
-                                        }
-                                      >
-                                        {AI_METER_OPTIONS.map((option) => (
-                                          <option key={option.value} value={option.value}>
-                                            {option.label}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                                      <span>Cota mensal</span>
-                                      <input
-                                        type="text"
-                                        value={feature.ai_monthly_quota}
-                                        onChange={(event) =>
-                                          handleFeatureAiQuotaChange(feature.code, event.target.value)
-                                        }
-                                        placeholder="Ex.: 50000"
-                                      />
-                                    </label>
-                                  </div>
-                                )}
+                              <div
+                                key={feature.code}
+                                className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4"
+                              >
+                                <label
+                                  htmlFor={fieldId}
+                                  className="flex flex-col gap-1 text-sm text-slate-600"
+                                >
+                                  <span className="font-medium text-slate-700">{feature.label}</span>
+                                  <input
+                                    id={fieldId}
+                                    type="text"
+                                    value={feature.value ?? ""}
+                                    onChange={(event) =>
+                                      handleFeatureTextChange(feature.code, event.target.value)
+                                    }
+                                    className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                  />
+                                </label>
+                                {aiControls}
                               </div>
                             );
                           })}
                         </div>
-                      </details>
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={!dirty || saving || plansLoading}
-                >
-                  {saving ? "Salvando..." : "Salvar"}
-                </button>
-                {saveSuccess && <span style={{ color: "#059669" }}>Alterações salvas</span>}
-                {saveError && <span style={{ color: "#b91c1c" }}>{saveError}</span>}
-              </div>
-            </div>
-          )}
-        </section>
+            )}
+          </section>
+        </div>
       </div>
 
       {modalOpen && (
         <div
           role="presentation"
           onClick={closeModal}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 23, 42, 0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "24px",
-            zIndex: 50,
-          }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 px-4 py-10"
         >
           <div
             role="dialog"
             onClick={(event) => event.stopPropagation()}
-            style={{
-              width: "min(420px, 100%)",
-              background: "#ffffff",
-              borderRadius: "12px",
-              padding: "24px",
-              boxShadow: "0 20px 45px rgba(15, 23, 42, 0.25)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "16px",
-            }}
+            className="w-full max-w-md space-y-4 rounded-xl bg-white p-6 shadow-xl"
           >
-            <h2 style={{ margin: 0 }}>Novo plano</h2>
-            <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              <span>Nome</span>
-              <input type="text" value={modalForm.name} onChange={handleModalNameChange} />
+            <h2 className="text-lg font-semibold text-slate-900">Novo plano</h2>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-slate-700">Nome</span>
+              <input
+                type="text"
+                value={modalForm.name}
+                onChange={handleModalNameChange}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                placeholder="Ex.: Plano Corporativo"
+              />
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              <span>Preço</span>
-              <input type="text" value={modalForm.priceInput} onChange={handleModalPriceChange} />
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-slate-700">Preço</span>
+              <input
+                type="text"
+                value={modalForm.priceInput}
+                onChange={handleModalPriceChange}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                placeholder="R$ 0,00"
+              />
             </label>
-            <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-              <span>Moeda</span>
-              <select value={modalForm.currency} onChange={handleModalCurrencyChange}>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-slate-700">Moeda</span>
+              <select
+                value={modalForm.currency}
+                onChange={handleModalCurrencyChange}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+              >
                 <option value="BRL">BRL</option>
                 <option value="USD">USD</option>
               </select>
             </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-600">
               <input
                 type="checkbox"
                 checked={modalForm.is_active}
                 onChange={handleModalActiveToggle}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
               <span>Plano ativo</span>
             </label>
-            {modalError && <span style={{ color: "#b91c1c" }}>{modalError}</span>}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
-              <button type="button" onClick={closeModal} disabled={modalSaving}>
+            {modalError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {modalError}
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn" onClick={closeModal} disabled={modalSaving}>
                 Cancelar
               </button>
-              <button type="button" onClick={handleCreatePlanAction} disabled={modalSaving}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleCreatePlanAction}
+                disabled={modalSaving}
+              >
                 {modalSaving ? "Criando..." : "Criar"}
               </button>
             </div>

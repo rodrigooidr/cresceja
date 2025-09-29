@@ -9,6 +9,18 @@ export const apiUrl = API_BASE_URL; // alias
 const inboxApi = axios.create({ baseURL: API_BASE_URL });
 export const client = inboxApi;
 
+export function parseBRLToCents(input) {
+  if (typeof input === "number") return Math.round(input * 100);
+  if (typeof input !== "string") return 0;
+  const norm = input
+    .replace(/\s/g, "")
+    .replace(/^R\$/i, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const num = Number(norm);
+  return Number.isFinite(num) ? Math.round(num * 100) : 0;
+}
+
 // ===== Helpers (headers) =====
 function setHeader(config, name, value) {
   try {
