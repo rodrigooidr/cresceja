@@ -355,13 +355,15 @@ export async function adminListPlans(options = {}) {
   if (res?.status !== 200) throw new Error(`admin/plans ${res?.status}`);
 
   const payload = res?.data;
-  const list = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : null;
+  const list = Array.isArray(payload?.data)
+    ? payload.data
+    : Array.isArray(payload)
+    ? payload
+    : null;
 
-  if (!Array.isArray(list)) {
-    const dbg = typeof payload === "object" ? JSON.stringify(payload) : String(payload);
-    const err = new Error("admin/plans payload inválido");
-    err.meta = { received: dbg };
-    throw err;
+  if (!list) {
+    const meta = typeof payload === "object" ? Object.keys(payload || {}) : typeof payload;
+    throw new Error("admin/plans payload inválido - got: " + String(meta));
   }
 
   return list;

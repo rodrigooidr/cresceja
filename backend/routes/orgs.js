@@ -1,6 +1,6 @@
 // backend/routes/orgs.js
 import { Router } from 'express';
-import { pool, query } from '#db';
+import { pool } from '#db';
 import authRequired from '../middleware/auth.js';
 import * as requireRoleModule from '../middleware/requireRole.js';
 
@@ -20,30 +20,46 @@ const ROLES =
 
 const router = Router();
 
-/**
- * GET /api/orgs/accessible?limit=50&page=1
- * Lista organizações às quais o usuário logado tem acesso (pelo vínculo em org_members),
- * retornando apenas as com status 'active'.
- */
+// GET /api/orgs/current - org ativa do usuário autenticado
+router.get('/current', authRequired, async (req, res, next) => {
+  try {
+    const user = req.user || {};
+    const orgId = user.org_id || null;
+    if (!orgId) return res.status(404).json({ error: 'not_found' });
+
+    const client = req.pool ?? pool;
+    const { rows } = await client.query(
+      `SELECT id, name, slug, status, plan_id, trial_ends_at
+         FROM public.organizations
+        WHERE id = $1
+        LIMIT 1`,
+      [orgId]
+    );
+    const org = rows[0];
+    if (!org) return res.status(404).json({ error: 'not_found' });
+    res.json(org);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/orgs/accessible - lista de orgs do usuário
 router.get('/accessible', authRequired, async (req, res, next) => {
   try {
-    const userId = req.user?.id || req.user?.sub;
-    const limit = Math.min(parseInt(req.query.limit ?? '50', 10) || 50, 200);
-    const page = Math.max(parseInt(req.query.page ?? '1', 10) || 1, 1);
-    const offset = (page - 1) * limit;
+    const user = req.user || {};
+    const userId = user.id || user.sub;
+    if (!userId) return res.json({ data: [] });
 
-    const sql = `
-      SELECT o.id, o.name, o.slug, o.status
-      FROM public.org_members m
-      JOIN public.organizations o ON o.id = m.org_id
-      WHERE m.user_id = $1
-        AND o.status = 'active'
-      ORDER BY o.created_at ASC
-      LIMIT $2 OFFSET $3
-    `;
-    const { rows } = await query(sql, [userId, limit, offset]);
-
-    res.json({ data: rows, page, limit });
+    const client = req.pool ?? pool;
+    const { rows } = await client.query(
+      `SELECT o.id, o.name, o.slug, o.status, o.plan_id, o.trial_ends_at
+         FROM public.organizations o
+         JOIN public.org_members m ON m.org_id = o.id
+        WHERE m.user_id = $1
+        ORDER BY o.name ASC`,
+      [userId]
+    );
+    res.json({ data: rows });
   } catch (err) {
     next(err);
   }
