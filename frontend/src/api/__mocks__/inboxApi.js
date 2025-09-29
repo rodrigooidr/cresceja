@@ -980,6 +980,16 @@ export const adminGetPlanCredits =
         return { plan_id: planId, summary };
       };
 
+export async function adminGetPlanCreditsSummary(planId) {
+  return {
+    plan_id: planId,
+    credits: [
+      { meter: 'ai_tokens', limit: 100000, period: 'month' },
+      { meter: 'ai_messages', limit: 2000, period: 'month' },
+    ],
+  };
+}
+
 export const adminPutPlanFeatures =
   typeof jest !== "undefined"
     ? jest.fn(async (planId, features = []) => {
@@ -1021,6 +1031,7 @@ inboxApi.createPlan = createPlan;
 inboxApi.updatePlan = updatePlan;
 inboxApi.adminGetPlanFeatures = adminGetPlanFeatures;
 inboxApi.adminGetPlanCredits = adminGetPlanCredits;
+inboxApi.adminGetPlanCreditsSummary = adminGetPlanCreditsSummary;
 inboxApi.adminPutPlanFeatures = adminPutPlanFeatures;
 
 export const client = inboxApi;

@@ -24,48 +24,79 @@ router.use(authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support));
 // GET /api/admin/orgs?status=active|inactive|all
 router.get('/', async (req, res) => {
   const pool = req.pool;
-  const statusQ = String(req.query.status || 'active').toLowerCase();
-
+  const { status = 'active' } = req.query;
+  const normalizedStatus = String(status || 'active').toLowerCase();
   const allowed = new Set(['active', 'inactive', 'all']);
-  const status = allowed.has(statusQ) ? statusQ : 'active';
+  const wanted = allowed.has(normalizedStatus) ? normalizedStatus : 'active';
 
-  let where = '';
-  if (status === 'active') where = 'WHERE o.active = TRUE';
-  if (status === 'inactive') where = 'WHERE o.active = FALSE';
+  const orgsWhere =
+    wanted === 'all'
+      ? 'TRUE'
+      : wanted === 'active'
+      ? "o.status = 'active'"
+      : "o.status <> 'active'";
+
+  const legacyWhere =
+    wanted === 'all'
+      ? 'TRUE'
+      : wanted === 'active'
+      ? 'o.active = TRUE'
+      : 'o.active = FALSE';
 
   const sqlOrganizations = `
-    SELECT o.id, o.name, o.slug, o.active, o.plan_id, o.trial_ends_at
+    SELECT
+      o.id,
+      o.name,
+      o.slug,
+      o.plan_id,
+      o.trial_ends_at,
+      (o.status = 'active') AS is_active
     FROM public.organizations o
-    ${where}
-    ORDER BY o.name ASC
+    WHERE ${orgsWhere}
+    ORDER BY lower(o.name) ASC
     LIMIT 500
   `;
 
   const sqlOrgsFallback = `
-    SELECT o.id, o.name, o.slug, o.active, o.plan_id, o.trial_ends_at
+    SELECT
+      o.id,
+      o.name,
+      o.slug,
+      o.plan_id,
+      o.trial_ends_at,
+      o.active AS is_active
     FROM public.orgs o
-    ${where}
-    ORDER BY o.name ASC
+    WHERE ${legacyWhere}
+    ORDER BY lower(o.name) ASC
     LIMIT 500
   `;
 
   try {
     let rows;
     try {
-      const { rows: r1 } = await pool.query(sqlOrganizations);
-      rows = r1;
-    } catch (e) {
-      if (e?.code === '42P01') {
-        const { rows: r2 } = await pool.query(sqlOrgsFallback);
-        rows = r2;
+      const { rows: primaryRows } = await pool.query(sqlOrganizations);
+      rows = primaryRows;
+    } catch (err) {
+      if (err?.code === '42P01' || err?.code === '42703') {
+        const { rows: fallbackRows } = await pool.query(sqlOrgsFallback);
+        rows = fallbackRows;
       } else {
-        throw e;
+        throw err;
       }
     }
 
-    return res.json({ data: rows });
+    const data = rows.map((row) => ({
+      ...row,
+      is_active:
+        row.is_active === true ||
+        row.is_active === 't' ||
+        row.is_active === 1 ||
+        row.is_active === '1',
+    }));
+
+    return res.json({ data });
   } catch (err) {
-    req.log?.error({ err }, 'admin/orgs list failed');
+    req.log?.error({ err }, 'admin.orgs.list failed');
     return res.status(500).json({ error: 'internal_error' });
   }
 });

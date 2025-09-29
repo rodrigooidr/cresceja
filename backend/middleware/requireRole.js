@@ -85,21 +85,31 @@ export function requireOrgRole(roles = [], options = {}) {
   };
 }
 
-export function requireGlobalRole(roles = []) {
-  const required = Array.isArray(roles) ? roles.flat().filter(Boolean) : [roles].filter(Boolean);
+export function requireGlobalRole(...roles) {
+  const allowed = new Set(
+    roles
+      .flatMap((role) => (Array.isArray(role) ? role : [role]))
+      .filter((role) => typeof role === 'string' && role.length > 0),
+  );
   return (req, res, next) => {
     try {
-      if (!req.user) {
-        return res.status(401).json({ error: 'UNAUTHENTICATED' });
+      const user = req.user || {};
+      const userRoles = new Set(Array.isArray(user.roles) ? user.roles : []);
+
+      if (!allowed.size) return next();
+      if (userRoles.has('SuperAdmin')) return next();
+
+      for (const r of allowed) {
+        if (userRoles.has(r)) {
+          return next();
+        }
       }
-      const isAllowed = !required.length || hasGlobalRole(req.user, required);
-      if (isAllowed) {
-        return next();
-      }
-      req.log?.warn({ user: req.user, need: roles, path: req.originalUrl }, 'RBAC deny');
+
+      req.log?.warn({ userRoles: [...userRoles], need: [...allowed], path: req.originalUrl }, 'RBAC deny');
       return res.status(403).json({ error: 'forbidden' });
-    } catch (e) {
-      return next(e);
+    } catch (err) {
+      req.log?.error({ err }, 'RBAC error');
+      return res.status(500).json({ error: 'internal_error' });
     }
   };
 }

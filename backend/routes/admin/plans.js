@@ -827,43 +827,41 @@ router.put('/:id/features', async (req, res, next) => {
   }
 });
 
+// GET /api/admin/plans/:id/credits
 router.get('/:id/credits', async (req, res) => {
   const pool = req.pool;
   const planId = req.params.id;
 
-  if (!pool?.query) {
-    req.log?.error('admin/plans credits missing pool');
-    return res.status(500).json({ error: 'internal_error' });
-  }
+  const sql = `
+    SELECT
+      pf.feature_code AS meter,
+      COALESCE(pf.credit_limit, 0)        AS limit,
+      COALESCE(pf.credit_period, 'month') AS period
+    FROM public.plan_features pf
+    WHERE pf.plan_id = $1
+      AND (
+        pf.feature_code ILIKE 'ai_%'
+        OR pf.feature_code ILIKE 'gpt_%'
+        OR pf.feature_code ILIKE '%tokens%'
+        OR pf.feature_code ILIKE '%credits%'
+        OR pf.is_meter = TRUE
+      )
+    ORDER BY lower(pf.feature_code) ASC
+  `;
 
   try {
-    const { rows } = await pool.query(
-      `
-      SELECT feature_code AS code,
-             CASE
-               WHEN feature_code = 'whatsapp_numbers' THEN 'WhatsApp – Números'
-               WHEN feature_code = 'instagram_accounts' THEN 'Instagram – Contas'
-               WHEN feature_code = 'instagram_publish_daily_quota' THEN 'Instagram – Publicações/dia'
-               WHEN feature_code = 'facebook_pages' THEN 'Facebook – Páginas'
-               WHEN feature_code = 'google_calendar_accounts' THEN 'Google Calendar – Contas conectadas'
-               ELSE feature_code
-             END AS label,
-             'count'::text AS unit,
-             COALESCE(
-               NULLIF(regexp_replace(value::text, '[^0-9-]', '', 'g'), '')::int,
-               0
-             ) AS limit
-        FROM public.plan_features
-       WHERE plan_id = $1 AND (type = 'number' OR type IS NULL)
-       ORDER BY 1 ASC
-      `,
-      [planId],
-    );
-
-    res.json({ plan_id: planId, summary: rows });
+    const { rows } = await pool.query(sql, [planId]);
+    return res.json({
+      plan_id: planId,
+      credits: rows.map((row) => ({
+        meter: row.meter,
+        limit: Number(row.limit) || 0,
+        period: row.period || 'month',
+      })),
+    });
   } catch (err) {
-    req.log?.error({ err }, 'admin/plans credits failed');
-    res.status(500).json({ error: 'internal_error' });
+    req.log?.error({ err, planId }, 'admin.plans.credits failed');
+    return res.json({ plan_id: planId, credits: [] });
   }
 });
 

@@ -447,23 +447,47 @@ export async function adminGetPlanCredits(planId, options = {}) {
   }
 
   const { data } = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
-  if (!data || !Array.isArray(data.summary)) {
+  const plan_id = data?.plan_id ?? planId;
+
+  let summary;
+  if (Array.isArray(data?.summary)) {
+    summary = data.summary.map((item) => {
+      const limitNumber = Number(item?.limit);
+      const safeLimit = Number.isFinite(limitNumber) ? limitNumber : 0;
+      return {
+        code: item?.code ?? '',
+        label: item?.label ?? item?.code ?? '',
+        unit: item?.unit ?? 'count',
+        limit: safeLimit,
+      };
+    });
+  } else if (Array.isArray(data?.credits)) {
+    summary = data.credits.map((item) => {
+      const limitNumber = Number(item?.limit);
+      const safeLimit = Number.isFinite(limitNumber) ? limitNumber : 0;
+      const period = item?.period ? String(item.period) : 'month';
+      return {
+        code: item?.meter ?? '',
+        label: item?.meter ?? '',
+        unit: period,
+        limit: safeLimit,
+      };
+    });
+  } else {
     throw new Error('adminGetPlanCredits payload inválido');
   }
 
-  const plan_id = data.plan_id ?? planId;
-  const summary = data.summary.map((item) => {
-    const limitNumber = Number(item?.limit);
-    const safeLimit = Number.isFinite(limitNumber) ? limitNumber : 0;
-    return {
-      code: item?.code ?? '',
-      label: item?.label ?? item?.code ?? '',
-      unit: item?.unit ?? 'count',
-      limit: safeLimit,
-    };
-  });
-
   return { plan_id, summary };
+}
+
+export async function adminGetPlanCreditsSummary(planId, options = {}) {
+  if (!planId) {
+    return { plan_id: planId ?? null, credits: [] };
+  }
+
+  const { data } = await inboxApi.get(`/admin/plans/${planId}/credits`, withGlobalScope(options));
+  const credits = Array.isArray(data?.credits) ? data.credits : [];
+  return { plan_id: data?.plan_id ?? planId, credits };
 }
 
 export async function adminPutPlanFeatures(planId, features, options = {}) {
