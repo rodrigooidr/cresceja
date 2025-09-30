@@ -153,6 +153,7 @@ router.delete("/:id", async (req, res, next) => {
     if (!id) return res.status(400).json({ error: "missing_id" });
     await query('DELETE FROM public.plans WHERE id=$1', [id]);
     await query('DELETE FROM public.plans_meta WHERE plan_id=$1', [id]);
+    await query('DELETE FROM public.plan_credits WHERE plan_id=$1', [id]);
     res.json({ ok: true });
   } catch (e) {
     next(e);
