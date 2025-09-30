@@ -6,19 +6,17 @@ const router = Router();
 
 router.get('/cnpj/:cnpj', authRequired, async (req, res) => {
   try {
-    const data = await lookupCNPJ(req.params.cnpj);
-    return res.json(data);
+    res.json(await lookupCNPJ(req.params.cnpj));
   } catch (e) {
-    return res.status(422).json({ error: e.message });
+    res.status(422).json({ error: e.message });
   }
 });
 
 router.get('/cep/:cep', authRequired, async (req, res) => {
   try {
-    const data = await lookupCEP(req.params.cep);
-    return res.json(data);
+    res.json(await lookupCEP(req.params.cep));
   } catch (e) {
-    return res.status(422).json({ error: e.message });
+    res.status(422).json({ error: e.message });
   }
 });
 

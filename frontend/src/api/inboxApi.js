@@ -385,13 +385,25 @@ export async function switchOrg(orgId) {
 }
 
 export async function lookupCNPJ(cnpj) {
-  const { data } = await api.get(`/utils/cnpj/${encodeURIComponent(cnpj)}`);
+  const config = withGlobalScope();
+  const { data } = await api.get(`/utils/cnpj/${encodeURIComponent(cnpj)}`, config);
   return data;
 }
 
 export async function lookupCEP(cep) {
-  const { data } = await api.get(`/utils/cep/${encodeURIComponent(cep)}`);
+  const config = withGlobalScope();
+  const { data } = await api.get(`/utils/cep/${encodeURIComponent(cep)}`, config);
   return data;
+}
+
+export async function getPlanCredits(planId) {
+  const { data } = await api.get(`/admin/plans/${planId}/credits`, withGlobalScope());
+  return data?.data ?? [];
+}
+
+export async function setPlanCredits(planId, payload /* {data:[{meter,limit}]} */) {
+  const { data } = await api.put(`/admin/plans/${planId}/credits`, payload, withGlobalScope());
+  return data?.data ?? [];
 }
 
 export async function putAdminOrgPlan(orgId, payload, options = {}) {
