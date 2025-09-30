@@ -99,8 +99,7 @@ function OrgPicker({ collapsed }) {
   const [query, setQuery] = useState(q || "");
 
   useEffect(() => {
-    const t = setTimeout(() => searchOrgs(query), 250);
-    return () => clearTimeout(t);
+    searchOrgs(query);
   }, [query, searchOrgs]);
 
   if (collapsed) {

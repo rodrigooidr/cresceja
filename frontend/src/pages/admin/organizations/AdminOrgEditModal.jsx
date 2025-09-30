@@ -1,19 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  lookupCEP as apiLookupCEP,
-  lookupCNPJ as apiLookupCNPJ,
-  patchAdminOrg,
-  postAdminOrg,
-} from "@/api/inboxApi";
+import { lookupCEP, lookupCNPJ, patchAdminOrg, postAdminOrg } from "@/api/inboxApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { hasGlobalRole } from "@/auth/roles";
 import {
   isValidCEP,
   isValidCNPJ,
-  isValidCPF,
   isValidUF,
-  onlyDigits,
 } from "@/validation/br";
+import {
+  onlyDigits,
+  formatCNPJ,
+  formatCEP,
+  formatCPF,
+  isValidCPF,
+  formatPhoneBR,
+  toE164BR,
+} from "@/utils/brMasks";
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Ativa" },
@@ -61,6 +63,23 @@ const emptyForm = {
   whatsapp_baileys_phone: "",
 };
 
+const maskCnpj = (value) => formatCNPJ(value || "");
+const maskCep = (value) => formatCEP(value || "");
+const maskCpf = (value) => formatCPF(value || "");
+const maskPhone = (value) => {
+  if (!value) return "";
+  const raw = String(value).trim();
+  if (!raw) return "";
+  if (raw.startsWith("+")) {
+    const digits = onlyDigits(raw);
+    if (digits.startsWith("55") && digits.length > 2) {
+      return formatPhoneBR(digits.slice(2));
+    }
+    return digits ? `+${digits}` : "";
+  }
+  return formatPhoneBR(raw);
+};
+
 function mapOrgToForm(org) {
   if (!org) return { ...emptyForm };
   return {
@@ -68,16 +87,16 @@ function mapOrgToForm(org) {
     name: org.name || org.razao_social || "",
     slug: org.slug || "",
     status: org.status || "active",
-    cnpj: org.cnpj || "",
+    cnpj: maskCnpj(org.cnpj || ""),
     razao_social: org.razao_social || "",
     nome_fantasia: org.nome_fantasia || "",
     email: org.email || "",
-    phone_e164: org.phone_e164 || org.phone || "",
+    phone_e164: maskPhone(org.phone_e164 || org.phone || ""),
     site: org.site || "",
     ie: org.ie || "",
     ie_isento: !!org.ie_isento,
     endereco: {
-      cep: org.cep || "",
+      cep: maskCep(org.cep || ""),
       logradouro: org.logradouro || "",
       numero: org.numero || "",
       complemento: org.complemento || "",
@@ -88,9 +107,9 @@ function mapOrgToForm(org) {
     },
     responsavel: {
       nome: org.resp_nome || "",
-      cpf: org.resp_cpf || "",
+      cpf: maskCpf(org.resp_cpf || ""),
       email: org.resp_email || "",
-      phone_e164: org.resp_phone_e164 || "",
+      phone_e164: maskPhone(org.resp_phone_e164 || ""),
     },
     whatsapp_baileys_enabled: !!org.whatsapp_baileys_enabled,
     whatsapp_mode: org.whatsapp_mode || "none",
@@ -116,6 +135,19 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   const [globalError, setGlobalError] = useState("");
 
   const isCreate = mode === "create";
+
+  const setFieldError = (field, message) => {
+    setErrors((prev) => ({ ...prev, [field]: message }));
+  };
+
+  const clearFieldError = (field) => {
+    setErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -174,26 +206,94 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     setNestedField("responsavel", field, event.target.value);
   };
 
+  const handleCnpjChange = (event) => {
+    setField("cnpj", maskCnpj(event.target.value));
+  };
+
+  const handleCepChange = (event) => {
+    setNestedField("endereco", "cep", maskCep(event.target.value));
+  };
+
+  const handleCpfChange = (event) => {
+    setNestedField("responsavel", "cpf", maskCpf(event.target.value));
+  };
+
+  const handleCpfBlur = () => {
+    const digits = onlyDigits(form.responsavel.cpf);
+    if (!digits) {
+      setFieldError("responsavel.cpf", "CPF inválido");
+      return;
+    }
+    if (digits.length !== 11) {
+      setFieldError("responsavel.cpf", "CPF deve ter 11 dígitos");
+      return;
+    }
+    if (!isValidCPF(digits)) {
+      setFieldError("responsavel.cpf", "CPF inválido");
+      return;
+    }
+    clearFieldError("responsavel.cpf");
+  };
+
+  const handleCompanyPhoneChange = (event) => {
+    setField("phone_e164", formatPhoneBR(event.target.value));
+  };
+
+  const handleCompanyPhoneBlur = () => {
+    if (!form.phone_e164) {
+      clearFieldError("phone_e164");
+      return;
+    }
+    const normalized = toE164BR(form.phone_e164);
+    if (!normalized) {
+      setFieldError("phone_e164", "Telefone inválido");
+    } else {
+      clearFieldError("phone_e164");
+    }
+  };
+
+  const handleResponsavelPhoneChange = (event) => {
+    setNestedField("responsavel", "phone_e164", formatPhoneBR(event.target.value));
+  };
+
+  const handleResponsavelPhoneBlur = () => {
+    if (!form.responsavel.phone_e164) {
+      clearFieldError("responsavel.phone_e164");
+      return;
+    }
+    const normalized = toE164BR(form.responsavel.phone_e164);
+    if (!normalized) {
+      setFieldError("responsavel.phone_e164", "Telefone inválido");
+    } else {
+      clearFieldError("responsavel.phone_e164");
+    }
+  };
+
   const applyCnpjData = (data) => {
     if (!data) return;
-    setForm((prev) => ({
-      ...prev,
-      cnpj: data.cnpj || prev.cnpj,
-      razao_social: data.razao_social || prev.razao_social,
-      nome_fantasia: data.nome_fantasia || prev.nome_fantasia,
-      email: data.email || prev.email,
-      endereco: {
-        ...prev.endereco,
-        cep: data.endereco?.cep || prev.endereco.cep,
-        logradouro: data.endereco?.logradouro || prev.endereco.logradouro,
-        numero: data.endereco?.numero || prev.endereco.numero,
-        complemento: data.endereco?.complemento || prev.endereco.complemento,
-        bairro: data.endereco?.bairro || prev.endereco.bairro,
-        cidade: data.endereco?.cidade || prev.endereco.cidade,
-        uf: data.endereco?.uf || prev.endereco.uf,
-        country: data.endereco?.country || prev.endereco.country || "BR",
-      },
-    }));
+    setForm((prev) => {
+      const next = { ...prev };
+      if (data.cnpj) next.cnpj = maskCnpj(data.cnpj);
+      if (data.razao_social && !prev.razao_social)
+        next.razao_social = data.razao_social;
+      if (data.nome_fantasia && !prev.nome_fantasia)
+        next.nome_fantasia = data.nome_fantasia;
+      if (data.email && !prev.email) next.email = data.email;
+
+      const end = data.endereco || {};
+      const currentEndereco = { ...prev.endereco };
+      if (end.cep && !prev.endereco.cep) currentEndereco.cep = maskCep(end.cep);
+      if (end.logradouro && !prev.endereco.logradouro)
+        currentEndereco.logradouro = end.logradouro;
+      if (end.bairro && !prev.endereco.bairro)
+        currentEndereco.bairro = end.bairro;
+      if (end.cidade && !prev.endereco.cidade)
+        currentEndereco.cidade = end.cidade;
+      if (end.uf && !prev.endereco.uf) currentEndereco.uf = end.uf;
+      next.endereco = currentEndereco;
+
+      return next;
+    });
   };
 
   const applyCepData = (data) => {
@@ -202,7 +302,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       ...prev,
       endereco: {
         ...prev.endereco,
-        cep: data.cep || prev.endereco.cep,
+        cep: data.cep ? maskCep(data.cep) : prev.endereco.cep,
         logradouro: data.logradouro || prev.endereco.logradouro,
         bairro: data.bairro || prev.endereco.bairro,
         cidade: data.cidade || prev.endereco.cidade,
@@ -215,18 +315,24 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   const handleCnpjBlur = async () => {
     const digits = onlyDigits(form.cnpj);
     if (!digits) return;
-    if (!isValidCNPJ(digits)) {
-      setErrors((prev) => ({ ...prev, cnpj: "CNPJ inválido" }));
+    if (digits.length !== 14) {
+      setFieldError("cnpj", "CNPJ deve ter 14 dígitos");
       return;
     }
+    if (!isValidCNPJ(digits)) {
+      setFieldError("cnpj", "CNPJ inválido");
+      return;
+    }
+    clearFieldError("cnpj");
     setCnpjLookupLoading(true);
     try {
-      const data = await apiLookupCNPJ(digits);
+      const data = await lookupCNPJ(digits);
       applyCnpjData(data);
       setFeedback("Dados do CNPJ preenchidos automaticamente.");
     } catch (err) {
-      const message = err?.message || "Não foi possível buscar o CNPJ.";
-      setGlobalError(message);
+      setFieldError("cnpj", "Não foi possível consultar CNPJ");
+      const message = err?.response?.data?.error || err?.message || "";
+      if (message) setGlobalError(message);
     } finally {
       setCnpjLookupLoading(false);
     }
@@ -235,17 +341,23 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   const handleCepBlur = async () => {
     const digits = onlyDigits(form.endereco.cep);
     if (!digits) return;
-    if (!isValidCEP(digits)) {
-      setErrors((prev) => ({ ...prev, "endereco.cep": "CEP inválido" }));
+    if (digits.length !== 8) {
+      setFieldError("endereco.cep", "CEP deve ter 8 dígitos");
       return;
     }
+    if (!isValidCEP(digits)) {
+      setFieldError("endereco.cep", "CEP inválido");
+      return;
+    }
+    clearFieldError("endereco.cep");
     setCepLookupLoading(true);
     try {
-      const data = await apiLookupCEP(digits);
+      const data = await lookupCEP(digits);
       applyCepData(data);
     } catch (err) {
-      const message = err?.message || "Não foi possível buscar o CEP.";
-      setGlobalError(message);
+      setFieldError("endereco.cep", "Não foi possível consultar CEP");
+      const message = err?.response?.data?.error || err?.message || "";
+      if (message) setGlobalError(message);
     } finally {
       setCepLookupLoading(false);
     }
@@ -256,37 +368,60 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     if (!form.name.trim()) nextErrors.name = "Nome é obrigatório";
 
     const cnpjDigits = onlyDigits(form.cnpj);
-    if (!cnpjDigits || !isValidCNPJ(cnpjDigits)) nextErrors.cnpj = "CNPJ inválido";
+    if (!cnpjDigits || cnpjDigits.length !== 14)
+      nextErrors.cnpj = "CNPJ deve ter 14 dígitos";
+    else if (!isValidCNPJ(cnpjDigits)) nextErrors.cnpj = "CNPJ inválido";
 
-    if (!form.responsavel.nome.trim()) nextErrors["responsavel.nome"] = "Informe o nome do responsável";
+    if (!form.responsavel.nome.trim())
+      nextErrors["responsavel.nome"] = "Informe o nome do responsável";
 
     const cpfDigits = onlyDigits(form.responsavel.cpf);
-    if (!cpfDigits || !isValidCPF(cpfDigits)) nextErrors["responsavel.cpf"] = "CPF inválido";
+    if (!cpfDigits || cpfDigits.length !== 11)
+      nextErrors["responsavel.cpf"] = "CPF deve ter 11 dígitos";
+    else if (!isValidCPF(cpfDigits))
+      nextErrors["responsavel.cpf"] = "CPF inválido";
 
     const cepDigits = onlyDigits(form.endereco.cep);
-    if (!cepDigits || !isValidCEP(cepDigits)) nextErrors["endereco.cep"] = "CEP inválido";
+    if (!cepDigits || cepDigits.length !== 8)
+      nextErrors["endereco.cep"] = "CEP inválido";
+    else if (!isValidCEP(cepDigits)) nextErrors["endereco.cep"] = "CEP inválido";
 
-    if (!form.endereco.logradouro.trim()) nextErrors["endereco.logradouro"] = "Logradouro obrigatório";
+    if (!form.endereco.logradouro.trim())
+      nextErrors["endereco.logradouro"] = "Logradouro obrigatório";
     if (!form.endereco.numero.trim()) nextErrors["endereco.numero"] = "Número obrigatório";
     if (!form.endereco.bairro.trim()) nextErrors["endereco.bairro"] = "Bairro obrigatório";
     if (!form.endereco.cidade.trim()) nextErrors["endereco.cidade"] = "Cidade obrigatória";
     if (!form.endereco.uf.trim() || !isValidUF(form.endereco.uf))
       nextErrors["endereco.uf"] = "UF inválida";
 
-    if (!form.email && !form.phone_e164)
+    const orgPhoneE164 = form.phone_e164 ? toE164BR(form.phone_e164) : null;
+    if (form.phone_e164 && !orgPhoneE164)
+      nextErrors.phone_e164 = "Telefone inválido";
+
+    const respPhoneE164 = form.responsavel.phone_e164
+      ? toE164BR(form.responsavel.phone_e164)
+      : null;
+    if (form.responsavel.phone_e164 && !respPhoneE164)
+      nextErrors["responsavel.phone_e164"] = "Telefone inválido";
+
+    if (!form.email && !orgPhoneE164)
       nextErrors.email = "Informe e-mail ou telefone da empresa";
 
-    if (!form.responsavel.email && !form.responsavel.phone_e164)
+    if (!form.responsavel.email && !respPhoneE164)
       nextErrors["responsavel.email"] = "Responsável: informe e-mail ou telefone";
 
     if (form.whatsapp_baileys_enabled && !form.whatsapp_baileys_phone)
       nextErrors.whatsapp_baileys_phone = "Informe o telefone do WhatsApp";
 
     setErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    return {
+      valid: Object.keys(nextErrors).length === 0,
+      orgPhoneE164,
+      respPhoneE164,
+    };
   };
 
-  const buildCreatePayload = () => {
+  const buildCreatePayload = ({ orgPhoneE164, respPhoneE164 }) => {
     const cnpjDigits = onlyDigits(form.cnpj);
     const cepDigits = onlyDigits(form.endereco.cep);
     const cpfDigits = onlyDigits(form.responsavel.cpf);
@@ -298,7 +433,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       ie_isento: !!form.ie_isento,
       site: form.site || null,
       email: form.email || null,
-      phone_e164: form.phone_e164 || null,
+      phone_e164: orgPhoneE164 || null,
       status: form.status || "active",
       endereco: {
         cep: cepDigits,
@@ -314,12 +449,12 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
         nome: form.responsavel.nome,
         cpf: cpfDigits,
         email: form.responsavel.email || null,
-        phone_e164: form.responsavel.phone_e164 || null,
+        phone_e164: respPhoneE164 || null,
       },
     };
   };
 
-  const buildUpdatePayload = () => {
+  const buildUpdatePayload = ({ orgPhoneE164, respPhoneE164 }) => {
     const cepDigits = onlyDigits(form.endereco.cep);
     const cpfDigits = onlyDigits(form.responsavel.cpf);
     const payload = {
@@ -327,7 +462,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       slug: form.slug.trim() || null,
       status: form.status,
       email: form.email || null,
-      phone_e164: form.phone_e164 || null,
+      phone_e164: orgPhoneE164 || null,
       razao_social: form.razao_social || null,
       nome_fantasia: form.nome_fantasia || null,
       site: form.site || null,
@@ -344,7 +479,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       resp_nome: form.responsavel.nome || null,
       resp_cpf: cpfDigits || null,
       resp_email: form.responsavel.email || null,
-      resp_phone_e164: form.responsavel.phone_e164 || null,
+      resp_phone_e164: respPhoneE164 || null,
     };
 
     if (canManageBaileys) {
@@ -361,18 +496,19 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     event?.preventDefault();
     setFeedback("");
     setGlobalError("");
-    if (!validateForm()) return;
+    const { valid, orgPhoneE164, respPhoneE164 } = validateForm();
+    if (!valid) return;
 
     setSaving(true);
     try {
       if (isCreate) {
-        const payload = buildCreatePayload();
+        const payload = buildCreatePayload({ orgPhoneE164, respPhoneE164 });
         const response = await postAdminOrg(payload);
         const createdId = response?.id || null;
         setFeedback("Organização criada com sucesso.");
         onSaved?.({ id: createdId });
       } else if (org?.id) {
-        const payload = buildUpdatePayload();
+        const payload = buildUpdatePayload({ orgPhoneE164, respPhoneE164 });
         await patchAdminOrg(org.id, payload);
         setFeedback("Organização atualizada.");
         onSaved?.();
@@ -467,9 +603,11 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                 <span className="text-gray-600">CNPJ</span>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.cnpj}
-                  onChange={handleInputChange("cnpj")}
+                  onChange={handleCnpjChange}
                   onBlur={handleCnpjBlur}
                   placeholder="00.000.000/0000-00"
                 />
@@ -521,14 +659,20 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                 )}
               </label>
               <label className="text-sm">
-                <span className="text-gray-600">Telefone (E.164)</span>
+                <span className="text-gray-600">Telefone</span>
                 <input
                   type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.phone_e164}
-                  onChange={handleInputChange("phone_e164")}
-                  placeholder="+5511999999999"
+                  onChange={handleCompanyPhoneChange}
+                  onBlur={handleCompanyPhoneBlur}
+                  placeholder="(11) 99999-9999"
                 />
+                {readError(errors, "phone_e164") && (
+                  <span className="mt-1 block text-xs text-red-600">{readError(errors, "phone_e164")}</span>
+                )}
               </label>
               <label className="text-sm">
                 <span className="text-gray-600">Inscrição estadual</span>
@@ -558,9 +702,11 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                 <span className="text-gray-600">CEP</span>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.endereco.cep}
-                  onChange={handleAddressChange("cep")}
+                  onChange={handleCepChange}
                   onBlur={handleCepBlur}
                   placeholder="00000-000"
                 />
@@ -664,9 +810,12 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                 <span className="text-gray-600">CPF</span>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.responsavel.cpf}
-                  onChange={handleResponsavelChange("cpf")}
+                  onChange={handleCpfChange}
+                  onBlur={handleCpfBlur}
                   placeholder="000.000.000-00"
                 />
                 {readError(errors, "responsavel.cpf") && (
@@ -686,14 +835,20 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                 )}
               </label>
               <label className="text-sm">
-                <span className="text-gray-600">Telefone (E.164)</span>
+                <span className="text-gray-600">Telefone</span>
                 <input
                   type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.responsavel.phone_e164}
-                  onChange={handleResponsavelChange("phone_e164")}
-                  placeholder="+5511999999999"
+                  onChange={handleResponsavelPhoneChange}
+                  onBlur={handleResponsavelPhoneBlur}
+                  placeholder="(11) 99999-9999"
                 />
+                {readError(errors, "responsavel.phone_e164") && (
+                  <span className="mt-1 block text-xs text-red-600">{readError(errors, "responsavel.phone_e164")}</span>
+                )}
               </label>
             </div>
           </section>

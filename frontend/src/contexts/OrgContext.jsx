@@ -4,10 +4,10 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import inboxApi, { setActiveOrg } from "../api/inboxApi";
-import { fetchMyOrganizations } from "@/api/admin/orgsApi";
+import inboxApi, { getMyOrgs, setActiveOrg } from "../api/inboxApi";
 import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
@@ -46,10 +46,10 @@ export function OrgProvider({ children }) {
 
   // Lista / paginação
   const [orgs, setOrgs] = useState([]);
+  const [allOrgs, setAllOrgs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
+  const qRef = useRef("");
   const [hasMore, setHasMore] = useState(false);
 
   // Seleção atual (1 org)
@@ -77,82 +77,56 @@ export function OrgProvider({ children }) {
     return "mine";
   }, [isAuthenticated, user]);
 
+  const applyFilter = useCallback((items, query) => {
+    const term = query?.trim().toLowerCase();
+    if (!term) return items;
+    return items.filter((item) =>
+      [item.name, item.slug]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term))
+    );
+  }, []);
+
+  useEffect(() => {
+    qRef.current = q;
+  }, [q]);
+
   // Carrega lista (server-side)
   const refreshOrgs = useCallback(
-    async (qArg = q, p = 1, mode = "replace") => {
+    async () => {
       if (!isAuthenticated) {
         setLoading(false);
         setOrgs([]);
+        setAllOrgs([]);
         setHasMore(false);
+        setQ("");
         return;
       }
 
       setLoading(true);
       try {
-        const params = {
-          q: qArg || undefined,
-          search: qArg || undefined,     // manda ambos para compatibilidade
-          limit: pageSize,
-          page: p,
-          status: visibility === 'all' ? 'all' : undefined,
-        };
-
-        let data;
-        if (visibility === "all") {
-          try {
-            const items = await fetchMyOrganizations();
-            data = { items };
-          } catch (err) {
-            if (err?.response?.status === 403) {
-              ({ data } = await inboxApi.get("orgs/accessible", {
-                params,
-                meta: { scope: "global" },
-              }));
-            } else {
-              throw err;
-            }
-          }
-        } else {
-          ({ data } = await inboxApi.get("orgs/accessible", {
-            params,
-            meta: { scope: "global" },
-          }));
-        }
-
-        // Normaliza vários formatos: {items,total} | {data,count} | array
-        const rawItems = Array.isArray(data?.items)
-          ? data.items
-          : Array.isArray(data?.data)
-          ? data.data
+        const data = await getMyOrgs();
+        const rawItems = Array.isArray(data?.orgs)
+          ? data.orgs
           : Array.isArray(data)
           ? data
           : [];
 
-        // Garante {id,name} para o seletor
         const items = rawItems.map((o) => ({
-          id: o.id ?? o._id,
+          id: o.id ?? o._id ?? null,
           name: o.company?.name ?? o.name ?? o.fantasy_name ?? "Sem nome",
+          slug: o.slug ?? null,
         }));
 
-        const total =
-          typeof data?.total === "number"
-            ? data.total
-            : typeof data?.count === "number"
-            ? data.count
-            : items.length;
+        setAllOrgs(items);
+        const activeQuery = qRef.current;
+        setOrgs(applyFilter(items, activeQuery));
+        setHasMore(false);
 
-        setHasMore(p * pageSize < total);
-        setPage(p);
-        setQ(qArg);
-
-        if (mode === "append") {
-          setOrgs((prev) => {
-            const seen = new Set(prev.map((o) => o.id));
-            const next = items.filter((o) => !seen.has(o.id));
-            return [...prev, ...next];
-          });
-        } else {
-          setOrgs(items);
+        const current = data?.currentOrgId ?? null;
+        if (current && !selected) {
+          setSelected(current);
+          setActiveOrg(current);
         }
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -161,24 +135,29 @@ export function OrgProvider({ children }) {
           err?.response?.status,
           err?.response?.data || err?.message
         );
-        if (mode === "replace") setOrgs([]);
+        setOrgs([]);
+        setAllOrgs([]);
         setHasMore(false);
       } finally {
         setLoading(false);
       }
     },
-    [isAuthenticated, visibility, q, pageSize]
+    [applyFilter, getMyOrgs, isAuthenticated, selected]
   );
 
   const searchOrgs = useCallback(
-    (query) => refreshOrgs(query, 1, "replace"),
-    [refreshOrgs]
+    (query) => {
+      setQ(query);
+      setOrgs(applyFilter(allOrgs, query));
+      return Promise.resolve();
+    },
+    [allOrgs, applyFilter]
   );
 
   const loadMoreOrgs = useCallback(() => {
-    if (!hasMore || loading) return;
-    return refreshOrgs(q, page + 1, "append");
-  }, [hasMore, loading, q, page, refreshOrgs]);
+    setHasMore(false);
+    return Promise.resolve();
+  }, []);
 
   // Load inicial / quando mudar autenticação ou visibilidade
   useEffect(() => {
