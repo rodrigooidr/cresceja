@@ -7,6 +7,7 @@ export const API_BASE_URL =
 export const apiUrl = API_BASE_URL; // alias
 
 const inboxApi = axios.create({ baseURL: API_BASE_URL });
+export const api = inboxApi;
 export const client = inboxApi;
 
 export function parseBRLToCents(input) {
@@ -338,32 +339,12 @@ function withGlobalScope(options = {}) {
 }
 
 export async function adminListOrgs({ status = 'active', q = '' } = {}) {
-  const params = new URLSearchParams();
-  if (status) params.set('status', status);
-  if (q) params.set('q', q);
-  const search = params.toString();
-  const url = search ? `/admin/orgs?${search}` : '/admin/orgs';
-  const res = await client.get(url, withGlobalScope());
-  const rows = Array.isArray(res?.data?.items) ? res.data.items : [];
-  return rows.map((org) => {
-    const normalizedActive =
-      typeof org?.is_active === 'boolean'
-        ? org.is_active
-        : typeof org?.active === 'boolean'
-        ? org.active
-        : org?.status
-        ? String(org.status).toLowerCase() === 'active'
-        : false;
-    const statusValue = org?.status ?? (normalizedActive ? 'active' : 'inactive');
-    const planName = org?.plan ?? org?.plan_name ?? null;
-    return {
-      ...org,
-      plan: planName,
-      plan_name: planName,
-      active: normalizedActive,
-      status: statusValue,
-    };
-  });
+  const search = typeof q === 'string' ? q.trim() : '';
+  const params = { status };
+  if (search) params.q = search;
+  const config = withGlobalScope({ params });
+  const { data } = await api.get('/admin/orgs', config);
+  return data?.items ?? [];
 }
 
 export async function listAdminOrgs(status = "active", options = {}) {
@@ -376,32 +357,40 @@ export async function patchAdminOrg(orgId, payload, options = {}) {
   return inboxApi.patch(`/admin/orgs/${orgId}`, payload, withGlobalScope(options));
 }
 
-export async function postAdminOrg(payload, options = {}) {
-  return inboxApi.post('/admin/orgs', payload, withGlobalScope(options));
+export async function getAdminOrg(orgId, options = {}) {
+  if (!orgId) return null;
+  const response = await api.get(`/admin/orgs/${orgId}`, withGlobalScope(options));
+  const data = response?.data;
+  if (!data || typeof data !== 'object') return null;
+  return data.org ?? data.organization ?? null;
 }
 
-export async function deleteAdminOrg(orgId, options = {}) {
-  return inboxApi.delete(`/admin/orgs/${orgId}`, withGlobalScope(options));
+export async function postAdminOrg(payload) {
+  const config = withGlobalScope();
+  const { data } = await api.post('/admin/orgs', payload, config);
+  return data;
+}
+
+export async function deleteAdminOrg(id) {
+  await api.delete(`/admin/orgs/${id}`, withGlobalScope());
 }
 
 export async function getMyOrgs() {
-  const { data } = await client.get('/orgs/me');
-  const items = Array.isArray(data?.items) ? data.items : [];
-  const currentOrgId = data?.currentOrgId ?? items[0]?.id ?? null;
-  return { orgs: items, currentOrgId };
+  const { data } = await api.get('/orgs/me');
+  return data;
 }
 
 export async function switchOrg(orgId) {
-  await client.post('/orgs/switch', { orgId });
+  await api.post('/orgs/switch', { orgId });
 }
 
 export async function lookupCNPJ(cnpj) {
-  const { data } = await client.get(`/utils/cnpj/${encodeURIComponent(cnpj)}`);
+  const { data } = await api.get(`/utils/cnpj/${encodeURIComponent(cnpj)}`);
   return data;
 }
 
 export async function lookupCEP(cep) {
-  const { data } = await client.get(`/utils/cep/${encodeURIComponent(cep)}`);
+  const { data } = await api.get(`/utils/cep/${encodeURIComponent(cep)}`);
   return data;
 }
 

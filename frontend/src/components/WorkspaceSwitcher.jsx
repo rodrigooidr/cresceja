@@ -1,13 +1,25 @@
-import React, { useEffect, useState } from 'react';
-import { switchOrg } from '@/api/inboxApi';
-import { fetchMyOrganizations } from '@/api/admin/orgsApi';
-import { useAuth } from "@/contexts/AuthContext";
+import React, { useEffect, useMemo, useState } from 'react';
+import { adminListOrgs, getMyOrgs, switchOrg } from '@/api/inboxApi';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function WorkspaceSwitcher({ collapsed = false }) {
   const [items, setItems] = useState([]);
   const [current, setCurrent] = useState('');
   const [loading, setLoading] = useState(false);
   const { user: me } = useAuth();
+
+  const roleSet = useMemo(() => {
+    const roles = new Set();
+    if (Array.isArray(me?.roles)) {
+      for (const role of me.roles) {
+        if (role) roles.add(role);
+      }
+    }
+    if (me?.role) roles.add(me.role);
+    return roles;
+  }, [me]);
+
+  const isGlobalAdmin = roleSet.has('SuperAdmin') || roleSet.has('Support');
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -18,20 +30,39 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
 
     (async () => {
       try {
-        const data = await fetchMyOrganizations();
+        let payload;
+        if (isGlobalAdmin) {
+          const orgs = await adminListOrgs({ status: 'all' });
+          payload = {
+            currentOrgId: null,
+            orgs,
+          };
+        } else {
+          payload = await getMyOrgs();
+        }
         if (!alive) return;
 
-        const list = Array.isArray(data) ? data : [];
-        const mapped = list.map((org) => ({
+        const rawOrgs = Array.isArray(payload?.orgs)
+          ? payload.orgs
+          : Array.isArray(payload)
+          ? payload
+          : [];
+
+        const mapped = rawOrgs.map((org) => ({
           id: org.id,
-          name: org.name ?? 'Org',
+          name: org.name ?? org.razao_social ?? 'Org',
           slug: org.slug ?? null,
         }));
-        const storedCurrent = localStorage.getItem('org_id') || localStorage.getItem('active_org_id') || '';
-        const nextCurrent = storedCurrent || (mapped[0]?.id ?? '');
+        const storedCurrent =
+          localStorage.getItem('org_id') || localStorage.getItem('active_org_id') || '';
+        const nextCurrent =
+          storedCurrent || payload?.currentOrgId || (mapped[0]?.id ?? '');
         setItems(mapped);
         setCurrent(nextCurrent);
-        if (nextCurrent) localStorage.setItem('org_id', nextCurrent);
+        if (nextCurrent) {
+          localStorage.setItem('org_id', nextCurrent);
+          localStorage.setItem('active_org_id', nextCurrent);
+        }
       } catch {
         if (alive) {
           setItems([]);
@@ -43,12 +74,15 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
     })();
 
     return () => { alive = false; };
-  }, [me]);
+  }, [isGlobalAdmin, me?.id]);
 
   const handleChange = async (e) => {
     const orgId = e.target.value;
     setCurrent(orgId);
-    localStorage.setItem('org_id', orgId); // mantém WS e outras áreas em sincronia
+    if (orgId) {
+      localStorage.setItem('org_id', orgId);
+      localStorage.setItem('active_org_id', orgId);
+    }
     try {
       await switchOrg(orgId);
     } catch {
