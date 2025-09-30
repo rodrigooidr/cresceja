@@ -85,17 +85,36 @@ router.post('/switch', authRequired, async (req, res, next) => {
     const userId = req.user?.id || req.user?.sub || null;
     if (!userId) return res.status(401).json({ error: 'unauthorized' });
 
-    const client = req.pool ?? pool;
-    const { rows } = await client.query(
-      `SELECT 1
-         FROM public.org_members
-        WHERE user_id = $1 AND org_id = $2
-        LIMIT 1`,
-      [userId, orgId]
+    const roleSet = new Set(
+      [...(req.user?.roles || []), req.user?.role].filter(Boolean),
     );
+    const isGlobalAdmin = roleSet.has('SuperAdmin') || roleSet.has('Support');
 
-    if (!rows?.length) {
-      return res.status(403).json({ error: 'forbidden' });
+    const client = req.pool ?? pool;
+    let allowed = false;
+
+    if (isGlobalAdmin) {
+      const { rows } = await client.query(
+        `SELECT 1
+           FROM public.organizations
+          WHERE id = $1
+          LIMIT 1`,
+        [orgId],
+      );
+      allowed = rows?.length > 0;
+    } else {
+      const { rows } = await client.query(
+        `SELECT 1
+           FROM public.org_members
+          WHERE user_id = $1 AND org_id = $2
+          LIMIT 1`,
+        [userId, orgId],
+      );
+      allowed = rows?.length > 0;
+    }
+
+    if (!allowed) {
+      return res.status(isGlobalAdmin ? 404 : 403).json({ error: 'forbidden' });
     }
 
     return res.status(204).end();

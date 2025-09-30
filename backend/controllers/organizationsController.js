@@ -164,41 +164,45 @@ export async function listAdmin(req, res, next) {
 export async function listForMe(req, res, next) {
   try {
     const roleSet = new Set(
-      [...(req.user?.roles || []), req.user?.role].filter(Boolean)
+      [...(req.user?.roles || []), req.user?.role].filter(Boolean),
     );
     const isGlobalAdmin = roleSet.has('SuperAdmin') || roleSet.has('Support');
+    const currentOrgId = req.user?.org_id ?? null;
+    const userId = req.user?.id ?? req.user?.sub ?? null;
 
-    let sql;
-    let params = [];
+    let rows = [];
 
     if (isGlobalAdmin) {
-      sql = `
-        SELECT o.id,
-               o.name,
-               o.slug,
-               o.status
-          FROM public.organizations o
-         WHERE o.status = 'active'
-         ORDER BY o.name ASC
-         LIMIT 1000
-      `;
-    } else {
-      sql = `
-        SELECT o.id,
-               o.name,
-               o.slug,
-               o.status
-          FROM public.organizations o
-          JOIN public.org_members m ON m.org_id = o.id
-         WHERE m.user_id = $1
-         ORDER BY o.name ASC
-         LIMIT 1000
-      `;
-      params = [req.user.id];
+      const result = await query(
+        `SELECT o.id, o.name, o.slug
+           FROM public.organizations o
+          ORDER BY o.name ASC
+          LIMIT 1000`,
+      );
+      rows = result?.rows ?? [];
+    } else if (userId) {
+      const result = await query(
+        `SELECT o.id, o.name, o.slug
+           FROM public.organizations o
+           JOIN public.org_members m ON m.org_id = o.id
+          WHERE m.user_id = $1
+          ORDER BY o.name ASC
+          LIMIT 1000`,
+        [userId],
+      );
+      rows = result?.rows ?? [];
     }
 
-    const { rows } = await query(sql, params);
-    res.json({ items: (rows || []).map(mapOrganization) });
+    const orgs = rows.map((row) => ({
+      id: row.id,
+      name: row.name ?? null,
+      slug: row.slug ?? null,
+    }));
+
+    res.json({
+      currentOrgId: currentOrgId ?? orgs[0]?.id ?? null,
+      orgs,
+    });
   } catch (e) {
     next(e);
   }

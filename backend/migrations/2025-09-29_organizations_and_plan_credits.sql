@@ -1,4 +1,4 @@
--- organizations básicas + índices
+-- organizations
 CREATE TABLE IF NOT EXISTS public.organizations (
   id uuid PRIMARY KEY,
   name text,
@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS public.organizations (
   status text,
   plan_id uuid NULL,
   trial_ends_at timestamptz NULL,
+  email text,
+  phone text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
@@ -20,7 +22,7 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- plans + créditos de IA
+-- plano/creditos
 CREATE TABLE IF NOT EXISTS public.plans (
   id uuid PRIMARY KEY,
   name text,
@@ -36,16 +38,9 @@ ALTER TABLE public.plans
   ADD COLUMN IF NOT EXISTS code text UNIQUE,
   ADD COLUMN IF NOT EXISTS ai_tokens_limit bigint NOT NULL DEFAULT 0;
 
--- semeadura dos planos usados nas orgs do ambiente
-INSERT INTO public.plans (id, name, code, price_cents)
+-- seeds coerentes com plan_id das suas orgs
+INSERT INTO public.plans (id, name, code)
 VALUES
-  ('d085fd00-16ea-4e24-abb0-69021a8b3c7e','Starter','starter', 0),
-  ('a4a7f5f3-8615-4b02-9334-7adfeb0e76e3','Pro','pro', 0)
-ON CONFLICT (id) DO UPDATE
-SET name = EXCLUDED.name,
-    code = EXCLUDED.code;
-
-UPDATE public.plans
-SET code = regexp_replace(lower(coalesce(code, name)), '[^a-z0-9]+', '-', 'g')
-WHERE (code IS NULL OR code = '')
-  AND name IS NOT NULL;
+  ('d085fd00-16ea-4e24-abb0-69021a8b3c7e','Starter','starter'),
+  ('a4a7f5f3-8615-4b02-9334-7adfeb0e76e3','Pro','pro')
+ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, code=EXCLUDED.code;

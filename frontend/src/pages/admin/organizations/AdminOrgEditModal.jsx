@@ -368,7 +368,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       if (isCreate) {
         const payload = buildCreatePayload();
         const response = await postAdminOrg(payload);
-        const createdId = response?.data?.id || null;
+        const createdId = response?.id || null;
         setFeedback("Organização criada com sucesso.");
         onSaved?.({ id: createdId });
       } else if (org?.id) {

@@ -7,6 +7,9 @@ import { db } from './orgs.shared.js';
 import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
 
 const router = Router();
+
+router.use(authRequired);
+router.use(requireRole([ROLES.SuperAdmin, ROLES.Support]));
 const StatusSchema = z.enum(['active', 'inactive', 'all']).default('active');
 const IdSchema = z.object({ orgId: z.string().uuid() });
 
@@ -76,7 +79,7 @@ router.post('/', async (req, res, next) => {
 
     const { rows: dupRows } = await db.query(
       `SELECT 1
-         FROM organizations
+         FROM public.organizations
         WHERE util_digits(cnpj) = util_digits($1)
            OR lower(email) = lower($2)
            OR phone_e164 = $3
@@ -86,7 +89,7 @@ router.post('/', async (req, res, next) => {
     if (dupRows?.length) return res.status(409).json({ error: 'duplicate_org_key' });
 
     const { rows: inserted } = await db.query(
-      `INSERT INTO organizations (
+      `INSERT INTO public.organizations (
          id, cnpj, razao_social, nome_fantasia, ie, ie_isento,
          site, email, phone_e164, status,
          cep, logradouro, numero, complemento, bairro, cidade, uf, country,
@@ -151,19 +154,23 @@ router.post('/', async (req, res, next) => {
 
 router.delete(
   '/:orgId',
-  authRequired,
-  requireRole([ROLES.SuperAdmin, ROLES.Support]),
   async (req, res, next) => {
     try {
       const { orgId } = IdSchema.parse(req.params);
-      const { rowCount } = await db.query(
-        'DELETE FROM public.organizations WHERE id = $1 AND slug <> $2',
-        [orgId, 'default'],
+      const { rows } = await db.query(
+        'SELECT slug FROM public.organizations WHERE id = $1',
+        [orgId],
       );
 
-      if (rowCount === 0) {
+      if (!rows?.length) {
         return res.status(404).json({ error: 'not_found' });
       }
+
+      if (rows[0]?.slug === 'default') {
+        return res.status(409).json({ error: 'protected_organization' });
+      }
+
+      await db.query('DELETE FROM public.organizations WHERE id = $1', [orgId]);
 
       return res.status(204).end();
     } catch (err) {

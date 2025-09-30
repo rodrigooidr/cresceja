@@ -2,6 +2,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { db } from './orgs.shared.js';
+import authRequired from '../../middleware/auth.js';
+import { requireRole, ROLES } from '../../middleware/requireRole.js';
 import { withOrgId } from '../../middleware/withOrgId.js';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
 
@@ -54,6 +56,8 @@ const OrgUpdateSchema = BaseUpdateSchema.merge(AdminOnlySchema);
 
 const router = Router({ mergeParams: true });
 
+router.use(authRequired);
+router.use(requireRole([ROLES.SuperAdmin, ROLES.Support]));
 router.use(withOrgId);
 
 function resolveOrgId(req) {
