@@ -47,6 +47,7 @@ frontend/pnpm-debug.log*
 # Env files
 frontend/.env
 frontend/.env.*
+!frontend/.env.development
 
 # ========================================
 # Infra / Docker
