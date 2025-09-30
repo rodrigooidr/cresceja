@@ -6,7 +6,8 @@ const router = express.Router({ mergeParams: true });
 // GET resumo
 router.get("/", async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ error: "missing_plan_id" });
     const { rows } = await query(`
       SELECT plan_id, ai_attendance_monthly, ai_content_monthly
         FROM public.plan_credits
@@ -28,9 +29,19 @@ router.get("/", async (req, res, next) => {
 // PUT upsert (compat: aceita {tokens} ou { ai:{attendance_monthly, content_monthly} })
 router.put("/", async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ error: "missing_plan_id" });
     const body = req.body || {};
     const ai = body.ai || {};
+
+    const planExists = await query(
+      `SELECT 1 FROM public.plans WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+
+    if (!planExists.rowCount) {
+      return res.status(404).json({ code: "not_found" });
+    }
 
     const tokensCompat =
       Number.isFinite(+body.tokens) ? +body.tokens
@@ -54,6 +65,8 @@ router.put("/", async (req, res, next) => {
              updated_at            = now()
       RETURNING plan_id, ai_attendance_monthly, ai_content_monthly
     `, [id, attendance, content]);
+
+    req.log?.info({ planId: id, ai: { attendance, content } }, "admin:plan_credits.updated");
 
     res.json({
       plan_id: rows[0].plan_id,
