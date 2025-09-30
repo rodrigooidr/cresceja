@@ -170,28 +170,24 @@ export async function listForMe(req, res, next) {
     const currentOrgId = req.user?.org_id ?? null;
     const userId = req.user?.id ?? req.user?.sub ?? null;
 
-    let rows = [];
+    if (!isGlobalAdmin && !userId) {
+      return res.json({ currentOrgId, orgs: [] });
+    }
 
-    if (isGlobalAdmin) {
-      const result = await query(
-        `SELECT o.id, o.name, o.slug
+    const sql = isGlobalAdmin
+      ? `SELECT o.id, o.name, o.slug
            FROM public.organizations o
           ORDER BY o.name ASC
-          LIMIT 1000`,
-      );
-      rows = result?.rows ?? [];
-    } else if (userId) {
-      const result = await query(
-        `SELECT o.id, o.name, o.slug
+          LIMIT 1000`
+      : `SELECT o.id, o.name, o.slug
            FROM public.organizations o
            JOIN public.org_members m ON m.org_id = o.id
           WHERE m.user_id = $1
           ORDER BY o.name ASC
-          LIMIT 1000`,
-        [userId],
-      );
-      rows = result?.rows ?? [];
-    }
+          LIMIT 1000`;
+
+    const params = isGlobalAdmin ? [] : [userId];
+    const { rows = [] } = await query(sql, params);
 
     const orgs = rows.map((row) => ({
       id: row.id,
