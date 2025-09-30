@@ -355,7 +355,14 @@ export async function adminListOrgs({ status = 'active', q = '' } = {}) {
         ? String(org.status).toLowerCase() === 'active'
         : false;
     const statusValue = org?.status ?? (normalizedActive ? 'active' : 'inactive');
-    return { ...org, active: normalizedActive, status: statusValue };
+    const planName = org?.plan ?? org?.plan_name ?? null;
+    return {
+      ...org,
+      plan: planName,
+      plan_name: planName,
+      active: normalizedActive,
+      status: statusValue,
+    };
   });
 }
 

@@ -827,129 +827,67 @@ router.put('/:id/features', async (req, res, next) => {
   }
 });
 
-async function loadPlanCredits(q, planId) {
-  let planExists = false;
-
+function normalizeBigInt(value) {
+  if (value === null || value === undefined) return '0';
+  if (typeof value === 'bigint') return value.toString();
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) return '0';
+    return Math.trunc(value).toString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '0';
+    try {
+      return BigInt(trimmed).toString();
+    } catch (err) {
+      return '0';
+    }
+  }
   try {
-    const { rows } = await q(
-      'SELECT ai_tokens_limit FROM public.plans WHERE id = $1',
-      [planId]
-    );
-    if (rows.length) {
-      planExists = true;
-      if (Object.prototype.hasOwnProperty.call(rows[0], 'ai_tokens_limit')) {
-        const raw = rows[0].ai_tokens_limit;
-        const value = Number(raw ?? 0);
-        return {
-          planExists,
-          data: [
-            {
-              meter: 'ai_tokens',
-              limit: Number.isFinite(value) ? value : 0,
-            },
-          ],
-        };
-      }
-    }
+    return BigInt(value).toString();
   } catch (err) {
-    if (err.code !== '42703') {
-      throw err;
-    }
-    const { rowCount } = await q('SELECT 1 FROM public.plans WHERE id = $1', [planId]);
-    planExists = rowCount > 0;
+    return '0';
   }
-
-  if (!planExists) {
-    return { planExists: false, data: [{ meter: 'ai_tokens', limit: 0 }] };
-  }
-
-  try {
-    const { rows } = await q(
-      `SELECT pf.value->>'value' AS limit
-         FROM public.plan_features pf
-        WHERE pf.plan_id = $1 AND pf.feature_code = 'ai_tokens_limit'
-        LIMIT 1`,
-      [planId]
-    );
-    if (rows.length) {
-      const raw = rows[0]?.limit ?? 0;
-      const value = Number(raw);
-      return {
-        planExists: true,
-        data: [
-          {
-            meter: 'ai_tokens',
-            limit: Number.isFinite(value) ? value : 0,
-          },
-        ],
-      };
-    }
-  } catch (err) {
-    if (!['42P01', '42703'].includes(err.code)) {
-      throw err;
-    }
-  }
-
-  return { planExists: true, data: [{ meter: 'ai_tokens', limit: 0 }] };
 }
 
-async function savePlanCredits(q, planId, payload, db) {
-  const item = Array.isArray(payload) ? payload.find((m) => m?.meter === 'ai_tokens') : null;
-  const parsed = Number(item?.limit ?? 0);
-  const normalized = Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
-
-  try {
-    const { rowCount } = await q(
-      `UPDATE public.plans
-          SET ai_tokens_limit = $2,
-              updated_at = now()
-        WHERE id = $1`,
-      [planId, normalized]
-    );
-    if (rowCount === 0) {
-      return { planExists: false, data: [{ meter: 'ai_tokens', limit: normalized }] };
-    }
-    return { planExists: true, data: [{ meter: 'ai_tokens', limit: normalized }] };
-  } catch (err) {
-    if (err.code !== '42703') {
-      throw err;
-    }
-  }
-
-  const { rowCount } = await q('SELECT 1 FROM public.plans WHERE id = $1', [planId]);
-  if (!rowCount) {
-    return { planExists: false, data: [{ meter: 'ai_tokens', limit: normalized }] };
-  }
-
-  await upsertPlanFeatures(
-    planId,
-    [
-      {
-        code: 'ai_tokens_limit',
-        value: normalized,
-      },
-    ],
-    db
-  );
-
-  await q(
-    'UPDATE public.plans SET updated_at = now() WHERE id = $1',
-    [planId]
-  );
-
-  return { planExists: true, data: [{ meter: 'ai_tokens', limit: normalized }] };
-}
+const PlanCreditsPayloadSchema = z.object({
+  data: z
+    .array(
+      z.object({
+        meter: z.literal('ai_tokens'),
+        limit: z
+          .number({ invalid_type_error: 'limit must be a number' })
+          .min(0, 'limit must be greater or equal to zero'),
+      })
+    )
+    .nonempty('data must contain at least one entry'),
+});
 
 router.get('/:id/credits', async (req, res) => {
   const q = getQuery(req);
   const planId = req.params.id;
 
   try {
-    const result = await loadPlanCredits(q, planId);
-    if (!result.planExists) {
+    const { rows } = await q(
+      'SELECT ai_tokens_limit FROM public.plans WHERE id = $1',
+      [planId]
+    );
+
+    if (!rows?.length) {
       return res.status(404).json({ error: 'plan_not_found' });
     }
-    return res.json({ data: result.data });
+
+    const raw = rows[0]?.ai_tokens_limit ?? 0;
+    const limit = normalizeBigInt(raw);
+
+    return res.json({
+      data: [
+        {
+          meter: 'ai_tokens',
+          limit,
+        },
+      ],
+    });
   } catch (err) {
     req.log?.error({ err, planId }, 'admin/plans credits GET failed');
     return res.status(500).json({ error: 'internal_error' });
@@ -959,15 +897,36 @@ router.get('/:id/credits', async (req, res) => {
 router.put('/:id/credits', async (req, res) => {
   const q = getQuery(req);
   const planId = req.params.id;
-  const payload = Array.isArray(req.body?.data) ? req.body.data : [];
 
   try {
-    const result = await savePlanCredits(q, planId, payload, req.db);
-    if (!result.planExists) {
+    const parsed = PlanCreditsPayloadSchema.parse(req.body ?? {});
+    const item = parsed.data[0];
+    const normalized = BigInt(Math.trunc(item.limit));
+
+    const { rowCount } = await q(
+      `UPDATE public.plans
+          SET ai_tokens_limit = $1::bigint,
+              updated_at = NOW()
+        WHERE id = $2::uuid`,
+      [normalized.toString(), planId]
+    );
+
+    if (!rowCount) {
       return res.status(404).json({ error: 'plan_not_found' });
     }
-    return res.json({ data: result.data });
+
+    return res.json({
+      data: [
+        {
+          meter: 'ai_tokens',
+          limit: normalized.toString(),
+        },
+      ],
+    });
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: 'validation_error', details: err.errors });
+    }
     req.log?.error({ err, planId }, 'admin/plans credits PUT failed');
     return res.status(500).json({ error: 'internal_error' });
   }
