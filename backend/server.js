@@ -48,7 +48,7 @@ import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
 import metaOauthIntegrationRouter from './routes/integrations/meta.oauth.js';
 import googleCalendarRouter from './routes/integrations/google.calendar.js';
-import organizationsRouter from './routes/organizations.js';
+import organizationsRouter, { adminOrganizationsRouter } from './routes/organizations.js';
 import orgFeaturesRouter from './routes/orgs.features.js';
 import orgWhatsappRouter from './routes/orgs.whatsapp.js';
 import orgsCalendarRouter from './routes/orgs.calendar.js';
@@ -272,6 +272,7 @@ function configureApp() {
   // Rotas administrativas de organizações
   app.use('/api/admin/orgs', adminOrgsRouter);
   app.use('/api/admin/orgs/:orgId', withOrgId, adminOrgByIdRouter);
+  app.use('/api/admin/organizations', adminOrganizationsRouter);
 
   // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);

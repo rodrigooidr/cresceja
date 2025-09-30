@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { adminListOrgs, getMyOrgs, switchOrg } from "@/api/inboxApi";
+import { switchOrg } from '@/api/inboxApi';
+import { fetchMyOrganizations } from '@/api/admin/orgsApi';
 import { useAuth } from "@/contexts/AuthContext";
-import { hasGlobalRole } from "@/auth/roles";
 
 export default function WorkspaceSwitcher({ collapsed = false }) {
   const [items, setItems] = useState([]);
@@ -18,30 +18,20 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
 
     (async () => {
       try {
-        if (hasGlobalRole(['SuperAdmin', 'Support'], me)) {
-          const data = await adminListOrgs({ status: 'active' });
-          if (!alive) return;
-          const mapped = (Array.isArray(data) ? data : []).map((org) => ({
-            id: org.id,
-            name: org.name ?? org.company?.name ?? 'Org',
-            slug: org.slug ?? org.handle ?? null,
-          }));
-          const storedCurrent = localStorage.getItem('org_id') || localStorage.getItem('active_org_id') || '';
-          const nextCurrent = storedCurrent || (mapped[0]?.id ?? '');
-          setItems(mapped);
-          setCurrent(nextCurrent);
-          if (nextCurrent) localStorage.setItem('org_id', nextCurrent);
-        } else {
-          const data = await getMyOrgs();
-          if (!alive) return;
+        const data = await fetchMyOrganizations();
+        if (!alive) return;
 
-          const list = Array.isArray(data?.orgs) ? data.orgs : [];
-          const curr = data?.currentOrgId || '';
-
-          setItems(list);
-          setCurrent(curr);
-          if (curr) localStorage.setItem('org_id', curr);
-        }
+        const list = Array.isArray(data) ? data : [];
+        const mapped = list.map((org) => ({
+          id: org.id,
+          name: org.name ?? 'Org',
+          slug: org.slug ?? null,
+        }));
+        const storedCurrent = localStorage.getItem('org_id') || localStorage.getItem('active_org_id') || '';
+        const nextCurrent = storedCurrent || (mapped[0]?.id ?? '');
+        setItems(mapped);
+        setCurrent(nextCurrent);
+        if (nextCurrent) localStorage.setItem('org_id', nextCurrent);
       } catch {
         if (alive) {
           setItems([]);
