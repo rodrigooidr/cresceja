@@ -1,42 +1,32 @@
-// backend/routes/admin.plans.credits.js
 import express from "express";
 import { query } from '#db';
 
 const router = express.Router({ mergeParams: true });
 
-// GET /api/admin/plans/:id/credits
-router.get('/', async (req, res, next) => {
+// GET resumo
+router.get("/", async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { rows } = await query(
-      `
-      SELECT plan_id,
-             ai_attendance_monthly,
-             ai_content_monthly
+    const { rows } = await query(`
+      SELECT plan_id, ai_attendance_monthly, ai_content_monthly
         FROM public.plan_credits
        WHERE plan_id = $1
-    `,
-      [id]
-    );
+    `, [id]);
 
-    const [row] = rows;
-    if (!row) return res.status(404).json({ code: 'not_found' });
+    if (!rows[0]) return res.status(404).json({ code: "not_found" });
 
     res.json({
-      plan_id: row.plan_id,
+      plan_id: rows[0].plan_id,
       ai: {
-        attendance_monthly: row.ai_attendance_monthly,
-        content_monthly: row.ai_content_monthly,
-      }
+        attendance_monthly: rows[0].ai_attendance_monthly,
+        content_monthly: rows[0].ai_content_monthly,
+      },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
-// PUT /api/admin/plans/:id/credits
-// Compat: aceita { tokens } OU { ai:{attendance_monthly, content_monthly} }
-router.put('/', async (req, res, next) => {
+// PUT upsert (compat: aceita {tokens} ou { ai:{attendance_monthly, content_monthly} })
+router.put("/", async (req, res, next) => {
   try {
     const { id } = req.params;
     const body = req.body || {};
@@ -55,8 +45,7 @@ router.put('/', async (req, res, next) => {
       ? +ai.content_monthly
       : (tokensCompat ?? 0);
 
-    const { rows } = await query(
-      `
+    const { rows } = await query(`
       INSERT INTO public.plan_credits (plan_id, ai_attendance_monthly, ai_content_monthly, updated_at)
       VALUES ($1, $2, $3, now())
       ON CONFLICT (plan_id) DO UPDATE
@@ -64,22 +53,16 @@ router.put('/', async (req, res, next) => {
              ai_content_monthly    = EXCLUDED.ai_content_monthly,
              updated_at            = now()
       RETURNING plan_id, ai_attendance_monthly, ai_content_monthly
-    `,
-      [id, attendance, content]
-    );
-
-    const [row] = rows;
+    `, [id, attendance, content]);
 
     res.json({
-      plan_id: row.plan_id,
+      plan_id: rows[0].plan_id,
       ai: {
-        attendance_monthly: row.ai_attendance_monthly,
-        content_monthly: row.ai_content_monthly,
-      }
+        attendance_monthly: rows[0].ai_attendance_monthly,
+        content_monthly: rows[0].ai_content_monthly,
+      },
     });
-  } catch (err) {
-    next(err);
-  }
+  } catch (err) { next(err); }
 });
 
 export default router;
