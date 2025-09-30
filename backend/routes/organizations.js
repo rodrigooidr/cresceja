@@ -73,15 +73,30 @@ router.get('/me', authRequired, async (req, res, next) => {
     const currentOrgId = req.user?.org_id || null;
     if (!userId) return res.json({ currentOrgId: null, orgs: [] });
 
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+      ? [req.user.role]
+      : [];
+
     const client = req.pool ?? pool;
-    const { rows } = await client.query(
-      `SELECT o.id, o.name, o.slug
-         FROM public.organizations o
-         JOIN public.org_members m ON m.org_id = o.id
-        WHERE m.user_id = $1
-        ORDER BY o.name ASC`,
-      [userId]
-    );
+    let rows;
+    if (roles.includes('SuperAdmin') || roles.includes('Support')) {
+      ({ rows } = await client.query(
+        `SELECT o.id, o.name, o.slug
+           FROM public.organizations o
+          ORDER BY o.name ASC`
+      ));
+    } else {
+      ({ rows } = await client.query(
+        `SELECT o.id, o.name, o.slug
+           FROM public.organizations o
+           JOIN public.org_members m ON m.org_id = o.id
+          WHERE m.user_id = $1
+          ORDER BY o.name ASC`,
+        [userId]
+      ));
+    }
 
     return res.json({ currentOrgId, orgs: rows ?? [] });
   } catch (err) {

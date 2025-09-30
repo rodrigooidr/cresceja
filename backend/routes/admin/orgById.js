@@ -1,8 +1,56 @@
 // backend/routes/admin/orgById.js
 import { Router } from 'express';
+import { z } from 'zod';
 import { db } from './orgs.shared.js';
 import { withOrgId } from '../../middleware/withOrgId.js';
 import { startForOrg, stopForOrg } from '../../services/baileysService.js';
+
+const ADMIN_ROLES = new Set(['SuperAdmin', 'Support']);
+
+const BaseUpdateSchema = z
+  .object({
+    name: z.string().min(1).optional(),
+    slug: z.string().min(1).nullable().optional(),
+    status: z.enum(['active', 'inactive', 'suspended', 'canceled']).optional(),
+    plan_id: z.string().uuid().nullable().optional(),
+    trial_ends_at: z.string().min(1).nullable().optional(),
+    document_type: z.enum(['CNPJ', 'CPF']).nullable().optional(),
+    document_value: z.string().nullable().optional(),
+    email: z.string().email().nullable().optional(),
+    phone: z.string().nullable().optional(),
+    phone_e164: z.string().nullable().optional(),
+    razao_social: z.string().nullable().optional(),
+    nome_fantasia: z.string().nullable().optional(),
+    site: z.string().url().nullable().optional(),
+    ie: z.string().nullable().optional(),
+    ie_isento: z.boolean().optional(),
+    cep: z.string().nullable().optional(),
+    logradouro: z.string().nullable().optional(),
+    numero: z.string().nullable().optional(),
+    complemento: z.string().nullable().optional(),
+    bairro: z.string().nullable().optional(),
+    cidade: z.string().nullable().optional(),
+    uf: z.string().nullable().optional(),
+    country: z.string().nullable().optional(),
+    resp_nome: z.string().nullable().optional(),
+    resp_cpf: z.string().nullable().optional(),
+    resp_email: z.string().email().nullable().optional(),
+    resp_phone_e164: z.string().nullable().optional(),
+    photo_url: z.string().url().nullable().optional(),
+    meta: z.any().optional(),
+  })
+  .partial();
+
+const AdminOnlySchema = z
+  .object({
+    whatsapp_baileys_enabled: z.boolean().optional(),
+    whatsapp_mode: z.enum(['baileys', 'none']).optional(),
+    whatsapp_baileys_status: z.string().nullable().optional(),
+    whatsapp_baileys_phone: z.string().nullable().optional(),
+  })
+  .partial();
+
+const OrgUpdateSchema = BaseUpdateSchema.merge(AdminOnlySchema);
 
 const router = Router({ mergeParams: true });
 
@@ -16,44 +64,97 @@ function resolveOrgId(req) {
 router.patch('/', async (req, res, next) => {
   try {
     const orgId = resolveOrgId(req);
-    const up = req.body || {};
-    const allow = [
-      'name',
-      'slug',
-      'status',
-      'plan_id',
-      'trial_ends_at',
-      'document_type',
-      'document_value',
-      'email',
-      'phone',
-      'whatsapp_baileys_enabled',
-      'whatsapp_baileys_status',
-      'whatsapp_baileys_phone',
-      'photo_url',
-      'meta',
-    ];
+    const parsed = OrgUpdateSchema.parse(req.body || {});
 
-    const sets = [];
+    const userRoles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+      ? [req.user.role]
+      : [];
+    const canManageBaileys = userRoles.some((role) => ADMIN_ROLES.has(role));
+
+    const baseUpdates = {};
+    const adminUpdates = {};
+
+    const assignString = (value) => {
+      if (value === undefined) return undefined;
+      if (value === null) return null;
+      const trimmed = String(value).trim();
+      return trimmed.length ? trimmed : null;
+    };
+
+    if (parsed.name !== undefined) baseUpdates.name = String(parsed.name).trim();
+    if (parsed.slug !== undefined) baseUpdates.slug = assignString(parsed.slug);
+    if (parsed.status !== undefined) baseUpdates.status = parsed.status;
+    if (parsed.plan_id !== undefined) baseUpdates.plan_id = assignString(parsed.plan_id);
+    if (parsed.trial_ends_at !== undefined)
+      baseUpdates.trial_ends_at = assignString(parsed.trial_ends_at);
+    if (parsed.document_type !== undefined) baseUpdates.document_type = assignString(parsed.document_type);
+    if (parsed.document_value !== undefined)
+      baseUpdates.document_value = assignString(parsed.document_value);
+    if (parsed.email !== undefined)
+      baseUpdates.email = assignString(parsed.email)?.toLowerCase() ?? null;
+    if (parsed.phone !== undefined) baseUpdates.phone = assignString(parsed.phone);
+    if (parsed.phone_e164 !== undefined)
+      baseUpdates.phone_e164 = assignString(parsed.phone_e164);
+    if (parsed.razao_social !== undefined)
+      baseUpdates.razao_social = assignString(parsed.razao_social);
+    if (parsed.nome_fantasia !== undefined)
+      baseUpdates.nome_fantasia = assignString(parsed.nome_fantasia);
+    if (parsed.site !== undefined) baseUpdates.site = assignString(parsed.site);
+    if (parsed.ie !== undefined) baseUpdates.ie = assignString(parsed.ie);
+    if (parsed.ie_isento !== undefined) baseUpdates.ie_isento = !!parsed.ie_isento;
+    if (parsed.cep !== undefined) baseUpdates.cep = assignString(parsed.cep);
+    if (parsed.logradouro !== undefined) baseUpdates.logradouro = assignString(parsed.logradouro);
+    if (parsed.numero !== undefined) baseUpdates.numero = assignString(parsed.numero);
+    if (parsed.complemento !== undefined) baseUpdates.complemento = assignString(parsed.complemento);
+    if (parsed.bairro !== undefined) baseUpdates.bairro = assignString(parsed.bairro);
+    if (parsed.cidade !== undefined) baseUpdates.cidade = assignString(parsed.cidade);
+    if (parsed.uf !== undefined) baseUpdates.uf = assignString(parsed.uf)?.toUpperCase() ?? null;
+    if (parsed.country !== undefined) baseUpdates.country = assignString(parsed.country);
+    if (parsed.resp_nome !== undefined) baseUpdates.resp_nome = assignString(parsed.resp_nome);
+    if (parsed.resp_cpf !== undefined) baseUpdates.resp_cpf = assignString(parsed.resp_cpf);
+    if (parsed.resp_email !== undefined)
+      baseUpdates.resp_email = assignString(parsed.resp_email)?.toLowerCase() ?? null;
+    if (parsed.resp_phone_e164 !== undefined)
+      baseUpdates.resp_phone_e164 = assignString(parsed.resp_phone_e164);
+    if (parsed.photo_url !== undefined) baseUpdates.photo_url = assignString(parsed.photo_url);
+    if (parsed.meta !== undefined) {
+      if (parsed.meta === null) baseUpdates.meta = null;
+      else if (typeof parsed.meta === 'string') baseUpdates.meta = parsed.meta;
+      else baseUpdates.meta = JSON.stringify(parsed.meta);
+    }
+
+    if (parsed.whatsapp_baileys_enabled !== undefined)
+      adminUpdates.whatsapp_baileys_enabled = !!parsed.whatsapp_baileys_enabled;
+    if (parsed.whatsapp_mode !== undefined)
+      adminUpdates.whatsapp_mode = parsed.whatsapp_mode || 'none';
+    if (parsed.whatsapp_baileys_status !== undefined)
+      adminUpdates.whatsapp_baileys_status = assignString(parsed.whatsapp_baileys_status);
+    if (parsed.whatsapp_baileys_phone !== undefined)
+      adminUpdates.whatsapp_baileys_phone = assignString(parsed.whatsapp_baileys_phone);
+
+    const updates = { ...Object.fromEntries(Object.entries(baseUpdates).filter(([, v]) => v !== undefined)) };
+
+    if (canManageBaileys) {
+      Object.assign(
+        updates,
+        Object.fromEntries(Object.entries(adminUpdates).filter(([, v]) => v !== undefined))
+      );
+    }
+
+    const keys = Object.keys(updates);
+    if (!keys.length) return res.status(400).json({ error: 'no_fields_to_update' });
+
     const params = [];
-
-    allow.forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(up, key)) {
-        let value = up[key];
-        if (key === 'plan_id' && !value) value = null;
-        if (key === 'trial_ends_at' && !value) value = null;
-        if (key === 'meta' && value !== null && value !== undefined && typeof value !== 'string') {
-          value = JSON.stringify(value);
-        }
-        if (['whatsapp_baileys_enabled'].includes(key)) {
-          value = !!value;
-        }
-        params.push(value);
-        sets.push(`${key}=$${params.length}`);
-      }
+    const sets = keys.map((key, index) => {
+      let value = updates[key];
+      if (key === 'plan_id' && !value) value = null;
+      if (key === 'trial_ends_at' && !value) value = null;
+      if (key === 'meta' && value !== null && typeof value !== 'string') value = JSON.stringify(value);
+      params.push(value);
+      return `${key}=$${index + 1}`;
     });
-
-    if (!sets.length) return res.status(400).json({ error: 'no_fields_to_update' });
 
     params.push(orgId);
     await db.query(
@@ -77,7 +178,27 @@ router.patch('/', async (req, res, next) => {
          o.document_value,
          o.email,
          o.phone,
+         o.phone_e164,
+         o.cnpj,
+         o.razao_social,
+         o.nome_fantasia,
+         o.site,
+         o.ie,
+         o.ie_isento,
+         o.cep,
+         o.logradouro,
+         o.numero,
+         o.complemento,
+         o.bairro,
+         o.cidade,
+         o.uf,
+         o.country,
+         o.resp_nome,
+         o.resp_cpf,
+         o.resp_email,
+         o.resp_phone_e164,
          o.whatsapp_baileys_enabled,
+         o.whatsapp_mode,
          o.whatsapp_baileys_status,
          o.whatsapp_baileys_phone,
          o.photo_url,
@@ -91,6 +212,9 @@ router.patch('/', async (req, res, next) => {
 
     return res.json({ ok: true, org: org || null });
   } catch (e) {
+    if (e?.name === 'ZodError') {
+      return res.status(422).json({ error: 'validation', issues: e.issues });
+    }
     next(e);
   }
 });

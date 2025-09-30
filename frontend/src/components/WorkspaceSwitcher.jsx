@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import inboxApi, { adminListOrgs } from "@/api/inboxApi";
+import { adminListOrgs, getMyOrgs, switchOrg } from "@/api/inboxApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { hasGlobalRole } from "@/auth/roles";
 
@@ -32,7 +32,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
           setCurrent(nextCurrent);
           if (nextCurrent) localStorage.setItem('org_id', nextCurrent);
         } else {
-          const { data } = await inboxApi.get('/orgs/me');
+          const data = await getMyOrgs();
           if (!alive) return;
 
           const list = Array.isArray(data?.orgs) ? data.orgs : [];
@@ -60,7 +60,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
     setCurrent(orgId);
     localStorage.setItem('org_id', orgId); // mantém WS e outras áreas em sincronia
     try {
-      await inboxApi.post('/orgs/switch', { orgId });
+      await switchOrg(orgId);
     } catch {
       // ignora erros: a página vai recarregar de qualquer jeito
     }
