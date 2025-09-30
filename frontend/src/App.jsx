@@ -25,7 +25,7 @@ import FacebookPublisher from "./pages/marketing/FacebookPublisher.jsx";
 import ContentCalendar from "./pages/marketing/ContentCalendar.jsx";
 import GovLogsPage from "./pages/marketing/GovLogsPage.jsx";
 import TelemetryPage from "./pages/governanca/TelemetryPage.jsx";
-import AdminOrganizationsPage from "./pages/admin/organizations/AdminOrganizationsPage.jsx";
+import OrganizationsPage from "./pages/admin/OrganizationsPage.jsx";
 import OrgDetailsPage from "./pages/admin/OrgDetailsPage.jsx"; // ← detalhe da org
 import PlansAdminPage from "./pages/admin/PlansAdminPage.jsx";
 import OrgPlanPage from "./pages/org/OrgPlanPage.jsx";
@@ -68,7 +68,7 @@ export default function App() {
             <Route
               element={<RoleGate allow={canViewOrganizationsAdmin} redirectTo="/inbox" />}
             >
-              <Route path="/admin/organizations" element={<AdminOrganizationsPage />} />
+              <Route path="/admin/organizations" element={<OrganizationsPage />} />
               <Route path="/admin/organizations/:id" element={<OrgDetailsPage />} />{/* ← add */}
               <Route path="/admin/plans" element={<PlansAdminPage />} />
             </Route>

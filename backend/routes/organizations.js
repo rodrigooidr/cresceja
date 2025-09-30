@@ -4,6 +4,14 @@ import { pool } from '#db';
 import { z } from 'zod';
 import authRequired from '../middleware/auth.js';
 import * as requireRoleModule from '../middleware/requireRole.js';
+import {
+  listForMe,
+  listAdmin,
+  getAdminById,
+  createAdmin,
+  updateAdmin,
+  deleteAdmin,
+} from '../controllers/organizationsController.js';
 
 const requireRole =
   requireRoleModule.requireRole ??
@@ -67,42 +75,7 @@ router.get('/accessible', authRequired, async (req, res, next) => {
 });
 
 // GET /api/orgs/me - usado pelo WorkspaceSwitcher
-router.get('/me', authRequired, async (req, res, next) => {
-  try {
-    const userId = req.user?.id || req.user?.sub || null;
-    const currentOrgId = req.user?.org_id || null;
-    if (!userId) return res.json({ currentOrgId: null, orgs: [] });
-
-    const roles = Array.isArray(req.user?.roles)
-      ? req.user.roles
-      : req.user?.role
-      ? [req.user.role]
-      : [];
-
-    const client = req.pool ?? pool;
-    let rows;
-    if (roles.includes('SuperAdmin') || roles.includes('Support')) {
-      ({ rows } = await client.query(
-        `SELECT o.id, o.name, o.slug
-           FROM public.organizations o
-          ORDER BY o.name ASC`
-      ));
-    } else {
-      ({ rows } = await client.query(
-        `SELECT o.id, o.name, o.slug
-           FROM public.organizations o
-           JOIN public.org_members m ON m.org_id = o.id
-          WHERE m.user_id = $1
-          ORDER BY o.name ASC`,
-        [userId]
-      ));
-    }
-
-    return res.json({ currentOrgId, orgs: rows ?? [] });
-  } catch (err) {
-    return next(err);
-  }
-});
+router.get('/me', authRequired, listForMe);
 
 const SwitchSchema = z.object({ orgId: z.string().uuid() });
 
@@ -283,4 +256,42 @@ router.get(
   },
 );
 
+const adminOrganizationsRouter = Router();
+
+adminOrganizationsRouter.get(
+  '/',
+  authRequired,
+  requireRole([ROLES.SuperAdmin, ROLES.Support]),
+  listAdmin,
+);
+
+adminOrganizationsRouter.post(
+  '/',
+  authRequired,
+  requireRole([ROLES.SuperAdmin, ROLES.Support]),
+  createAdmin,
+);
+
+adminOrganizationsRouter.get(
+  '/:orgId',
+  authRequired,
+  requireRole([ROLES.SuperAdmin, ROLES.Support]),
+  getAdminById,
+);
+
+adminOrganizationsRouter.patch(
+  '/:orgId',
+  authRequired,
+  requireRole([ROLES.SuperAdmin, ROLES.Support]),
+  updateAdmin,
+);
+
+adminOrganizationsRouter.delete(
+  '/:orgId',
+  authRequired,
+  requireRole([ROLES.SuperAdmin, ROLES.Support]),
+  deleteAdmin,
+);
+
+export { adminOrganizationsRouter };
 export default router;

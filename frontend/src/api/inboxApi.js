@@ -386,7 +386,9 @@ export async function deleteAdminOrg(orgId, options = {}) {
 
 export async function getMyOrgs() {
   const { data } = await client.get('/orgs/me');
-  return data;
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const currentOrgId = data?.currentOrgId ?? items[0]?.id ?? null;
+  return { orgs: items, currentOrgId };
 }
 
 export async function switchOrg(orgId) {

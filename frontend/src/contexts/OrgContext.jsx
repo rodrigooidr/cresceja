@@ -6,7 +6,8 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import inboxApi, { listAdminOrgs, setActiveOrg } from "../api/inboxApi";
+import inboxApi, { setActiveOrg } from "../api/inboxApi";
+import { fetchMyOrganizations } from "@/api/admin/orgsApi";
 import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
@@ -98,10 +99,9 @@ export function OrgProvider({ children }) {
 
         let data;
         if (visibility === "all") {
-          const statusArg = params.status || "all";
           try {
-            const response = await listAdminOrgs(statusArg, { params });
-            data = response?.data;
+            const items = await fetchMyOrganizations();
+            data = { items };
           } catch (err) {
             if (err?.response?.status === 403) {
               ({ data } = await inboxApi.get("orgs/accessible", {
