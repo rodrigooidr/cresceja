@@ -38,6 +38,13 @@ ALTER TABLE public.plans
   ADD COLUMN IF NOT EXISTS code text UNIQUE,
   ADD COLUMN IF NOT EXISTS ai_tokens_limit bigint NOT NULL DEFAULT 0;
 
+CREATE TABLE IF NOT EXISTS public.org_members (
+  org_id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  role text,
+  PRIMARY KEY (org_id, user_id)
+);
+
 -- seeds coerentes com plan_id das suas orgs
 INSERT INTO public.plans (id, name, code)
 VALUES
