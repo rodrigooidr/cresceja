@@ -1,11 +1,14 @@
 // backend/routes/admin/orgs.js
 import { Router } from 'express';
 import { z } from 'zod';
+import authRequired from '../../middleware/auth.js';
+import { requireRole, ROLES } from '../../middleware/requireRole.js';
 import { db } from './orgs.shared.js';
 import { OrgCreateSchema } from '../../validation/orgSchemas.cjs';
 
 const router = Router();
 const StatusSchema = z.enum(['active', 'inactive', 'all']).default('active');
+const IdSchema = z.object({ orgId: z.string().uuid() });
 
 // GET /api/admin/orgs?status=active|inactive|all&q=foo
 router.get('/', async (req, res, next) => {
@@ -145,5 +148,31 @@ router.post('/', async (req, res, next) => {
     next(err);
   }
 });
+
+router.delete(
+  '/:orgId',
+  authRequired,
+  requireRole([ROLES.SuperAdmin, ROLES.Support]),
+  async (req, res, next) => {
+    try {
+      const { orgId } = IdSchema.parse(req.params);
+      const { rowCount } = await db.query(
+        'DELETE FROM public.organizations WHERE id = $1 AND slug <> $2',
+        [orgId, 'default'],
+      );
+
+      if (rowCount === 0) {
+        return res.status(404).json({ error: 'not_found' });
+      }
+
+      return res.status(204).end();
+    } catch (err) {
+      if (err.name === 'ZodError') {
+        return res.status(422).json({ error: 'validation', issues: err.issues });
+      }
+      return next(err);
+    }
+  },
+);
 
 export default router;

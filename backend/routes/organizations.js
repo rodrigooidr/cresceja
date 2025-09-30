@@ -1,6 +1,7 @@
 // backend/routes/orgs.js
 import { Router } from 'express';
 import { pool } from '#db';
+import { z } from 'zod';
 import authRequired from '../middleware/auth.js';
 import * as requireRoleModule from '../middleware/requireRole.js';
 
@@ -62,6 +63,59 @@ router.get('/accessible', authRequired, async (req, res, next) => {
     res.json({ data: rows });
   } catch (err) {
     next(err);
+  }
+});
+
+// GET /api/orgs/me - usado pelo WorkspaceSwitcher
+router.get('/me', authRequired, async (req, res, next) => {
+  try {
+    const userId = req.user?.id || req.user?.sub || null;
+    const currentOrgId = req.user?.org_id || null;
+    if (!userId) return res.json({ currentOrgId: null, orgs: [] });
+
+    const client = req.pool ?? pool;
+    const { rows } = await client.query(
+      `SELECT o.id, o.name, o.slug
+         FROM public.organizations o
+         JOIN public.org_members m ON m.org_id = o.id
+        WHERE m.user_id = $1
+        ORDER BY o.name ASC`,
+      [userId]
+    );
+
+    return res.json({ currentOrgId, orgs: rows ?? [] });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+const SwitchSchema = z.object({ orgId: z.string().uuid() });
+
+router.post('/switch', authRequired, async (req, res, next) => {
+  try {
+    const { orgId } = SwitchSchema.parse(req.body || {});
+    const userId = req.user?.id || req.user?.sub || null;
+    if (!userId) return res.status(401).json({ error: 'unauthorized' });
+
+    const client = req.pool ?? pool;
+    const { rows } = await client.query(
+      `SELECT 1
+         FROM public.org_members
+        WHERE user_id = $1 AND org_id = $2
+        LIMIT 1`,
+      [userId, orgId]
+    );
+
+    if (!rows?.length) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    return res.status(204).end();
+  } catch (err) {
+    if (err?.name === 'ZodError') {
+      return res.status(422).json({ error: 'validation', issues: err.issues });
+    }
+    return next(err);
   }
 });
 

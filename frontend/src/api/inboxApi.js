@@ -376,6 +376,14 @@ export async function patchAdminOrg(orgId, payload, options = {}) {
   return inboxApi.patch(`/admin/orgs/${orgId}`, payload, withGlobalScope(options));
 }
 
+export async function postAdminOrg(payload, options = {}) {
+  return inboxApi.post('/admin/orgs', payload, withGlobalScope(options));
+}
+
+export async function deleteAdminOrg(orgId, options = {}) {
+  return inboxApi.delete(`/admin/orgs/${orgId}`, withGlobalScope(options));
+}
+
 export async function putAdminOrgPlan(orgId, payload, options = {}) {
   return inboxApi.put(`/admin/orgs/${orgId}/plan`, payload, withGlobalScope(options));
 }
