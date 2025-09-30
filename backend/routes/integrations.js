@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authRequired, requireRole } from '../middleware/auth.js';
-import { encrypt, decrypt } from '../services/crypto.js';
+import { seal, open } from '../services/credStore.js';
 
 const router = Router();
 
@@ -17,33 +17,19 @@ function isPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
 
-function encryptFields(payload = {}, keys = []) {
-  const encrypted = {};
-  for (const [key, value] of Object.entries(payload)) {
-    if (value === undefined) continue;
-    if (keys.includes(key) && typeof value === 'string') {
-      encrypted[key] = encrypt(value);
-    } else {
-      encrypted[key] = value;
-    }
+function ensureSealedCreds(creds) {
+  if (!creds || typeof creds !== 'object') {
+    return seal({});
   }
-  return encrypted;
+  if ('c' in creds && 'v' in creds) {
+    return creds;
+  }
+  return seal(creds);
 }
 
-function decryptFields(payload = {}, keys = []) {
-  const decrypted = {};
-  for (const [key, value] of Object.entries(payload)) {
-    if (keys.includes(key) && value && typeof value === 'object' && 'c' in value) {
-      try {
-        decrypted[key] = decrypt(value);
-      } catch (err) {
-        decrypted[key] = null;
-      }
-    } else {
-      decrypted[key] = value;
-    }
-  }
-  return decrypted;
+function withOpenedCreds(row) {
+  if (!row) return null;
+  return { ...row, creds: open(row.creds) };
 }
 
 async function getIntegration(db, provider) {
@@ -240,7 +226,7 @@ const providerDefinitions = {
       if (!existing) {
         throw new Error('integration_not_connected');
       }
-      const creds = decryptFields(existing.creds || {}, ['session_key']);
+      const creds = existing.creds || {};
       const baseHost = creds.session_host || existing.meta?.session_host;
       if (!baseHost) {
         throw new Error('session_host_missing');
@@ -455,14 +441,19 @@ router.post('/providers/:provider/connect', async (req, res) => {
 
   try {
     const payload = definition.connectSchema ? definition.connectSchema.parse(req.body || {}) : (req.body || {});
-    const existing = await getIntegration(req.db, provider);
+    const existingRow = await getIntegration(req.db, provider);
+    const existing = withOpenedCreds(existingRow);
     const result = await definition.handleConnect({ req, provider, payload, existing });
-    const encryptedCreds = encryptFields(result.creds || payload || {}, definition.secretKeys || []);
+    const nextCreds = result.creds !== undefined ? result.creds : existing?.creds || {};
+    const sealedCreds = ensureSealedCreds(nextCreds);
     const meta = isPlainObject(result.meta) ? result.meta : existing?.meta || {};
     const row = await upsertIntegration(req.db, provider, {
       status: result.status || 'connected',
-      subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : existing?.subscribed ?? false,
-      creds: encryptedCreds,
+      subscribed:
+        typeof result.subscribed === 'boolean'
+          ? result.subscribed
+          : existingRow?.subscribed ?? false,
+      creds: sealedCreds,
       meta,
     });
     await recordIntegrationLog(req, provider, 'connect', true, result.detail || {});
@@ -487,18 +478,19 @@ router.post('/providers/:provider/subscribe', async (req, res) => {
   }
 
   try {
-    const existing = await getIntegration(req.db, provider);
-    if (!existing) {
+    const existingRow = await getIntegration(req.db, provider);
+    if (!existingRow) {
       await recordIntegrationLog(req, provider, 'subscribe', false, { message: 'integration_not_connected' });
       return res.status(400).json({ error: 'integration_not_connected' });
     }
+    const existing = withOpenedCreds(existingRow);
     const result = await definition.handleSubscribe({ req, provider, existing });
-    const encryptedCreds = existing?.creds || {};
+    const sealedCreds = ensureSealedCreds(existingRow?.creds);
     const meta = isPlainObject(result.meta) ? result.meta : existing?.meta;
     const row = await upsertIntegration(req.db, provider, {
-      status: existing?.status || 'connected',
+      status: existingRow?.status || 'connected',
       subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
-      creds: encryptedCreds,
+      creds: sealedCreds,
       meta: meta || existing?.meta || {},
     });
     await recordIntegrationLog(req, provider, 'subscribe', true, result.detail || {});
@@ -520,17 +512,18 @@ router.post('/providers/:provider/test', async (req, res) => {
 
   try {
     const payload = definition.testSchema ? definition.testSchema.parse(req.body || {}) : (req.body || {});
-    const existing = await getIntegration(req.db, provider);
-    if (!existing) {
+    const existingRow = await getIntegration(req.db, provider);
+    if (!existingRow) {
       await recordIntegrationLog(req, provider, 'test', false, { message: 'integration_not_connected' });
       return res.status(400).json({ error: 'integration_not_connected' });
     }
+    const existing = withOpenedCreds(existingRow);
     const result = await definition.handleTest({ req, provider, payload, existing });
     const meta = isPlainObject(result.meta) ? result.meta : existing?.meta;
     const row = await upsertIntegration(req.db, provider, {
-      status: existing?.status || 'connected',
-      subscribed: existing?.subscribed ?? false,
-      creds: existing?.creds || {},
+      status: existingRow?.status || 'connected',
+      subscribed: existingRow?.subscribed ?? false,
+      creds: ensureSealedCreds(existingRow?.creds || existing?.creds || {}),
       meta: meta || existing?.meta || {},
     });
     await recordIntegrationLog(req, provider, 'test', true, result.detail || {});

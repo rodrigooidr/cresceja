@@ -4,7 +4,8 @@
   "type": "module",
   "imports": {
     "#db": "./config/db.js",
-    "#redis": "./config/redis.js"
+    "#redis": "./config/redis.js",
+    "#crypto": "./services/crypto.js"
   },
   "scripts": {
     "db:migrate": "node ./scripts/migrate.js",
