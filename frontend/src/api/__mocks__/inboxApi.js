@@ -7,6 +7,30 @@ export const apiUrl = "http://mock.local";
 export const setOrgIdHeaderProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
 export const setTokenProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
 
+export function parseBRLToCents(input) {
+  if (typeof input === "number") {
+    return Number.isFinite(input) ? Math.round(input * 100) : NaN;
+  }
+  if (typeof input !== "string") return NaN;
+  const norm = input
+    .replace(/\s/g, "")
+    .replace(/^R\$/i, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  if (!norm) return 0;
+  const num = Number(norm);
+  return Number.isFinite(num) ? Math.round(num * 100) : NaN;
+}
+
+export function centsToBRL(cents = 0, currency = "BRL") {
+  const value = Number.isFinite(cents) ? cents / 100 : 0;
+  try {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
+  } catch {
+    return `R$ ${value.toFixed(2).replace(".", ",")}`;
+  }
+}
+
 export const __mockPlans = [
   {
     id: "p_free",
@@ -122,6 +146,10 @@ const state = {
         { feature_code: "whatsapp", remaining_total: 1000, expires_next: "2025-01-31" },
       ],
     },
+  },
+  planCreditsByPlan: {
+    starter: { ai_tokens: "150000" },
+    pro: { ai_tokens: "300000" },
   },
   adminPlans: __mockPlans.map((plan) => ({ ...plan })),
   featureDefs: [
@@ -328,6 +356,15 @@ async function _get(path, config = {}) {
   if (url === "/admin/plans") {
     const rows = state.adminPlans.map((plan) => ({ ...plan }));
     return res(rows);
+  }
+
+  {
+    const m = match(/^\/admin\/plans\/([^/]+)\/credits$/, url);
+    if (m) {
+      const planId = m[0];
+      const limit = state.planCreditsByPlan?.[planId]?.ai_tokens ?? "0";
+      return res({ data: [{ meter: "ai_tokens", limit: String(limit) }] });
+    }
   }
 
   {
@@ -616,6 +653,22 @@ async function _put(path, body = {}, config = {}) {
   }
 
   {
+    const m = match(/^\/admin\/plans\/([^/]+)\/credits$/, url);
+    if (m) {
+      const planId = m[0];
+      const payload = Array.isArray(body?.data) ? body.data[0] : null;
+      const limit = payload && payload.meter === "ai_tokens" ? Number(payload.limit ?? 0) : null;
+      if (limit === null || !Number.isFinite(limit) || limit < 0) {
+        return res({ error: "validation_error" }, 400);
+      }
+      const normalized = String(Math.floor(limit));
+      if (!state.planCreditsByPlan) state.planCreditsByPlan = {};
+      state.planCreditsByPlan[planId] = { ai_tokens: normalized };
+      return res({ data: [{ meter: "ai_tokens", limit: normalized }] });
+    }
+  }
+
+  {
     const m = match(/^\/admin\/plans\/([^/]+)\/features$/, url);
     if (m) {
       const planId = m[0];
@@ -712,6 +765,7 @@ const inboxApi = {
     if (partial.publicPlans) state.publicPlans = { ...state.publicPlans, ...partial.publicPlans };
     if (partial.adminOrgs) state.adminOrgs = Array.isArray(partial.adminOrgs) ? partial.adminOrgs.map((org) => ({ ...org })) : state.adminOrgs;
     if (partial.planSummaryByOrg) state.planSummaryByOrg = { ...state.planSummaryByOrg, ...partial.planSummaryByOrg };
+    if (partial.planCreditsByPlan) state.planCreditsByPlan = { ...state.planCreditsByPlan, ...partial.planCreditsByPlan };
     if (partial.adminPlans) state.adminPlans = Array.isArray(partial.adminPlans) ? partial.adminPlans.map((plan) => ({ ...plan })) : state.adminPlans;
     if (partial.planFeaturesByPlan) state.planFeaturesByPlan = { ...state.planFeaturesByPlan, ...partial.planFeaturesByPlan };
   },

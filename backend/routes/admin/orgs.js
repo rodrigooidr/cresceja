@@ -37,16 +37,23 @@ router.get('/', async (req, res, next) => {
         o.name,
         o.slug,
         o.plan_id,
+        COALESCE(p.name, p.code) AS plan,
         o.trial_ends_at,
         o.status
       FROM public.organizations o
+      LEFT JOIN public.plans p ON p.id = o.plan_id
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ORDER BY o.created_at DESC
       LIMIT 200
     `;
 
     const { rows } = await db.query(sql, params);
-    res.json({ items: rows ?? [] });
+    res.json({
+      items: (rows ?? []).map((row) => ({
+        ...row,
+        plan: row?.plan ?? null,
+      })),
+    });
   } catch (err) {
     req.log?.error(
       {
