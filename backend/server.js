@@ -86,6 +86,7 @@ import adminOrgsRouter from './routes/admin/orgs.js';
 import adminOrgByIdRouter from './routes/admin/orgById.js';
 import plansRouter from './routes/plans.js';
 import adminPlansRouter from './routes/admin/plans.js';
+import utilsRouter from './routes/utils.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import calendarRemindersRouter from './routes/calendar.reminders.js';
 import createCalendarRemindersOneRouter from './routes/calendar.reminders.one.js';
@@ -267,7 +268,13 @@ function configureApp() {
   app.use('/api/admin', ...adminAuthStack);
 
   // Rotas administrativas de planos (SuperAdmin/Support)
-  app.use('/api/admin/plans', adminPlansRouter);
+  app.use(
+    '/api/admin/plans',
+    authRequired,
+    requireRole(ROLES.SuperAdmin, ROLES.Support),
+    adminContext,
+    adminPlansRouter,
+  );
 
   // Rotas administrativas de organizações
   app.use('/api/admin/orgs', adminOrgsRouter);
@@ -276,6 +283,8 @@ function configureApp() {
 
   // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
+
+  app.use('/api/utils', utilsRouter);
 
   // Rotas que são factories e precisam de dependências
   const calendarRemindersOneRoute = createCalendarRemindersOneRouter({
