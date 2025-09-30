@@ -23,13 +23,12 @@ function normalizeOrgData(org) {
     };
   }
   const status = String(org.status ?? '').toLowerCase();
-  const planName = org.plan ?? org.plan_name ?? null;
   return {
     id: org.id ?? null,
     name: org.name ?? org.razao_social ?? 'Sem nome',
     slug: org.slug ?? '',
     status: status || 'inactive',
-    plan: planName,
+    plan: org.plan ?? null,
     raw: org,
   };
 }
