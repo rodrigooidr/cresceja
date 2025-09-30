@@ -384,6 +384,25 @@ export async function deleteAdminOrg(orgId, options = {}) {
   return inboxApi.delete(`/admin/orgs/${orgId}`, withGlobalScope(options));
 }
 
+export async function getMyOrgs() {
+  const { data } = await client.get('/orgs/me');
+  return data;
+}
+
+export async function switchOrg(orgId) {
+  await client.post('/orgs/switch', { orgId });
+}
+
+export async function lookupCNPJ(cnpj) {
+  const { data } = await client.get(`/utils/cnpj/${encodeURIComponent(cnpj)}`);
+  return data;
+}
+
+export async function lookupCEP(cep) {
+  const { data } = await client.get(`/utils/cep/${encodeURIComponent(cep)}`);
+  return data;
+}
+
 export async function putAdminOrgPlan(orgId, payload, options = {}) {
   return inboxApi.put(`/admin/orgs/${orgId}/plan`, payload, withGlobalScope(options));
 }

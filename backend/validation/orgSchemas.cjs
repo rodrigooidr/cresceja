@@ -43,9 +43,8 @@ const OrgCreateSchema = z
         nome: z.string().min(2),
         cpf: z
           .string()
-          .optional()
-          .nullable()
-          .refine((v) => !v || br.isValidCPF(v), "CPF inválido"),
+          .min(1, "CPF obrigatório")
+          .refine((v) => br.isValidCPF(v), "CPF inválido"),
         email: z.string().email().optional().nullable(),
         phone_e164: z
           .string()
