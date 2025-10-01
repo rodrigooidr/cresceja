@@ -23,6 +23,7 @@ router.get('/', async (req, res, next) => {
     const rawStatus = String(req.query.status ?? 'active').toLowerCase();
     const status = StatusSchema.parse(rawStatus);
     const q = String(req.query.q ?? '').trim();
+    const qParam = q.length ? q : null;
 
     const sql = `
       SELECT o.id,
@@ -34,13 +35,22 @@ router.get('/', async (req, res, next) => {
              COALESCE(p.code, p.name) AS plan
         FROM public.organizations o
         LEFT JOIN public.plans p ON p.id = o.plan_id
-       WHERE ($1 = 'all' OR o.status = $1)
-         AND ($2 = '' OR unaccent(o.name) ILIKE '%' || unaccent($2) || '%')
-       ORDER BY o.created_at DESC
-       LIMIT 200
+      WHERE ($1::text = 'all' OR o.status = $1)
+        AND (
+          $2::text IS NULL
+          OR lower(translate(o.name,
+            'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
+            'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn'
+          )) LIKE lower(translate('%' || $2 || '%',
+            'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
+            'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn'
+          ))
+        )
+      ORDER BY o.created_at DESC
+      LIMIT 200
     `;
 
-    const { rows } = await db.query(sql, [status, q]);
+    const { rows } = await db.query(sql, [status, qParam]);
     res.json({
       items: (rows ?? []).map((row) => ({
         ...row,
