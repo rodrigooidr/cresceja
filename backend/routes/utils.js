@@ -1,8 +1,8 @@
-import { Router } from 'express';
-import authRequired from '../middleware/auth.js';
+import express from 'express';
+import { authRequired } from '../middleware/auth.js';
 import { lookupCNPJ, lookupCEP } from '../services/brasilapi.js';
 
-const router = Router();
+const router = express.Router();
 
 router.get('/cnpj/:cnpj', authRequired, async (req, res) => {
   const raw = (req.params.cnpj || '').replace(/\D+/g, '');

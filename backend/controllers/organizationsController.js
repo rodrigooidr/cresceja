@@ -1,4 +1,4 @@
-import { query } from '#db';
+import { pool, query } from '#db';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
@@ -163,42 +163,38 @@ export async function listAdmin(req, res, next) {
 
 export async function listForMe(req, res, next) {
   try {
-    const roleSet = new Set(
-      [...(req.user?.roles || []), req.user?.role].filter(Boolean),
-    );
-    const isGlobalAdmin = roleSet.has('SuperAdmin') || roleSet.has('Support');
+    const { id: directId, sub, roles = [], role } = req.user || {};
     const currentOrgId = req.user?.org_id ?? null;
-    const userId = req.user?.id ?? req.user?.sub ?? null;
+    const roleSet = new Set([...(roles || []), role].filter(Boolean));
+    const isGlobal = roleSet.has('SuperAdmin') || roleSet.has('Support');
+    const userId = directId ?? sub ?? null;
 
-    if (!isGlobalAdmin && !userId) {
+    if (!isGlobal && !userId) {
       return res.json({ currentOrgId, orgs: [] });
     }
 
-    const sql = isGlobalAdmin
-      ? `SELECT o.id, o.name, o.slug
-           FROM public.organizations o
-          ORDER BY o.name ASC
-          LIMIT 1000`
-      : `SELECT o.id, o.name, o.slug
-           FROM public.organizations o
-           JOIN public.org_members m ON m.org_id = o.id
-          WHERE m.user_id = $1
-          ORDER BY o.name ASC
-          LIMIT 1000`;
+    const params = [];
+    const sql = isGlobal
+      ? `
+        SELECT o.id, o.name, o.slug, o.status, o.plan_id, o.trial_ends_at
+          FROM public.organizations o
+         ORDER BY o.name ASC
+         LIMIT 500
+      `
+      : `
+        SELECT o.id, o.name, o.slug, o.status, o.plan_id, o.trial_ends_at
+          FROM public.organizations o
+          JOIN public.org_members m ON m.org_id = o.id AND m.user_id = $1
+         ORDER BY o.name ASC
+         LIMIT 500
+      `;
 
-    const params = isGlobalAdmin ? [] : [userId];
-    const { rows = [] } = await query(sql, params);
+    if (!isGlobal) params.push(userId);
 
-    const orgs = rows.map((row) => ({
-      id: row.id,
-      name: row.name ?? null,
-      slug: row.slug ?? null,
-    }));
+    const client = req.db ?? pool;
+    const { rows = [] } = await client.query(sql, params);
 
-    res.json({
-      currentOrgId: currentOrgId ?? orgs[0]?.id ?? null,
-      orgs,
-    });
+    return res.json({ orgs: rows, currentOrgId });
   } catch (e) {
     next(e);
   }

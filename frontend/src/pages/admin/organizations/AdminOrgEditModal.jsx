@@ -25,11 +25,6 @@ const STATUS_OPTIONS = [
   { value: "canceled", label: "Cancelada" },
 ];
 
-const WHATSAPP_MODES = [
-  { value: "none", label: "Desligado" },
-  { value: "baileys", label: "Baileys" },
-];
-
 const emptyForm = {
   name: "",
   slug: "",
@@ -59,9 +54,6 @@ const emptyForm = {
     phone_e164: "",
   },
   whatsapp_baileys_enabled: false,
-  whatsapp_mode: "none",
-  whatsapp_baileys_status: "",
-  whatsapp_baileys_phone: "",
 };
 
 const maskCnpj = (value) => formatCNPJ(value || "");
@@ -113,9 +105,6 @@ function mapOrgToForm(org) {
       phone_e164: maskPhone(org.resp_phone_e164 || ""),
     },
     whatsapp_baileys_enabled: !!org.whatsapp_baileys_enabled,
-    whatsapp_mode: org.whatsapp_mode || "none",
-    whatsapp_baileys_status: org.whatsapp_baileys_status || "",
-    whatsapp_baileys_phone: org.whatsapp_baileys_phone || "",
   };
 }
 
@@ -347,9 +336,9 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       applyCnpjData(data);
       setFeedback("Dados do CNPJ preenchidos automaticamente.");
     } catch (err) {
-      setFieldError("cnpj", "Não foi possível consultar CNPJ");
-      const message = err?.response?.data?.error || err?.message || "";
-      if (message) setGlobalError(message);
+      const code = err?.response?.data?.error || "lookup_failed";
+      const message = code === "invalid_cnpj" ? "CNPJ inválido" : "Não foi possível consultar CNPJ";
+      setFieldError("cnpj", message);
     } finally {
       setCnpjLookupLoading(false);
     }
@@ -372,9 +361,9 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       const data = await lookupCEP(digits);
       applyCepData(data);
     } catch (err) {
-      setFieldError("endereco.cep", "Não foi possível consultar CEP");
-      const message = err?.response?.data?.error || err?.message || "";
-      if (message) setGlobalError(message);
+      const code = err?.response?.data?.error || "lookup_failed";
+      const message = code === "invalid_cep" ? "CEP inválido" : "Não foi possível consultar CEP";
+      setFieldError("endereco.cep", message);
     } finally {
       setCepLookupLoading(false);
     }
@@ -431,9 +420,6 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     else if (!form.responsavel.email && !respPhoneE164)
       nextErrors["responsavel.email"] = "Responsável: informe e-mail ou telefone";
 
-    if (form.whatsapp_baileys_enabled && !form.whatsapp_baileys_phone)
-      nextErrors.whatsapp_baileys_phone = "Informe o telefone do WhatsApp";
-
     setErrors(nextErrors);
     return {
       valid: Object.keys(nextErrors).length === 0,
@@ -446,7 +432,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     const cnpjDigits = onlyDigits(form.cnpj);
     const cepDigits = onlyDigits(form.endereco.cep);
     const cpfDigits = onlyDigits(form.responsavel.cpf);
-    return {
+    const payload = {
       cnpj: cnpjDigits,
       razao_social: form.razao_social || form.name,
       nome_fantasia: form.nome_fantasia || form.name,
@@ -473,6 +459,13 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
         phone_e164: respPhoneE164 || null,
       },
     };
+
+    if (canManageBaileys) {
+      payload.whatsapp_baileys_enabled = !!form.whatsapp_baileys_enabled;
+      payload.whatsapp_mode = form.whatsapp_baileys_enabled ? "baileys" : "none";
+    }
+
+    return payload;
   };
 
   const buildUpdatePayload = ({ orgPhoneE164, respPhoneE164 }) => {
@@ -505,9 +498,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
 
     if (canManageBaileys) {
       payload.whatsapp_baileys_enabled = !!form.whatsapp_baileys_enabled;
-      payload.whatsapp_mode = form.whatsapp_mode || "none";
-      payload.whatsapp_baileys_status = form.whatsapp_baileys_status || null;
-      payload.whatsapp_baileys_phone = form.whatsapp_baileys_phone || null;
+      payload.whatsapp_mode = form.whatsapp_baileys_enabled ? "baileys" : "none";
     }
 
     return payload;
@@ -566,7 +557,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
             Fechar
           </button>
         </div>
-        <div className="max-h-[80vh] overflow-y-auto pr-2">
+        <div className="modal-body max-h-[80vh] overflow-y-auto pr-2">
           <form onSubmit={handleSubmit} className="space-y-6 px-6 py-5">
           {globalError && (
             <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{globalError}</div>
@@ -876,67 +867,18 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
             </div>
           </section>
 
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold">WhatsApp (Baileys)</h3>
-              {!canManageBaileys && (
-                <span className="text-xs text-gray-400">Apenas leitura</span>
-              )}
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="mt-1 flex items-center gap-2 text-sm text-gray-600">
+          {canManageBaileys && (
+            <div className="mt-6">
+              <label className="inline-flex items-center gap-2">
                 <input
                   type="checkbox"
                   checked={form.whatsapp_baileys_enabled}
                   onChange={handleCheckboxChange("whatsapp_baileys_enabled")}
-                  disabled={!canManageBaileys}
-                  className="h-4 w-4"
                 />
-                Habilitar WhatsApp (Baileys)
+                <span>Habilitar WhatsApp (Baileys)</span>
               </label>
-              <label className="text-sm">
-                <span className="text-gray-600">Modo</span>
-                <select
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  value={form.whatsapp_mode}
-                  onChange={handleInputChange("whatsapp_mode")}
-                  disabled={!canManageBaileys}
-                >
-                  {WHATSAPP_MODES.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm md:col-span-2">
-                <span className="text-gray-600">Status</span>
-                <input
-                  type="text"
-                  className="mt-1 w-full rounded border px-3 py-2"
-                  value={form.whatsapp_baileys_status}
-                  onChange={handleInputChange("whatsapp_baileys_status")}
-                  readOnly={!canManageBaileys}
-                />
-              </label>
-              {form.whatsapp_baileys_enabled && (
-                <label className="text-sm md:col-span-2">
-                  <span className="text-gray-600">Telefone (E.164)</span>
-                  <input
-                    type="tel"
-                    className="mt-1 w-full rounded border px-3 py-2"
-                    value={form.whatsapp_baileys_phone}
-                    onChange={handleInputChange("whatsapp_baileys_phone")}
-                    readOnly={!canManageBaileys}
-                    placeholder="+5511999999999"
-                  />
-                  {readError(errors, "whatsapp_baileys_phone") && (
-                    <span className="mt-1 block text-xs text-red-600">{readError(errors, "whatsapp_baileys_phone")}</span>
-                  )}
-                </label>
-              )}
             </div>
-          </section>
+          )}
 
             <div className="flex justify-end gap-3 pt-4">
               <button
