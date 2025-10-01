@@ -1,0 +1,9 @@
+### Status geral
+GET http://localhost:4000/api/integrations/status
+Authorization: Bearer {{TOKEN}}
+X-Org-Id: {{ORG}}
+
+### Eventos (primeiros 10 do WhatsApp Cloud)
+GET http://localhost:4000/api/integrations/events?provider=whatsapp_cloud&limit=10
+Authorization: Bearer {{TOKEN}}
+X-Org-Id: {{ORG}}

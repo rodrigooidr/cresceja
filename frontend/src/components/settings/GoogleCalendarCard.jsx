@@ -9,6 +9,9 @@ import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
 import StatusPill from './StatusPill.jsx';
 import InlineSpinner from '../InlineSpinner.jsx';
+import { getToastMessages, resolveIntegrationError } from './integrationMessages.js';
+
+const toastMessages = getToastMessages('google_calendar');
 
 export default function GoogleCalendarCard() {
   const toast = useToast();
@@ -40,8 +43,7 @@ export default function GoogleCalendarCard() {
     [form]
   );
 
-  const getErrorMessage = (error, fallback) =>
-    error?.response?.data?.message || error?.message || fallback;
+  const getErrorMessage = (error, fallbackKey) => resolveIntegrationError(error, fallbackKey);
 
   const applyIntegration = (integration) => {
     if (!integration) return;
@@ -87,7 +89,7 @@ export default function GoogleCalendarCard() {
           ...prev,
           loading: false,
           status: 'error',
-          lastError: getErrorMessage(err, 'Falha ao carregar status'),
+          lastError: getErrorMessage(err, 'load_status'),
         }));
       }
     })();
@@ -109,18 +111,18 @@ export default function GoogleCalendarCard() {
       applyIntegration(integration);
       setState((prev) => ({ ...prev, saving: false }));
       toast({
-        title: 'Google Calendar conectado',
+        title: toastMessages.connect_success || 'Google Calendar conectado',
         description: org?.name ? `Integração ativa para ${org.name}.` : undefined,
       });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao conectar');
+      const message = getErrorMessage(err, 'connect');
       setState((prev) => ({
         ...prev,
         saving: false,
         status: 'error',
         lastError: message,
       }));
-      toast({ title: 'Falha ao conectar Google Calendar', description: message });
+      toast({ title: toastMessages.connect_error || 'Falha ao conectar Google Calendar', description: message });
     }
   };
 
@@ -131,16 +133,16 @@ export default function GoogleCalendarCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, testing: false }));
-      toast({ title: 'Teste enviado', description: 'Evento de teste agendado com sucesso.' });
+      toast({ title: toastMessages.test_success || 'Teste enviado', description: 'Evento de teste agendado com sucesso.' });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao testar');
+      const message = getErrorMessage(err, 'test');
       setState((prev) => ({
         ...prev,
         testing: false,
         status: 'error',
         lastError: message,
       }));
-      toast({ title: 'Falha no teste', description: message });
+      toast({ title: toastMessages.test_error || 'Erro ao testar Google Calendar', description: message });
     }
   };
 
@@ -156,16 +158,16 @@ export default function GoogleCalendarCard() {
         status: integration?.status || 'disconnected',
       }));
       setForm((prev) => ({ ...prev, privateKey: '' }));
-      toast({ title: 'Google Calendar desconectado' });
+      toast({ title: toastMessages.disconnect_success || 'Google Calendar desconectado' });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao desconectar');
+      const message = getErrorMessage(err, 'disconnect');
       setState((prev) => ({
         ...prev,
         disconnecting: false,
         status: 'error',
         lastError: message,
       }));
-      toast({ title: 'Falha ao desconectar', description: message });
+      toast({ title: toastMessages.disconnect_error || 'Erro ao desconectar Google Calendar', description: message });
     }
   };
 
@@ -229,6 +231,10 @@ export default function GoogleCalendarCard() {
         </label>
       </div>
 
+      <div aria-live="polite" role="status" className="sr-only">
+        {state.lastError ? String(state.lastError) : ''}
+      </div>
+
       {state.lastError ? (
         <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="google-calendar-error">
           {String(state.lastError)}
@@ -241,6 +247,7 @@ export default function GoogleCalendarCard() {
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleConnect}
           disabled={!canConnect || state.saving}
+          aria-busy={state.saving}
         >
           {renderActionLabel(state.saving, 'Conectar', 'Conectando…')}
         </button>
@@ -249,6 +256,7 @@ export default function GoogleCalendarCard() {
           className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleTest}
           disabled={state.testing || state.status === 'disconnected'}
+          aria-busy={state.testing}
         >
           {renderActionLabel(state.testing, 'Testar', 'Testando…')}
         </button>
@@ -257,6 +265,7 @@ export default function GoogleCalendarCard() {
           className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleDisconnect}
           disabled={state.disconnecting || state.status === 'disconnected'}
+          aria-busy={state.disconnecting}
         >
           {renderActionLabel(state.disconnecting, 'Desconectar', 'Desconectando…')}
         </button>

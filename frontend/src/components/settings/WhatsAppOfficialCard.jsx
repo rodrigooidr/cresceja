@@ -10,6 +10,9 @@ import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
 import StatusPill from './StatusPill.jsx';
 import InlineSpinner from '../InlineSpinner.jsx';
+import { getToastMessages, resolveIntegrationError } from './integrationMessages.js';
+
+const toastMessages = getToastMessages('whatsapp_cloud');
 
 export default function WhatsAppOfficialCard() {
   const toast = useToast();
@@ -39,8 +42,7 @@ export default function WhatsAppOfficialCard() {
   );
   const canTest = useMemo(() => Boolean(testTo.trim()), [testTo]);
 
-  const getErrorMessage = (error, fallback) =>
-    error?.response?.data?.message || error?.message || fallback;
+  const getErrorMessage = (error, fallbackKey) => resolveIntegrationError(error, fallbackKey);
 
   const applyIntegration = (integration) => {
     if (!integration) return;
@@ -86,7 +88,7 @@ export default function WhatsAppOfficialCard() {
           ...prev,
           loading: false,
           status: 'error',
-          lastError: getErrorMessage(err, 'Falha ao carregar status'),
+          lastError: getErrorMessage(err, 'load_status'),
         }));
       }
     })();
@@ -107,16 +109,16 @@ export default function WhatsAppOfficialCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, saving: false }));
-      toast({ title: 'WhatsApp Cloud conectado', description: org?.name });
+      toast({ title: toastMessages.connect_success || 'WhatsApp Cloud conectado', description: org?.name });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao conectar');
+      const message = getErrorMessage(err, 'connect');
       setState((prev) => ({
         ...prev,
         saving: false,
         status: 'error',
         lastError: message,
       }));
-      toast({ title: 'Erro ao conectar WhatsApp Cloud', description: message });
+      toast({ title: toastMessages.connect_error || 'Erro ao conectar WhatsApp Cloud', description: message });
     }
   };
 
@@ -127,15 +129,15 @@ export default function WhatsAppOfficialCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, subscribing: false }));
-      toast({ title: 'Webhook assinado com sucesso' });
+      toast({ title: toastMessages.subscribe_success || 'Webhook assinado com sucesso' });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao assinar webhook');
+      const message = getErrorMessage(err, 'subscribe');
       setState((prev) => ({
         ...prev,
         subscribing: false,
         lastError: message,
       }));
-      toast({ title: 'Erro ao assinar webhook', description: message });
+      toast({ title: toastMessages.subscribe_error || 'Erro ao assinar webhook', description: message });
     }
   };
 
@@ -146,15 +148,15 @@ export default function WhatsAppOfficialCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, testing: false }));
-      toast({ title: 'Mensagem de teste enviada', description: `Destino: ${testTo}` });
+      toast({ title: toastMessages.test_success || 'Mensagem de teste enviada', description: `Destino: ${testTo}` });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao enviar teste');
+      const message = getErrorMessage(err, 'test');
       setState((prev) => ({
         ...prev,
         testing: false,
         lastError: message,
       }));
-      toast({ title: 'Erro no teste', description: message });
+      toast({ title: toastMessages.test_error || 'Erro no teste', description: message });
     }
   };
 
@@ -170,15 +172,15 @@ export default function WhatsAppOfficialCard() {
         status: integration?.status || 'disconnected',
         subscribed: false,
       }));
-      toast({ title: 'WhatsApp Cloud desconectado' });
+      toast({ title: toastMessages.disconnect_success || 'WhatsApp Cloud desconectado' });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao desconectar');
+      const message = getErrorMessage(err, 'disconnect');
       setState((prev) => ({
         ...prev,
         disconnecting: false,
         lastError: message,
       }));
-      toast({ title: 'Erro ao desconectar', description: message });
+      toast({ title: toastMessages.disconnect_error || 'Erro ao desconectar WhatsApp Cloud', description: message });
     }
   };
 
@@ -255,6 +257,10 @@ export default function WhatsAppOfficialCard() {
         </label>
       </div>
 
+      <div aria-live="polite" role="status" className="sr-only">
+        {state.lastError ? String(state.lastError) : ''}
+      </div>
+
       {state.lastError ? (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="whatsapp-cloud-error">
           {String(state.lastError)}
@@ -267,6 +273,7 @@ export default function WhatsAppOfficialCard() {
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleConnect}
           disabled={!canConnect || state.saving}
+          aria-busy={state.saving}
         >
           {renderActionLabel(state.saving, 'Conectar', 'Conectando…')}
         </button>
@@ -275,6 +282,7 @@ export default function WhatsAppOfficialCard() {
           className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleSubscribe}
           disabled={state.subscribing || state.status === 'disconnected'}
+          aria-busy={state.subscribing}
         >
           {renderActionLabel(state.subscribing, 'Assinar webhook', 'Assinando…')}
         </button>
@@ -290,6 +298,7 @@ export default function WhatsAppOfficialCard() {
             className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
             onClick={handleTest}
             disabled={state.testing || !canTest}
+            aria-busy={state.testing}
           >
             {renderActionLabel(state.testing, 'Enviar teste', 'Enviando…')}
           </button>
@@ -299,6 +308,7 @@ export default function WhatsAppOfficialCard() {
           className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleDisconnect}
           disabled={state.disconnecting || state.status === 'disconnected'}
+          aria-busy={state.disconnecting}
         >
           {renderActionLabel(state.disconnecting, 'Desconectar', 'Desconectando…')}
         </button>

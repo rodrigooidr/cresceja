@@ -133,15 +133,16 @@ async function ensureOrgContext(req, db) {
   throw err;
 }
 
-function getRateLimitKey(req) {
-  return (
-    req.headers['x-org-id'] ||
-    req.user?.org_id ||
-    req.orgId ||
-    req.headers['x-impersonate-org-id'] ||
-    req.ip ||
-    'anonymous'
-  );
+function getRateLimitKey(req, res) {
+  const orgScopedKey =
+    req.headers['x-org-id'] || req.user?.org_id || req.orgId || req.headers['x-impersonate-org-id'];
+  if (orgScopedKey) {
+    return orgScopedKey;
+  }
+  if (typeof rateLimit.ipKeyGenerator === 'function') {
+    return rateLimit.ipKeyGenerator(req, res);
+  }
+  return req.ip || 'anonymous';
 }
 
 function mapValidationError(err) {

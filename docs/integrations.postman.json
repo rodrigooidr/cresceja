@@ -1,0 +1,47 @@
+{
+  "info": {
+    "name": "Cresceja Integrações",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Coleção básica para testar integrações via API."
+  },
+  "item": [
+    {
+      "name": "Status geral",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{TOKEN}}" },
+          { "key": "X-Org-Id", "value": "{{ORG}}" }
+        ],
+        "url": {
+          "raw": "http://localhost:4000/api/integrations/status",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "integrations", "status"]
+        }
+      }
+    },
+    {
+      "name": "Eventos WhatsApp Cloud",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{TOKEN}}" },
+          { "key": "X-Org-Id", "value": "{{ORG}}" }
+        ],
+        "url": {
+          "raw": "http://localhost:4000/api/integrations/events?provider=whatsapp_cloud&limit=10",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "4000",
+          "path": ["api", "integrations", "events"],
+          "query": [
+            { "key": "provider", "value": "whatsapp_cloud" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    }
+  ]
+}
