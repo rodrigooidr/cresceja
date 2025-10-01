@@ -11,7 +11,7 @@ export const API_BASE_URL =
   fromEnvCRA ||
   fromGlobal ||
   (isTest ? "http://localhost:4000" : "/api");
-export const apiUrl = API_BASE_URL; // alias
+export const apiUrl = String(API_BASE_URL); // alias garante string
 
 // torna a base visível globalmente (útil para helpers que não usam axios)
 try {

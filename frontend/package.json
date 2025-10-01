@@ -72,9 +72,15 @@
     "test": "react-app-rewired test"
   },
   "jest": {
+    "testEnvironment": "jsdom",
     "setupFiles": [
       "<rootDir>/src/test/jest.env.js"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1",
+      "\\.(css|less|sass|scss)$": "<rootDir>/src/test/__mocks__/styleMock.js",
+      "\\.(png|jpg|jpeg|gif|svg|webp|avif|mp4|mp3|woff|woff2)$": "<rootDir>/src/test/__mocks__/fileMock.js"
+    }
   },
   "browserslist": {
     "production": [
