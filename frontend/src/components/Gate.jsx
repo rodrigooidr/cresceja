@@ -1,4 +1,3 @@
-import React from "react";
 import { canUse, limitKeyFor } from "../utils/featureGate";
 
 export default function Gate({ org, feature, limitKey, fallback = null, children }) {

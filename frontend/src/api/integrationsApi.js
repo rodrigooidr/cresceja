@@ -46,7 +46,7 @@ export const listEvents = ({ provider, limit, offset, start, end } = {}) => {
   return inboxApi.get(url).then((r) => r.data);
 };
 
-export default {
+const integrationsApi = {
   getAllStatus,
   getProviderStatus,
   connectProvider,
@@ -59,3 +59,5 @@ export default {
   statusBaileys,
   listEvents,
 };
+
+export default integrationsApi;

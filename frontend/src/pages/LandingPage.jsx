@@ -1,16 +1,10 @@
 import inboxApi from "../api/inboxApi";
-import React, { useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import TrialDaysLabel from "../components/TrialDaysLabel";
-import { useTrial } from "../contexts/TrialContext";
 import PricingTable from "../components/PricingTable";
 
-function hasToken() {
-  try { return !!localStorage.getItem("token"); } catch { return false; }
-}
-
 export default function LandingPage() {
-  const { trialDays } = useTrial();
   const [lead, setLead] = useState({ name: "", email: "", whatsapp: "" });
   const [status, setStatus] = useState({ loading: false, ok: null, msg: "" });
 

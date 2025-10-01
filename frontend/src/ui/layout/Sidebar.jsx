@@ -213,7 +213,6 @@ export default function Sidebar() {
     <aside
       className={`h-full flex flex-col border-r bg-white ${collapsed ? 'w-16' : 'w-72'}`}
       data-testid="sidebar"
-      aria-expanded={!collapsed}
       aria-label="sidebar"
     >
       <div className="flex items-center justify-between p-2 border-b">
@@ -223,6 +222,8 @@ export default function Sidebar() {
           className="btn btn-ghost btn-xs"
           onClick={toggle}
           aria-label="Alternar menu"
+          aria-expanded={!collapsed}
+          aria-controls="sidebar-panel"
         >
           {collapsed ? '>>' : '<<'}
         </button>
@@ -230,7 +231,7 @@ export default function Sidebar() {
 
       <OrgPicker collapsed={collapsed} />
 
-      <div className="p-3 space-y-1 flex-1 overflow-auto">
+      <div className="p-3 space-y-1 flex-1 overflow-auto" id="sidebar-panel">
         <NavItem
           to="/inbox"
           icon={MessageSquare}

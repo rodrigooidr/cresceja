@@ -49,7 +49,7 @@ export default function ContentCalendar(props = {}) {
   const apiClient = useApi();
   const jobsClient = useMemo(
     () => (apiClient && typeof apiClient.get === 'function' ? apiClient : api),
-    [apiClient?.get]
+    [apiClient]
   );
   const { activeOrg } = useActiveOrg();
   const orgId = useMemo(() => {

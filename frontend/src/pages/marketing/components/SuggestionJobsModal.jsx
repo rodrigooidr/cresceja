@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import api from '../../../api/index.js';
 import { DateTime } from 'luxon';
 import useToastFallback from '../../../hooks/useToastFallback.js';
@@ -10,7 +10,7 @@ export default function SuggestionJobsModal({ orgId, suggestionId, onClose, onCh
   const [jobs, setJobs] = useState(null);
   const [when, setWhen] = useState('');
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await api.get(`/orgs/${orgId}/suggestions/${suggestionId}/jobs`);
@@ -18,9 +18,11 @@ export default function SuggestionJobsModal({ orgId, suggestionId, onClose, onCh
     } finally {
       setLoading(false);
     }
-  }
+  }, [orgId, suggestionId]);
 
-  useEffect(() => { load(); }, [orgId, suggestionId]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   async function cancelJob(kind, jobId) {
     try {
