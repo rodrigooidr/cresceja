@@ -77,9 +77,11 @@
       "<rootDir>/src/test/jest.env.js"
     ],
     "moduleNameMapper": {
+      "^@/api$": "<rootDir>/src/api/index.js",
       "^@/(.*)$": "<rootDir>/src/$1",
       "\\.(css|less|sass|scss)$": "<rootDir>/src/test/__mocks__/styleMock.js",
-      "\\.(png|jpg|jpeg|gif|svg|webp|avif|mp4|mp3|woff|woff2)$": "<rootDir>/src/test/__mocks__/fileMock.js"
+      "\\.(png|jpg|jpeg|gif|svg|webp|avif|mp4|mp3|woff|woff2)$": "<rootDir>/src/test/__mocks__/fileMock.js",
+      "^axios$": "axios/dist/node/axios.cjs"
     }
   },
   "browserslist": {
