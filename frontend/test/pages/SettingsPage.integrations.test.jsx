@@ -12,6 +12,7 @@ jest.mock('@/api/integrationsApi.js', () => ({
   subscribeProvider: jest.fn(),
   testProvider: jest.fn(),
   disconnectProvider: jest.fn(),
+  listEvents: jest.fn().mockResolvedValue({ items: [], total: 0 }),
 }));
 
 describe('IntegrationsPage', () => {

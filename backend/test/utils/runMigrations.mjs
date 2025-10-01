@@ -8,6 +8,7 @@ const __dirname = dirname(__filename);
 const MIGRATIONS = [
   '../../migrations/2025-09-29_organizations_and_plan_credits.sql',
   '../../db/migrations/20250930_integrations_core.sql',
+  '../../db/migrations/20251015_integration_events.sql',
 ];
 
 function stripUnsupportedBlocks(sql) {

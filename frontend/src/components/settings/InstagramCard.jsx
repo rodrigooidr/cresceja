@@ -10,6 +10,9 @@ import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
 import StatusPill from './StatusPill.jsx';
 import InlineSpinner from '../InlineSpinner.jsx';
+import { getToastMessages, resolveIntegrationError } from './integrationMessages.js';
+
+const toastMessages = getToastMessages('instagram');
 
 export default function InstagramCard() {
   const toast = useToast();
@@ -33,8 +36,7 @@ export default function InstagramCard() {
 
   const canConnect = useMemo(() => Boolean(form.accessToken.trim()), [form.accessToken]);
 
-  const getErrorMessage = (error, fallback) =>
-    error?.response?.data?.message || error?.message || fallback;
+  const getErrorMessage = (error, fallbackKey) => resolveIntegrationError(error, fallbackKey);
 
   const applyIntegration = (integration) => {
     if (!integration) return;
@@ -79,7 +81,7 @@ export default function InstagramCard() {
           ...prev,
           loading: false,
           status: 'error',
-          lastError: getErrorMessage(err, 'Falha ao carregar status'),
+          lastError: getErrorMessage(err, 'load_status'),
         }));
       }
     })();
@@ -99,16 +101,16 @@ export default function InstagramCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, saving: false }));
-      toast({ title: 'Instagram conectado', description: org?.name });
+      toast({ title: toastMessages.connect_success || 'Instagram conectado', description: org?.name });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao conectar');
+      const message = getErrorMessage(err, 'connect');
       setState((prev) => ({
         ...prev,
         saving: false,
         status: 'error',
         lastError: message,
       }));
-      toast({ title: 'Erro ao conectar Instagram', description: message });
+      toast({ title: toastMessages.connect_error || 'Erro ao conectar Instagram', description: message });
     }
   };
 
@@ -119,15 +121,15 @@ export default function InstagramCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, subscribing: false }));
-      toast({ title: 'Webhook do Instagram ativo' });
+      toast({ title: toastMessages.subscribe_success || 'Webhook do Instagram ativo' });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao assinar webhook');
+      const message = getErrorMessage(err, 'subscribe');
       setState((prev) => ({
         ...prev,
         subscribing: false,
         lastError: message,
       }));
-      toast({ title: 'Erro ao assinar webhook', description: message });
+      toast({ title: toastMessages.subscribe_error || 'Erro ao assinar webhook', description: message });
     }
   };
 
@@ -138,15 +140,15 @@ export default function InstagramCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, testing: false }));
-      toast({ title: 'Teste enviado', description: 'Simulação de publicação concluída.' });
+      toast({ title: toastMessages.test_success || 'Teste enviado', description: 'Simulação de publicação concluída.' });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao testar');
+      const message = getErrorMessage(err, 'test');
       setState((prev) => ({
         ...prev,
         testing: false,
         lastError: message,
       }));
-      toast({ title: 'Erro no teste', description: message });
+      toast({ title: toastMessages.test_error || 'Erro no teste', description: message });
     }
   };
 
@@ -162,15 +164,15 @@ export default function InstagramCard() {
         status: integration?.status || 'disconnected',
         subscribed: false,
       }));
-      toast({ title: 'Instagram desconectado' });
+      toast({ title: toastMessages.disconnect_success || 'Instagram desconectado' });
     } catch (err) {
-      const message = getErrorMessage(err, 'Falha ao desconectar');
+      const message = getErrorMessage(err, 'disconnect');
       setState((prev) => ({
         ...prev,
         disconnecting: false,
         lastError: message,
       }));
-      toast({ title: 'Erro ao desconectar', description: message });
+      toast({ title: toastMessages.disconnect_error || 'Erro ao desconectar Instagram', description: message });
     }
   };
 
@@ -238,6 +240,10 @@ export default function InstagramCard() {
         </label>
       </div>
 
+      <div aria-live="polite" role="status" className="sr-only">
+        {state.lastError ? String(state.lastError) : ''}
+      </div>
+
       {state.lastError ? (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="instagram-error">
           {String(state.lastError)}
@@ -250,6 +256,7 @@ export default function InstagramCard() {
           className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleConnect}
           disabled={!canConnect || state.saving}
+          aria-busy={state.saving}
         >
           {renderActionLabel(state.saving, 'Conectar', 'Conectando…')}
         </button>
@@ -258,6 +265,7 @@ export default function InstagramCard() {
           className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleSubscribe}
           disabled={state.subscribing || state.status === 'disconnected'}
+          aria-busy={state.subscribing}
         >
           {renderActionLabel(state.subscribing, 'Assinar webhook', 'Assinando…')}
         </button>
@@ -266,6 +274,7 @@ export default function InstagramCard() {
           className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleTest}
           disabled={state.testing || state.status === 'disconnected'}
+          aria-busy={state.testing}
         >
           {renderActionLabel(state.testing, 'Testar', 'Testando…')}
         </button>
@@ -274,6 +283,7 @@ export default function InstagramCard() {
           className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleDisconnect}
           disabled={state.disconnecting || state.status === 'disconnected'}
+          aria-busy={state.disconnecting}
         >
           {renderActionLabel(state.disconnecting, 'Desconectar', 'Desconectando…')}
         </button>

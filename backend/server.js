@@ -43,6 +43,7 @@ import whatsappRouter from './routes/whatsapp.js';
 import whatsappTemplatesRouter from './routes/whatsapp_templates.js';
 import agendaRouter from './routes/agenda_whatsapp.js';
 import { createIntegrationsRouter } from './routes/integrations.js';
+import { createIntegrationsEventsRouter } from './routes/integrations.events.js';
 import clientsRouter from './routes/clients.js';
 import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
@@ -138,6 +139,8 @@ const integrationsRouter = createIntegrationsRouter({
   seal,
   open,
 });
+const integrationsEventsRouter = createIntegrationsEventsRouter({ logger });
+const integrationsRoleGuard = requireRole(['OrgAdmin', 'OrgOwner']);
 
 function getDbHealthcheckConfig() {
   return resolveDbHealthcheckConfig(process.env);
@@ -370,7 +373,13 @@ function configureApp() {
   app.use('/', telemetryRouter);
   app.use('/', handoffRouter);
 
-  app.use('/api/integrations', authRequired, requireRole(['OrgAdmin', 'OrgOwner']), integrationsRouter);
+  app.use(
+    '/api/integrations',
+    authRequired,
+    integrationsRoleGuard,
+    integrationsEventsRouter,
+    integrationsRouter
+  );
   app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);
   app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter);
   app.use('/api/integrations/meta', metaOauthIntegrationRouter);

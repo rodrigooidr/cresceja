@@ -20,6 +20,18 @@ export const disconnectProvider = (provider) =>
     .post(`/api/integrations/providers/${provider}/disconnect`)
     .then((r) => r.data);
 
+export const listEvents = ({ provider, limit, offset, start, end } = {}) => {
+  const params = new URLSearchParams();
+  if (provider) params.set('provider', provider);
+  if (typeof limit === 'number') params.set('limit', String(limit));
+  if (typeof offset === 'number') params.set('offset', String(offset));
+  if (start) params.set('start', start);
+  if (end) params.set('end', end);
+  const query = params.toString();
+  const url = query ? `/api/integrations/events?${query}` : '/api/integrations/events';
+  return inboxApi.get(url).then((r) => r.data);
+};
+
 export default {
   getAllStatus,
   getProviderStatus,
@@ -27,4 +39,5 @@ export default {
   subscribeProvider,
   testProvider,
   disconnectProvider,
+  listEvents,
 };
