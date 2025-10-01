@@ -170,7 +170,7 @@ export async function listForMe(req, res, next) {
     const userId = directId ?? sub ?? null;
 
     if (!isGlobal && !userId) {
-      return res.json({ currentOrgId, orgs: [] });
+      return res.json({ currentOrgId, items: [] });
     }
 
     const params = [];
@@ -178,6 +178,7 @@ export async function listForMe(req, res, next) {
       ? `
         SELECT o.id, o.name, o.slug, o.status, o.plan_id, o.trial_ends_at
           FROM public.organizations o
+         WHERE o.status = 'active'
          ORDER BY o.name ASC
          LIMIT 500
       `
@@ -194,7 +195,7 @@ export async function listForMe(req, res, next) {
     const client = req.db ?? pool;
     const { rows = [] } = await client.query(sql, params);
 
-    return res.json({ orgs: rows, currentOrgId });
+    return res.json({ items: rows, currentOrgId });
   } catch (e) {
     next(e);
   }

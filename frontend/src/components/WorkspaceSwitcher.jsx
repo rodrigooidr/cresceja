@@ -42,7 +42,9 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
         }
         if (!alive) return;
 
-        const rawOrgs = Array.isArray(payload?.orgs)
+        const rawOrgs = Array.isArray(payload?.items)
+          ? payload.items
+          : Array.isArray(payload?.orgs)
           ? payload.orgs
           : Array.isArray(payload)
           ? payload

@@ -109,7 +109,9 @@ export function OrgProvider({ children }) {
       setLoading(true);
       try {
         const data = await getMyOrgs();
-        const rawItems = Array.isArray(data?.orgs)
+        const rawItems = Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data?.orgs)
           ? data.orgs
           : Array.isArray(data)
           ? data
