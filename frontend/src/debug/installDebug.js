@@ -1,5 +1,9 @@
 // === Debug network helpers: garantem que /api/* use a mesma base e headers do axios ===
 (function patchNetwork() {
+  // não executa em testes (Jest)
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test') {
+    return;
+  }
   try {
     // Descobre a BASE
     const ENV_BASE =

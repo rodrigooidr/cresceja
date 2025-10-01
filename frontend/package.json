@@ -71,6 +71,11 @@
     "build": "react-app-rewired build",
     "test": "react-app-rewired test"
   },
+  "jest": {
+    "setupFiles": [
+      "<rootDir>/src/test/jest.env.js"
+    ]
+  },
   "browserslist": {
     "production": [
       ">0.2%",
