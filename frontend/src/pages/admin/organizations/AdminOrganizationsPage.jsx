@@ -12,6 +12,15 @@ const STATUS_FILTERS = [
   { value: 'all', label: 'Todas' },
 ];
 
+function useDebounced(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(handle);
+  }, [value, delay]);
+  return debounced;
+}
+
 function normalizeOrgData(org) {
   if (!org) {
     return {
@@ -47,8 +56,8 @@ function StatusBadge({ status }) {
 
 export default function AdminOrganizationsPage() {
   const [status, setStatus] = useState('active');
-  const [searchInput, setSearchInput] = useState('');
-  const [query, setQuery] = useState('');
+  const [q, setQ] = useState('');
+  const qDebounced = useDebounced(q, 300);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -61,8 +70,13 @@ export default function AdminOrganizationsPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await adminListOrgs({ status, q: query });
-      const mapped = (Array.isArray(data) ? data : []).map(normalizeOrgData);
+      const response = await adminListOrgs({ status, q: qDebounced.trim() });
+      const list = Array.isArray(response?.items)
+        ? response.items
+        : Array.isArray(response)
+        ? response
+        : [];
+      const mapped = list.map(normalizeOrgData);
       setItems(mapped);
     } catch (err) {
       const message = err?.response?.data?.error || err?.message || 'Falha ao carregar organizações.';
@@ -71,16 +85,11 @@ export default function AdminOrganizationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [status, query]);
+  }, [status, qDebounced]);
 
   useEffect(() => {
     loadOrganizations();
   }, [loadOrganizations]);
-
-  const handleSearchSubmit = (event) => {
-    event.preventDefault();
-    setQuery(searchInput.trim());
-  };
 
   const openCreateModal = () => {
     setModalMode('create');
@@ -143,7 +152,7 @@ export default function AdminOrganizationsPage() {
         </button>
       </div>
 
-      <form onSubmit={handleSearchSubmit} className="mb-4 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <label className="text-sm text-gray-600">
           <span className="mr-2">Status</span>
           <select
@@ -161,19 +170,13 @@ export default function AdminOrganizationsPage() {
         <div className="flex flex-1 min-w-[200px] items-center gap-2">
           <input
             type="search"
-            value={searchInput}
-            onChange={(event) => setSearchInput(event.target.value)}
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
             placeholder="Buscar por nome ou slug"
             className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm"
           />
-          <button
-            type="submit"
-            className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50"
-          >
-            Buscar
-          </button>
         </div>
-      </form>
+      </div>
 
       {error && (
         <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

@@ -15,6 +15,7 @@ import {
   isValidCPF,
   formatPhoneBR,
   toE164BR,
+  isValidEmail,
 } from "@/utils/brMasks";
 
 const STATUS_OPTIONS = [
@@ -252,6 +253,14 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     }
   };
 
+  const handleCompanyEmailBlur = () => {
+    if (form.email && !isValidEmail(form.email)) {
+      setFieldError("email", "E-mail inválido");
+    } else {
+      clearFieldError("email");
+    }
+  };
+
   const handleResponsavelPhoneChange = (event) => {
     setNestedField("responsavel", "phone_e164", formatPhoneBR(event.target.value));
   };
@@ -266,6 +275,14 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       setFieldError("responsavel.phone_e164", "Telefone inválido");
     } else {
       clearFieldError("responsavel.phone_e164");
+    }
+  };
+
+  const handleResponsavelEmailBlur = () => {
+    if (form.responsavel.email && !isValidEmail(form.responsavel.email)) {
+      setFieldError("responsavel.email", "E-mail inválido");
+    } else {
+      clearFieldError("responsavel.email");
     }
   };
 
@@ -404,10 +421,14 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     if (form.responsavel.phone_e164 && !respPhoneE164)
       nextErrors["responsavel.phone_e164"] = "Telefone inválido";
 
-    if (!form.email && !orgPhoneE164)
+    if (form.email && !isValidEmail(form.email))
+      nextErrors.email = "E-mail inválido";
+    else if (!form.email && !orgPhoneE164)
       nextErrors.email = "Informe e-mail ou telefone da empresa";
 
-    if (!form.responsavel.email && !respPhoneE164)
+    if (form.responsavel.email && !isValidEmail(form.responsavel.email))
+      nextErrors["responsavel.email"] = "E-mail inválido";
+    else if (!form.responsavel.email && !respPhoneE164)
       nextErrors["responsavel.email"] = "Responsável: informe e-mail ou telefone";
 
     if (form.whatsapp_baileys_enabled && !form.whatsapp_baileys_phone)
@@ -545,8 +566,8 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
             Fechar
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6 px-6 py-5">
+        <div className="max-h-[80vh] overflow-y-auto pr-2">
+          <form onSubmit={handleSubmit} className="space-y-6 px-6 py-5">
           {globalError && (
             <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{globalError}</div>
           )}
@@ -653,6 +674,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.email}
                   onChange={handleInputChange("email")}
+                  onBlur={handleCompanyEmailBlur}
                 />
                 {readError(errors, "email") && (
                   <span className="mt-1 block text-xs text-red-600">{readError(errors, "email")}</span>
@@ -829,6 +851,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.responsavel.email}
                   onChange={handleResponsavelChange("email")}
+                  onBlur={handleResponsavelEmailBlur}
                 />
                 {readError(errors, "responsavel.email") && (
                   <span className="mt-1 block text-xs text-red-600">{readError(errors, "responsavel.email")}</span>
@@ -915,24 +938,25 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
             </div>
           </section>
 
-          <div className="flex justify-end gap-3 pt-4">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:border-gray-300"
-              disabled={saving}
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-              disabled={saving}
-            >
-              {saving ? "Salvando…" : "Salvar"}
-            </button>
-          </div>
-        </form>
+            <div className="flex justify-end gap-3 pt-4">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="rounded border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:border-gray-300"
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                disabled={saving}
+              >
+                {saving ? "Salvando…" : "Salvar"}
+              </button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
