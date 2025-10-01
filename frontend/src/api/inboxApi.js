@@ -2,8 +2,7 @@
 import axios from "axios";
 import { applyOrgIdHeader, computeOrgId } from "./orgHeader.js";
 
-export const API_BASE_URL =
-  process.env.REACT_APP_API_BASE_URL || "http://localhost:4000/api";
+export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "/api";
 export const apiUrl = API_BASE_URL; // alias
 
 const inboxApi = axios.create({ baseURL: API_BASE_URL });

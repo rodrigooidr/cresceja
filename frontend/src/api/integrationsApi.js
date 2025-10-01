@@ -20,6 +20,15 @@ export const disconnectProvider = (provider) =>
     .post(`/api/integrations/providers/${provider}/disconnect`)
     .then((r) => r.data);
 
+export const startBaileysQr = () =>
+  inboxApi.post('/api/integrations/providers/whatsapp_session/qr/start').then((r) => r.data);
+
+export const stopBaileysQr = () =>
+  inboxApi.post('/api/integrations/providers/whatsapp_session/qr/stop').then((r) => r.data);
+
+export const statusBaileys = () =>
+  inboxApi.get('/api/integrations/providers/whatsapp_session/status').then((r) => r.data);
+
 export const listEvents = ({ provider, limit, offset, start, end } = {}) => {
   const params = new URLSearchParams();
   if (provider) params.set('provider', provider);
@@ -39,5 +48,8 @@ export default {
   subscribeProvider,
   testProvider,
   disconnectProvider,
+  startBaileysQr,
+  stopBaileysQr,
+  statusBaileys,
   listEvents,
 };

@@ -7,3 +7,26 @@ X-Org-Id: {{ORG}}
 GET http://localhost:4000/api/integrations/events?provider=whatsapp_cloud&limit=10
 Authorization: Bearer {{TOKEN}}
 X-Org-Id: {{ORG}}
+
+### Habilitar Baileys para a org
+PUT http://localhost:4000/api/admin/orgs/{{ORG}}/whatsapp_session/enable
+Authorization: Bearer {{TOKEN}}
+
+### Desabilitar Baileys para a org
+PUT http://localhost:4000/api/admin/orgs/{{ORG}}/whatsapp_session/disable
+Authorization: Bearer {{TOKEN}}
+
+### Iniciar QR
+POST http://localhost:4000/api/integrations/providers/whatsapp_session/qr/start
+Authorization: Bearer {{TOKEN}}
+X-Org-Id: {{ORG}}
+
+### Stream de QR/status (usar navegador ou curl --no-buffer)
+GET http://localhost:4000/api/integrations/providers/whatsapp_session/qr/stream
+Authorization: Bearer {{TOKEN}}
+X-Org-Id: {{ORG}}
+
+### Status atual da sessão
+GET http://localhost:4000/api/integrations/providers/whatsapp_session/status
+Authorization: Bearer {{TOKEN}}
+X-Org-Id: {{ORG}}

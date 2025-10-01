@@ -9,6 +9,9 @@ jest.mock('@/api/integrationsApi.js', () => ({
   testProvider: jest.fn(),
   disconnectProvider: jest.fn(),
   subscribeProvider: jest.fn(),
+  startBaileysQr: jest.fn(),
+  stopBaileysQr: jest.fn(),
+  statusBaileys: jest.fn(),
 }));
 
 const api = jest.requireMock('@/api/integrationsApi.js');
