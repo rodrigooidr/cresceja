@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { seal as defaultSeal, open as defaultOpen } from '../services/credStore.js';
@@ -12,6 +13,32 @@ import {
   getStatus as getSessionStatus,
   setConnected as markConnected,
 } from '../services/baileys.session.js';
+
+// Helpers p/ SSE token curto (60s)
+function signSseToken({ orgId, userId, ttlSec = 60 }) {
+  const secret = process.env.SSE_TOKEN_SECRET || 'dev';
+  const exp = Math.floor(Date.now() / 1000) + ttlSec;
+  const payload = JSON.stringify({ orgId, userId, exp });
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return Buffer.from(`${payload}.${sig}`).toString('base64url');
+}
+
+function verifySseToken(tokenB64) {
+  const secret = process.env.SSE_TOKEN_SECRET || 'dev';
+  let raw = '';
+  try {
+    raw = Buffer.from(tokenB64, 'base64url').toString('utf8');
+  } catch {
+    return null;
+  }
+  const [payload, sig] = raw.split('.');
+  if (!payload || !sig) return null;
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  if (expected !== sig) return null;
+  const obj = JSON.parse(payload);
+  if (!obj?.exp || obj.exp < Math.floor(Date.now() / 1000)) return null;
+  return obj; // { orgId, userId, exp }
+}
 
 const PROVIDERS = [
   'whatsapp_cloud',
@@ -838,6 +865,27 @@ export function createIntegrationsRouter({
     }
   });
 
+  router.post('/providers/whatsapp_session/qr/sse-token', async (req, res) => {
+    const orgId = req.org?.id || req.headers['x-org-id'];
+    const userId = req.user?.id || 'unknown';
+    if (!orgId) {
+      return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
+    }
+
+    try {
+      const features = await getOrgFeatures(req.db, orgId);
+      if (!features.whatsapp_session_enabled) {
+        return res.status(403).json({
+          error: 'forbidden',
+          message: 'WhatsApp Sessão não habilitado para esta organização.',
+        });
+      }
+    } catch {}
+
+    const token = signSseToken({ orgId, userId, ttlSec: 60 });
+    return res.json({ ok: true, token, expires_in: 60 });
+  });
+
   router.post('/providers/whatsapp_session/qr/start', async (req, res) => {
     if (!req.db?.query) {
       return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
@@ -893,22 +941,38 @@ export function createIntegrationsRouter({
     if (!req.db?.query) {
       return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
     }
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+
+    let orgId = req.org?.id || req.headers['x-org-id'];
+
+    if (!orgId && req.query?.access_token) {
+      const parsed = verifySseToken(String(req.query.access_token));
+      if (!parsed) {
+        return res.status(401).json({ error: 'unauthorized', message: 'Token SSE inválido/expirado' });
+      }
+      orgId = parsed.orgId;
     }
-    const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-    if (!allowed) return;
+
+    if (!orgId) {
+      return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
+    }
+
+    let features;
+    try {
+      features = await getOrgFeatures(req.db, orgId);
+    } catch (err) {
+      return res.status(500).json({ error: 'features_unavailable', message: err.message });
+    }
+    if (!features.whatsapp_session_enabled) {
+      return res.status(403).json({
+        error: 'forbidden',
+        message: 'WhatsApp Sessão não habilitado para esta organização.',
+      });
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    if (typeof res.flushHeaders === 'function') {
-      res.flushHeaders();
-    }
+    res.flushHeaders?.();
 
     const unsubscribe = subscribe(orgId, res);
     req.on('close', () => {
