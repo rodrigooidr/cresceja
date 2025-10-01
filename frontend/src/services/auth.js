@@ -1,16 +1,25 @@
 // src/services/auth.js
-import inboxApi from "../../api/inboxApi";
+import inboxApi, { setActiveOrg } from "../../api/inboxApi";
 
 
 export async function login(email, password) {
   const { data } = await inboxApi.post("/auth/login", { email, password });
-  const { token, user } = data || {};
+  const { token, user, org, roles } = data || {};
   if (!token) throw new Error("Login sem token.");
 
   localStorage.setItem("token", token);
   inboxApi.defaults.headers.common.Authorization = `Bearer ${token}`;
 
-  let me = user || null;
+  const orgId = org?.id ?? null;
+  if (orgId) {
+    localStorage.setItem('activeOrgId', orgId);
+    setActiveOrg(orgId);
+  } else {
+    localStorage.removeItem('activeOrgId');
+    setActiveOrg(null);
+  }
+
+  let me = user ? { ...user, roles: Array.isArray(roles) ? roles : [], orgId } : null;
   if (!me) {
     try {
       const res = await inboxApi.get("/auth/me");
