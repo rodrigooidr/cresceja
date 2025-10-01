@@ -290,41 +290,63 @@ function configureApp() {
   app.use('/api/admin/organizations', adminOrganizationsRouter);
   app.use('/api/admin', createAdminOrgFeaturesRouter());
 
-  // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
-  app.use('/api', authRequired, impersonationGuard, pgRlsContext);
+  // helper DEV: extrai Bearer tanto de header quanto de query "access_token"
+  function getBearerFrom(req) {
+    const h = req.headers?.authorization || '';
+    const q = req.query?.access_token;
+    if (h.startsWith('Bearer ')) return h.slice(7);
+    if (typeof q === 'string' && q.length > 10) return q; // token no SSE
+    return null;
+  }
 
   // -----------------------------
   // STUBS DE DESENVOLVIMENTO (DEV)
   // Evitam overlay de erro quando módulos ainda não estão ativos
   // -----------------------------
-  app.get('/api/inbox/templates', authRequired, (_req, res) => {
-    res.json({ items: [] });
+  // AI settings (sempre 200 em DEV)
+  app.get('/api/ai/settings', (req, res) => {
+    const token = getBearerFrom(req);
+    if (!token) {
+      // em DEV, devolve 200 vazio para não poluir a UI
+      return res.json({ enabled: false, providers: [], lastUpdateAt: null });
+    }
+    return res.json({ enabled: false, providers: [], lastUpdateAt: null });
   });
 
-  app.get('/api/inbox/quick-replies', authRequired, (_req, res) => {
-    res.json({ items: [] });
+  // Alerts list
+  app.get('/api/inbox/alerts', (_req, res) => {
+    return res.json({ items: [], lastCheckedAt: new Date().toISOString() });
   });
 
-  app.get('/api/inbox/conversations', authRequired, (req, res) => {
-    const { status = 'open', limit = 50, offset = 0 } = req.query;
-    res.json({ items: [], total: 0, status, limit: Number(limit), offset: Number(offset) });
-  });
-
-  app.get('/api/inbox/alerts', authRequired, (_req, res) => {
-    res.json({ items: [], lastCheckedAt: new Date().toISOString() });
-  });
-
-  app.get('/api/inbox/alerts/stream', authRequired, (req, res) => {
+  // Alerts stream (SSE) — aceita token via query
+  app.get('/api/inbox/alerts/stream', (req, res) => {
+    const token = getBearerFrom(req);
+    if (!token) {
+      // ainda assim no DEV: abre o stream "vazio" para não quebrar o front
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+      res.write(`data: ${JSON.stringify({ type: 'ping', ts: Date.now() })}\n\n`);
+      return setTimeout(() => res.end(), 15000);
+    }
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
-    res.write(`data: ${JSON.stringify({ type: 'ping', ts: Date.now() })}\n\n`);
-    const t = setTimeout(() => res.end(), 30000);
-    req.on('close', () => clearTimeout(t));
+    res.write(`data: ${JSON.stringify({ type: 'ready', ts: Date.now() })}\n\n`);
+    const t = setInterval(() => {
+      res.write(`data: ${JSON.stringify({ type: 'ping', ts: Date.now() })}\n\n`);
+    }, 10000);
+    req.on('close', () => clearInterval(t));
   });
 
-  app.get('/api/orgs/:orgId/features', authRequired, async (req, res) => {
+  // Templates / Quick replies — 200 sempre
+  app.get('/api/inbox/templates', (_req, res) => res.json({ items: [] }));
+  app.get('/api/inbox/quick-replies', (_req, res) => res.json({ items: [] }));
+
+  // Orgs features — 200 com objeto
+  app.get('/api/orgs/:orgId/features', async (req, res) => {
     try {
       const r = await req.db.query('SELECT features FROM org_features WHERE org_id = $1', [
         req.params.orgId,
@@ -333,6 +355,14 @@ function configureApp() {
     } catch {
       res.json({ features: {} });
     }
+  });
+
+  // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
+  app.use('/api', authRequired, impersonationGuard, pgRlsContext);
+
+  app.get('/api/inbox/conversations', (req, res) => {
+    const { status = 'open', limit = 50, offset = 0 } = req.query;
+    res.json({ items: [], total: 0, status, limit: Number(limit), offset: Number(offset) });
   });
 
   // monta utils *depois* do auth stack padrão
