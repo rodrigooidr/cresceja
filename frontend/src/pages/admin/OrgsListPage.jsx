@@ -22,8 +22,8 @@ export default function OrgsListPage({ minRole = "SuperAdmin" }) {
         });
         const raw = res?.data;
         const items =
-          Array.isArray(raw?.orgs) ? raw.orgs :
           Array.isArray(raw?.items) ? raw.items :
+          Array.isArray(raw?.orgs) ? raw.orgs :
           Array.isArray(raw) ? raw : [];
         if (!alive) return;
         setState({ loading: false, items, error: null });

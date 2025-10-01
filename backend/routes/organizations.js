@@ -27,10 +27,11 @@ const ROLES =
   requireRoleModule.default?.ROLES ??
   requireRoleModule.ROLES;
 
-const router = Router();
+const organizationsRouter = Router();
+const orgByIdRouter = Router({ mergeParams: true });
 
 // GET /api/orgs/current - org ativa do usuário autenticado
-router.get('/current', authRequired, async (req, res, next) => {
+organizationsRouter.get('/current', authRequired, async (req, res, next) => {
   try {
     const user = req.user || {};
     const orgId = user.org_id || null;
@@ -53,7 +54,7 @@ router.get('/current', authRequired, async (req, res, next) => {
 });
 
 // GET /api/orgs/accessible - lista de orgs do usuário
-router.get('/accessible', authRequired, async (req, res, next) => {
+organizationsRouter.get('/accessible', authRequired, async (req, res, next) => {
   try {
     const user = req.user || {};
     const userId = user.id || user.sub;
@@ -75,11 +76,11 @@ router.get('/accessible', authRequired, async (req, res, next) => {
 });
 
 // GET /api/orgs/me - usado pelo WorkspaceSwitcher
-router.get('/me', authRequired, listForMe);
+organizationsRouter.get('/me', authRequired, listForMe);
 
 const SwitchSchema = z.object({ orgId: z.string().uuid() });
 
-router.post('/switch', authRequired, async (req, res, next) => {
+organizationsRouter.post('/switch', authRequired, async (req, res, next) => {
   try {
     const { orgId } = SwitchSchema.parse(req.body || {});
     const userId = req.user?.id || req.user?.sub || null;
@@ -132,7 +133,7 @@ router.post('/switch', authRequired, async (req, res, next) => {
  * - Demais => lista orgs onde há vínculo em `org_users`
  * - Fallback: se vier vazio e o token tiver org_id, devolve 1 item sintético
  */
-router.get('/', async (req, res) => {
+organizationsRouter.get('/', async (req, res) => {
   const client = req.db || (await pool.connect());
   const mustRelease = !req.db;
 
@@ -223,8 +224,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.get(
-  '/:orgId/plan/summary',
+orgByIdRouter.get(
+  '/plan/summary',
   authRequired,
   requireOrgRole([ROLES.OrgAdmin, ROLES.OrgOwner]),
   async (req, res, next) => {
@@ -312,5 +313,5 @@ adminOrganizationsRouter.delete(
   deleteAdmin,
 );
 
-export { adminOrganizationsRouter };
-export default router;
+export { adminOrganizationsRouter, orgByIdRouter };
+export default organizationsRouter;

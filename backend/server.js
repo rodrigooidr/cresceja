@@ -48,7 +48,7 @@ import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
 import metaOauthIntegrationRouter from './routes/integrations/meta.oauth.js';
 import googleCalendarRouter from './routes/integrations/google.calendar.js';
-import organizationsRouter, { adminOrganizationsRouter } from './routes/organizations.js';
+import organizationsRouter, { adminOrganizationsRouter, orgByIdRouter } from './routes/organizations.js';
 import orgFeaturesRouter from './routes/orgs.features.js';
 import orgWhatsappRouter from './routes/orgs.whatsapp.js';
 import orgsCalendarRouter from './routes/orgs.calendar.js';
@@ -255,6 +255,11 @@ function configureApp() {
   // Rotas de planos (públicas e admin)
   app.use('/api', plansRouter);
 
+  // Rotas de organizações SEM orgId (me/switch/list)
+  app.use('/api/organizations', authRequired, organizationsRouter);
+  app.use('/api/orgs', authRequired, organizationsRouter);
+  app.use('/organizations', authRequired, organizationsRouter);
+
   const adminAuthStack = [authRequired, requireRole(ROLES.SuperAdmin, ROLES.Support), adminContext];
 
   app.use('/api/admin', (req, _res, next) => {
@@ -377,9 +382,8 @@ function configureApp() {
   app.use('/api', telemetryAppointmentsExportRouter);
   app.use('/api', telemetryAppointmentsFunnelRouter);
   app.use('/api', telemetryAppointmentsFunnelExportRouter);
-  app.use('/api/organizations', organizationsRouter);
-  app.use('/organizations', organizationsRouter);
-  app.use('/api/orgs', organizationsRouter);
+  app.use('/api/organizations/:orgId', orgByIdRouter);
+  app.use('/api/orgs/:orgId', orgByIdRouter);
   app.use('/api', funnelRouter);
   app.use('/api/debug', debugRouter);
 
