@@ -5,24 +5,22 @@ import { lookupCNPJ, lookupCEP } from '../services/brasilapi.js';
 const router = Router();
 
 router.get('/cnpj/:cnpj', authRequired, async (req, res) => {
+  const raw = (req.params.cnpj || '').replace(/\D+/g, '');
+  if (raw.length !== 14) return res.status(422).json({ error: 'invalid_cnpj' });
   try {
-    const data = await lookupCNPJ(req.params.cnpj);
-    res.json(data);
+    res.json(await lookupCNPJ(raw));
   } catch (e) {
-    const msg = e?.message || 'lookup_failed';
-    const status = msg === 'invalid_cnpj' ? 422 : 422;
-    res.status(status).json({ error: msg });
+    res.status(422).json({ error: e?.message || 'lookup_failed' });
   }
 });
 
 router.get('/cep/:cep', authRequired, async (req, res) => {
+  const raw = (req.params.cep || '').replace(/\D+/g, '');
+  if (raw.length !== 8) return res.status(422).json({ error: 'invalid_cep' });
   try {
-    const data = await lookupCEP(req.params.cep);
-    res.json(data);
+    res.json(await lookupCEP(raw));
   } catch (e) {
-    const msg = e?.message || 'lookup_failed';
-    const status = msg === 'invalid_cep' ? 422 : 422;
-    res.status(status).json({ error: msg });
+    res.status(422).json({ error: e?.message || 'lookup_failed' });
   }
 });
 

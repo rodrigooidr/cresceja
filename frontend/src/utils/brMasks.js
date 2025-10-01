@@ -45,19 +45,20 @@ export function isValidCPF(input = "") {
 export function formatPhoneBR(input = "") {
   const v = onlyDigits(input).slice(0, 11);
   if (v.length <= 2) return v;
-  if (v.length <= 6) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
+  if (v.length <= 7) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
   if (v.length === 10) return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
   return `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
 }
 
 export function toE164BR(input = "") {
   const raw = (input || "").trim();
-  if (!raw) return null;
-  if (raw.startsWith("+")) {
-    const d = onlyDigits(raw);
-    return d ? `+${d}` : null;
-  }
+  if (raw.startsWith("+")) return `+${onlyDigits(raw)}`;
   const d = onlyDigits(raw);
   if (d.length < 10) return null;
   return `+55${d}`;
+}
+
+export function isValidEmail(email = "") {
+  // simples e robusto para client-side
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((email || "").trim());
 }
