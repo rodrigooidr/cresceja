@@ -1,9 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authRequired, requireRole } from '../middleware/auth.js';
-import { seal, open } from '../services/credStore.js';
-
-const router = Router();
+import { seal as defaultSeal, open as defaultOpen } from '../services/credStore.js';
 
 const PROVIDERS = [
   'whatsapp_cloud',
@@ -13,8 +11,6 @@ const PROVIDERS = [
   'google_calendar',
 ];
 
-router.use(authRequired, requireRole('OrgAdmin', 'OrgOwner'));
-
 function nowIso() {
   return new Date().toISOString();
 }
@@ -23,24 +19,24 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-async function getIntegration(db, provider) {
+async function getIntegration(db, orgId, provider) {
   const { rows } = await db.query(
     `SELECT *
        FROM org_integrations
-      WHERE org_id = current_setting('app.org_id')::uuid
-        AND provider = $1
+      WHERE org_id = $1
+        AND provider = $2
       LIMIT 1`,
-    [provider]
+    [orgId, provider]
   );
   return rows[0] || null;
 }
 
-async function upsertIntegration(db, provider, { status, subscribed, creds, meta }) {
-  const sealedCreds = creds && 'c' in creds && 'v' in creds ? creds : seal(creds || {});
+async function upsertIntegration(db, orgId, provider, { status, subscribed, creds, meta }, sealFn) {
+  const sealedCreds = creds && typeof creds === 'object' && 'c' in creds && 'v' in creds ? creds : sealFn(creds || {});
   const safeMeta = isPlainObject(meta) ? meta : {};
   const { rows } = await db.query(
     `INSERT INTO org_integrations (org_id, provider, status, subscribed, creds, meta)
-       VALUES (current_setting('app.org_id')::uuid, $1, $2, $3, $4::jsonb, $5::jsonb)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
        ON CONFLICT (org_id, provider)
        DO UPDATE SET status = EXCLUDED.status,
                      subscribed = EXCLUDED.subscribed,
@@ -48,15 +44,15 @@ async function upsertIntegration(db, provider, { status, subscribed, creds, meta
                      meta = EXCLUDED.meta,
                      updated_at = now()
        RETURNING *`,
-    [provider, status, subscribed, JSON.stringify(sealedCreds), JSON.stringify(safeMeta)]
+    [orgId, provider, status, subscribed, JSON.stringify(sealedCreds), JSON.stringify(safeMeta)]
   );
   return rows[0] || null;
 }
 
-async function patchIntegration(db, provider, partial) {
+async function patchIntegration(db, orgId, provider, partial, sealFn) {
   const fields = [];
-  const values = [provider];
-  let index = 2;
+  const values = [orgId, provider];
+  let index = 3;
 
   if (partial.status !== undefined) {
     fields.push(`status = $${index++}`);
@@ -67,7 +63,9 @@ async function patchIntegration(db, provider, partial) {
     values.push(partial.subscribed);
   }
   if (partial.creds !== undefined) {
-    const sealed = partial.creds && 'c' in partial.creds && 'v' in partial.creds ? partial.creds : seal(partial.creds || {});
+    const sealed = partial.creds && typeof partial.creds === 'object' && 'c' in partial.creds && 'v' in partial.creds
+      ? partial.creds
+      : sealFn(partial.creds || {});
     fields.push(`creds = $${index++}::jsonb`);
     values.push(JSON.stringify(sealed));
   }
@@ -82,8 +80,8 @@ async function patchIntegration(db, provider, partial) {
   const query = `
     UPDATE org_integrations
        SET ${fields.join(', ')}
-     WHERE org_id = current_setting('app.org_id')::uuid
-       AND provider = $1
+     WHERE org_id = $1
+       AND provider = $2
    RETURNING *`;
 
   const { rows } = await db.query(query, values);
@@ -104,26 +102,29 @@ function sanitizeIntegration(provider, row) {
   };
 }
 
-async function recordIntegrationLog(req, provider, action, ok, details = {}) {
+async function recordIntegrationLog(req, logger, orgId, provider, action, ok, details = {}) {
   try {
     await req.db.query(
       `INSERT INTO org_integration_logs (org_id, provider, event, ok, detail)
-         VALUES (current_setting('app.org_id')::uuid, $1, $2, $3, $4::jsonb)`,
-      [provider, action, ok, JSON.stringify(details || {})]
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+      [orgId, provider, action, ok, JSON.stringify(details || {})]
     );
   } catch (err) {
-    req.log?.error?.({ provider, action: 'log_failed', err });
+    const log = req.log || logger;
+    log?.error?.({ provider, action: 'log_failed', err });
   }
 
-  const payload = { provider, action, ok, org_id: req.user?.org_id, details };
-  if (ok) req.log?.info?.(payload);
-  else req.log?.warn?.(payload);
+  const payload = { provider, action, ok, org_id: orgId, details };
+  const log = req.log || logger;
+  if (ok) log?.info?.(payload);
+  else log?.warn?.(payload);
 }
 
 function ensureProvider(provider) {
   if (!PROVIDERS.includes(provider)) {
-    const err = new Error('provider_not_supported');
-    err.statusCode = 404;
+    const err = new Error('unknown_provider');
+    err.statusCode = 400;
+    err.code = 'unknown_provider';
     throw err;
   }
   return providerHandlers[provider];
@@ -406,186 +407,264 @@ const providerHandlers = {
   },
 };
 
-router.get('/status', async (req, res, next) => {
-  try {
-    const result = {};
-    for (const provider of PROVIDERS) {
-      const row = await getIntegration(req.db, provider);
-      result[provider] = sanitizeIntegration(provider, row);
+async function ensureOrgContext(req) {
+  const direct = req.orgId || req.user?.org_id;
+  if (direct) return direct;
+  if (!req.db) {
+    const err = new Error('db_not_configured');
+    err.statusCode = 500;
+    err.code = 'db_not_configured';
+    throw err;
+  }
+  const { rows } = await req.db.query(`SELECT current_setting('app.org_id', true) AS org_id`);
+  const orgId = rows[0]?.org_id || null;
+  if (orgId) return orgId;
+  const err = new Error('org_context_missing');
+  err.statusCode = 400;
+  err.code = 'org_context_missing';
+  throw err;
+}
+
+export function createIntegrationsRouter({
+  db = null,
+  seal = defaultSeal,
+  open = defaultOpen,
+  logger = null,
+  auth = authRequired,
+  requireRole: roleMiddleware = requireRole('OrgAdmin', 'OrgOwner'),
+} = {}) {
+  const router = Router();
+
+  router.use(auth, roleMiddleware);
+  router.use((req, _res, next) => {
+    if (db && !req.db) {
+      req.db = db;
     }
-    res.json({ providers: result });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/providers/:provider', async (req, res) => {
-  const { provider } = req.params;
-  try {
-    ensureProvider(provider);
-  } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported', message: provider });
-  }
-
-  const row = await getIntegration(req.db, provider);
-  return res.json({ integration: sanitizeIntegration(provider, row) });
-});
-
-router.post('/providers/:provider/connect', async (req, res) => {
-  const { provider } = req.params;
-  let handler;
-  try {
-    handler = ensureProvider(provider);
-  } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported', message: provider });
-  }
-
-  try {
-    const schema = handler.connectSchema || z.object({}).strip();
-    const payload = schema.parse(req.body || {});
-    const existingRow = await getIntegration(req.db, provider);
-    const existing = existingRow
-      ? { ...existingRow, creds: open(existingRow.creds) }
-      : null;
-    const result = await handler.connect({ req, provider, payload, existing });
-
-    const row = await upsertIntegration(req.db, provider, {
-      status: result.status || existingRow?.status || 'connected',
-      subscribed:
-        typeof result.subscribed === 'boolean'
-          ? result.subscribed
-          : existingRow?.subscribed || false,
-      creds: result.creds || existing?.creds || {},
-      meta: result.meta || existing?.meta || {},
-    });
-
-    await recordIntegrationLog(req, provider, 'connect', true, result.detail || {});
-
-    return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      await recordIntegrationLog(req, provider, 'connect', false, {
-        message: 'validation_error',
-        issues: err.flatten(),
-      });
-      return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
+    if (logger && !req.log) {
+      req.log = logger;
     }
-    const status = err.statusCode || 500;
-    await recordIntegrationLog(req, provider, 'connect', false, { message: err.message });
-    return res.status(status).json({ error: 'connect_failed', message: err.message });
-  }
-});
+    next();
+  });
 
-router.post('/providers/:provider/subscribe', async (req, res) => {
-  const { provider } = req.params;
-  let handler;
-  try {
-    handler = ensureProvider(provider);
-  } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported', message: provider });
-  }
-
-  if (!handler.supportsSubscribe) {
-    return res.status(400).json({ error: 'subscribe_not_supported', message: provider });
-  }
-
-  try {
-    const existingRow = await getIntegration(req.db, provider);
-    if (!existingRow) {
-      await recordIntegrationLog(req, provider, 'subscribe', false, {
-        message: 'integration_not_connected',
-      });
-      return res.status(400).json({ error: 'integration_not_connected', message: provider });
+  router.get('/status', async (req, res, next) => {
+    try {
+      const orgId = await ensureOrgContext(req);
+      const result = {};
+      for (const provider of PROVIDERS) {
+        const row = await getIntegration(req.db, orgId, provider);
+        result[provider] = sanitizeIntegration(provider, row);
+      }
+      res.json({ providers: result });
+    } catch (err) {
+      next(err);
     }
-    const existing = { ...existingRow, creds: open(existingRow.creds) };
-    const result = await handler.subscribe({ req, provider, existing });
-    const row = await upsertIntegration(req.db, provider, {
-      status: existingRow.status,
-      subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
-      creds: existingRow.creds,
-      meta: result.meta || existing.meta || {},
-    });
-    await recordIntegrationLog(req, provider, 'subscribe', true, result.detail || {});
-    return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
-  } catch (err) {
-    const status = err.statusCode || 500;
-    await recordIntegrationLog(req, provider, 'subscribe', false, { message: err.message });
-    return res.status(status).json({ error: 'subscribe_failed', message: err.message });
-  }
-});
+  });
 
-router.post('/providers/:provider/test', async (req, res) => {
-  const { provider } = req.params;
-  let handler;
-  try {
-    handler = ensureProvider(provider);
-  } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported', message: provider });
-  }
-
-  try {
-    const schema = handler.testSchema || z.object({}).strip();
-    const payload = schema.parse(req.body || {});
-    const existingRow = await getIntegration(req.db, provider);
-    if (!existingRow) {
-      await recordIntegrationLog(req, provider, 'test', false, {
-        message: 'integration_not_connected',
-      });
-      return res.status(400).json({ error: 'integration_not_connected', message: provider });
+  router.get('/providers/:provider', async (req, res, next) => {
+    const { provider } = req.params;
+    try {
+      ensureProvider(provider);
+      const orgId = await ensureOrgContext(req);
+      const row = await getIntegration(req.db, orgId, provider);
+      return res.json({ integration: sanitizeIntegration(provider, row) });
+    } catch (err) {
+      if (err.code === 'unknown_provider') {
+        return res.status(400).json({ error: 'unknown_provider', message: provider });
+      }
+      return next(err);
     }
-    const existing = { ...existingRow, creds: open(existingRow.creds) };
-    const result = await handler.test({ req, provider, payload, existing });
-    const row = await upsertIntegration(req.db, provider, {
-      status: existingRow.status,
-      subscribed: existingRow.subscribed,
-      creds: existingRow.creds,
-      meta: result.meta || existing.meta || {},
-    });
-    await recordIntegrationLog(req, provider, 'test', true, result.detail || {});
-    return res.json({ ok: true, detail: result.detail || {}, integration: sanitizeIntegration(provider, row) });
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      await recordIntegrationLog(req, provider, 'test', false, {
-        message: 'validation_error',
-        issues: err.flatten(),
-      });
-      return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
+  });
+
+  router.post('/providers/:provider/connect', async (req, res) => {
+    const { provider } = req.params;
+    let handler;
+    try {
+      handler = ensureProvider(provider);
+    } catch (err) {
+      return res.status(400).json({ error: 'unknown_provider', message: provider });
     }
-    const status = err.statusCode || 500;
-    await recordIntegrationLog(req, provider, 'test', false, { message: err.message });
-    return res.status(status).json({ error: 'test_failed', message: err.message });
-  }
-});
 
-router.post('/providers/:provider/disconnect', async (req, res) => {
-  const { provider } = req.params;
-  try {
-    ensureProvider(provider);
-  } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported', message: provider });
-  }
-
-  try {
-    const existingRow = await getIntegration(req.db, provider);
-    if (!existingRow) {
-      return res.json({ ok: true, integration: sanitizeIntegration(provider, null) });
+    let orgId;
+    try {
+      orgId = await ensureOrgContext(req);
+    } catch (err) {
+      const status = err.statusCode || 500;
+      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
     }
-    const meta = {
-      ...(isPlainObject(existingRow.meta) ? existingRow.meta : {}),
-      disconnected_at: nowIso(),
-    };
-    const row = await patchIntegration(req.db, provider, {
-      status: 'disconnected',
-      subscribed: false,
-      creds: {},
-      meta,
-    });
-    await recordIntegrationLog(req, provider, 'disconnect', true, { message: 'Integração desconectada' });
-    return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
-  } catch (err) {
-    await recordIntegrationLog(req, provider, 'disconnect', false, { message: err.message });
-    return res.status(500).json({ error: 'disconnect_failed', message: err.message });
-  }
-});
 
-export default router;
+    try {
+      const schema = handler.connectSchema || z.object({}).strip();
+      const payload = schema.parse(req.body || {});
+      const existingRow = await getIntegration(req.db, orgId, provider);
+      const existing = existingRow ? { ...existingRow, creds: open(existingRow.creds) } : null;
+      const result = await handler.connect({ req, provider, payload, existing });
+
+      const row = await upsertIntegration(req.db, orgId, provider, {
+        status: result.status || existingRow?.status || 'connected',
+        subscribed:
+          typeof result.subscribed === 'boolean'
+            ? result.subscribed
+            : existingRow?.subscribed || false,
+        creds: result.creds || existing?.creds || {},
+        meta: result.meta || existing?.meta || {},
+      }, seal);
+
+      await recordIntegrationLog(req, logger, orgId, provider, 'connect', true, result.detail || {});
+
+      return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        await recordIntegrationLog(req, logger, orgId, provider, 'connect', false, {
+          message: 'validation_error',
+          issues: err.flatten(),
+        });
+        return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
+      }
+      const status = err.statusCode || 500;
+      await recordIntegrationLog(req, logger, orgId, provider, 'connect', false, { message: err.message });
+      return res.status(status).json({ error: 'connect_failed', message: err.message });
+    }
+  });
+
+  router.post('/providers/:provider/subscribe', async (req, res) => {
+    const { provider } = req.params;
+    let handler;
+    try {
+      handler = ensureProvider(provider);
+    } catch (err) {
+      return res.status(400).json({ error: 'unknown_provider', message: provider });
+    }
+
+    if (!handler.supportsSubscribe) {
+      return res.status(400).json({ error: 'subscribe_not_supported', message: provider });
+    }
+
+    let orgId;
+    try {
+      orgId = await ensureOrgContext(req);
+    } catch (err) {
+      const status = err.statusCode || 500;
+      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+    }
+
+    try {
+      const existingRow = await getIntegration(req.db, orgId, provider);
+      if (!existingRow) {
+        await recordIntegrationLog(req, logger, orgId, provider, 'subscribe', false, {
+          message: 'integration_not_connected',
+        });
+        return res.status(400).json({ error: 'integration_not_connected', message: provider });
+      }
+      const existing = { ...existingRow, creds: open(existingRow.creds) };
+      const result = await handler.subscribe({ req, provider, existing });
+      const row = await upsertIntegration(req.db, orgId, provider, {
+        status: existingRow.status,
+        subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
+        creds: existingRow.creds,
+        meta: result.meta || existing.meta || {},
+      }, seal);
+      await recordIntegrationLog(req, logger, orgId, provider, 'subscribe', true, result.detail || {});
+      return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+    } catch (err) {
+      const status = err.statusCode || 500;
+      await recordIntegrationLog(req, logger, orgId, provider, 'subscribe', false, { message: err.message });
+      return res.status(status).json({ error: 'subscribe_failed', message: err.message });
+    }
+  });
+
+  router.post('/providers/:provider/test', async (req, res) => {
+    const { provider } = req.params;
+    let handler;
+    try {
+      handler = ensureProvider(provider);
+    } catch (err) {
+      return res.status(400).json({ error: 'unknown_provider', message: provider });
+    }
+
+    let orgId;
+    try {
+      orgId = await ensureOrgContext(req);
+    } catch (err) {
+      const status = err.statusCode || 500;
+      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+    }
+
+    try {
+      const schema = handler.testSchema || z.object({}).strip();
+      const payload = schema.parse(req.body || {});
+      const existingRow = await getIntegration(req.db, orgId, provider);
+      if (!existingRow) {
+        await recordIntegrationLog(req, logger, orgId, provider, 'test', false, {
+          message: 'integration_not_connected',
+        });
+        return res.status(400).json({ error: 'integration_not_connected', message: provider });
+      }
+      const existing = { ...existingRow, creds: open(existingRow.creds) };
+      const result = await handler.test({ req, provider, payload, existing });
+      const row = await upsertIntegration(req.db, orgId, provider, {
+        status: existingRow.status,
+        subscribed: existingRow.subscribed,
+        creds: existingRow.creds,
+        meta: result.meta || existing.meta || {},
+      }, seal);
+      await recordIntegrationLog(req, logger, orgId, provider, 'test', true, result.detail || {});
+      return res.json({ ok: true, detail: result.detail || {}, integration: sanitizeIntegration(provider, row) });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        await recordIntegrationLog(req, logger, orgId, provider, 'test', false, {
+          message: 'validation_error',
+          issues: err.flatten(),
+        });
+        return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
+      }
+      const status = err.statusCode || 500;
+      await recordIntegrationLog(req, logger, orgId, provider, 'test', false, { message: err.message });
+      return res.status(status).json({ error: 'test_failed', message: err.message });
+    }
+  });
+
+  router.post('/providers/:provider/disconnect', async (req, res) => {
+    const { provider } = req.params;
+    try {
+      ensureProvider(provider);
+    } catch (err) {
+      return res.status(400).json({ error: 'unknown_provider', message: provider });
+    }
+
+    let orgId;
+    try {
+      orgId = await ensureOrgContext(req);
+    } catch (err) {
+      const status = err.statusCode || 500;
+      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+    }
+
+    try {
+      const existingRow = await getIntegration(req.db, orgId, provider);
+      if (!existingRow) {
+        return res.json({ ok: true, integration: sanitizeIntegration(provider, null) });
+      }
+      const meta = {
+        ...(isPlainObject(existingRow.meta) ? existingRow.meta : {}),
+        disconnected_at: nowIso(),
+      };
+      const row = await patchIntegration(req.db, orgId, provider, {
+        status: 'disconnected',
+        subscribed: false,
+        creds: {},
+        meta,
+      }, seal);
+      await recordIntegrationLog(req, logger, orgId, provider, 'disconnect', true, { message: 'Integração desconectada' });
+      return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+    } catch (err) {
+      await recordIntegrationLog(req, logger, orgId, provider, 'disconnect', false, { message: err.message });
+      return res.status(500).json({ error: 'disconnect_failed', message: err.message });
+    }
+  });
+
+  return router;
+}
+
+const defaultRouter = createIntegrationsRouter();
+
+export default defaultRouter;
