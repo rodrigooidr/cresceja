@@ -185,7 +185,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   };
 
   const handleCheckboxChange = (field) => (event) => {
-    setField(field, event.target.checked);
+    setField(field, !!event.target.checked);
   };
 
   const handleAddressChange = (field) => (event) => {
@@ -336,9 +336,13 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       applyCnpjData(data);
       setFeedback("Dados do CNPJ preenchidos automaticamente.");
     } catch (err) {
-      const code = err?.response?.data?.error || "lookup_failed";
-      const message = code === "invalid_cnpj" ? "CNPJ inválido" : "Não foi possível consultar CNPJ";
-      setFieldError("cnpj", message);
+      const raw = err?.response?.data?.error;
+      const normalized = typeof raw === "string" ? raw.toLowerCase().replace(/_/g, " ") : "";
+      if (normalized === "invalid cnpj") {
+        setFieldError("cnpj", "CNPJ inválido");
+      } else {
+        setFieldError("cnpj", "Não foi possível consultar CNPJ");
+      }
     } finally {
       setCnpjLookupLoading(false);
     }
@@ -361,9 +365,13 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       const data = await lookupCEP(digits);
       applyCepData(data);
     } catch (err) {
-      const code = err?.response?.data?.error || "lookup_failed";
-      const message = code === "invalid_cep" ? "CEP inválido" : "Não foi possível consultar CEP";
-      setFieldError("endereco.cep", message);
+      const raw = err?.response?.data?.error;
+      const normalized = typeof raw === "string" ? raw.toLowerCase().replace(/_/g, " ") : "";
+      if (normalized === "invalid cep") {
+        setFieldError("endereco.cep", "CEP inválido");
+      } else {
+        setFieldError("endereco.cep", "Não foi possível consultar CEP");
+      }
     } finally {
       setCepLookupLoading(false);
     }
@@ -557,7 +565,10 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
             Fechar
           </button>
         </div>
-        <div className="modal-body max-h-[80vh] overflow-y-auto pr-2">
+        <div
+          className="modal-body overflow-y-auto pr-2"
+          style={{ maxHeight: "calc(100vh - 200px)" }}
+        >
           <form onSubmit={handleSubmit} className="space-y-6 px-6 py-5">
           {globalError && (
             <div className="rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{globalError}</div>

@@ -1,8 +1,17 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import inboxApi from '../../api/inboxApi';
 import { useOrg } from '../../contexts/OrgContext.jsx';
 import useToastFallback from '../../hooks/useToastFallback';
+
+function useDebounce(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const handle = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(handle);
+  }, [value, delay]);
+  return debounced;
+}
 
 export default function AdminOrgsList() {
   const [items, setItems] = useState([]);
@@ -11,12 +20,26 @@ export default function AdminOrgsList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const toast = useToastFallback();
+  const debouncedQ = useDebounce(q, 300);
+  const pendingResetRef = useRef(false);
+  const lastQRef = useRef(debouncedQ);
+
+  useEffect(() => {
+    if (lastQRef.current !== debouncedQ) {
+      lastQRef.current = debouncedQ;
+      pendingResetRef.current = true;
+      setPage(1);
+    }
+  }, [debouncedQ]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     try {
-      const res = await inboxApi.get('/admin/orgs', { params: { q, page, pageSize: 20 }, meta: { scope: 'global' } });
+      const res = await inboxApi.get('/admin/orgs', {
+        params: { q: debouncedQ, page, pageSize: 20 },
+        meta: { scope: 'global' },
+      });
       setItems(res.data.items || []);
     } catch (e) {
       setError(true);
@@ -24,9 +47,17 @@ export default function AdminOrgsList() {
     } finally {
       setLoading(false);
     }
-  }, [q, page, toast]);
+  }, [debouncedQ, page, toast]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (pendingResetRef.current && page !== 1) {
+      return;
+    }
+    if (pendingResetRef.current) {
+      pendingResetRef.current = false;
+    }
+    load();
+  }, [load, page]);
 
   const { setSelected } = useOrg();
   const handleImpersonate = (org) => {

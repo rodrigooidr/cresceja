@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { getMyOrgs, setActiveOrg } from "../api/inboxApi";
+import { getCurrentOrg, getMyOrgs, setActiveOrg } from "../api/inboxApi";
 import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
@@ -62,6 +62,9 @@ export function OrgProvider({ children }) {
     }
   });
   const [orgChangeTick, setOrgChangeTick] = useState(0);
+  const [org, setOrg] = useState(null);
+  const [orgLoading, setOrgLoading] = useState(false);
+  const [orgError, setOrgError] = useState(null);
 
   // Quem vê o seletor
   const canSeeSelector = useMemo(() => {
@@ -175,6 +178,9 @@ export function OrgProvider({ children }) {
     if (!isAuthenticated) {
       setSelected(null);
       setActiveOrg(null); // remove header e localStorage
+      setOrg(null);
+      setOrgError(null);
+      setOrgLoading(false);
       return;
     }
     // Se não for para iniciar em branco e o token já traz org, seleciona
@@ -220,11 +226,73 @@ export function OrgProvider({ children }) {
       if (!orgId || orgId === selected) return;
       setSelected(orgId);
       setActiveOrg(orgId);
+      setOrg(null);
+      setOrgError(null);
       announceOrgChanged(orgId);
       setOrgChangeTick((n) => n + 1);
     },
     [isAuthenticated, selected]
   );
+
+  const refreshOrg = useCallback(async () => {
+    if (!isAuthenticated || !selected) {
+      setOrg(null);
+      setOrgError(null);
+      setOrgLoading(false);
+      return null;
+    }
+    setOrgLoading(true);
+    setOrgError(null);
+    try {
+      const data = await getCurrentOrg();
+      setOrg(data ?? null);
+      return data ?? null;
+    } catch (err) {
+      setOrg(null);
+      setOrgError(err);
+      throw err;
+    } finally {
+      setOrgLoading(false);
+    }
+  }, [isAuthenticated, selected]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setOrg(null);
+      setOrgError(null);
+      setOrgLoading(false);
+      return;
+    }
+    if (!selected) {
+      setOrg(null);
+      setOrgError(null);
+      setOrgLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      setOrgLoading(true);
+      setOrgError(null);
+      try {
+        const data = await getCurrentOrg();
+        if (cancelled) return;
+        setOrg(data ?? null);
+      } catch (err) {
+        if (cancelled) return;
+        setOrg(null);
+        setOrgError(err);
+      } finally {
+        if (!cancelled) setOrgLoading(false);
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, selected, orgChangeTick]);
 
   const value = useMemo(
     () => ({
@@ -239,6 +307,10 @@ export function OrgProvider({ children }) {
       hasMore,
       q,
       publicMode: !isAuthenticated,
+      org,
+      orgLoading,
+      orgError,
+      refreshOrg,
     }),
     [
       orgs,
@@ -252,6 +324,10 @@ export function OrgProvider({ children }) {
       hasMore,
       q,
       isAuthenticated,
+      org,
+      orgLoading,
+      orgError,
+      refreshOrg,
     ]
   );
 
@@ -281,12 +357,15 @@ export function useOrg() {
       // stubs comuns p/ listas/UX
       orgs: [{ id: testOrg.id, name: testOrg.name }],
       loading: false,
+      orgLoading: false,
+      orgError: null,
       canSeeSelector: false,
       orgChangeTick: 0,
       searchOrgs: async () => ({ items: [{ id: testOrg.id, name: testOrg.name }], total: 1 }),
       loadMoreOrgs: async () => ({ items: [], total: 1 }),
       hasMore: false,
       q: "",
+      publicMode: false,
     };
   }
 
