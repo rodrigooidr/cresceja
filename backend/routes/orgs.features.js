@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { getFeatureAllowance, getUsage } from '../services/features.js';
+import { getOrgFeatures } from '../services/orgFeatures.js';
 
 const router = Router();
 
@@ -15,7 +16,8 @@ router.get('/api/orgs/:id/features', async (req, res) => {
     const used = await getUsage(orgId, code, req.db);
     out[code] = { enabled: !!a.enabled, limit: a.limit, used };
   }
-  res.json(out);
+  const featureToggles = await getOrgFeatures(req.db, orgId);
+  res.json({ ...out, feature_flags: featureToggles, features: featureToggles });
 });
 
 export default router;

@@ -101,6 +101,7 @@ import telemetryAppointmentsRouter from './routes/telemetry.appointments.js';
 import telemetryAppointmentsExportRouter from './routes/telemetry.appointments.export.js';
 import telemetryAppointmentsFunnelRouter from './routes/telemetry.appointments.funnel.js';
 import telemetryAppointmentsFunnelExportRouter from './routes/telemetry.appointments.funnel.export.js';
+import { createAdminOrgFeaturesRouter } from './routes/admin.org.features.js';
 import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
@@ -302,9 +303,15 @@ function configureApp() {
   app.use('/api/admin/orgs', adminOrgsRouter);
   app.use('/api/admin/orgs/:orgId', withOrgId, adminOrgByIdRouter);
   app.use('/api/admin/organizations', adminOrganizationsRouter);
+  app.use('/api/admin', createAdminOrgFeaturesRouter());
 
   // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
+
+  // Stubs seguros para inbox até implementação completa
+  app.get('/api/inbox/templates', (_req, res) => res.json({ items: [] }));
+  app.get('/api/inbox/quick-replies', (_req, res) => res.json({ items: [] }));
+  app.get('/api/inbox/conversations', (_req, res) => res.json({ items: [], total: 0 }));
 
   // monta utils *depois* do auth stack padrão
   app.use('/api/utils', utilsRouter);
