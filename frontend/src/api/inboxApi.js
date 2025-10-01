@@ -2,7 +2,15 @@
 import axios from "axios";
 import { applyOrgIdHeader, computeOrgId } from "./orgHeader.js";
 
-export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "/api";
+const isBrowser = typeof window !== "undefined";
+const isTest = process.env.NODE_ENV === "test";
+const fromEnvCRA = process.env.REACT_APP_API_BASE_URL; // CRA
+const fromGlobal = isBrowser ? window.__API_BASE_URL__ : undefined;
+// DEV usa /api; PROD usa .env.production; TEST força absoluto p/ evitar undefined
+export const API_BASE_URL =
+  fromEnvCRA ||
+  fromGlobal ||
+  (isTest ? "http://localhost:4000" : "/api");
 export const apiUrl = API_BASE_URL; // alias
 
 // torna a base visível globalmente (útil para helpers que não usam axios)
