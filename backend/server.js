@@ -284,6 +284,7 @@ function configureApp() {
   // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
 
+  // monta utils *depois* do auth stack padrão
   app.use('/api/utils', utilsRouter);
 
   // Rotas que são factories e precisam de dependências

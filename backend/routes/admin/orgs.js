@@ -24,36 +24,23 @@ router.get('/', async (req, res, next) => {
     const status = StatusSchema.parse(rawStatus);
     const q = String(req.query.q ?? '').trim();
 
-    const params = [];
-    const where = [];
-
-    if (status !== 'all') {
-      params.push(status);
-      where.push(`o.status = $${params.length}::text`);
-    }
-
-    if (q) {
-      params.push(`%${q}%`);
-      where.push(`o.name ILIKE $${params.length}`);
-    }
-
     const sql = `
-      SELECT
-        o.id,
-        o.name,
-        o.slug,
-        o.plan_id,
-        COALESCE(p.name, p.code) AS plan,
-        o.trial_ends_at,
-        o.status
-      FROM public.organizations o
-      LEFT JOIN public.plans p ON p.id = o.plan_id
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ORDER BY o.created_at DESC
-      LIMIT 200
+      SELECT o.id,
+             o.name,
+             o.slug,
+             o.status,
+             o.trial_ends_at,
+             o.plan_id,
+             COALESCE(p.code, p.name) AS plan
+        FROM public.organizations o
+        LEFT JOIN public.plans p ON p.id = o.plan_id
+       WHERE ($1 = 'all' OR o.status = $1)
+         AND ($2 = '' OR unaccent(o.name) ILIKE '%' || unaccent($2) || '%')
+       ORDER BY o.created_at DESC
+       LIMIT 200
     `;
 
-    const { rows } = await db.query(sql, params);
+    const { rows } = await db.query(sql, [status, q]);
     res.json({
       items: (rows ?? []).map((row) => ({
         ...row,

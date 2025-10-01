@@ -10,6 +10,7 @@ app.use(express.json());
 app.use('/api/admin/plans', adminPlansRouter);
 app.use('/api/admin/orgs', adminOrgsRouter);
 app.use('/api/admin/orgs/:orgId', withOrgId, adminOrgByIdRouter);
+// monta utils *depois* do auth stack padrão
 app.use('/api/utils', utilsRouter);
 
 export default app;
