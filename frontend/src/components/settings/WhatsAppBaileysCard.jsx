@@ -21,12 +21,8 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildSseUrl(
-  path = '/api/integrations/providers/whatsapp_session/qr/stream',
-  token
-) {
-  const base = API_BASE_URL || '/api';
-  // Se base for absoluto (http://...), monta com ele; senão usa a origem atual
+function buildSseUrl(path = '/api/integrations/providers/whatsapp_session/qr/stream', token) {
+  const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) || '/api';
   const url = base.startsWith('http')
     ? new URL(path, base)
     : new URL(path, window.location.origin);

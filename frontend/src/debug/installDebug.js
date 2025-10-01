@@ -1,3 +1,21 @@
+// Redireciona fetch('/api/...') para a mesma base da API
+(function patchFetchBase() {
+  try {
+    const BASE = (typeof window !== 'undefined' && window.__API_BASE_URL__) || '/api';
+    const orig = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      try {
+        const u = typeof input === 'string' ? input : input?.url || '';
+        if (u.startsWith('/api/')) {
+          const full = BASE.startsWith('http') ? new URL(u, BASE).toString() : u;
+          return orig(full, init);
+        }
+      } catch {}
+      return orig(input, init);
+    };
+  } catch {}
+})();
+
 // Instala ganchos de log e rede no window.__debugStore
 (function(){
   if (typeof window === "undefined") return;
