@@ -1,8 +1,9 @@
 // src/inbox/normalizeMessage.js
 import { normalizeDirection, isMineMessage } from './message.helpers';
-import { apiUrl } from '../api/inboxApi.js';
+import { apiUrl as inboxApiUrl } from '@/api';
 
-const API_BASE = (apiUrl || '').replace(/\/$/, '');
+const normalizedApiUrl = typeof inboxApiUrl === 'string' ? inboxApiUrl : String(inboxApiUrl || '');
+const API_BASE = normalizedApiUrl.replace(/\/$/, '');
 
 function mediaEndpoint(messageId, index) {
   const encodedId = encodeURIComponent(String(messageId || ''));
