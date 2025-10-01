@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import inboxApi from '../../api/inboxApi.js';
 import { useOrg } from '../../contexts/OrgContext.jsx';
@@ -21,6 +21,13 @@ export default function InstagramPublisher() {
   const [submitting, setSubmitting] = useState(false);
   const [progressText, setProgressText] = useState('');
 
+  const refreshJobs = useCallback(async () => {
+    if (!selected) return;
+    const r = await inboxApi.get(`/orgs/${selected}/instagram/jobs`);
+    const list = toArray(r?.data?.items ?? r?.data);
+    setJobs(list);
+  }, [selected]);
+
   useEffect(() => {
     if (!selected) return;
     inboxApi.get(`/orgs/${selected}/instagram/accounts`).then(r => {
@@ -29,14 +36,7 @@ export default function InstagramPublisher() {
       if (list.length) setAccountId(list[0].id);
     });
     refreshJobs();
-  }, [selected]);
-
-  async function refreshJobs() {
-    if (!selected) return;
-    const r = await inboxApi.get(`/orgs/${selected}/instagram/jobs`);
-    const list = toArray(r?.data?.items ?? r?.data);
-    setJobs(list);
-  }
+  }, [refreshJobs, selected]);
 
   async function handleSubmit(now) {
     setError('');

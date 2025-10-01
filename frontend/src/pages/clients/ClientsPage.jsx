@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import inboxApi, { setOrgIdHeaderProvider } from "../../api/inboxApi";
 import { useAuth } from "../../auth/useAuth";
 import { canEditClients } from "../../auth/roles";
@@ -23,7 +23,7 @@ export default function ClientsPage() {
   const [q, setQ] = useState({ name: "", phone: "", email: "", tag: "", stage: "", accountId: "" });
   const [state, setState] = useState({ loading: true, error: null, items: [] });
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!selected) {
       setState({ loading: false, error: "Selecione uma organização para listar/criar clientes.", items: [] });
       return;
@@ -38,7 +38,7 @@ export default function ClientsPage() {
     } catch (err) {
       setState({ loading: false, error: err?.message || "Falha ao carregar", items: [] });
     }
-  }
+  }, [q, selected]);
 
   useEffect(() => {
     if (typeof setOrgIdHeaderProvider === "function") {
@@ -59,7 +59,7 @@ export default function ClientsPage() {
 
   useEffect(() => {
     load();
-  }, [q, selected]);
+  }, [load]);
 
   async function addClient() {
     const name = prompt("Nome do cliente?") || "";

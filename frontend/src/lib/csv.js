@@ -39,4 +39,6 @@ export function downloadCSV(filename, csv) {
   }
 }
 
-export default { toCSV, downloadCSV };
+const csv = { toCSV, downloadCSV };
+
+export default csv;

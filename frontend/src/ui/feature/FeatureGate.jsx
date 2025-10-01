@@ -1,4 +1,3 @@
-import React from 'react';
 import useOrgFeatures from '../../hooks/useOrgFeatures';
 
 export default function FeatureGate({ code, children, fallback=null }) {

@@ -19,6 +19,8 @@ const globalScope =
     ? window
     : {};
 
+const START_BLANK = true;
+
 // Broadcast opcional (quem quiser ouvir “org:changed”)
 function announceOrgChanged(orgId) {
   try {
@@ -41,8 +43,6 @@ function readTokenOrgId() {
 
 export function OrgProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
-  // Iniciar SEM org selecionada (padrão em branco)
-  const START_BLANK = true;
 
   // Lista / paginação
   const [orgs, setOrgs] = useState([]);
@@ -147,7 +147,7 @@ export function OrgProvider({ children }) {
         setLoading(false);
       }
     },
-    [applyFilter, getMyOrgs, isAuthenticated, selected]
+    [applyFilter, isAuthenticated, selected]
   );
 
   const searchOrgs = useCallback(

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import inboxApi from "../../api/inboxApi";
 import useActiveOrgGate from "../../hooks/useActiveOrgGate";
@@ -17,14 +17,14 @@ function TabButton({ k, active, onClick, children }) {
 function WhatsAppTab({ orgId, api }) {
   const [status, setStatus] = useState(null);
 
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     const { data } = await api.get("admin/orgs/whatsapp/status", { params: { id: orgId } });
     setStatus(data);
-  };
+  }, [api, orgId]);
 
   useEffect(() => {
     loadStatus();
-  }, [orgId]);
+  }, [loadStatus]);
 
   if (!status) return <div>Carregando…</div>;
 
@@ -93,23 +93,26 @@ function WhatsAppTab({ orgId, api }) {
 export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
   const { id: orgId } = useParams();
   const { allowed, reason } = useActiveOrgGate({ minRole, requireActiveOrg: false });
-  const api = {
-    get: (url, opts = {}) =>
-      inboxApi.get(url, {
-        ...opts,
-        meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
-      }),
-    post: (url, body, opts = {}) =>
-      inboxApi.post(url, body, {
-        ...opts,
-        meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
-      }),
-    put: (url, body, opts = {}) =>
-      inboxApi.put(url, body, {
-        ...opts,
-        meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
-      }),
-  };
+  const api = useMemo(
+    () => ({
+      get: (url, opts = {}) =>
+        inboxApi.get(url, {
+          ...opts,
+          meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
+        }),
+      post: (url, body, opts = {}) =>
+        inboxApi.post(url, body, {
+          ...opts,
+          meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
+        }),
+      put: (url, body, opts = {}) =>
+        inboxApi.put(url, body, {
+          ...opts,
+          meta: { ...(opts.meta || {}), impersonateOrgId: orgId },
+        }),
+    }),
+    [orgId]
+  );
   const [params, setParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -147,7 +150,7 @@ export default function OrgDetailsPage({ minRole = "SuperAdmin" }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [active, orgId]);
+  }, [active, api, orgId]);
 
   const sections = useMemo(() => ([
     "overview","billing","whatsapp","integrations","users","credits","logs","data"
