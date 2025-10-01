@@ -375,6 +375,12 @@ export async function deleteAdminOrg(id) {
   await api.delete(`/admin/orgs/${id}`, withGlobalScope());
 }
 
+export async function getCurrentOrg(options = {}) {
+  const config = withGlobalScope(options);
+  const { data } = await api.get('/orgs/current', config);
+  return data;
+}
+
 export async function getMyOrgs() {
   const { data } = await api.get('/orgs/me');
   return data;

@@ -25,7 +25,6 @@ import {
   hasGlobalRole,
   hasOrgRole,
 } from "../../auth/roles";
-import inboxApi from "../../api/inboxApi.js";
 import { canUse, limitKeyFor } from "../../utils/featureGate.js";
 
 const LS_KEY = "sidebarCollapsed";
@@ -167,19 +166,10 @@ function OrgPicker({ collapsed }) {
 
 export default function Sidebar() {
   const { user, logout } = useAuth();
-  const { selected, publicMode } = useOrg();
+  const { selected, publicMode, org } = useOrg();
   const needsOrg = !publicMode && !selected;
-  const [org, setOrg] = useState(null);
   const canManageOrgAI = hasOrgRole(["OrgAdmin", "OrgOwner"], user) || hasGlobalRole(["SuperAdmin"], user);
   const isSuperAdmin = hasGlobalRole(["SuperAdmin"], user);
-
-  useEffect(() => {
-    if (!selected) {
-      setOrg(null);
-      return;
-    }
-    inboxApi.get('/orgs/current', { meta: { scope: 'global' } }).then((r) => setOrg(r.data)).catch(() => {});
-  }, [selected]);
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
