@@ -153,33 +153,19 @@ function logStartupFlags() {
 }
 
 // ---------- Helpers ----------
-const corsOrigins = (
-  process.env.CORS_ORIGINS ||
-  'http://localhost:3000,http://127.0.0.1:3000,https://app.cresceja.com.br,https://app.cresceja.com'
-)
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-
 function applyCommonHeadersForApi(_req, res, next) {
   // evita cache no /api
   res.set('Cache-Control', 'no-store');
   next();
 }
 
-const ALLOWED_ORIGINS = corsOrigins;
+const corsOrigin = process.env.CORS_ORIGIN || 'http://localhost:3000';
+const ALLOWED_ORIGINS = corsOrigin
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'];
-const ALLOWED_HEADERS = [
-  'Authorization',
-  'Content-Type',
-  'X-Org-Id',
-  'X-Impersonate-Org-Id',
-  'Cache-Control',
-  'Pragma',
-  'Expires',
-  'Accept',
-  'X-Requested-With',
-];
+const ALLOWED_HEADERS = ['Content-Type', 'Authorization', 'X-Org-Id', 'X-Impersonate-Org-Id'];
 
 let configured = false;
 function configureApp() {
@@ -192,27 +178,16 @@ function configureApp() {
   app.disable('x-powered-by');
 
   // ---------- CORS (sempre antes de qualquer rota/middleware que lide com body) ----------
-  const corsOptions = {
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      return cb(null, ALLOWED_ORIGINS.includes(origin));
-    },
-    methods: ALLOWED_METHODS,
-    allowedHeaders: ALLOWED_HEADERS,
-    exposedHeaders: ['Content-Disposition'],
-    credentials: false,
-    maxAge: 86400,
-    optionsSuccessStatus: 204,
-  };
-
-  app.use(cors(corsOptions));
-  app.options('*', (req, res) => {
-    res.header('Access-Control-Allow-Origin', req.headers.origin || '');
-    res.header('Vary', 'Origin');
-    res.header('Access-Control-Allow-Methods', ALLOWED_METHODS.join(','));
-    res.header('Access-Control-Allow-Headers', ALLOWED_HEADERS.join(','));
-    res.sendStatus(204);
-  });
+  const corsOriginConfig = ALLOWED_ORIGINS.length <= 1 ? ALLOWED_ORIGINS[0] ?? false : ALLOWED_ORIGINS;
+  app.use(
+    cors({
+      origin: corsOriginConfig,
+      credentials: true,
+      methods: ALLOWED_METHODS,
+      allowedHeaders: ALLOWED_HEADERS,
+      exposedHeaders: ['Content-Disposition'],
+    })
+  );
 
   // Helmet após CORS para evitar conflitos
   app.use(helmet({
@@ -308,10 +283,47 @@ function configureApp() {
   // Rotas protegidas exigem auth + guardas de impersonação e contexto RLS
   app.use('/api', authRequired, impersonationGuard, pgRlsContext);
 
-  // Stubs seguros para inbox até implementação completa
-  app.get('/api/inbox/templates', (_req, res) => res.json({ items: [] }));
-  app.get('/api/inbox/quick-replies', (_req, res) => res.json({ items: [] }));
-  app.get('/api/inbox/conversations', (_req, res) => res.json({ items: [], total: 0 }));
+  // -----------------------------
+  // STUBS DE DESENVOLVIMENTO (DEV)
+  // Evitam overlay de erro quando módulos ainda não estão ativos
+  // -----------------------------
+  app.get('/api/inbox/templates', authRequired, (_req, res) => {
+    res.json({ items: [] });
+  });
+
+  app.get('/api/inbox/quick-replies', authRequired, (_req, res) => {
+    res.json({ items: [] });
+  });
+
+  app.get('/api/inbox/conversations', authRequired, (req, res) => {
+    const { status = 'open', limit = 50, offset = 0 } = req.query;
+    res.json({ items: [], total: 0, status, limit: Number(limit), offset: Number(offset) });
+  });
+
+  app.get('/api/inbox/alerts', authRequired, (_req, res) => {
+    res.json({ items: [], lastCheckedAt: new Date().toISOString() });
+  });
+
+  app.get('/api/inbox/alerts/stream', authRequired, (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    res.write(`data: ${JSON.stringify({ type: 'ping', ts: Date.now() })}\n\n`);
+    const t = setTimeout(() => res.end(), 30000);
+    req.on('close', () => clearTimeout(t));
+  });
+
+  app.get('/api/orgs/:orgId/features', authRequired, async (req, res) => {
+    try {
+      const r = await req.db.query('SELECT features FROM org_features WHERE org_id = $1', [
+        req.params.orgId,
+      ]);
+      res.json({ features: r.rows[0]?.features || {} });
+    } catch {
+      res.json({ features: {} });
+    }
+  });
 
   // monta utils *depois* do auth stack padrão
   app.use('/api/utils', utilsRouter);
