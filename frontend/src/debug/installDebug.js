@@ -1,97 +1,103 @@
 // === Debug network helpers: garantem que /api/* use a mesma base e headers do axios ===
 (function patchNetwork() {
-  // não executa em testes (Jest)
-  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test') {
-    return;
+  // não roda em Jest
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') return;
+
+  const BASE =
+    (typeof process !== 'undefined' && process.env.REACT_APP_API_BASE_URL) ||
+    (typeof window !== 'undefined' && window.__API_BASE_URL__) ||
+    '/api';
+
+  function getToken() {
+    try {
+      return localStorage.getItem('token') || '';
+    } catch {
+      return '';
+    }
   }
-  try {
-    // Descobre a BASE
-    const ENV_BASE =
-      (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_BASE_URL) ||
-      (typeof window !== 'undefined' && window.__API_BASE_URL__) ||
-      '/api';
-
-    function resolveApiUrl(u) {
-      if (typeof u !== 'string') return u;
-      if (!u.startsWith('/api/')) return u;
-      // base absoluta? usa como origin; senão mantém relativo
-      if (ENV_BASE.startsWith('http')) return new URL(u, ENV_BASE).toString();
-      return u; // proxy/mesmo host
+  function getOrg() {
+    try {
+      return localStorage.getItem('activeOrgId') || '';
+    } catch {
+      return '';
     }
+  }
 
-    function authHeaders(init) {
-      const token = (typeof localStorage !== 'undefined' && localStorage.getItem('token')) || '';
-      const orgId = (typeof localStorage !== 'undefined' && localStorage.getItem('activeOrgId')) || '';
-      const headers = new Headers(init && init.headers ? init.headers : undefined);
-      if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
-      if (orgId && !headers.has('X-Org-Id')) headers.set('X-Org-Id', orgId);
-      return headers;
-    }
+  function isApi(u) {
+    return typeof u === 'string' && (u.startsWith('/api/') || u.startsWith('/auth/'));
+  }
 
-    // ---- Patch fetch ----
-    if (typeof window !== 'undefined' && !window.__DEBUG_FETCH_PATCHED__) {
-      const origFetch = window.fetch.bind(window);
-      window.fetch = (input, init = {}) => {
-        try {
-          const url = typeof input === 'string' ? input : input?.url || '';
-          const rewritten = resolveApiUrl(url);
-          if (url.startsWith('/api/')) {
-            init = { ...init, headers: authHeaders(init) };
-          }
-          return origFetch(rewritten, init);
-        } catch (e) { return origFetch(input, init); }
-      };
-      window.__DEBUG_FETCH_PATCHED__ = true;
-    }
+  function rewrite(u) {
+    if (!isApi(u)) return u;
+    if (BASE.startsWith('http')) return new URL(u, BASE).toString();
+    return u; // proxy do CRA lida em dev
+  }
 
-    // ---- Patch XMLHttpRequest (axios usa XHR) ----
-    if (typeof XMLHttpRequest !== 'undefined' && !XMLHttpRequest.__DEBUG_XHR_PATCHED__) {
-      const origOpen = XMLHttpRequest.prototype.open;
-      const origSend = XMLHttpRequest.prototype.send;
-      XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-        try {
-          this.__isApi = typeof url === 'string' && url.startsWith('/api/');
-          const rewritten = resolveApiUrl(url);
-          return origOpen.call(this, method, rewritten, async, user, password);
-        } catch (e) {
-          return origOpen.call(this, method, url, async, user, password);
-        }
-      };
-      XMLHttpRequest.prototype.send = function(body) {
-        try {
-          if (this.__isApi) {
-            const token = localStorage.getItem('token');
-            const orgId = localStorage.getItem('activeOrgId');
-            if (token) this.setRequestHeader('Authorization', `Bearer ${token}`);
-            if (orgId) this.setRequestHeader('X-Org-Id', orgId);
-          }
-        } catch {}
-        return origSend.call(this, body);
-      };
-      XMLHttpRequest.__DEBUG_XHR_PATCHED__ = true;
-    }
-
-    // ---- Patch EventSource (SSE) ----
-    if (typeof window !== 'undefined' && window.EventSource && !window.EventSource.__DEBUG_ES_PATCHED__) {
-      const OrigES = window.EventSource;
-      function PatchedES(url, config) {
-        try {
-          const finalUrl = resolveApiUrl(url);
-          return new OrigES(finalUrl, config);
-        } catch { return new OrigES(url, config); }
+  // ---- fetch ----
+  if (typeof window !== 'undefined' && !window.__DEBUG_FETCH_PATCHED__) {
+    const orig = window.fetch.bind(window);
+    window.fetch = (input, init = {}) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      const rewritten = rewrite(url);
+      if (isApi(url)) {
+        const h = new Headers(init.headers || {});
+        const token = getToken();
+        const orgId = getOrg();
+        if (token && !h.has('Authorization')) h.set('Authorization', `Bearer ${token}`);
+        if (orgId && !h.has('X-Org-Id')) h.set('X-Org-Id', orgId);
+        init = { ...init, headers: h };
       }
-      // copia props estáticos
-      for (const k in OrigES) { try { PatchedES[k] = OrigES[k]; } catch {} }
-      PatchedES.prototype = OrigES.prototype;
-      window.EventSource = PatchedES;
-      window.EventSource.__DEBUG_ES_PATCHED__ = true;
-    }
-
-    // Expor a BASE para inspeção
-    try { window.__API_BASE_URL__ = ENV_BASE; } catch {}
-  } catch (e) {
-    // silencioso
+      return orig(rewritten, init);
+    };
+    window.__DEBUG_FETCH_PATCHED__ = true;
   }
+
+  // ---- XMLHttpRequest (axios) ----
+  if (typeof XMLHttpRequest !== 'undefined' && !XMLHttpRequest.__DEBUG_XHR_PATCHED__) {
+    const oOpen = XMLHttpRequest.prototype.open;
+    const oSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u, a, us, pw) {
+      this.__isApi = isApi(u);
+      const ru = rewrite(u);
+      return oOpen.call(this, m, ru, a, us, pw);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      if (this.__isApi) {
+        const token = getToken();
+        const orgId = getOrg();
+        if (token) this.setRequestHeader('Authorization', `Bearer ${token}`);
+        if (orgId) this.setRequestHeader('X-Org-Id', orgId);
+      }
+      return oSend.call(this, body);
+    };
+    XMLHttpRequest.__DEBUG_XHR_PATCHED__ = true;
+  }
+
+  // ---- EventSource (SSE) ----
+  if (typeof window !== 'undefined' && window.EventSource && !window.EventSource.__DEBUG_ES_PATCHED__) {
+    const Orig = window.EventSource;
+    function withToken(url) {
+      // EventSource não envia headers → passamos token e org via query em DEV
+      const u = new URL(rewrite(url), window.location.origin);
+      const token = getToken();
+      const orgId = getOrg();
+      if (token && !u.searchParams.get('access_token')) u.searchParams.set('access_token', token);
+      if (orgId && !u.searchParams.get('org_id')) u.searchParams.set('org_id', orgId);
+      return u.toString();
+    }
+    function Patched(url, cfg) {
+      const final = isApi(url) ? withToken(url) : url;
+      return new Orig(final, cfg);
+    }
+    Patched.prototype = Orig.prototype;
+    window.EventSource = Patched;
+    window.EventSource.__DEBUG_ES_PATCHED__ = true;
+  }
+
+  // logs enxutos
+  try {
+    window.__API_BASE_URL__ = BASE;
+  } catch {}
 })();
 
 // Instala ganchos de log e rede no window.__debugStore
