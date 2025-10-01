@@ -20,7 +20,9 @@ export function auth(req, res, next) {
     const h = req.headers.authorization || "";
     const [scheme, token] = h.split(" ");
     if (scheme !== "Bearer" || !token) {
-      return res.status(401).json({ message: "missing token" });
+      return res
+        .status(401)
+        .json({ error: "missing_token", message: "missing token" });
     }
     const secret = process.env.JWT_SECRET || "dev-secret-change-me";
     const payload = jwt.verify(token, secret);
@@ -30,7 +32,9 @@ export function auth(req, res, next) {
     req.user = payload;
     next();
   } catch (e) {
-    return res.status(401).json({ message: "invalid token" });
+    return res
+      .status(401)
+      .json({ error: "invalid_token", message: "invalid token" });
   }
 }
 
@@ -60,13 +64,20 @@ export function impersonationGuard(req, res, next) {
   const hdrImpersonate = isUuid(hdrImpersonateRaw) ? String(hdrImpersonateRaw) : null;
 
   if (hdrImpersonateRaw && !hdrImpersonate) {
-    return res.status(400).json({ message: "invalid impersonation org id" });
+    return res
+      .status(400)
+      .json({
+        error: "invalid_impersonation_org_id",
+        message: "invalid impersonation org id",
+      });
   }
 
   if (hdrImpersonate) {
     const canImpersonate = hasGlobalRole(req.user, [ROLES.SuperAdmin, ROLES.Support]);
     if (!canImpersonate) {
-      return res.status(403).json({ message: "impersonation not allowed" });
+      return res
+        .status(403)
+        .json({ error: "forbidden", message: "impersonation not allowed" });
     }
     // deixa anotado para middlewares/rotas posteriores, sem sobrescrever o token
     req.impersonatedOrgId = hdrImpersonate;
@@ -86,7 +97,10 @@ export function requireRole(...allowed) {
   const required = allowed.flat().filter(Boolean);
   return (req, res, next) => {
     const user = req.user;
-    if (!user?.role) return res.status(401).json({ message: "unauthenticated" });
+    if (!user?.role)
+      return res
+        .status(401)
+        .json({ error: "unauthenticated", message: "unauthenticated" });
     if (hasGlobalRole(user, [ROLES.SuperAdmin])) return next();
     if (!required.length) return next();
 
@@ -100,7 +114,7 @@ export function requireRole(...allowed) {
       return next();
     }
 
-    return res.status(403).json({ message: "forbidden" });
+    return res.status(403).json({ error: "forbidden", message: "forbidden" });
   };
 }
 
@@ -116,7 +130,10 @@ export function orgScope(req, res, next) {
       orgId = headerOrg;
     }
   }
-  if (!isUuid(orgId)) return res.status(401).json({ message: "org_id missing in token" });
+  if (!isUuid(orgId))
+    return res
+      .status(401)
+      .json({ error: "org_id_missing", message: "org_id missing in token" });
   req.orgId = orgId;
   req.orgScopeValidated = true;
   next();

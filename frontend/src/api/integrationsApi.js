@@ -16,7 +16,9 @@ export const testProvider = (provider, payload) =>
   inboxApi.post(`/api/integrations/providers/${provider}/test`, payload).then((r) => r.data);
 
 export const disconnectProvider = (provider) =>
-  inboxApi.delete(`/api/integrations/providers/${provider}`).then((r) => r.data);
+  inboxApi
+    .post(`/api/integrations/providers/${provider}/disconnect`)
+    .then((r) => r.data);
 
 export default {
   getAllStatus,

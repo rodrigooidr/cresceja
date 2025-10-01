@@ -5,31 +5,22 @@ import { seal, open } from '../services/credStore.js';
 
 const router = Router();
 
-const ORG_ADMIN_ROLES = ['OrgAdmin', 'OrgOwner'];
+const PROVIDERS = [
+  'whatsapp_cloud',
+  'whatsapp_session',
+  'meta_facebook',
+  'meta_instagram',
+  'google_calendar',
+];
 
-router.use(authRequired, requireRole(...ORG_ADMIN_ROLES));
+router.use(authRequired, requireRole('OrgAdmin', 'OrgOwner'));
 
-const PROVIDERS = ['whatsapp_cloud', 'whatsapp_session', 'meta', 'google_calendar'];
-
-const PHONE_REGEX = /^\+?\d{10,15}$/;
+function nowIso() {
+  return new Date().toISOString();
+}
 
 function isPlainObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function ensureSealedCreds(creds) {
-  if (!creds || typeof creds !== 'object') {
-    return seal({});
-  }
-  if ('c' in creds && 'v' in creds) {
-    return creds;
-  }
-  return seal(creds);
-}
-
-function withOpenedCreds(row) {
-  if (!row) return null;
-  return { ...row, creds: open(row.creds) };
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 async function getIntegration(db, provider) {
@@ -45,6 +36,8 @@ async function getIntegration(db, provider) {
 }
 
 async function upsertIntegration(db, provider, { status, subscribed, creds, meta }) {
+  const sealedCreds = creds && 'c' in creds && 'v' in creds ? creds : seal(creds || {});
+  const safeMeta = isPlainObject(meta) ? meta : {};
   const { rows } = await db.query(
     `INSERT INTO org_integrations (org_id, provider, status, subscribed, creds, meta)
        VALUES (current_setting('app.org_id')::uuid, $1, $2, $3, $4::jsonb, $5::jsonb)
@@ -55,37 +48,40 @@ async function upsertIntegration(db, provider, { status, subscribed, creds, meta
                      meta = EXCLUDED.meta,
                      updated_at = now()
        RETURNING *`,
-    [provider, status, subscribed, JSON.stringify(creds ?? {}), JSON.stringify(meta ?? {})]
+    [provider, status, subscribed, JSON.stringify(sealedCreds), JSON.stringify(safeMeta)]
   );
   return rows[0] || null;
 }
 
-async function patchIntegration(db, provider, { status, subscribed, creds, meta }) {
-  const sets = [];
+async function patchIntegration(db, provider, partial) {
+  const fields = [];
   const values = [provider];
-  let idx = 2;
+  let index = 2;
 
-  if (status) {
-    sets.push(`status = $${idx++}`);
-    values.push(status);
+  if (partial.status !== undefined) {
+    fields.push(`status = $${index++}`);
+    values.push(partial.status);
   }
-  if (typeof subscribed === 'boolean') {
-    sets.push(`subscribed = $${idx++}`);
-    values.push(subscribed);
+  if (partial.subscribed !== undefined) {
+    fields.push(`subscribed = $${index++}`);
+    values.push(partial.subscribed);
   }
-  if (creds) {
-    sets.push(`creds = $${idx++}::jsonb`);
-    values.push(JSON.stringify(creds));
+  if (partial.creds !== undefined) {
+    const sealed = partial.creds && 'c' in partial.creds && 'v' in partial.creds ? partial.creds : seal(partial.creds || {});
+    fields.push(`creds = $${index++}::jsonb`);
+    values.push(JSON.stringify(sealed));
   }
-  if (meta) {
-    sets.push(`meta = $${idx++}::jsonb`);
-    values.push(JSON.stringify(meta));
+  if (partial.meta !== undefined) {
+    const safeMeta = isPlainObject(partial.meta) ? partial.meta : {};
+    fields.push(`meta = $${index++}::jsonb`);
+    values.push(JSON.stringify(safeMeta));
   }
-  sets.push(`updated_at = now()`);
+
+  fields.push('updated_at = now()');
 
   const query = `
     UPDATE org_integrations
-       SET ${sets.join(', ')}
+       SET ${fields.join(', ')}
      WHERE org_id = current_setting('app.org_id')::uuid
        AND provider = $1
    RETURNING *`;
@@ -94,295 +90,311 @@ async function patchIntegration(db, provider, { status, subscribed, creds, meta 
   return rows[0] || null;
 }
 
-async function recordIntegrationLog(req, provider, event, ok, detail = {}) {
-  try {
-    await req.db.query(
-      `INSERT INTO org_integration_logs (org_id, provider, event, ok, detail)
-         VALUES (current_setting('app.org_id')::uuid, $1, $2, $3, $4::jsonb)`,
-      [provider, event, ok, JSON.stringify(detail ?? {})]
-    );
-  } catch (err) {
-    req.log?.error?.({ provider, event: 'log_error', err });
-  }
-  const logPayload = { provider, event, ok, org_id: req.user?.org_id, detail };
-  if (ok) {
-    req.log?.info?.(logPayload);
-  } else {
-    req.log?.warn?.(logPayload);
-  }
-}
-
 function sanitizeIntegration(provider, row) {
   if (!row) {
-    return { provider, status: 'disconnected', subscribed: false, meta: {} };
+    return { provider, status: 'disconnected', subscribed: false, meta: {}, updated_at: null };
   }
   const meta = isPlainObject(row.meta) ? row.meta : {};
   return {
     provider,
     status: row.status || 'disconnected',
-    subscribed: !!row.subscribed,
+    subscribed: Boolean(row.subscribed),
     meta,
     updated_at: row.updated_at || null,
   };
 }
 
-function nowIso() {
-  return new Date().toISOString();
+async function recordIntegrationLog(req, provider, action, ok, details = {}) {
+  try {
+    await req.db.query(
+      `INSERT INTO org_integration_logs (org_id, provider, event, ok, detail)
+         VALUES (current_setting('app.org_id')::uuid, $1, $2, $3, $4::jsonb)`,
+      [provider, action, ok, JSON.stringify(details || {})]
+    );
+  } catch (err) {
+    req.log?.error?.({ provider, action: 'log_failed', err });
+  }
+
+  const payload = { provider, action, ok, org_id: req.user?.org_id, details };
+  if (ok) req.log?.info?.(payload);
+  else req.log?.warn?.(payload);
 }
 
-const providerDefinitions = {
+function ensureProvider(provider) {
+  if (!PROVIDERS.includes(provider)) {
+    const err = new Error('provider_not_supported');
+    err.statusCode = 404;
+    throw err;
+  }
+  return providerHandlers[provider];
+}
+
+const providerHandlers = {
   whatsapp_cloud: {
-    connectSchema: z.object({
-      phone_number_id: z.string().nonempty('Obrigatório'),
-      wa_token: z.string().min(20, 'Token inválido'),
-      display_phone_number: z.string().optional(),
-      business_name: z.string().optional(),
-    }),
-    secretKeys: ['wa_token'],
-    async handleConnect({ payload, existing }) {
+    connectSchema: z
+      .object({
+        phone_number_id: z.string().min(3, 'Informe o phone_number_id').optional(),
+        display_phone_number: z.string().optional(),
+        business_name: z.string().optional(),
+        access_token: z.string().min(10, 'Token inválido').optional(),
+      })
+      .default({}),
+    testSchema: z.object({ to: z.string().min(5, 'Informe o destinatário') }).default({}),
+    supportsSubscribe: true,
+    async connect({ payload, existing }) {
+      const nextPhone = payload.phone_number_id || existing?.meta?.phone_number_id || existing?.creds?.phone_number_id;
+      const nextToken = payload.access_token || existing?.creds?.access_token;
+      if (!nextPhone || !nextToken) {
+        const error = new Error('missing_credentials');
+        error.statusCode = 400;
+        throw error;
+      }
+
       const meta = {
-        phone_number_id: payload.phone_number_id,
-        display_phone_number: payload.display_phone_number || null,
-        business_name: payload.business_name || null,
+        ...(isPlainObject(existing?.meta) ? existing.meta : {}),
+        phone_number_id: nextPhone,
+        display_phone_number: payload.display_phone_number ?? existing?.meta?.display_phone_number ?? null,
+        business_name: payload.business_name ?? existing?.meta?.business_name ?? null,
         connected_at: nowIso(),
       };
+
       return {
         status: 'connected',
         subscribed: existing?.subscribed ?? false,
-        creds: { phone_number_id: payload.phone_number_id, wa_token: payload.wa_token },
-        meta: { ...(existing?.meta || {}), ...meta },
+        creds: { phone_number_id: nextPhone, access_token: nextToken },
+        meta,
         detail: { message: 'WhatsApp Cloud conectado' },
       };
     },
-    async handleSubscribe({ existing }) {
+    async subscribe({ existing }) {
+      if (!existing) {
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
+      }
       const meta = {
-        ...(existing?.meta || {}),
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
         last_subscribe_at: nowIso(),
       };
       return {
         subscribed: true,
         meta,
-        detail: { message: 'Webhook marcado como assinado' },
+        detail: { message: 'Webhook WhatsApp Cloud assinado' },
       };
     },
-    testSchema: z
-      .object({
-        to: z
-          .string()
-          .regex(PHONE_REGEX, 'Telefone inválido')
-          .optional(),
-      })
-      .optional(),
-    async handleTest({ payload, existing }) {
+    async test({ payload, existing }) {
+      if (!existing) {
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
+      }
       const meta = {
-        ...(existing?.meta || {}),
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
         last_test_at: nowIso(),
-        last_test_to: payload?.to || null,
+        last_test_to: payload.to,
       };
       return {
         ok: true,
         meta,
-        detail: { message: 'Teste WhatsApp Cloud executado (mock)', to: payload?.to || null },
+        detail: { message: 'Mensagem de teste enviada (mock)', to: payload.to },
       };
     },
   },
   whatsapp_session: {
-    connectSchema: z.object({
-      session_host: z.string().url('URL inválida').nonempty('Obrigatório'),
-      session_key: z.string().min(4, 'Obrigatório'),
-    }),
-    secretKeys: ['session_key'],
-    async handleConnect({ payload, existing }) {
+    connectSchema: z
+      .object({
+        session_host: z.string().url('URL inválida').optional(),
+      })
+      .default({}),
+    testSchema: z.object({ to: z.string().min(5, 'Informe o destinatário') }).default({}),
+    supportsSubscribe: false,
+    async connect({ payload, existing }) {
       const meta = {
-        ...(existing?.meta || {}),
-        session_host: payload.session_host,
+        ...(isPlainObject(existing?.meta) ? existing.meta : {}),
+        session_host: payload.session_host || existing?.meta?.session_host || null,
+        session_state: 'pending_qr',
+        requested_at: nowIso(),
+      };
+      return {
+        status: 'connecting',
+        subscribed: false,
+        creds: existing?.creds || {},
+        meta,
+        detail: { message: 'Sessão WhatsApp iniciada (mock)' },
+      };
+    },
+    async test({ payload, existing }) {
+      if (!existing) {
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
+      }
+      const meta = {
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
+        last_test_at: nowIso(),
+        last_test_to: payload.to,
+      };
+      return {
+        ok: true,
+        meta,
+        detail: { message: 'Mensagem de teste enviada (mock)', to: payload.to },
+      };
+    },
+  },
+  meta_facebook: {
+    connectSchema: z
+      .object({
+        user_access_token: z.string().min(8, 'Token inválido'),
+        page_id: z.string().min(3, 'Informe o Page ID').optional(),
+        page_name: z.string().optional(),
+      })
+      .default({}),
+    testSchema: z.object({}).default({}),
+    supportsSubscribe: true,
+    async connect({ payload, existing }) {
+      const meta = {
+        ...(isPlainObject(existing?.meta) ? existing.meta : {}),
+        page_id: payload.page_id ?? existing?.meta?.page_id ?? null,
+        page_name: payload.page_name ?? existing?.meta?.page_name ?? null,
         connected_at: nowIso(),
       };
       return {
         status: 'connected',
-        subscribed: existing?.subscribed ?? false,
-        creds: { session_host: payload.session_host, session_key: payload.session_key },
+        subscribed: true,
+        creds: { user_access_token: payload.user_access_token },
         meta,
-        detail: { message: 'Sessão WhatsApp configurada' },
+        detail: { message: 'Facebook conectado' },
       };
     },
-    async handleSubscribe({ existing }) {
+    async subscribe({ existing }) {
+      if (!existing) {
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
+      }
       const meta = {
-        ...(existing?.meta || {}),
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
         last_subscribe_at: nowIso(),
       };
       return {
         subscribed: true,
         meta,
-        detail: { message: 'Webhook de sessão marcado como ativo' },
+        detail: { message: 'Webhook Facebook marcado como ativo' },
       };
     },
-    testSchema: z
-      .object({
-        path: z.string().optional(),
-      })
-      .optional(),
-    async handleTest({ existing, payload }) {
+    async test({ existing }) {
       if (!existing) {
-        throw new Error('integration_not_connected');
-      }
-      const creds = existing.creds || {};
-      const baseHost = creds.session_host || existing.meta?.session_host;
-      if (!baseHost) {
-        throw new Error('session_host_missing');
-      }
-      const url = new URL(payload?.path || '/health', baseHost).toString();
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      let detail;
-      try {
-        const response = await fetch(url, { signal: controller.signal }).catch((err) => {
-          throw new Error(`fetch_failed:${err.message}`);
-        });
-        const text = await response.text().catch(() => '');
-        detail = { status: response.status, ok: response.ok, url };
-        if (!response.ok) {
-          throw new Error(`session_health_failed:${response.status}`);
-        }
-        return {
-          ok: true,
-          meta: { ...(existing.meta || {}), last_test_at: nowIso(), last_test_status: response.status },
-          detail: { ...detail, preview: text.slice(0, 200) },
-        };
-      } finally {
-        clearTimeout(timeout);
-      }
-    },
-  },
-  meta: {
-    connectSchema: z
-      .object({
-        user_access_token: z.string().min(10).optional(),
-        page_id: z.string().optional(),
-        page_name: z.string().optional(),
-        page_access_token: z.string().optional(),
-        instagram_business_account: z.string().optional(),
-      })
-      .refine((data) => Object.keys(data).length > 0, {
-        message: 'Informe ao menos um campo',
-      }),
-    secretKeys: ['user_access_token', 'page_access_token'],
-    async handleConnect({ payload, existing }) {
-      const meta = {
-        ...(existing?.meta || {}),
-        page_id: payload.page_id || existing?.meta?.page_id || null,
-        page_name: payload.page_name || existing?.meta?.page_name || null,
-        instagram_business_account:
-          payload.instagram_business_account || existing?.meta?.instagram_business_account || null,
-        connected_at: nowIso(),
-      };
-      const creds = {
-        user_access_token: payload.user_access_token || existing?.creds?.user_access_token || null,
-        page_access_token: payload.page_access_token || existing?.creds?.page_access_token || null,
-      };
-      return {
-        status: 'connected',
-        subscribed: existing?.subscribed ?? false,
-        creds,
-        meta,
-        detail: { message: 'Meta (Facebook/Instagram) conectado' },
-      };
-    },
-    async handleSubscribe({ existing }) {
-      const meta = {
-        ...(existing?.meta || {}),
-        subscribed_at: nowIso(),
-      };
-      return {
-        subscribed: true,
-        meta,
-        detail: { message: 'Webhooks Meta marcados como ativos' },
-      };
-    },
-    testSchema: z
-      .object({
-        simulate: z.boolean().optional(),
-      })
-      .optional(),
-    async handleTest({ existing }) {
-      if (!existing) {
-        throw new Error('integration_not_connected');
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
       }
       const meta = {
-        ...(existing.meta || {}),
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
         last_test_at: nowIso(),
       };
       return {
         ok: true,
         meta,
-        detail: { message: 'Teste Meta executado (mock)' },
+        detail: { message: 'Publicação de teste (mock)' },
       };
     },
   },
-  google_calendar: {
+  meta_instagram: {
     connectSchema: z
       .object({
-        code: z.string().optional(),
-        access_token: z.string().optional(),
-        refresh_token: z.string().optional(),
-        expiry_date: z.string().optional(),
-        account_email: z.string().email().optional(),
+        user_access_token: z.string().min(8, 'Token inválido'),
+        instagram_business_id: z.string().min(3, 'Informe o Instagram Business ID').optional(),
+        page_id: z.string().optional(),
       })
-      .refine((data) => !!data.code || !!(data.access_token && data.refresh_token), {
-        message: 'Informe o code do OAuth ou tokens válidos',
-      }),
-    secretKeys: ['access_token', 'refresh_token'],
-    async handleConnect({ payload, existing }) {
-      const creds = { ...(existing?.creds || {}) };
-      if (payload.code) {
-        const suffix = payload.code.slice(0, 6);
-        creds.access_token = payload.access_token || `exchanged_access_${suffix}`;
-        creds.refresh_token = payload.refresh_token || `exchanged_refresh_${suffix}`;
-      } else {
-        if (payload.access_token) creds.access_token = payload.access_token;
-        if (payload.refresh_token) creds.refresh_token = payload.refresh_token;
-      }
-      if (payload.expiry_date) {
-        creds.expiry_date = payload.expiry_date;
-      }
+      .default({}),
+    testSchema: z.object({}).default({}),
+    supportsSubscribe: true,
+    async connect({ payload, existing }) {
       const meta = {
-        ...(existing?.meta || {}),
-        account_email: payload.account_email || existing?.meta?.account_email || null,
-        last_token_refresh: nowIso(),
+        ...(isPlainObject(existing?.meta) ? existing.meta : {}),
+        instagram_business_id:
+          payload.instagram_business_id ?? existing?.meta?.instagram_business_id ?? null,
+        page_id: payload.page_id ?? existing?.meta?.page_id ?? null,
+        connected_at: nowIso(),
       };
-      if (payload.expiry_date) {
-        meta.expiry_date = payload.expiry_date;
-      }
       return {
         status: 'connected',
-        subscribed: existing?.subscribed ?? false,
-        creds,
+        subscribed: true,
+        creds: { user_access_token: payload.user_access_token },
         meta,
-        detail: { message: 'Google Calendar conectado' },
+        detail: { message: 'Instagram conectado' },
       };
     },
-    async handleSubscribe({ existing }) {
+    async subscribe({ existing }) {
+      if (!existing) {
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
+      }
       const meta = {
-        ...(existing?.meta || {}),
-        webhook_subscribed_at: nowIso(),
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
+        last_subscribe_at: nowIso(),
       };
       return {
         subscribed: true,
         meta,
-        detail: { message: 'Notificações do Google Calendar marcadas como ativas' },
+        detail: { message: 'Webhook Instagram marcado como ativo' },
       };
     },
-    testSchema: z
-      .object({
-        calendar_id: z.string().optional(),
-      })
-      .optional(),
-    async handleTest({ existing }) {
+    async test({ existing }) {
       if (!existing) {
-        throw new Error('integration_not_connected');
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
       }
       const meta = {
-        ...(existing.meta || {}),
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
+        last_test_at: nowIso(),
+      };
+      return {
+        ok: true,
+        meta,
+        detail: { message: 'Teste de publicação Instagram (mock)' },
+      };
+    },
+  },
+  google_calendar: {
+    connectSchema: z.object({
+      calendarId: z.string().min(3, 'Informe o Calendar ID'),
+      clientEmail: z.string().email('Informe um e-mail válido'),
+      privateKey: z.string().min(20, 'Informe a chave privada'),
+      timezone: z.string().min(2, 'Informe o timezone'),
+    }),
+    testSchema: z.object({}).default({}),
+    supportsSubscribe: false,
+    async connect({ payload }) {
+      const meta = {
+        calendarId: payload.calendarId,
+        clientEmail: payload.clientEmail,
+        timezone: payload.timezone,
+        connected_at: nowIso(),
+      };
+      return {
+        status: 'connected',
+        subscribed: false,
+        creds: {
+          calendarId: payload.calendarId,
+          clientEmail: payload.clientEmail,
+          privateKey: payload.privateKey,
+          timezone: payload.timezone,
+        },
+        meta,
+        detail: { message: 'Google Calendar conectado' },
+      };
+    },
+    async test({ existing }) {
+      if (!existing) {
+        const error = new Error('integration_not_connected');
+        error.statusCode = 400;
+        throw error;
+      }
+      const meta = {
+        ...(isPlainObject(existing.meta) ? existing.meta : {}),
         last_test_at: nowIso(),
       };
       return {
@@ -394,165 +406,172 @@ const providerDefinitions = {
   },
 };
 
-function ensureProvider(provider) {
-  if (!PROVIDERS.includes(provider)) {
-    const err = new Error('provider_not_supported');
-    err.statusCode = 404;
-    throw err;
-  }
-  return providerDefinitions[provider];
-}
-
 router.get('/status', async (req, res, next) => {
   try {
-    const providers = [];
+    const result = {};
     for (const provider of PROVIDERS) {
       const row = await getIntegration(req.db, provider);
-      providers.push(sanitizeIntegration(provider, row));
+      result[provider] = sanitizeIntegration(provider, row);
     }
-    res.json({ providers });
+    res.json({ providers: result });
   } catch (err) {
     next(err);
   }
 });
 
-router.get('/providers/:provider', async (req, res, next) => {
+router.get('/providers/:provider', async (req, res) => {
+  const { provider } = req.params;
   try {
-    const { provider } = req.params;
     ensureProvider(provider);
-    const row = await getIntegration(req.db, provider);
-    res.json(sanitizeIntegration(provider, row));
   } catch (err) {
-    if (err.statusCode === 404) {
-      return res.status(404).json({ error: 'provider_not_supported' });
-    }
-    next(err);
+    return res.status(404).json({ error: 'provider_not_supported', message: provider });
   }
+
+  const row = await getIntegration(req.db, provider);
+  return res.json({ integration: sanitizeIntegration(provider, row) });
 });
 
 router.post('/providers/:provider/connect', async (req, res) => {
   const { provider } = req.params;
-  let definition;
+  let handler;
   try {
-    definition = ensureProvider(provider);
+    handler = ensureProvider(provider);
   } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported' });
+    return res.status(404).json({ error: 'provider_not_supported', message: provider });
   }
 
   try {
-    const payload = definition.connectSchema ? definition.connectSchema.parse(req.body || {}) : (req.body || {});
+    const schema = handler.connectSchema || z.object({}).strip();
+    const payload = schema.parse(req.body || {});
     const existingRow = await getIntegration(req.db, provider);
-    const existing = withOpenedCreds(existingRow);
-    const result = await definition.handleConnect({ req, provider, payload, existing });
-    const nextCreds = result.creds !== undefined ? result.creds : existing?.creds || {};
-    const sealedCreds = ensureSealedCreds(nextCreds);
-    const meta = isPlainObject(result.meta) ? result.meta : existing?.meta || {};
+    const existing = existingRow
+      ? { ...existingRow, creds: open(existingRow.creds) }
+      : null;
+    const result = await handler.connect({ req, provider, payload, existing });
+
     const row = await upsertIntegration(req.db, provider, {
-      status: result.status || 'connected',
+      status: result.status || existingRow?.status || 'connected',
       subscribed:
         typeof result.subscribed === 'boolean'
           ? result.subscribed
-          : existingRow?.subscribed ?? false,
-      creds: sealedCreds,
-      meta,
+          : existingRow?.subscribed || false,
+      creds: result.creds || existing?.creds || {},
+      meta: result.meta || existing?.meta || {},
     });
+
     await recordIntegrationLog(req, provider, 'connect', true, result.detail || {});
-    res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+
+    return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      await recordIntegrationLog(req, provider, 'connect', false, { message: 'validation_error', issues: err.flatten() });
+      await recordIntegrationLog(req, provider, 'connect', false, {
+        message: 'validation_error',
+        issues: err.flatten(),
+      });
       return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
     }
+    const status = err.statusCode || 500;
     await recordIntegrationLog(req, provider, 'connect', false, { message: err.message });
-    return res.status(500).json({ error: 'connect_failed', message: err.message });
+    return res.status(status).json({ error: 'connect_failed', message: err.message });
   }
 });
 
 router.post('/providers/:provider/subscribe', async (req, res) => {
   const { provider } = req.params;
-  let definition;
+  let handler;
   try {
-    definition = ensureProvider(provider);
+    handler = ensureProvider(provider);
   } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported' });
+    return res.status(404).json({ error: 'provider_not_supported', message: provider });
+  }
+
+  if (!handler.supportsSubscribe) {
+    return res.status(400).json({ error: 'subscribe_not_supported', message: provider });
   }
 
   try {
     const existingRow = await getIntegration(req.db, provider);
     if (!existingRow) {
-      await recordIntegrationLog(req, provider, 'subscribe', false, { message: 'integration_not_connected' });
-      return res.status(400).json({ error: 'integration_not_connected' });
+      await recordIntegrationLog(req, provider, 'subscribe', false, {
+        message: 'integration_not_connected',
+      });
+      return res.status(400).json({ error: 'integration_not_connected', message: provider });
     }
-    const existing = withOpenedCreds(existingRow);
-    const result = await definition.handleSubscribe({ req, provider, existing });
-    const sealedCreds = ensureSealedCreds(existingRow?.creds);
-    const meta = isPlainObject(result.meta) ? result.meta : existing?.meta;
+    const existing = { ...existingRow, creds: open(existingRow.creds) };
+    const result = await handler.subscribe({ req, provider, existing });
     const row = await upsertIntegration(req.db, provider, {
-      status: existingRow?.status || 'connected',
+      status: existingRow.status,
       subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
-      creds: sealedCreds,
-      meta: meta || existing?.meta || {},
+      creds: existingRow.creds,
+      meta: result.meta || existing.meta || {},
     });
     await recordIntegrationLog(req, provider, 'subscribe', true, result.detail || {});
-    res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+    return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
   } catch (err) {
+    const status = err.statusCode || 500;
     await recordIntegrationLog(req, provider, 'subscribe', false, { message: err.message });
-    return res.status(500).json({ error: 'subscribe_failed', message: err.message });
+    return res.status(status).json({ error: 'subscribe_failed', message: err.message });
   }
 });
 
 router.post('/providers/:provider/test', async (req, res) => {
   const { provider } = req.params;
-  let definition;
+  let handler;
   try {
-    definition = ensureProvider(provider);
+    handler = ensureProvider(provider);
   } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported' });
+    return res.status(404).json({ error: 'provider_not_supported', message: provider });
   }
 
   try {
-    const payload = definition.testSchema ? definition.testSchema.parse(req.body || {}) : (req.body || {});
+    const schema = handler.testSchema || z.object({}).strip();
+    const payload = schema.parse(req.body || {});
     const existingRow = await getIntegration(req.db, provider);
     if (!existingRow) {
-      await recordIntegrationLog(req, provider, 'test', false, { message: 'integration_not_connected' });
-      return res.status(400).json({ error: 'integration_not_connected' });
+      await recordIntegrationLog(req, provider, 'test', false, {
+        message: 'integration_not_connected',
+      });
+      return res.status(400).json({ error: 'integration_not_connected', message: provider });
     }
-    const existing = withOpenedCreds(existingRow);
-    const result = await definition.handleTest({ req, provider, payload, existing });
-    const meta = isPlainObject(result.meta) ? result.meta : existing?.meta;
+    const existing = { ...existingRow, creds: open(existingRow.creds) };
+    const result = await handler.test({ req, provider, payload, existing });
     const row = await upsertIntegration(req.db, provider, {
-      status: existingRow?.status || 'connected',
-      subscribed: existingRow?.subscribed ?? false,
-      creds: ensureSealedCreds(existingRow?.creds || existing?.creds || {}),
-      meta: meta || existing?.meta || {},
+      status: existingRow.status,
+      subscribed: existingRow.subscribed,
+      creds: existingRow.creds,
+      meta: result.meta || existing.meta || {},
     });
     await recordIntegrationLog(req, provider, 'test', true, result.detail || {});
-    res.json({ ok: true, detail: result.detail || {}, integration: sanitizeIntegration(provider, row) });
+    return res.json({ ok: true, detail: result.detail || {}, integration: sanitizeIntegration(provider, row) });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      await recordIntegrationLog(req, provider, 'test', false, { message: 'validation_error', issues: err.flatten() });
+      await recordIntegrationLog(req, provider, 'test', false, {
+        message: 'validation_error',
+        issues: err.flatten(),
+      });
       return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
     }
+    const status = err.statusCode || 500;
     await recordIntegrationLog(req, provider, 'test', false, { message: err.message });
-    return res.status(500).json({ error: 'test_failed', message: err.message });
+    return res.status(status).json({ error: 'test_failed', message: err.message });
   }
 });
 
-router.delete('/providers/:provider', async (req, res) => {
+router.post('/providers/:provider/disconnect', async (req, res) => {
   const { provider } = req.params;
   try {
     ensureProvider(provider);
   } catch (err) {
-    return res.status(404).json({ error: 'provider_not_supported' });
+    return res.status(404).json({ error: 'provider_not_supported', message: provider });
   }
 
   try {
-    const existing = await getIntegration(req.db, provider);
-    if (!existing) {
+    const existingRow = await getIntegration(req.db, provider);
+    if (!existingRow) {
       return res.json({ ok: true, integration: sanitizeIntegration(provider, null) });
     }
     const meta = {
-      ...(existing.meta || {}),
+      ...(isPlainObject(existingRow.meta) ? existingRow.meta : {}),
       disconnected_at: nowIso(),
     };
     const row = await patchIntegration(req.db, provider, {
@@ -561,8 +580,8 @@ router.delete('/providers/:provider', async (req, res) => {
       creds: {},
       meta,
     });
-    await recordIntegrationLog(req, provider, 'disconnect', true, { message: 'Integração removida' });
-    res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+    await recordIntegrationLog(req, provider, 'disconnect', true, { message: 'Integração desconectada' });
+    return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
   } catch (err) {
     await recordIntegrationLog(req, provider, 'disconnect', false, { message: err.message });
     return res.status(500).json({ error: 'disconnect_failed', message: err.message });
