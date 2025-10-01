@@ -7,23 +7,8 @@ import {
 } from '@/api/integrationsApi.js';
 import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
-
-const STATUS_MAP = {
-  connected: { label: 'Conectado', className: 'bg-green-100 text-green-700' },
-  connecting: { label: 'Conectando', className: 'bg-amber-100 text-amber-700' },
-  disconnected: { label: 'Desconectado', className: 'bg-gray-100 text-gray-600' },
-  error: { label: 'Erro', className: 'bg-red-100 text-red-700' },
-  unknown: { label: 'Desconhecido', className: 'bg-gray-100 text-gray-600' },
-};
-
-function StatusPill({ status }) {
-  const meta = STATUS_MAP[status] || STATUS_MAP.unknown;
-  return (
-    <span className={`text-xs px-2 py-1 rounded-full font-medium ${meta.className}`} data-testid="status-pill">
-      {meta.label}
-    </span>
-  );
-}
+import StatusPill from './StatusPill.jsx';
+import InlineSpinner from '../InlineSpinner.jsx';
 
 export default function GoogleCalendarCard() {
   const toast = useToast();
@@ -41,6 +26,7 @@ export default function GoogleCalendarCard() {
     testing: false,
     disconnecting: false,
     lastError: null,
+    meta: {},
   });
 
   const canConnect = useMemo(
@@ -54,6 +40,38 @@ export default function GoogleCalendarCard() {
     [form]
   );
 
+  const getErrorMessage = (error, fallback) =>
+    error?.response?.data?.message || error?.message || fallback;
+
+  const applyIntegration = (integration) => {
+    if (!integration) return;
+    setState((prev) => ({
+      ...prev,
+      status: integration.status || prev.status || 'disconnected',
+      meta: integration.meta || prev.meta,
+      lastError: integration.meta?.lastError || null,
+    }));
+    if (integration.meta) {
+      setForm((prev) => ({
+        ...prev,
+        calendarId: integration.meta.calendarId || prev.calendarId,
+        clientEmail: integration.meta.clientEmail || prev.clientEmail,
+        timezone: integration.meta.timezone || prev.timezone,
+        privateKey: '',
+      }));
+    }
+  };
+
+  const renderActionLabel = (loading, label, loadingLabel) =>
+    loading ? (
+      <span className="inline-flex items-center gap-2">
+        <InlineSpinner size="0.75rem" />
+        {loadingLabel}
+      </span>
+    ) : (
+      label
+    );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -61,28 +79,15 @@ export default function GoogleCalendarCard() {
         const data = await getProviderStatus('google_calendar');
         const integration = data?.integration || data;
         if (cancelled) return;
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          status: integration?.status || 'disconnected',
-          lastError: integration?.meta?.lastError || null,
-        }));
-        if (integration?.meta) {
-          setForm((prev) => ({
-            ...prev,
-            calendarId: integration.meta.calendarId || '',
-            clientEmail: integration.meta.clientEmail || '',
-            timezone: integration.meta.timezone || prev.timezone,
-            privateKey: '',
-          }));
-        }
+        setState((prev) => ({ ...prev, loading: false }));
+        applyIntegration(integration);
       } catch (err) {
         if (cancelled) return;
         setState((prev) => ({
           ...prev,
           loading: false,
           status: 'error',
-          lastError: err?.message || 'Falha ao carregar status',
+          lastError: getErrorMessage(err, 'Falha ao carregar status'),
         }));
       }
     })();
@@ -101,27 +106,14 @@ export default function GoogleCalendarCard() {
         timezone: form.timezone,
       });
       const integration = response?.integration || response;
-      setState((prev) => ({
-        ...prev,
-        saving: false,
-        status: integration?.status || 'connected',
-        lastError: integration?.meta?.lastError || null,
-      }));
+      applyIntegration(integration);
+      setState((prev) => ({ ...prev, saving: false }));
       toast({
         title: 'Google Calendar conectado',
         description: org?.name ? `Integração ativa para ${org.name}.` : undefined,
       });
-      if (integration?.meta) {
-        setForm((prev) => ({
-          ...prev,
-          calendarId: integration.meta.calendarId || prev.calendarId,
-          clientEmail: integration.meta.clientEmail || prev.clientEmail,
-          timezone: integration.meta.timezone || prev.timezone,
-          privateKey: '',
-        }));
-      }
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao conectar';
+      const message = getErrorMessage(err, 'Falha ao conectar');
       setState((prev) => ({
         ...prev,
         saving: false,
@@ -136,16 +128,12 @@ export default function GoogleCalendarCard() {
     setState((prev) => ({ ...prev, testing: true, lastError: null }));
     try {
       const response = await testProvider('google_calendar');
-      const integration = response?.integration || {};
-      setState((prev) => ({
-        ...prev,
-        testing: false,
-        status: integration?.status || prev.status,
-        lastError: integration?.meta?.lastError || null,
-      }));
+      const integration = response?.integration || response;
+      applyIntegration(integration);
+      setState((prev) => ({ ...prev, testing: false }));
       toast({ title: 'Teste enviado', description: 'Evento de teste agendado com sucesso.' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao testar';
+      const message = getErrorMessage(err, 'Falha ao testar');
       setState((prev) => ({
         ...prev,
         testing: false,
@@ -161,16 +149,16 @@ export default function GoogleCalendarCard() {
     try {
       const response = await disconnectProvider('google_calendar');
       const integration = response?.integration || response;
+      applyIntegration(integration);
       setState((prev) => ({
         ...prev,
         disconnecting: false,
         status: integration?.status || 'disconnected',
-        lastError: integration?.meta?.lastError || null,
       }));
       setForm((prev) => ({ ...prev, privateKey: '' }));
       toast({ title: 'Google Calendar desconectado' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao desconectar';
+      const message = getErrorMessage(err, 'Falha ao desconectar');
       setState((prev) => ({
         ...prev,
         disconnecting: false,
@@ -195,6 +183,9 @@ export default function GoogleCalendarCard() {
         <div>
           <h3 className="text-lg font-semibold">Google Calendar</h3>
           <p className="text-sm text-gray-500">Sincronize eventos através de uma conta de serviço.</p>
+          {state.meta?.calendarId ? (
+            <p className="mt-1 text-xs text-gray-500">Calendário conectado: {state.meta.calendarId}</p>
+          ) : null}
         </div>
         <StatusPill status={state.status} />
       </div>
@@ -251,7 +242,7 @@ export default function GoogleCalendarCard() {
           onClick={handleConnect}
           disabled={!canConnect || state.saving}
         >
-          {state.saving ? 'Conectando…' : 'Conectar'}
+          {renderActionLabel(state.saving, 'Conectar', 'Conectando…')}
         </button>
         <button
           type="button"
@@ -259,7 +250,7 @@ export default function GoogleCalendarCard() {
           onClick={handleTest}
           disabled={state.testing || state.status === 'disconnected'}
         >
-          {state.testing ? 'Testando…' : 'Testar'}
+          {renderActionLabel(state.testing, 'Testar', 'Testando…')}
         </button>
         <button
           type="button"
@@ -267,7 +258,7 @@ export default function GoogleCalendarCard() {
           onClick={handleDisconnect}
           disabled={state.disconnecting || state.status === 'disconnected'}
         >
-          {state.disconnecting ? 'Desconectando…' : 'Desconectar'}
+          {renderActionLabel(state.disconnecting, 'Desconectar', 'Desconectando…')}
         </button>
       </div>
     </div>

@@ -38,6 +38,16 @@ export function auth(req, res, next) {
   }
 }
 
+export function normalizeRoles(req, _res, next) {
+  try {
+    if (req.user) {
+      req.user.role = normalizeOrgRole(req.user.role);
+      req.user.roles = normalizeGlobalRoles(req.user.roles);
+    }
+  } catch {}
+  next();
+}
+
 /**
  * Guard de impersonação de organização.
  *

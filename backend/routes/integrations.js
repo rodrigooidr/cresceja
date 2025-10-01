@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { authRequired, requireRole } from '../middleware/auth.js';
 import { seal as defaultSeal, open as defaultOpen } from '../services/credStore.js';
+import { HttpClientError, httpClient as defaultHttpClient } from '../utils/httpClient.js';
+import createIntegrationAuditor from '../services/audit.js';
 
 const PROVIDERS = [
   'whatsapp_cloud',
@@ -63,9 +65,10 @@ async function patchIntegration(db, orgId, provider, partial, sealFn) {
     values.push(partial.subscribed);
   }
   if (partial.creds !== undefined) {
-    const sealed = partial.creds && typeof partial.creds === 'object' && 'c' in partial.creds && 'v' in partial.creds
-      ? partial.creds
-      : sealFn(partial.creds || {});
+    const sealed =
+      partial.creds && typeof partial.creds === 'object' && 'c' in partial.creds && 'v' in partial.creds
+        ? partial.creds
+        : sealFn(partial.creds || {});
     fields.push(`creds = $${index++}::jsonb`);
     values.push(JSON.stringify(sealed));
   }
@@ -102,24 +105,6 @@ function sanitizeIntegration(provider, row) {
   };
 }
 
-async function recordIntegrationLog(req, logger, orgId, provider, action, ok, details = {}) {
-  try {
-    await req.db.query(
-      `INSERT INTO org_integration_logs (org_id, provider, event, ok, detail)
-         VALUES ($1, $2, $3, $4, $5::jsonb)`,
-      [orgId, provider, action, ok, JSON.stringify(details || {})]
-    );
-  } catch (err) {
-    const log = req.log || logger;
-    log?.error?.({ provider, action: 'log_failed', err });
-  }
-
-  const payload = { provider, action, ok, org_id: orgId, details };
-  const log = req.log || logger;
-  if (ok) log?.info?.(payload);
-  else log?.warn?.(payload);
-}
-
 function ensureProvider(provider) {
   if (!PROVIDERS.includes(provider)) {
     const err = new Error('unknown_provider');
@@ -128,6 +113,58 @@ function ensureProvider(provider) {
     throw err;
   }
   return providerHandlers[provider];
+}
+
+async function ensureOrgContext(req, db) {
+  const direct = req.orgId || req.user?.org_id;
+  if (direct) return direct;
+  if (!db) {
+    const err = new Error('db_not_configured');
+    err.statusCode = 500;
+    err.code = 'db_not_configured';
+    throw err;
+  }
+  const { rows } = await db.query(`SELECT current_setting('app.org_id', true) AS org_id`);
+  const orgId = rows[0]?.org_id || null;
+  if (orgId) return orgId;
+  const err = new Error('org_context_missing');
+  err.statusCode = 400;
+  err.code = 'org_context_missing';
+  throw err;
+}
+
+function getRateLimitKey(req) {
+  return (
+    req.headers['x-org-id'] ||
+    req.user?.org_id ||
+    req.orgId ||
+    req.headers['x-impersonate-org-id'] ||
+    req.ip ||
+    'anonymous'
+  );
+}
+
+function mapValidationError(err) {
+  if (!(err instanceof z.ZodError)) return null;
+  return { error: 'validation_error', issues: err.flatten() };
+}
+
+function mapProviderFailure(err) {
+  if (err instanceof HttpClientError) {
+    const status = err.isTimeout ? 504 : 502;
+    const message = err.message || 'Falha ao comunicar com o provedor';
+    return { status, body: { error: 'provider_error', message } };
+  }
+  return null;
+}
+
+function stripSensitive(meta = {}) {
+  if (!isPlainObject(meta)) return {};
+  const clone = { ...meta };
+  for (const key of Object.keys(clone)) {
+    if (/token|secret|key/i.test(key)) delete clone[key];
+  }
+  return clone;
 }
 
 const providerHandlers = {
@@ -167,11 +204,21 @@ const providerHandlers = {
         detail: { message: 'WhatsApp Cloud conectado' },
       };
     },
-    async subscribe({ existing }) {
+    async subscribe({ existing, httpClient }) {
       if (!existing) {
         const error = new Error('integration_not_connected');
         error.statusCode = 400;
         throw error;
+      }
+      const token = existing.creds?.access_token;
+      const phoneId = existing.meta?.phone_number_id || existing.creds?.phone_number_id;
+      if (token && phoneId && httpClient) {
+        const url = `https://graph.facebook.com/v18.0/${phoneId}/subscribed_apps`;
+        await httpClient.post(
+          url,
+          { subscribed_fields: ['messages'] },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
       }
       const meta = {
         ...(isPlainObject(existing.meta) ? existing.meta : {}),
@@ -267,11 +314,19 @@ const providerHandlers = {
         detail: { message: 'Facebook conectado' },
       };
     },
-    async subscribe({ existing }) {
+    async subscribe({ existing, httpClient }) {
       if (!existing) {
         const error = new Error('integration_not_connected');
         error.statusCode = 400;
         throw error;
+      }
+      const token = existing.creds?.user_access_token;
+      const pageId = existing.meta?.page_id;
+      if (token && pageId && httpClient) {
+        const url = `https://graph.facebook.com/v18.0/${pageId}/subscribed_apps`;
+        await httpClient.post(url, { subscribed_fields: ['feed', 'conversations'] }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
       }
       const meta = {
         ...(isPlainObject(existing.meta) ? existing.meta : {}),
@@ -326,11 +381,19 @@ const providerHandlers = {
         detail: { message: 'Instagram conectado' },
       };
     },
-    async subscribe({ existing }) {
+    async subscribe({ existing, httpClient }) {
       if (!existing) {
         const error = new Error('integration_not_connected');
         error.statusCode = 400;
         throw error;
+      }
+      const token = existing.creds?.user_access_token;
+      const igId = existing.meta?.instagram_business_id;
+      if (token && igId && httpClient) {
+        const url = `https://graph.facebook.com/v18.0/${igId}/subscribed_apps`;
+        await httpClient.post(url, { subscribed_fields: ['comments', 'mentions'] }, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
       }
       const meta = {
         ...(isPlainObject(existing.meta) ? existing.meta : {}),
@@ -407,40 +470,38 @@ const providerHandlers = {
   },
 };
 
-async function ensureOrgContext(req) {
-  const direct = req.orgId || req.user?.org_id;
-  if (direct) return direct;
-  if (!req.db) {
-    const err = new Error('db_not_configured');
-    err.statusCode = 500;
-    err.code = 'db_not_configured';
-    throw err;
-  }
-  const { rows } = await req.db.query(`SELECT current_setting('app.org_id', true) AS org_id`);
-  const orgId = rows[0]?.org_id || null;
-  if (orgId) return orgId;
-  const err = new Error('org_context_missing');
-  err.statusCode = 400;
-  err.code = 'org_context_missing';
-  throw err;
-}
-
 export function createIntegrationsRouter({
   db = null,
   seal = defaultSeal,
   open = defaultOpen,
-  logger = null,
-  auth = authRequired,
-  requireRole: roleMiddleware = requireRole('OrgAdmin', 'OrgOwner'),
+  logger = console,
+  httpClient = defaultHttpClient,
+  rateLimitOptions = {},
 } = {}) {
   const router = Router();
+  const { handler: customRateHandler, keyGenerator: customKeyGenerator, ...restRateOptions } =
+    rateLimitOptions || {};
+  const limiter = rateLimit({
+    windowMs: 60_000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: customKeyGenerator ?? getRateLimitKey,
+    handler:
+      customRateHandler ??
+      ((_req, res) =>
+        res.status(429).json({
+          error: 'rate_limited',
+          message: 'Limite de requisições atingido. Tente novamente em instantes.',
+        })),
+    ...restRateOptions,
+  });
 
-  router.use(auth, roleMiddleware);
   router.use((req, _res, next) => {
-    if (db && !req.db) {
+    if (!req.db && db) {
       req.db = db;
     }
-    if (logger && !req.log) {
+    if (!req.log && logger) {
       req.log = logger;
     }
     next();
@@ -448,7 +509,8 @@ export function createIntegrationsRouter({
 
   router.get('/status', async (req, res, next) => {
     try {
-      const orgId = await ensureOrgContext(req);
+      if (!req.db?.query) throw new Error('db_not_configured');
+      const orgId = await ensureOrgContext(req, req.db);
       const result = {};
       for (const provider of PROVIDERS) {
         const row = await getIntegration(req.db, orgId, provider);
@@ -464,7 +526,8 @@ export function createIntegrationsRouter({
     const { provider } = req.params;
     try {
       ensureProvider(provider);
-      const orgId = await ensureOrgContext(req);
+      if (!req.db?.query) throw new Error('db_not_configured');
+      const orgId = await ensureOrgContext(req, req.db);
       const row = await getIntegration(req.db, orgId, provider);
       return res.json({ integration: sanitizeIntegration(provider, row) });
     } catch (err) {
@@ -475,7 +538,7 @@ export function createIntegrationsRouter({
     }
   });
 
-  router.post('/providers/:provider/connect', async (req, res) => {
+  router.post('/providers/:provider/connect', limiter, async (req, res) => {
     const { provider } = req.params;
     let handler;
     try {
@@ -484,49 +547,67 @@ export function createIntegrationsRouter({
       return res.status(400).json({ error: 'unknown_provider', message: provider });
     }
 
+    if (!req.db?.query) {
+      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+    }
+
     let orgId;
     try {
-      orgId = await ensureOrgContext(req);
+      orgId = await ensureOrgContext(req, req.db);
     } catch (err) {
       const status = err.statusCode || 500;
       return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
     }
+
+    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
 
     try {
       const schema = handler.connectSchema || z.object({}).strip();
       const payload = schema.parse(req.body || {});
       const existingRow = await getIntegration(req.db, orgId, provider);
       const existing = existingRow ? { ...existingRow, creds: open(existingRow.creds) } : null;
-      const result = await handler.connect({ req, provider, payload, existing });
+      const result = await handler.connect({ req, provider, payload, existing, httpClient });
 
-      const row = await upsertIntegration(req.db, orgId, provider, {
-        status: result.status || existingRow?.status || 'connected',
-        subscribed:
-          typeof result.subscribed === 'boolean'
-            ? result.subscribed
-            : existingRow?.subscribed || false,
-        creds: result.creds || existing?.creds || {},
-        meta: result.meta || existing?.meta || {},
-      }, seal);
+      const row = await upsertIntegration(
+        req.db,
+        orgId,
+        provider,
+        {
+          status: result.status || existingRow?.status || 'connected',
+          subscribed:
+            typeof result.subscribed === 'boolean' ? result.subscribed : existingRow?.subscribed || false,
+          creds: result.creds || existing?.creds || {},
+          meta: result.meta || existing?.meta || {},
+        },
+        seal
+      );
 
-      await recordIntegrationLog(req, logger, orgId, provider, 'connect', true, result.detail || {});
+      await audit(orgId, provider, 'connect', 'success', stripSensitive(result.detail || {}));
 
       return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        await recordIntegrationLog(req, logger, orgId, provider, 'connect', false, {
+      const validation = mapValidationError(err);
+      if (validation) {
+        await audit(orgId, provider, 'connect', 'error', {
           message: 'validation_error',
-          issues: err.flatten(),
+          issues: validation.issues,
         });
-        return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
+        return res.status(400).json(validation);
+      }
+      const providerFailure = mapProviderFailure(err);
+      if (providerFailure) {
+        await audit(orgId, provider, 'connect', 'error', {
+          message: providerFailure.body.message,
+        });
+        return res.status(providerFailure.status).json(providerFailure.body);
       }
       const status = err.statusCode || 500;
-      await recordIntegrationLog(req, logger, orgId, provider, 'connect', false, { message: err.message });
-      return res.status(status).json({ error: 'connect_failed', message: err.message });
+      await audit(orgId, provider, 'connect', 'error', { message: err.message });
+      return res.status(status).json({ error: err.code || 'connect_failed', message: err.message });
     }
   });
 
-  router.post('/providers/:provider/subscribe', async (req, res) => {
+  router.post('/providers/:provider/subscribe', limiter, async (req, res) => {
     const { provider } = req.params;
     let handler;
     try {
@@ -536,43 +617,60 @@ export function createIntegrationsRouter({
     }
 
     if (!handler.supportsSubscribe) {
-      return res.status(400).json({ error: 'subscribe_not_supported', message: provider });
+      return res.status(400).json({ error: 'not_supported', message: 'Subscribe indisponível para este provedor.' });
+    }
+
+    if (!req.db?.query) {
+      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
     }
 
     let orgId;
     try {
-      orgId = await ensureOrgContext(req);
+      orgId = await ensureOrgContext(req, req.db);
     } catch (err) {
       const status = err.statusCode || 500;
       return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
     }
 
+    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
+
     try {
       const existingRow = await getIntegration(req.db, orgId, provider);
       if (!existingRow) {
-        await recordIntegrationLog(req, logger, orgId, provider, 'subscribe', false, {
-          message: 'integration_not_connected',
-        });
+        await audit(orgId, provider, 'subscribe', 'error', { message: 'integration_not_connected' });
         return res.status(400).json({ error: 'integration_not_connected', message: provider });
       }
       const existing = { ...existingRow, creds: open(existingRow.creds) };
-      const result = await handler.subscribe({ req, provider, existing });
-      const row = await upsertIntegration(req.db, orgId, provider, {
-        status: existingRow.status,
-        subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
-        creds: existingRow.creds,
-        meta: result.meta || existing.meta || {},
-      }, seal);
-      await recordIntegrationLog(req, logger, orgId, provider, 'subscribe', true, result.detail || {});
+      const result = await handler.subscribe({ req, provider, existing, httpClient });
+      const row = await upsertIntegration(
+        req.db,
+        orgId,
+        provider,
+        {
+          status: existingRow.status,
+          subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
+          creds: existingRow.creds,
+          meta: result.meta || existing.meta || {},
+        },
+        seal
+      );
+      await audit(orgId, provider, 'subscribe', 'success', stripSensitive(result.detail || {}));
       return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
     } catch (err) {
+      const providerFailure = mapProviderFailure(err);
+      if (providerFailure) {
+        await audit(orgId, provider, 'subscribe', 'error', {
+          message: providerFailure.body.message,
+        });
+        return res.status(providerFailure.status).json(providerFailure.body);
+      }
       const status = err.statusCode || 500;
-      await recordIntegrationLog(req, logger, orgId, provider, 'subscribe', false, { message: err.message });
+      await audit(orgId, provider, 'subscribe', 'error', { message: err.message });
       return res.status(status).json({ error: 'subscribe_failed', message: err.message });
     }
   });
 
-  router.post('/providers/:provider/test', async (req, res) => {
+  router.post('/providers/:provider/test', limiter, async (req, res) => {
     const { provider } = req.params;
     let handler;
     try {
@@ -581,49 +679,67 @@ export function createIntegrationsRouter({
       return res.status(400).json({ error: 'unknown_provider', message: provider });
     }
 
+    if (!req.db?.query) {
+      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+    }
+
     let orgId;
     try {
-      orgId = await ensureOrgContext(req);
+      orgId = await ensureOrgContext(req, req.db);
     } catch (err) {
       const status = err.statusCode || 500;
       return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
     }
+
+    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
 
     try {
       const schema = handler.testSchema || z.object({}).strip();
       const payload = schema.parse(req.body || {});
       const existingRow = await getIntegration(req.db, orgId, provider);
       if (!existingRow) {
-        await recordIntegrationLog(req, logger, orgId, provider, 'test', false, {
-          message: 'integration_not_connected',
-        });
+        await audit(orgId, provider, 'test', 'error', { message: 'integration_not_connected' });
         return res.status(400).json({ error: 'integration_not_connected', message: provider });
       }
       const existing = { ...existingRow, creds: open(existingRow.creds) };
-      const result = await handler.test({ req, provider, payload, existing });
-      const row = await upsertIntegration(req.db, orgId, provider, {
-        status: existingRow.status,
-        subscribed: existingRow.subscribed,
-        creds: existingRow.creds,
-        meta: result.meta || existing.meta || {},
-      }, seal);
-      await recordIntegrationLog(req, logger, orgId, provider, 'test', true, result.detail || {});
+      const result = await handler.test({ req, provider, payload, existing, httpClient });
+      const row = await upsertIntegration(
+        req.db,
+        orgId,
+        provider,
+        {
+          status: existingRow.status,
+          subscribed: existingRow.subscribed,
+          creds: existingRow.creds,
+          meta: result.meta || existing.meta || {},
+        },
+        seal
+      );
+      await audit(orgId, provider, 'test', 'success', stripSensitive(result.detail || {}));
       return res.json({ ok: true, detail: result.detail || {}, integration: sanitizeIntegration(provider, row) });
     } catch (err) {
-      if (err instanceof z.ZodError) {
-        await recordIntegrationLog(req, logger, orgId, provider, 'test', false, {
+      const validation = mapValidationError(err);
+      if (validation) {
+        await audit(orgId, provider, 'test', 'error', {
           message: 'validation_error',
-          issues: err.flatten(),
+          issues: validation.issues,
         });
-        return res.status(400).json({ error: 'validation_error', issues: err.flatten() });
+        return res.status(400).json(validation);
+      }
+      const providerFailure = mapProviderFailure(err);
+      if (providerFailure) {
+        await audit(orgId, provider, 'test', 'error', {
+          message: providerFailure.body.message,
+        });
+        return res.status(providerFailure.status).json(providerFailure.body);
       }
       const status = err.statusCode || 500;
-      await recordIntegrationLog(req, logger, orgId, provider, 'test', false, { message: err.message });
+      await audit(orgId, provider, 'test', 'error', { message: err.message });
       return res.status(status).json({ error: 'test_failed', message: err.message });
     }
   });
 
-  router.post('/providers/:provider/disconnect', async (req, res) => {
+  router.post('/providers/:provider/disconnect', limiter, async (req, res) => {
     const { provider } = req.params;
     try {
       ensureProvider(provider);
@@ -631,13 +747,19 @@ export function createIntegrationsRouter({
       return res.status(400).json({ error: 'unknown_provider', message: provider });
     }
 
+    if (!req.db?.query) {
+      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+    }
+
     let orgId;
     try {
-      orgId = await ensureOrgContext(req);
+      orgId = await ensureOrgContext(req, req.db);
     } catch (err) {
       const status = err.statusCode || 500;
       return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
     }
+
+    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
 
     try {
       const existingRow = await getIntegration(req.db, orgId, provider);
@@ -648,16 +770,22 @@ export function createIntegrationsRouter({
         ...(isPlainObject(existingRow.meta) ? existingRow.meta : {}),
         disconnected_at: nowIso(),
       };
-      const row = await patchIntegration(req.db, orgId, provider, {
-        status: 'disconnected',
-        subscribed: false,
-        creds: {},
-        meta,
-      }, seal);
-      await recordIntegrationLog(req, logger, orgId, provider, 'disconnect', true, { message: 'Integração desconectada' });
+      const row = await patchIntegration(
+        req.db,
+        orgId,
+        provider,
+        {
+          status: 'disconnected',
+          subscribed: false,
+          creds: {},
+          meta,
+        },
+        seal
+      );
+      await audit(orgId, provider, 'disconnect', 'success', { message: 'Integração desconectada' });
       return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
     } catch (err) {
-      await recordIntegrationLog(req, logger, orgId, provider, 'disconnect', false, { message: err.message });
+      await audit(orgId, provider, 'disconnect', 'error', { message: err.message });
       return res.status(500).json({ error: 'disconnect_failed', message: err.message });
     }
   });

@@ -8,20 +8,8 @@ import {
 import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
 import { useAuth } from '@/contexts/AuthContext.jsx';
-
-const STATUS_MAP = {
-  connected: { label: 'Conectado', className: 'bg-green-100 text-green-700' },
-  connecting: { label: 'Conectando', className: 'bg-amber-100 text-amber-700' },
-  pending_qr: { label: 'Aguardando QR', className: 'bg-amber-100 text-amber-700' },
-  disconnected: { label: 'Desconectado', className: 'bg-gray-100 text-gray-600' },
-  error: { label: 'Erro', className: 'bg-red-100 text-red-700' },
-  unknown: { label: 'Desconhecido', className: 'bg-gray-100 text-gray-600' },
-};
-
-function StatusPill({ status }) {
-  const meta = STATUS_MAP[status] || STATUS_MAP.unknown;
-  return <span className={`text-xs px-2 py-1 font-medium rounded-full ${meta.className}`}>{meta.label}</span>;
-}
+import StatusPill from './StatusPill.jsx';
+import InlineSpinner from '../InlineSpinner.jsx';
 
 export default function WhatsAppBaileysCard() {
   const toast = useToast();
@@ -43,6 +31,29 @@ export default function WhatsAppBaileysCard() {
   const testOnlyEmail = state.meta?.test_only_email || null;
   const restricted = Boolean(testOnlyEmail && user?.email && user.email !== testOnlyEmail);
 
+  const getErrorMessage = (error, fallback) =>
+    error?.response?.data?.message || error?.message || fallback;
+
+  const applyIntegration = (integration) => {
+    if (!integration) return;
+    setState((prev) => ({
+      ...prev,
+      status: integration.status || prev.status || 'disconnected',
+      meta: integration.meta || prev.meta,
+      lastError: integration.meta?.lastError || null,
+    }));
+  };
+
+  const renderActionLabel = (loading, label, loadingLabel) =>
+    loading ? (
+      <span className="inline-flex items-center gap-2">
+        <InlineSpinner size="0.75rem" />
+        {loadingLabel}
+      </span>
+    ) : (
+      label
+    );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -50,13 +61,8 @@ export default function WhatsAppBaileysCard() {
         const data = await getProviderStatus('whatsapp_session');
         const integration = data?.integration || data;
         if (cancelled) return;
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          status: integration?.status || 'disconnected',
-          lastError: integration?.meta?.lastError || null,
-          meta: integration?.meta || {},
-        }));
+        setState((prev) => ({ ...prev, loading: false }));
+        applyIntegration(integration);
         if (integration?.meta?.session_host) {
           setSessionHost(integration.meta.session_host);
         }
@@ -66,7 +72,7 @@ export default function WhatsAppBaileysCard() {
           ...prev,
           loading: false,
           status: 'error',
-          lastError: err?.message || 'Falha ao carregar status',
+          lastError: getErrorMessage(err, 'Falha ao carregar status'),
         }));
       }
     })();
@@ -82,16 +88,11 @@ export default function WhatsAppBaileysCard() {
         session_host: sessionHost || undefined,
       });
       const integration = response?.integration || response;
-      setState((prev) => ({
-        ...prev,
-        saving: false,
-        status: integration?.status || 'connecting',
-        lastError: integration?.meta?.lastError || null,
-        meta: integration?.meta || {},
-      }));
+      applyIntegration(integration);
+      setState((prev) => ({ ...prev, saving: false }));
       toast({ title: 'Sessão WhatsApp iniciada', description: org?.name });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao iniciar sessão';
+      const message = getErrorMessage(err, 'Falha ao iniciar sessão');
       setState((prev) => ({
         ...prev,
         saving: false,
@@ -105,11 +106,13 @@ export default function WhatsAppBaileysCard() {
   const handleTest = async () => {
     setState((prev) => ({ ...prev, testing: true, lastError: null }));
     try {
-      await testProvider('whatsapp_session', { to: testTo });
+      const response = await testProvider('whatsapp_session', { to: testTo });
+      const integration = response?.integration || response;
+      applyIntegration(integration);
       setState((prev) => ({ ...prev, testing: false }));
       toast({ title: 'Mensagem de teste enviada', description: `Destino: ${testTo}` });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao enviar teste';
+      const message = getErrorMessage(err, 'Falha ao enviar teste');
       setState((prev) => ({
         ...prev,
         testing: false,
@@ -124,16 +127,15 @@ export default function WhatsAppBaileysCard() {
     try {
       const response = await disconnectProvider('whatsapp_session');
       const integration = response?.integration || response;
+      applyIntegration(integration);
       setState((prev) => ({
         ...prev,
         disconnecting: false,
         status: integration?.status || 'disconnected',
-        lastError: integration?.meta?.lastError || null,
-        meta: integration?.meta || {},
       }));
       toast({ title: 'Sessão encerrada' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao desconectar';
+      const message = getErrorMessage(err, 'Falha ao desconectar');
       setState((prev) => ({
         ...prev,
         disconnecting: false,
@@ -197,7 +199,7 @@ export default function WhatsAppBaileysCard() {
           onClick={handleConnect}
           disabled={state.saving || restricted}
         >
-          {state.saving ? 'Iniciando…' : 'Iniciar sessão'}
+          {renderActionLabel(state.saving, 'Iniciar sessão', 'Iniciando…')}
         </button>
         <div className="flex items-center gap-2">
           <input
@@ -212,7 +214,7 @@ export default function WhatsAppBaileysCard() {
             onClick={handleTest}
             disabled={state.testing || !canTest || restricted}
           >
-            {state.testing ? 'Enviando…' : 'Enviar teste'}
+            {renderActionLabel(state.testing, 'Enviar teste', 'Enviando…')}
           </button>
         </div>
         <button
@@ -221,7 +223,7 @@ export default function WhatsAppBaileysCard() {
           onClick={handleDisconnect}
           disabled={state.disconnecting || state.status === 'disconnected'}
         >
-          {state.disconnecting ? 'Desconectando…' : 'Encerrar sessão'}
+          {renderActionLabel(state.disconnecting, 'Encerrar sessão', 'Encerrando…')}
         </button>
       </div>
     </div>
