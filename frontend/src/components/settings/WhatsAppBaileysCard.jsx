@@ -7,6 +7,7 @@ import {
   startBaileysQr,
   stopBaileysQr,
   statusBaileys,
+  getBaileysSseToken,
 } from '@/api/integrationsApi.js';
 import inboxApi from '@/api/inboxApi.js';
 import useToast from '@/hooks/useToastFallback.js';
@@ -15,6 +16,152 @@ import { useAuth } from '@/contexts/AuthContext.jsx';
 import StatusPill from './StatusPill.jsx';
 import InlineSpinner from '../InlineSpinner.jsx';
 import { getToastMessages, resolveIntegrationError } from './integrationMessages.js';
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildSseUrl(base = '/api/integrations/providers/whatsapp_session/qr/stream', token) {
+  const url = new URL(base, window.location.origin);
+  if (token) url.searchParams.set('access_token', token);
+  return url.toString();
+}
+
+export function QRModal({ open, onClose, onConnected }) {
+  const toast = useToast();
+  const [status, setStatus] = useState('pending');
+  const [qr, setQr] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const esRef = useRef(null);
+  const stoppingRef = useRef(false);
+  const backoffRef = useRef(1000);
+  const maxBackoff = 15000;
+
+  const handleClose = useCallback(async () => {
+    try {
+      stoppingRef.current = true;
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+      await stopBaileysQr();
+    } finally {
+      stoppingRef.current = false;
+      onClose?.();
+    }
+  }, [onClose]);
+
+  const startStream = useCallback(async () => {
+    try {
+      setLoading(true);
+      const { token } = await getBaileysSseToken();
+      await startBaileysQr();
+
+      const url = buildSseUrl('/api/integrations/providers/whatsapp_session/qr/stream', token);
+      const es = new EventSource(url, { withCredentials: true });
+      esRef.current = es;
+
+      es.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'qr' && msg.qr?.dataUrl) {
+            setQr(msg.qr);
+            setStatus('pending');
+          }
+          if (msg.type === 'status') {
+            if (msg.status === 'connected') {
+              setStatus('connected');
+              toast({ title: 'Conectado com sucesso!' });
+              onConnected?.();
+              handleClose();
+            }
+          }
+        } catch {
+          // ignore JSON parse errors
+        }
+      };
+
+      es.onerror = async () => {
+        if (stoppingRef.current) return;
+        es.close();
+        esRef.current = null;
+        const wait = backoffRef.current;
+        backoffRef.current = Math.min(maxBackoff, wait * 2);
+        await sleep(wait);
+        startStream();
+      };
+
+      backoffRef.current = 1000;
+    } catch (err) {
+      toast({
+        title: 'Falha ao iniciar o stream do QR',
+        description: err?.message,
+      });
+      setStatus('error');
+    } finally {
+      setLoading(false);
+    }
+  }, [handleClose, onConnected, toast]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    startStream();
+    return () => {
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
+      stopBaileysQr().catch(() => {});
+    };
+  }, [open, startStream]);
+
+  const title = useMemo(() => {
+    if (status === 'connected') return 'Conectado';
+    if (status === 'error') return 'Erro ao conectar';
+    return 'Escaneie o QR no seu WhatsApp';
+  }, [status]);
+
+  return (
+    <div role="dialog" aria-modal="true" className={`fixed inset-0 z-50 ${open ? '' : 'hidden'}`}>
+      <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
+      <div className="absolute inset-0 flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+          <div className="flex items-center gap-2 mb-3">
+            <h2 className="text-lg font-semibold">{title}</h2>
+            {loading && <InlineSpinner />}
+          </div>
+
+          {status !== 'error' && (
+            <p className="text-sm text-gray-600 mb-4">
+              Abra o WhatsApp &rarr; Menu &rarr; Aparelhos conectados &rarr; <b>Conectar um aparelho</b> e escaneie o QR abaixo.
+            </p>
+          )}
+
+          {qr?.dataUrl ? (
+            <img src={qr.dataUrl} alt="QR do WhatsApp" className="w-full rounded-xl border" />
+          ) : (
+            <div className="h-[256px] flex items-center justify-center border rounded-xl">
+              <span className="text-gray-500 text-sm">Gerando QR…</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 mt-6">
+            <button
+              onClick={handleClose}
+              className="px-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200"
+            >
+              Fechar
+            </button>
+          </div>
+
+          {status === 'error' && (
+            <p className="mt-3 text-sm text-red-600">Não foi possível iniciar o stream. Tente novamente.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const toastMessages = getToastMessages('whatsapp_session');
 
@@ -34,40 +181,15 @@ export default function WhatsAppBaileysCard() {
     meta: {},
   });
   const [featuresGate, setFeaturesGate] = useState({ loading: true, enabled: false, message: '' });
-  const [qrModalOpen, setQrModalOpen] = useState(false);
-  const [qrData, setQrData] = useState(null);
-  const [qrLoading, setQrLoading] = useState(false);
-  const [qrError, setQrError] = useState(null);
-  const eventSourceRef = useRef(null);
+  const [qrOpen, setQrOpen] = useState(false);
   const defaultGateMessage = 'Recurso liberado somente por Suporte/SuperAdmin.';
-  const cleanupStream = useCallback(() => {
-    if (eventSourceRef.current) {
-      try {
-        eventSourceRef.current.close();
-      } catch (_) {}
-      eventSourceRef.current = null;
-    }
-  }, []);
-  const closeQrModal = useCallback(
-    (shouldStop = true) => {
-      cleanupStream();
-      setQrModalOpen(false);
-      setQrData(null);
-      setQrError(null);
-      if (shouldStop) {
-        stopBaileysQr().catch(() => {});
-      }
-    },
-    [cleanupStream]
+
+  const getErrorMessage = useCallback(
+    (error, fallbackKey) => resolveIntegrationError(error, fallbackKey),
+    []
   );
 
-  const canTest = useMemo(() => Boolean(testTo.trim()), [testTo]);
-  const testOnlyEmail = state.meta?.test_only_email || null;
-  const restricted = Boolean(testOnlyEmail && user?.email && user.email !== testOnlyEmail);
-
-  const getErrorMessage = (error, fallbackKey) => resolveIntegrationError(error, fallbackKey);
-
-  const applyIntegration = (integration) => {
+  const applyIntegration = useCallback((integration) => {
     if (!integration) return;
     setState((prev) => {
       const nextStatus = integration.status || prev.status || 'disconnected';
@@ -83,32 +205,23 @@ export default function WhatsAppBaileysCard() {
         lastError: nextMeta.lastError || null,
       };
     });
-  };
+    if (integration?.meta?.session_host) {
+      setSessionHost(integration.meta.session_host);
+    }
+  }, []);
 
-  const renderActionLabel = (loading, label, loadingLabel) =>
-    loading ? (
-      <span className="inline-flex items-center gap-2">
-        <InlineSpinner size="0.75rem" />
-        {loadingLabel}
-      </span>
-    ) : (
-      label
-    );
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const refetchStatus = useCallback(
+    async ({ cancelled } = {}) => {
+      const isCancelled = () => (typeof cancelled === 'function' ? cancelled() : false);
       try {
         const data = await getProviderStatus('whatsapp_session');
+        if (isCancelled()) return;
         const integration = data?.integration || data;
-        if (cancelled) return;
         setState((prev) => ({ ...prev, loading: false }));
+        if (isCancelled()) return;
         applyIntegration(integration);
-        if (integration?.meta?.session_host) {
-          setSessionHost(integration.meta.session_host);
-        }
       } catch (err) {
-        if (cancelled) return;
+        if (isCancelled()) return;
         setState((prev) => ({
           ...prev,
           loading: false,
@@ -116,11 +229,17 @@ export default function WhatsAppBaileysCard() {
           lastError: getErrorMessage(err, 'load_status'),
         }));
       }
-    })();
+    },
+    [applyIntegration, getErrorMessage]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void refetchStatus({ cancelled: () => cancelled });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refetchStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,63 +294,21 @@ export default function WhatsAppBaileysCard() {
     return () => {
       cancelled = true;
     };
-  }, [org?.id]);
+  }, [org?.id, defaultGateMessage]);
 
-  useEffect(
-    () => () => {
-      cleanupStream();
-      if (qrModalOpen) {
-        stopBaileysQr().catch(() => {});
-      }
-    },
-    [cleanupStream, qrModalOpen]
-  );
+  const canTest = useMemo(() => Boolean(testTo.trim()), [testTo]);
+  const testOnlyEmail = state.meta?.test_only_email || null;
+  const restricted = Boolean(testOnlyEmail && user?.email && user.email !== testOnlyEmail);
 
-  useEffect(() => {
-    if (!qrModalOpen) {
-      cleanupStream();
-      return undefined;
-    }
-
-    setQrError(null);
-    setQrData(null);
-
-    try {
-      const es = new EventSource('/api/integrations/providers/whatsapp_session/qr/stream', {
-        withCredentials: true,
-      });
-      eventSourceRef.current = es;
-      es.onmessage = (event) => {
-        if (!event?.data) return;
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload.type === 'qr' && payload.qr) {
-            setQrData(payload.qr);
-            setQrError(null);
-          }
-          if (payload.type === 'status' && payload.status) {
-            setState((prev) => ({
-              ...prev,
-              status: payload.status,
-              meta: { ...prev.meta, session_state: payload.status },
-            }));
-            if (payload.status === 'connected') {
-              closeQrModal();
-            }
-          }
-        } catch (_) {}
-      };
-      es.onerror = () => {
-        setQrError('Conexão com o stream perdida. Gere um novo QR.');
-      };
-    } catch (err) {
-      setQrError('Não foi possível abrir o stream de QR.');
-    }
-
-    return () => {
-      cleanupStream();
-    };
-  }, [qrModalOpen, cleanupStream, closeQrModal]);
+  const renderActionLabel = (loading, label, loadingLabel) =>
+    loading ? (
+      <span className="inline-flex items-center gap-2">
+        <InlineSpinner size="0.75rem" />
+        {loadingLabel}
+      </span>
+    ) : (
+      label
+    );
 
   const handleConnect = async () => {
     setState((prev) => ({ ...prev, saving: true, lastError: null }));
@@ -297,43 +374,16 @@ export default function WhatsAppBaileysCard() {
     }
   };
 
-  const handleStartQr = async () => {
-    if (featuresGate.loading || !featuresGate.enabled) {
+  const handleOpenQr = () => {
+    if (featuresGate.loading || !featuresGate.enabled || restricted) {
       return;
     }
-    setQrLoading(true);
-    setQrError(null);
-    try {
-      await startBaileysQr();
-      cleanupStream();
-      setQrData(null);
-      setState((prev) => ({
-        ...prev,
-        status: 'pending_qr',
-        meta: { ...prev.meta, session_state: 'pending_qr' },
-      }));
-      setQrModalOpen(true);
-    } catch (err) {
-      const message = err?.response?.data?.message || 'Não foi possível gerar o QR Code.';
-      if (err?.response?.status === 403) {
-        setFeaturesGate({ loading: false, enabled: false, message: message || defaultGateMessage });
-      }
-      setQrError(message);
-      toast({ title: 'Erro ao gerar QR', description: message });
-    } finally {
-      setQrLoading(false);
-    }
-  };
-
-  const handleStopQr = async () => {
-    try {
-      await stopBaileysQr();
-    } catch (err) {
-      const message = err?.response?.data?.message || 'Não foi possível interromper o QR Code.';
-      toast({ title: 'Erro ao parar QR', description: message });
-    } finally {
-      closeQrModal(false);
-    }
+    setState((prev) => ({
+      ...prev,
+      status: 'pending_qr',
+      meta: { ...prev.meta, session_state: 'pending_qr' },
+    }));
+    setQrOpen(true);
   };
 
   const qrStatusLabel = useMemo(() => {
@@ -352,8 +402,7 @@ export default function WhatsAppBaileysCard() {
   }, [state.status]);
 
   const gateTooltip = !featuresGate.enabled ? featuresGate.message || defaultGateMessage : undefined;
-  const qrButtonDisabled =
-    featuresGate.loading || !featuresGate.enabled || qrLoading || restricted;
+  const qrButtonDisabled = featuresGate.loading || !featuresGate.enabled || restricted;
   const statusForPill = state.status === 'pending_qr' ? 'pending' : state.status;
 
   if (state.loading) {
@@ -370,7 +419,7 @@ export default function WhatsAppBaileysCard() {
         <div>
           <h3 className="text-lg font-semibold">WhatsApp Sessão (Baileys)</h3>
           <p className="text-sm text-gray-500">Utilize uma sessão autenticada por QR Code.</p>
-        {restricted ? (
+          {restricted ? (
             <p className="mt-1 text-xs text-amber-600" data-testid="whatsapp-session-restricted">
               Modo restrito: disponível apenas para {testOnlyEmail}.
             </p>
@@ -412,13 +461,13 @@ export default function WhatsAppBaileysCard() {
           <button
             type="button"
             className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={handleStartQr}
+            onClick={handleOpenQr}
             disabled={qrButtonDisabled}
-            aria-busy={qrLoading}
+            aria-busy={false}
             title={gateTooltip || undefined}
             data-testid="whatsapp-session-qr-button"
           >
-            {renderActionLabel(qrLoading, 'Gerar QR', 'Gerando…')}
+            Gerar QR
           </button>
           {!featuresGate.loading && !featuresGate.enabled ? (
             <span className="text-xs text-gray-500" data-testid="whatsapp-session-qr-blocked">
@@ -445,9 +494,9 @@ export default function WhatsAppBaileysCard() {
           <button
             type="button"
             className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={handleTest}
-          disabled={state.testing || !canTest || restricted}
-          aria-busy={state.testing}
+            onClick={handleTest}
+            disabled={state.testing || !canTest || restricted}
+            aria-busy={state.testing}
           >
             {renderActionLabel(state.testing, 'Enviar teste', 'Enviando…')}
           </button>
@@ -462,69 +511,14 @@ export default function WhatsAppBaileysCard() {
           {renderActionLabel(state.disconnecting, 'Encerrar sessão', 'Encerrando…')}
         </button>
       </div>
-      {qrModalOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          data-testid="whatsapp-session-qr-modal"
-        >
-          <div className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-6 shadow-lg">
-            <div className="flex items-center justify-between">
-              <h4 className="text-lg font-semibold">Escaneie o QR Code</h4>
-              <button
-                type="button"
-                className="text-sm text-gray-500 transition hover:text-gray-700"
-                onClick={() => closeQrModal()}
-              >
-                Fechar
-              </button>
-            </div>
-            <div className="flex flex-col items-center gap-4">
-              {qrData?.dataUrl ? (
-                <img
-                  src={qrData.dataUrl}
-                  alt="QR Code para autenticação do WhatsApp"
-                  className="h-56 w-56 rounded-lg border"
-                  data-testid="whatsapp-session-qr-image"
-                />
-              ) : (
-                <div
-                  className="flex h-56 w-56 items-center justify-center rounded-lg border bg-gray-50 text-sm text-gray-500"
-                  data-testid="whatsapp-session-qr-placeholder"
-                >
-                  {qrError || 'Aguardando QR Code…'}
-                </div>
-              )}
-              <p className="text-sm text-gray-600" data-testid="whatsapp-session-qr-status">
-                {qrStatusLabel}
-              </p>
-            </div>
-            {qrError && qrData?.dataUrl ? (
-              <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                {qrError}
-              </p>
-            ) : null}
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-gray-50"
-                onClick={() => closeQrModal()}
-              >
-                Fechar
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-                onClick={handleStopQr}
-                data-testid="whatsapp-session-qr-stop"
-              >
-                Parar
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+
+      <QRModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        onConnected={() => {
+          void refetchStatus();
+        }}
+      />
     </div>
   );
 }

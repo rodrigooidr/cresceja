@@ -26,6 +26,11 @@ export const startBaileysQr = () =>
 export const stopBaileysQr = () =>
   inboxApi.post('/api/integrations/providers/whatsapp_session/qr/stop').then((r) => r.data);
 
+export const getBaileysSseToken = () =>
+  inboxApi
+    .post('/api/integrations/providers/whatsapp_session/qr/sse-token')
+    .then((r) => r.data);
+
 export const statusBaileys = () =>
   inboxApi.get('/api/integrations/providers/whatsapp_session/status').then((r) => r.data);
 
@@ -50,6 +55,7 @@ export default {
   disconnectProvider,
   startBaileysQr,
   stopBaileysQr,
+  getBaileysSseToken,
   statusBaileys,
   listEvents,
 };
