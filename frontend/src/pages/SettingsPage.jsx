@@ -6,6 +6,11 @@ import useToastFallback from '../hooks/useToastFallback.js';
 import { canUse, limitKeyFor } from '../utils/featureGate.js';
 import Gate from '../components/Gate.jsx';
 import useFeatureGate from '../utils/useFeatureGate.js';
+import WhatsAppOfficialCard from '../components/settings/WhatsAppOfficialCard.jsx';
+import WhatsAppBaileysCard from '../components/settings/WhatsAppBaileysCard.jsx';
+import InstagramCard from '../components/settings/InstagramCard.jsx';
+import FacebookCard from '../components/settings/FacebookCard.jsx';
+import GoogleCalendarCard from '../components/settings/GoogleCalendarCard.jsx';
 
 function GoogleCalendarSection(props) {
   const { selected } = useOrg();
@@ -421,8 +426,27 @@ export default function SettingsPage() {
   const showInstagram = canUse(org, 'instagram', limitKeyFor('instagram'));
   const showWhatsApp = canUse(org, 'whatsapp', limitKeyFor('whatsapp'));
 
+  const showIntegrations = showCalendar || showFacebook || showInstagram || showWhatsApp;
+
   return (
     <div className="p-4 space-y-8">
+      {showIntegrations ? (
+        <section className="space-y-3" data-testid="settings-integrations-section">
+          <div>
+            <h2 className="text-xl font-semibold">Integrações</h2>
+            <p className="text-sm text-gray-600">
+              Conecte seus canais principais ou acesse a aba de integrações para detalhes completos.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {showWhatsApp ? <WhatsAppOfficialCard /> : null}
+            {showWhatsApp ? <WhatsAppBaileysCard /> : null}
+            {showInstagram ? <InstagramCard /> : null}
+            {showFacebook ? <FacebookCard /> : null}
+            {showCalendar ? <GoogleCalendarCard /> : null}
+          </div>
+        </section>
+      ) : null}
       {showCalendar ? (
         <GoogleCalendarSection data-testid="settings-calendar-section" />
       ) : null}
