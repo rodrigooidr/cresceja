@@ -5,6 +5,11 @@ import { applyOrgIdHeader, computeOrgId } from "./orgHeader.js";
 export const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "/api";
 export const apiUrl = API_BASE_URL; // alias
 
+// torna a base visível globalmente (útil para helpers que não usam axios)
+try {
+  if (typeof window !== "undefined") window.__API_BASE_URL__ = API_BASE_URL;
+} catch {}
+
 const inboxApi = axios.create({ baseURL: API_BASE_URL });
 export const api = inboxApi;
 export const client = inboxApi;
