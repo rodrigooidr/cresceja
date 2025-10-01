@@ -8,19 +8,8 @@ import {
 } from '@/api/integrationsApi.js';
 import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
-
-const STATUS_MAP = {
-  connected: { label: 'Conectado', className: 'bg-green-100 text-green-700' },
-  connecting: { label: 'Conectando', className: 'bg-amber-100 text-amber-700' },
-  disconnected: { label: 'Desconectado', className: 'bg-gray-100 text-gray-600' },
-  error: { label: 'Erro', className: 'bg-red-100 text-red-700' },
-  unknown: { label: 'Desconhecido', className: 'bg-gray-100 text-gray-600' },
-};
-
-function StatusPill({ status }) {
-  const meta = STATUS_MAP[status] || STATUS_MAP.unknown;
-  return <span className={`text-xs px-2 py-1 font-medium rounded-full ${meta.className}`}>{meta.label}</span>;
-}
+import StatusPill from './StatusPill.jsx';
+import InlineSpinner from '../InlineSpinner.jsx';
 
 export default function WhatsAppOfficialCard() {
   const toast = useToast();
@@ -41,6 +30,7 @@ export default function WhatsAppOfficialCard() {
     testing: false,
     disconnecting: false,
     lastError: null,
+    meta: {},
   });
 
   const canConnect = useMemo(
@@ -49,6 +39,38 @@ export default function WhatsAppOfficialCard() {
   );
   const canTest = useMemo(() => Boolean(testTo.trim()), [testTo]);
 
+  const getErrorMessage = (error, fallback) =>
+    error?.response?.data?.message || error?.message || fallback;
+
+  const applyIntegration = (integration) => {
+    if (!integration) return;
+    setState((prev) => ({
+      ...prev,
+      status: integration.status || prev.status || 'disconnected',
+      subscribed: Boolean(integration.subscribed ?? prev.subscribed),
+      meta: integration.meta || prev.meta,
+      lastError: integration.meta?.lastError || null,
+    }));
+    if (integration.meta) {
+      setForm((prev) => ({
+        ...prev,
+        phoneNumberId: integration.meta.phone_number_id || prev.phoneNumberId,
+        displayPhoneNumber: integration.meta.display_phone_number || prev.displayPhoneNumber,
+        businessName: integration.meta.business_name || prev.businessName,
+      }));
+    }
+  };
+
+  const renderActionLabel = (loading, label, loadingLabel) =>
+    loading ? (
+      <span className="inline-flex items-center gap-2">
+        <InlineSpinner size="0.75rem" />
+        {loadingLabel}
+      </span>
+    ) : (
+      label
+    );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -56,28 +78,15 @@ export default function WhatsAppOfficialCard() {
         const data = await getProviderStatus('whatsapp_cloud');
         const integration = data?.integration || data;
         if (cancelled) return;
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          status: integration?.status || 'disconnected',
-          subscribed: Boolean(integration?.subscribed),
-          lastError: integration?.meta?.lastError || null,
-        }));
-        if (integration?.meta) {
-          setForm((prev) => ({
-            ...prev,
-            phoneNumberId: integration.meta.phone_number_id || prev.phoneNumberId,
-            displayPhoneNumber: integration.meta.display_phone_number || prev.displayPhoneNumber,
-            businessName: integration.meta.business_name || prev.businessName,
-          }));
-        }
+        setState((prev) => ({ ...prev, loading: false }));
+        applyIntegration(integration);
       } catch (err) {
         if (cancelled) return;
         setState((prev) => ({
           ...prev,
           loading: false,
           status: 'error',
-          lastError: err?.message || 'Falha ao carregar status',
+          lastError: getErrorMessage(err, 'Falha ao carregar status'),
         }));
       }
     })();
@@ -96,16 +105,11 @@ export default function WhatsAppOfficialCard() {
         business_name: form.businessName || undefined,
       });
       const integration = response?.integration || response;
-      setState((prev) => ({
-        ...prev,
-        saving: false,
-        status: integration?.status || 'connected',
-        subscribed: Boolean(integration?.subscribed),
-        lastError: integration?.meta?.lastError || null,
-      }));
+      applyIntegration(integration);
+      setState((prev) => ({ ...prev, saving: false }));
       toast({ title: 'WhatsApp Cloud conectado', description: org?.name });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao conectar';
+      const message = getErrorMessage(err, 'Falha ao conectar');
       setState((prev) => ({
         ...prev,
         saving: false,
@@ -121,16 +125,11 @@ export default function WhatsAppOfficialCard() {
     try {
       const response = await subscribeProvider('whatsapp_cloud');
       const integration = response?.integration || response;
-      setState((prev) => ({
-        ...prev,
-        subscribing: false,
-        subscribed: Boolean(integration?.subscribed ?? true),
-        status: integration?.status || prev.status,
-        lastError: integration?.meta?.lastError || null,
-      }));
+      applyIntegration(integration);
+      setState((prev) => ({ ...prev, subscribing: false }));
       toast({ title: 'Webhook assinado com sucesso' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao assinar webhook';
+      const message = getErrorMessage(err, 'Falha ao assinar webhook');
       setState((prev) => ({
         ...prev,
         subscribing: false,
@@ -143,11 +142,13 @@ export default function WhatsAppOfficialCard() {
   const handleTest = async () => {
     setState((prev) => ({ ...prev, testing: true, lastError: null }));
     try {
-      await testProvider('whatsapp_cloud', { to: testTo });
+      const response = await testProvider('whatsapp_cloud', { to: testTo });
+      const integration = response?.integration || response;
+      applyIntegration(integration);
       setState((prev) => ({ ...prev, testing: false }));
       toast({ title: 'Mensagem de teste enviada', description: `Destino: ${testTo}` });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao enviar teste';
+      const message = getErrorMessage(err, 'Falha ao enviar teste');
       setState((prev) => ({
         ...prev,
         testing: false,
@@ -162,16 +163,16 @@ export default function WhatsAppOfficialCard() {
     try {
       const response = await disconnectProvider('whatsapp_cloud');
       const integration = response?.integration || response;
+      applyIntegration(integration);
       setState((prev) => ({
         ...prev,
         disconnecting: false,
         status: integration?.status || 'disconnected',
         subscribed: false,
-        lastError: integration?.meta?.lastError || null,
       }));
       toast({ title: 'WhatsApp Cloud desconectado' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao desconectar';
+      const message = getErrorMessage(err, 'Falha ao desconectar');
       setState((prev) => ({
         ...prev,
         disconnecting: false,
@@ -195,10 +196,21 @@ export default function WhatsAppOfficialCard() {
         <div>
           <h3 className="text-lg font-semibold">WhatsApp Business Platform</h3>
           <p className="text-sm text-gray-500">Conecte um número oficial via API Cloud.</p>
+          {state.meta?.display_phone_number ? (
+            <p className="mt-1 text-xs text-gray-500">
+              Número conectado: {state.meta.display_phone_number}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <StatusPill status={state.status} />
-          <span className={`rounded-full px-2 py-1 text-xs font-medium ${state.subscribed ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+              state.subscribed
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border border-gray-200 bg-gray-100 text-gray-600'
+            }`}
+          >
             {state.subscribed ? 'Webhook ativo' : 'Webhook inativo'}
           </span>
         </div>
@@ -256,7 +268,7 @@ export default function WhatsAppOfficialCard() {
           onClick={handleConnect}
           disabled={!canConnect || state.saving}
         >
-          {state.saving ? 'Conectando…' : 'Conectar'}
+          {renderActionLabel(state.saving, 'Conectar', 'Conectando…')}
         </button>
         <button
           type="button"
@@ -264,7 +276,7 @@ export default function WhatsAppOfficialCard() {
           onClick={handleSubscribe}
           disabled={state.subscribing || state.status === 'disconnected'}
         >
-          {state.subscribing ? 'Assinando…' : 'Assinar Webhook'}
+          {renderActionLabel(state.subscribing, 'Assinar webhook', 'Assinando…')}
         </button>
         <div className="flex items-center gap-2">
           <input
@@ -279,7 +291,7 @@ export default function WhatsAppOfficialCard() {
             onClick={handleTest}
             disabled={state.testing || !canTest}
           >
-            {state.testing ? 'Enviando…' : 'Enviar teste'}
+            {renderActionLabel(state.testing, 'Enviar teste', 'Enviando…')}
           </button>
         </div>
         <button
@@ -288,7 +300,7 @@ export default function WhatsAppOfficialCard() {
           onClick={handleDisconnect}
           disabled={state.disconnecting || state.status === 'disconnected'}
         >
-          {state.disconnecting ? 'Desconectando…' : 'Desconectar'}
+          {renderActionLabel(state.disconnecting, 'Desconectar', 'Desconectando…')}
         </button>
       </div>
     </div>

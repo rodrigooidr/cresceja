@@ -8,18 +8,8 @@ import {
 } from '@/api/integrationsApi.js';
 import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
-
-const STATUS_MAP = {
-  connected: { label: 'Conectado', className: 'bg-green-100 text-green-700' },
-  disconnected: { label: 'Desconectado', className: 'bg-gray-100 text-gray-600' },
-  error: { label: 'Erro', className: 'bg-red-100 text-red-700' },
-  unknown: { label: 'Desconhecido', className: 'bg-gray-100 text-gray-600' },
-};
-
-function StatusPill({ status }) {
-  const meta = STATUS_MAP[status] || STATUS_MAP.unknown;
-  return <span className={`text-xs px-2 py-1 font-medium rounded-full ${meta.className}`}>{meta.label}</span>;
-}
+import StatusPill from './StatusPill.jsx';
+import InlineSpinner from '../InlineSpinner.jsx';
 
 export default function FacebookCard() {
   const toast = useToast();
@@ -43,6 +33,37 @@ export default function FacebookCard() {
 
   const canConnect = useMemo(() => Boolean(form.accessToken.trim()), [form.accessToken]);
 
+  const getErrorMessage = (error, fallback) =>
+    error?.response?.data?.message || error?.message || fallback;
+
+  const applyIntegration = (integration) => {
+    if (!integration) return;
+    setState((prev) => ({
+      ...prev,
+      status: integration.status || prev.status || 'disconnected',
+      subscribed: Boolean(integration.subscribed ?? prev.subscribed),
+      meta: integration.meta || prev.meta,
+      lastError: integration.meta?.lastError || null,
+    }));
+    if (integration.meta) {
+      setForm((prev) => ({
+        ...prev,
+        pageId: integration.meta.page_id || prev.pageId,
+        pageName: integration.meta.page_name || prev.pageName,
+      }));
+    }
+  };
+
+  const renderActionLabel = (loading, label, loadingLabel) =>
+    loading ? (
+      <span className="inline-flex items-center gap-2">
+        <InlineSpinner size="0.75rem" />
+        {loadingLabel}
+      </span>
+    ) : (
+      label
+    );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -50,28 +71,15 @@ export default function FacebookCard() {
         const data = await getProviderStatus('meta_facebook');
         const integration = data?.integration || data;
         if (cancelled) return;
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          status: integration?.status || 'disconnected',
-          subscribed: Boolean(integration?.subscribed),
-          lastError: integration?.meta?.lastError || null,
-          meta: integration?.meta || {},
-        }));
-        if (integration?.meta) {
-          setForm((prev) => ({
-            ...prev,
-            pageId: integration.meta.page_id || prev.pageId,
-            pageName: integration.meta.page_name || prev.pageName,
-          }));
-        }
+        setState((prev) => ({ ...prev, loading: false }));
+        applyIntegration(integration);
       } catch (err) {
         if (cancelled) return;
         setState((prev) => ({
           ...prev,
           loading: false,
           status: 'error',
-          lastError: err?.message || 'Falha ao carregar status',
+          lastError: getErrorMessage(err, 'Falha ao carregar status'),
         }));
       }
     })();
@@ -89,17 +97,11 @@ export default function FacebookCard() {
         page_name: form.pageName || undefined,
       });
       const integration = response?.integration || response;
-      setState((prev) => ({
-        ...prev,
-        saving: false,
-        status: integration?.status || 'connected',
-        subscribed: Boolean(integration?.subscribed ?? true),
-        lastError: integration?.meta?.lastError || null,
-        meta: integration?.meta || {},
-      }));
+      applyIntegration(integration);
+      setState((prev) => ({ ...prev, saving: false }));
       toast({ title: 'Facebook conectado', description: org?.name });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao conectar';
+      const message = getErrorMessage(err, 'Falha ao conectar');
       setState((prev) => ({
         ...prev,
         saving: false,
@@ -115,16 +117,11 @@ export default function FacebookCard() {
     try {
       const response = await subscribeProvider('meta_facebook');
       const integration = response?.integration || response;
-      setState((prev) => ({
-        ...prev,
-        subscribing: false,
-        subscribed: Boolean(integration?.subscribed ?? true),
-        lastError: integration?.meta?.lastError || null,
-        meta: integration?.meta || prev.meta,
-      }));
+      applyIntegration(integration);
+      setState((prev) => ({ ...prev, subscribing: false }));
       toast({ title: 'Webhook do Facebook ativo' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao assinar webhook';
+      const message = getErrorMessage(err, 'Falha ao assinar webhook');
       setState((prev) => ({
         ...prev,
         subscribing: false,
@@ -137,11 +134,13 @@ export default function FacebookCard() {
   const handleTest = async () => {
     setState((prev) => ({ ...prev, testing: true, lastError: null }));
     try {
-      await testProvider('meta_facebook');
+      const response = await testProvider('meta_facebook');
+      const integration = response?.integration || response;
+      applyIntegration(integration);
       setState((prev) => ({ ...prev, testing: false }));
       toast({ title: 'Teste enviado', description: 'Simulação de publicação concluída.' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao testar';
+      const message = getErrorMessage(err, 'Falha ao testar');
       setState((prev) => ({
         ...prev,
         testing: false,
@@ -156,17 +155,16 @@ export default function FacebookCard() {
     try {
       const response = await disconnectProvider('meta_facebook');
       const integration = response?.integration || response;
+      applyIntegration(integration);
       setState((prev) => ({
         ...prev,
         disconnecting: false,
         status: integration?.status || 'disconnected',
         subscribed: false,
-        lastError: integration?.meta?.lastError || null,
-        meta: integration?.meta || {},
       }));
       toast({ title: 'Facebook desconectado' });
     } catch (err) {
-      const message = err?.response?.data?.message || err?.message || 'Falha ao desconectar';
+      const message = getErrorMessage(err, 'Falha ao desconectar');
       setState((prev) => ({
         ...prev,
         disconnecting: false,
@@ -198,7 +196,13 @@ export default function FacebookCard() {
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <StatusPill status={state.status} />
-          <span className={`rounded-full px-2 py-1 text-xs font-medium ${state.subscribed ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+          <span
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+              state.subscribed
+                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border border-gray-200 bg-gray-100 text-gray-600'
+            }`}
+          >
             {state.subscribed ? 'Webhook ativo' : 'Webhook inativo'}
           </span>
         </div>
@@ -247,7 +251,7 @@ export default function FacebookCard() {
           onClick={handleConnect}
           disabled={!canConnect || state.saving}
         >
-          {state.saving ? 'Conectando…' : 'Conectar'}
+          {renderActionLabel(state.saving, 'Conectar', 'Conectando…')}
         </button>
         <button
           type="button"
@@ -255,7 +259,7 @@ export default function FacebookCard() {
           onClick={handleSubscribe}
           disabled={state.subscribing || state.status === 'disconnected'}
         >
-          {state.subscribing ? 'Assinando…' : 'Assinar Webhook'}
+          {renderActionLabel(state.subscribing, 'Assinar webhook', 'Assinando…')}
         </button>
         <button
           type="button"
@@ -263,7 +267,7 @@ export default function FacebookCard() {
           onClick={handleTest}
           disabled={state.testing || state.status === 'disconnected'}
         >
-          {state.testing ? 'Testando…' : 'Testar'}
+          {renderActionLabel(state.testing, 'Testar', 'Testando…')}
         </button>
         <button
           type="button"
@@ -271,7 +275,7 @@ export default function FacebookCard() {
           onClick={handleDisconnect}
           disabled={state.disconnecting || state.status === 'disconnected'}
         >
-          {state.disconnecting ? 'Desconectando…' : 'Desconectar'}
+          {renderActionLabel(state.disconnecting, 'Desconectar', 'Desconectando…')}
         </button>
       </div>
     </div>

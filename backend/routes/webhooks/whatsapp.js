@@ -1,8 +1,39 @@
 import { Router } from 'express';
 import { query } from '#db';
 import { decrypt } from '../../services/crypto.js';
+import createIntegrationAuditor from '../../services/audit.js';
 
 const r = Router();
+
+function sanitizePayload(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  const clone = JSON.parse(JSON.stringify(payload));
+  const scrub = (obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    for (const key of Object.keys(obj)) {
+      if (typeof obj[key] === 'object') scrub(obj[key]);
+      if (/token|secret|signature|key/i.test(key)) delete obj[key];
+    }
+  };
+  scrub(clone);
+  return clone;
+}
+
+async function storeIntegrationEvent(req, provider, payload) {
+  const db = req.db;
+  if (!db?.query) return;
+  const clean = sanitizePayload(payload);
+  const orgId = clean?.org_id || clean?.orgId || null;
+  try {
+    await db.query(
+      `INSERT INTO integration_events (org_id, provider, payload, received_at)
+       VALUES ($1, $2, $3::jsonb, now())`,
+      [orgId, provider, JSON.stringify(clean)]
+    );
+  } catch (err) {
+    req.log?.warn?.({ err, provider }, 'integration_events_store_failed');
+  }
+}
 
 // verificação do webhook
 r.get('/', (req, res) => {
@@ -16,95 +47,102 @@ r.get('/', (req, res) => {
 });
 
 r.post('/', async (req, res) => {
-  try {
-    const entry = req.body?.entry || [];
-    for (const e of entry) {
-      for (const ch of e.changes || []) {
-        const value = ch.value || {};
+  const auditor = createIntegrationAuditor({ db: req.db, logger: req.log });
+  await auditor(null, 'whatsapp', 'webhook_receive', 'success', {
+    hasEntry: Array.isArray(req.body?.entry) && req.body.entry.length > 0,
+  });
+  res.sendStatus(200);
+  setImmediate(async () => {
+    try {
+      await storeIntegrationEvent(req, 'whatsapp', req.body || {});
+      const entry = req.body?.entry || [];
+      for (const e of entry) {
+        for (const ch of e.changes || []) {
+          const value = ch.value || {};
 
-        // ---- status updates ----
-        const statuses = value.statuses || [];
-        for (const s of statuses) {
-          const providerId = s.id;
-          const status = mapStatus(s.status);
-          if (!providerId || !status) continue;
-          await query(
-            `UPDATE messages
-             SET status = $1, updated_at = now()
-             WHERE provider_message_id = $2`,
-            [status, providerId]
-          );
-        }
-
-        // ---- inbound messages ----
-        const messages = value.messages || [];
-        for (const m of messages) {
-          const phoneNumberId = value.metadata?.phone_number_id;
-          const from = m.from;
-          if (!phoneNumberId || !from) continue;
-
-          const { rows: chans } = await query(
-            "SELECT id, org_id, credentials_json FROM channels WHERE type = 'whatsapp'"
-          );
-          let orgId = null;
-          let channelId = null;
-          for (const row of chans) {
-            const creds = JSON.parse(decrypt(row.credentials_json));
-            if (creds?.phone_number_id === phoneNumberId) {
-              orgId = row.org_id;
-              channelId = row.id;
-              break;
-            }
+          // ---- status updates ----
+          const statuses = value.statuses || [];
+          for (const s of statuses) {
+            const providerId = s.id;
+            const status = mapStatus(s.status);
+            if (!providerId || !status) continue;
+            await query(
+              `UPDATE messages
+               SET status = $1, updated_at = now()
+               WHERE provider_message_id = $2`,
+              [status, providerId]
+            );
           }
-          if (!orgId) continue;
-          await query('SET LOCAL app.org_id = $1', [orgId]);
 
-          // contato
-          const { rows: cRows } = await query(
-            'SELECT id FROM contacts WHERE org_id = $1 AND phone_e164 = $2 LIMIT 1',
-            [orgId, from]
-          );
-          let contactId = cRows[0]?.id;
-          if (!contactId) {
-            const ins = await query(
-              'INSERT INTO contacts (org_id, phone_e164) VALUES ($1,$2) RETURNING id',
+          // ---- inbound messages ----
+          const messages = value.messages || [];
+          for (const m of messages) {
+            const phoneNumberId = value.metadata?.phone_number_id;
+            const from = m.from;
+            if (!phoneNumberId || !from) continue;
+
+            const { rows: chans } = await query(
+              "SELECT id, org_id, credentials_json FROM channels WHERE type = 'whatsapp'"
+            );
+            let orgId = null;
+            let channelId = null;
+            for (const row of chans) {
+              const creds = JSON.parse(decrypt(row.credentials_json));
+              if (creds?.phone_number_id === phoneNumberId) {
+                orgId = row.org_id;
+                channelId = row.id;
+                break;
+              }
+            }
+            if (!orgId) continue;
+            await query('SET LOCAL app.org_id = $1', [orgId]);
+
+            // contato
+            const { rows: cRows } = await query(
+              'SELECT id FROM contacts WHERE org_id = $1 AND phone_e164 = $2 LIMIT 1',
               [orgId, from]
             );
-            contactId = ins.rows[0].id;
-          }
+            let contactId = cRows[0]?.id;
+            if (!contactId) {
+              const ins = await query(
+                'INSERT INTO contacts (org_id, phone_e164) VALUES ($1,$2) RETURNING id',
+                [orgId, from]
+              );
+              contactId = ins.rows[0].id;
+            }
 
-          const { rows: convRows } = await query(
-            'SELECT id FROM conversations WHERE org_id = $1 AND contact_id = $2 AND channel = $3 LIMIT 1',
-            [orgId, contactId, 'whatsapp']
-          );
-          let convId = convRows[0]?.id;
-          if (!convId) {
-            const ins = await query(
-              'INSERT INTO conversations (org_id, contact_id, channel, status) VALUES ($1,$2,$3,$4) RETURNING id',
-              [orgId, contactId, 'whatsapp', 'pending']
+            const { rows: convRows } = await query(
+              'SELECT id FROM conversations WHERE org_id = $1 AND contact_id = $2 AND channel = $3 LIMIT 1',
+              [orgId, contactId, 'whatsapp']
             );
-            convId = ins.rows[0].id;
+            let convId = convRows[0]?.id;
+            if (!convId) {
+              const ins = await query(
+                'INSERT INTO conversations (org_id, contact_id, channel, status) VALUES ($1,$2,$3,$4) RETURNING id',
+                [orgId, contactId, 'whatsapp', 'pending']
+              );
+              convId = ins.rows[0].id;
+            }
+
+            const type = m.type || 'text';
+            const text = m.text?.body || null;
+            await query(
+              `INSERT INTO messages (org_id, conversation_id, "from", provider, provider_message_id, type, text, sender, direction, created_at, updated_at)
+               VALUES ($1,$2,'customer','wa',$3,$4,$5,'contact','inbound',now(),now())`,
+              [orgId, convId, m.id, type, text]
+            );
+
+            await query(
+              'UPDATE conversations SET last_message_at = now() WHERE id = $1 AND org_id = $2',
+              [convId, orgId]
+            );
           }
-
-          const type = m.type || 'text';
-          const text = m.text?.body || null;
-          await query(
-            `INSERT INTO messages (org_id, conversation_id, "from", provider, provider_message_id, type, text, sender, direction, created_at, updated_at)
-             VALUES ($1,$2,'customer','wa',$3,$4,$5,'contact','inbound',now(),now())`,
-            [orgId, convId, m.id, type, text]
-          );
-
-          await query(
-            'UPDATE conversations SET last_message_at = now() WHERE id = $1 AND org_id = $2',
-            [convId, orgId]
-          );
         }
       }
+    } catch (err) {
+      req.log?.error?.({ err }, 'whatsapp_webhook_process_failed');
     }
-    res.sendStatus(200);
-  } catch (e) {
-    res.status(200).end();
-  }
+  });
 });
 
 function mapStatus(x = '') {

@@ -2,9 +2,13 @@ import express from 'express';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
+import { jest } from '@jest/globals';
 import { createIntegrationsRouter } from '../routes/integrations.js';
 import { createTestDb } from './utils/db.mem.mjs';
 import { runMigrations } from './utils/runMigrations.mjs';
+import { authRequired } from '../middleware/auth.js';
+import { requireRole } from '../middleware/requireRole.js';
+import { HttpClientError } from '../utils/httpClient.js';
 
 const fakeSeal = (value = {}) => ({
   c: Buffer.from(JSON.stringify(value), 'utf8').toString('base64'),
@@ -30,6 +34,11 @@ const fakeLogger = {
   error: () => {},
 };
 
+const fakeHttpClient = {
+  post: jest.fn(async () => ({ status: 200, data: {} })),
+  request: jest.fn(),
+};
+
 describe('integrations router', () => {
   let db;
   let orgId;
@@ -42,6 +51,12 @@ describe('integrations router', () => {
     clientEmail: 'bot@example.com',
     privateKey: '-----BEGIN PRIVATE KEY-----abc1234567890',
     timezone: 'America/Sao_Paulo',
+  };
+
+  const facebookPayload = {
+    user_access_token: 'token-abc1234567890',
+    page_id: '123456',
+    page_name: 'Test Page',
   };
 
   beforeAll(async () => {
@@ -60,8 +75,12 @@ describe('integrations router', () => {
   });
 
   beforeEach(async () => {
+    fakeHttpClient.post.mockReset();
+    fakeHttpClient.post.mockResolvedValue({ status: 200, data: {} });
     await db.query('TRUNCATE org_integrations RESTART IDENTITY CASCADE');
-    await db.query('TRUNCATE org_integration_logs RESTART IDENTITY CASCADE');
+    try {
+      await db.query('TRUNCATE integration_audit_logs RESTART IDENTITY CASCADE');
+    } catch {}
   });
 
   function createToken(role) {
@@ -76,7 +95,7 @@ describe('integrations router', () => {
     );
   }
 
-  function buildApp() {
+  function buildApp({ httpClient = fakeHttpClient, rateLimitOptions } = {}) {
     const application = express();
     application.use(express.json());
     const router = createIntegrationsRouter({
@@ -84,8 +103,11 @@ describe('integrations router', () => {
       seal: fakeSeal,
       open: fakeOpen,
       logger: fakeLogger,
+      httpClient,
+      rateLimitOptions,
     });
-    application.use('/api/integrations', router);
+    const requireAdmin = requireRole('OrgAdmin', 'OrgOwner');
+    application.use('/api/integrations', authRequired, requireAdmin, router);
     return application;
   }
 
@@ -220,5 +242,71 @@ describe('integrations router', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('validation_error');
+  });
+
+  it('subscribes to facebook using external http client', async () => {
+    await request(app)
+      .post('/api/integrations/providers/meta_facebook/connect')
+      .set(authHeader(adminToken))
+      .send(facebookPayload);
+
+    fakeHttpClient.post.mockClear();
+
+    const response = await request(app)
+      .post('/api/integrations/providers/meta_facebook/subscribe')
+      .set(authHeader(adminToken));
+
+    expect(response.status).toBe(200);
+    expect(response.body.integration.subscribed).toBe(true);
+    expect(fakeHttpClient.post).toHaveBeenCalledTimes(1);
+    const [url, body, options] = fakeHttpClient.post.mock.calls[0];
+    expect(url).toContain(facebookPayload.page_id);
+    expect(body).toHaveProperty('subscribed_fields');
+    expect(options.headers.Authorization).toContain('Bearer');
+  });
+
+  it('maps provider failures to provider_error responses', async () => {
+    await request(app)
+      .post('/api/integrations/providers/meta_facebook/connect')
+      .set(authHeader(adminToken))
+      .send(facebookPayload);
+
+    fakeHttpClient.post.mockImplementationOnce(() => {
+      throw new HttpClientError('falha externa', { status: 500 });
+    });
+
+    const response = await request(app)
+      .post('/api/integrations/providers/meta_facebook/subscribe')
+      .set(authHeader(adminToken));
+
+    expect(response.status).toBe(502);
+    expect(response.body).toMatchObject({ error: 'provider_error', message: 'falha externa' });
+  });
+
+  it('applies rate limiting to critical actions', async () => {
+    const localHttpClient = { post: jest.fn(async () => ({ status: 200, data: {} })) };
+    const limitedApp = buildApp({
+      httpClient: localHttpClient,
+      rateLimitOptions: { limit: 2, windowMs: 60_000 },
+    });
+
+    await request(limitedApp)
+      .post('/api/integrations/providers/google_calendar/connect')
+      .set(authHeader(adminToken))
+      .send(calendarPayload);
+
+    const first = await request(limitedApp)
+      .post('/api/integrations/providers/google_calendar/test')
+      .set(authHeader(adminToken))
+      .send({});
+    expect(first.status).toBe(200);
+
+    const rateLimited = await request(limitedApp)
+      .post('/api/integrations/providers/google_calendar/test')
+      .set(authHeader(adminToken))
+      .send({});
+
+    expect(rateLimited.status).toBe(429);
+    expect(rateLimited.body).toMatchObject({ error: 'rate_limited' });
   });
 });

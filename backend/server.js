@@ -13,7 +13,7 @@ import { Server as IOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 
 // DB (pool + healthcheck)
-import { pool, healthcheck } from '#db';
+import { pool, healthcheck, query as dbQuery } from '#db';
 
 // Routers públicos e protegidos
 import authRouter from './routes/auth.js';
@@ -42,7 +42,7 @@ import subscriptionRouter from './routes/subscription.js';
 import whatsappRouter from './routes/whatsapp.js';
 import whatsappTemplatesRouter from './routes/whatsapp_templates.js';
 import agendaRouter from './routes/agenda_whatsapp.js';
-import integrationsRouter from './routes/integrations.js';
+import { createIntegrationsRouter } from './routes/integrations.js';
 import clientsRouter from './routes/clients.js';
 import waCloudIntegrationRouter from './routes/integrations/whatsapp.cloud.js';
 import waSessionIntegrationRouter from './routes/integrations/whatsapp.session.js';
@@ -103,7 +103,7 @@ import telemetryAppointmentsFunnelExportRouter from './routes/telemetry.appointm
 import { startCampaignsSyncWorker } from './queues/campaigns.sync.worker.js';
 
 // Auth & contexto de RLS
-import { authRequired, impersonationGuard } from './middleware/auth.js';
+import { authRequired, impersonationGuard, normalizeRoles } from './middleware/auth.js';
 import { pgRlsContext } from './middleware/pgRlsContext.js';
 
 // 🔧 FIX: usar uma única origem para requireRole e ROLES (CommonJS -> ESM interop)
@@ -118,6 +118,7 @@ const ROLES = requireRoleModule.ROLES ?? requireRoleModule.default?.ROLES ?? req
 import { adminContext } from './middleware/adminContext.js';
 import { withOrgId } from './middleware/withOrgId.js';
 import { startNoShowCron } from './jobs/noshow.sweep.cron.js';
+import { seal, open } from './services/credStore.js';
 import { resolveDbHealthcheckConfig } from './utils/dbHealthcheckFlag.js';
 
 // ---------- Paths ----------
@@ -131,6 +132,12 @@ const logger = pino({
 });
 
 export const app = express();
+
+const integrationsRouter = createIntegrationsRouter({
+  logger,
+  seal,
+  open,
+});
 
 function getDbHealthcheckConfig() {
   return resolveDbHealthcheckConfig(process.env);
@@ -223,7 +230,14 @@ function configureApp() {
   app.use('/api/webhooks/meta-pages', metaPagesWebhookRouter);
 
   // ---------- Demais rotas com JSON padrão ----------
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use((req, _res, next) => {
+    if (!req.db) {
+      req.db = { query: (...args) => dbQuery(...args) };
+    }
+    next();
+  });
+  app.use(normalizeRoles);
 
   // Static público
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -356,7 +370,7 @@ function configureApp() {
   app.use('/', telemetryRouter);
   app.use('/', handoffRouter);
 
-  app.use('/api/integrations', integrationsRouter);
+  app.use('/api/integrations', authRequired, requireRole(['OrgAdmin', 'OrgOwner']), integrationsRouter);
   app.use('/api/integrations/whatsapp/cloud', waCloudIntegrationRouter);
   app.use('/api/integrations/whatsapp/session', waSessionIntegrationRouter);
   app.use('/api/integrations/meta', metaOauthIntegrationRouter);
