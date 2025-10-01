@@ -1,7 +1,7 @@
 // backend/scripts/smoke.js
 const base = process.env.BASE_URL || 'http://localhost:4000';
 const adminEmail = process.env.SMOKE_EMAIL || 'rodrigooidr@hotmail.com';
-const adminPass = process.env.SMOKE_PASS || 'R0drig01!';
+const adminPass = process.env.SMOKE_PASS || 'admin123';
 
 async function hit(path, opts={}){
   const r = await fetch(base + path, Object.assign({ headers: { 'Content-Type':'application/json' }}, opts));
@@ -18,7 +18,7 @@ async function hit(path, opts={}){
   console.log('readyz:', r.status, r.json);
   ok &&= r.status === 200 && r.json.ok;
 
-  const l = await hit('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: adminEmail, password: adminPass })});
+  const l = await hit('/auth/login', { method: 'POST', body: JSON.stringify({ email: adminEmail, password: adminPass })});
   console.log('login:', l.status, l.json && { user: l.json.user, token: l.json.token ? '***' : null });
   ok &&= l.status === 200 && !!l.json?.token;
 

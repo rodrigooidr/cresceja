@@ -177,6 +177,15 @@ function configureApp() {
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
 
+  // Limpa cabeçalhos de impersonação e evita side-effects em rotas públicas de auth
+  app.use((req, _res, next) => {
+    if (req.path && req.path.startsWith('/auth/')) {
+      delete req.headers['x-impersonate-org-id'];
+      delete req.headers['X-Impersonate-Org-Id'];
+    }
+    next();
+  });
+
   // ---------- CORS (sempre antes de qualquer rota/middleware que lide com body) ----------
   const corsOriginConfig = ALLOWED_ORIGINS.length <= 1 ? ALLOWED_ORIGINS[0] ?? false : ALLOWED_ORIGINS;
   app.use(
@@ -237,6 +246,7 @@ function configureApp() {
 
   // ---------- Rotas públicas ----------
   app.use('/api/public', publicRouter);
+  app.use('/auth', authRouter);
   app.use('/api/auth', authRouter);
   app.use(authGoogleRouter);
   app.use(authFacebookRouter);

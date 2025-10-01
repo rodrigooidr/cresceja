@@ -61,7 +61,7 @@ export function normalizeRoles(req, _res, next) {
  * Somente SuperAdmin/Support (ou is_support) podem impersonar.
  * Coloque este middleware **depois** do auth e **antes** do pgRlsContext.
  */
-export function impersonationGuard(req, res, next) {
+export function guardImpersonationHeader(req, res, next) {
   // Headers de impersonação explícita (aceita variações)
   const hdrImpersonateRaw =
     req.get("X-Impersonate-Org-Id") ||
@@ -72,6 +72,11 @@ export function impersonationGuard(req, res, next) {
     req.headers["x_impersonate_org"] ||
     null;
   const hdrImpersonate = isUuid(hdrImpersonateRaw) ? String(hdrImpersonateRaw) : null;
+
+  if (!req.user) {
+    // Sem usuário autenticado, ignore headers de impersonação para evitar falsos positivos
+    return next();
+  }
 
   if (hdrImpersonateRaw && !hdrImpersonate) {
     return res
@@ -97,6 +102,8 @@ export function impersonationGuard(req, res, next) {
   // O pgRlsContext fará o membership check e aplicará o org_id da sessão.
   return next();
 }
+
+export const impersonationGuard = guardImpersonationHeader;
 
 /**
  * RBAC simples por papel.

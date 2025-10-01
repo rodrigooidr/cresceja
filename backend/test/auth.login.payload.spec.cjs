@@ -4,9 +4,8 @@ const jwt = require('jsonwebtoken');
 
 const ORIGINAL_SECRET = process.env.JWT_SECRET;
 
-describe('auth login payload', () => {
+describe('auth login', () => {
   let app;
-  let scenario;
   let compareMock;
   let queryMock;
 
@@ -20,31 +19,8 @@ describe('auth login payload', () => {
 
   beforeEach(async () => {
     jest.resetModules();
-    scenario = {
-      user: {
-        id: 'user-1',
-        name: 'Test User',
-        email: 'user@test.com',
-        password_hash: 'hash',
-      },
-      orgMemberships: [],
-      globalRoles: [],
-    };
 
-    queryMock = jest.fn(async (sql) => {
-      const text = String(sql).toLowerCase();
-      if (text.includes('from public.users')) {
-        return { rows: [scenario.user], rowCount: 1 };
-      }
-      if (text.includes('from public.org_members')) {
-        return { rows: scenario.orgMemberships, rowCount: scenario.orgMemberships.length };
-      }
-      if (text.includes('from public.user_global_roles')) {
-        return { rows: scenario.globalRoles, rowCount: scenario.globalRoles.length };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-
+    queryMock = jest.fn(async () => ({ rows: [], rowCount: 0 }));
     compareMock = jest.fn().mockResolvedValue(true);
 
     await jest.unstable_mockModule('#db', () => ({
@@ -59,65 +35,77 @@ describe('auth login payload', () => {
     const { default: authRouter } = await import('../routes/auth.js');
     app = express();
     app.use(express.json());
-    app.use('/api/auth', authRouter);
+    app.use('/auth', authRouter);
   });
 
-  it('emits org-only payload with OrgAgent role', async () => {
-    scenario.orgMemberships = [{ org_id: 'org-1', role: 'OrgAgent' }];
+  it('returns 400 when email or password is missing', async () => {
+    const res = await request(app).post('/auth/login').send({ email: 'user@test.com' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_request');
+  });
 
-    const res = await request(app).post('/api/auth/login').send({ email: 'user@test.com', password: 'secret' });
+  it('returns 401 when user is not found', async () => {
+    queryMock.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: 'user@test.com', password: 'secret' });
+
+    expect(queryMock).toHaveBeenCalled();
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('unauthenticated');
+  });
+
+  it('returns 401 when password does not match', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'user-1',
+          email: 'user@test.com',
+          password_hash: 'hash',
+          name: 'Tester',
+          org_id: 'org-1',
+          roles: ['SuperAdmin'],
+        },
+      ],
+    });
+    compareMock.mockResolvedValueOnce(false);
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: 'user@test.com', password: 'secret' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('unauthenticated');
+  });
+
+  it('returns token, user and org on success', async () => {
+    queryMock.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'user-1',
+          email: 'user@test.com',
+          password_hash: 'hash',
+          name: 'Tester',
+          org_id: 'org-1',
+          roles: ['SuperAdmin', 'Support'],
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .post('/auth/login')
+      .send({ email: 'user@test.com', password: 'secret' });
+
     expect(res.status).toBe(200);
-    const { token, user } = res.body;
-    expect(user.role).toBe('OrgAgent');
-    expect(user.roles).toEqual([]);
-    expect(user.org_id).toBe('org-1');
+    expect(res.body.ok).toBe(true);
+    expect(res.body.roles).toEqual(['SuperAdmin', 'Support']);
+    expect(res.body.org).toEqual({ id: 'org-1' });
+    expect(res.body.user).toEqual({ id: 'user-1', email: 'user@test.com', name: 'Tester' });
 
-    const payload = jwt.verify(token, 'test-secret');
-    expect(payload.role).toBe('OrgAgent');
-    expect(payload.roles).toEqual([]);
+    const payload = jwt.verify(res.body.token, 'test-secret');
+    expect(payload.id).toBe('user-1');
+    expect(payload.roles).toEqual(['SuperAdmin', 'Support']);
     expect(payload.org_id).toBe('org-1');
-  });
-
-  it('includes global SuperAdmin role', async () => {
-    scenario.orgMemberships = [];
-    scenario.globalRoles = [{ role: 'SuperAdmin' }];
-
-    const res = await request(app).post('/api/auth/login').send({ email: 'user@test.com', password: 'secret' });
-    expect(res.status).toBe(200);
-    const { token, user } = res.body;
-    expect(user.role).toBe('OrgViewer');
-    expect(user.roles).toEqual(['SuperAdmin']);
-
-    const payload = jwt.verify(token, 'test-secret');
-    expect(payload.roles).toEqual(['SuperAdmin']);
-    expect(payload.role).toBe('OrgViewer');
-  });
-
-  it('returns support global role without elevating to super admin', async () => {
-    scenario.orgMemberships = [{ org_id: 'org-9', role: 'OrgViewer' }];
-    scenario.globalRoles = [{ role: 'Support' }];
-
-    const res = await request(app).post('/api/auth/login').send({ email: 'user@test.com', password: 'secret' });
-    expect(res.status).toBe(200);
-    const { token, user } = res.body;
-    expect(user.role).toBe('OrgViewer');
-    expect(user.roles).toEqual(['Support']);
-
-    const payload = jwt.verify(token, 'test-secret');
-    expect(payload.roles).toEqual(['Support']);
-    expect(payload.role).toBe('OrgViewer');
-  });
-
-  it('/auth/me mirrors token payload', async () => {
-    scenario.orgMemberships = [{ org_id: 'org-2', role: 'OrgOwner' }];
-    scenario.globalRoles = [{ role: 'Support' }];
-
-    const login = await request(app).post('/api/auth/login').send({ email: 'user@test.com', password: 'secret' });
-    const token = login.body.token;
-    const me = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
-    expect(me.status).toBe(200);
-    expect(me.body.role).toBe('OrgOwner');
-    expect(me.body.roles).toEqual(['Support']);
-    expect(me.body.org_id).toBe('org-2');
   });
 });

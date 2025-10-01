@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.jsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import inboxApi, { setAuthToken } from '../api/inboxApi';
+import inboxApi, { setActiveOrg, setAuthToken } from '../api/inboxApi';
 
 export const AuthContext = React.createContext(null);
 
@@ -104,10 +104,24 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await inboxApi.post('/auth/login', { email, password });
       const tk = data?.token;
-      const usr = data?.user ?? null;
+      const orgId = data?.org?.id ?? null;
+      const usr = data?.user
+        ? { ...data.user, roles: Array.isArray(data.roles) ? data.roles : [], orgId }
+        : null;
       if (!tk) throw new Error('Falha no login: token ausente.');
 
       setAuthToken(tk);
+      if (orgId) {
+        try {
+          localStorage.setItem('activeOrgId', orgId);
+        } catch {}
+        setActiveOrg(orgId);
+      } else {
+        try {
+          localStorage.removeItem('activeOrgId');
+        } catch {}
+        setActiveOrg(null);
+      }
       const next = { user: usr, token: tk };
       setAuthState(next);
       persistAuth(next);

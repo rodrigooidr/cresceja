@@ -1,114 +1,97 @@
-// backend/routes/auth.js (ESM)
-import { Router } from "express";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
-import { query } from "#db";
-import { auth as authRequired } from "../middleware/auth.js";
-import { normalizeOrgRole, normalizeGlobalRoles } from "../lib/permissions.js";
+import express from 'express';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
-const router = Router();
+import { query as fallbackQuery } from '#db';
+import { auth as authRequired } from '../middleware/auth.js';
+import { normalizeOrgRole, normalizeGlobalRoles } from '../lib/permissions.js';
+
+export const authRouter = express.Router();
+
+function resolveQuery(req) {
+  if (req?.db?.query && typeof req.db.query === 'function') {
+    return req.db.query.bind(req.db);
+  }
+  return fallbackQuery;
+}
 
 function signToken(payload) {
-  const secret = process.env.JWT_SECRET || "dev-secret-change-me";
-  const expiresIn = process.env.JWT_EXPIRES_IN || "12h";
+  const secret = process.env.JWT_SECRET || 'dev';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '12h';
   return jwt.sign(payload, secret, { expiresIn });
 }
 
-function pickActiveMembership(memberships, requestedOrgId) {
-  if (!memberships?.length) return null;
-  if (requestedOrgId) {
-    const match = memberships.find((m) => m.org_id === requestedOrgId);
-    if (match) return match;
-  }
-  return memberships[0] || null;
-}
-
-/**
- * POST /api/auth/login
- * body: { email, password, org_id? }
- */
-router.post("/login", async (req, res, next) => {
+authRouter.post('/login', async (req, res) => {
   try {
-    const { email, password, org_id: requestedOrgId } = req.body || {};
-
-    // 1) usuário
-    const { rows: userRows } = await query(
-      `
-      SELECT id, name, email, password_hash
-      FROM public.users
-      WHERE email = $1
-      LIMIT 1
-      `,
-      [email]
-    );
-    const user = userRows[0];
-    if (!user) return res.status(401).json({ error: "invalid_credentials" });
-    if (!user.password_hash)
-      return res.status(401).json({ error: "password_not_set" });
-
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ error: "invalid_credentials" });
-
-    // 2) organizações do usuário
-    // created_at NÃO existe; usar coalesce(accepted_at, invited_at) como "joined_at"
-    const { rows: orgRows } = await query(
-      `
-      SELECT
-        org_id,
-        role,
-        COALESCE(accepted_at, invited_at, NOW()) AS joined_at
-      FROM public.org_members
-      WHERE user_id = $1
-      ORDER BY joined_at DESC
-      `,
-      [user.id]
-    );
-
-    const memberships = orgRows.map((row) => ({
-      org_id: row.org_id,
-      role: normalizeOrgRole(row.role),
-    }));
-
-    const activeMembership = pickActiveMembership(memberships, requestedOrgId);
-    const activeOrgId = activeMembership?.org_id || null;
-    const orgRole = normalizeOrgRole(activeMembership?.role) || "OrgViewer";
-
-    // 3) roles globais (tabela não tem created_at; não ordenar por isso)
-    const { rows: globals } = await query(
-      `
-      SELECT role
-      FROM public.user_global_roles
-      WHERE user_id = $1
-      `,
-      [user.id]
-    );
-    const roles = normalizeGlobalRoles(globals.map((row) => row.role));
-
-    // 4) se não tem org ativa e também não tem role global, bloquear
-    if (!activeOrgId && roles.length === 0) {
-      return res.status(403).json({ error: "no_org_assigned" });
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ error: 'invalid_request', message: 'Email e senha são obrigatórios.' });
     }
 
-    // 5) payload + token
+    const loweredEmail = String(email).trim().toLowerCase();
+    const dbQuery = resolveQuery(req);
+    const result = await dbQuery(
+      'SELECT id, email, password_hash, name, org_id, roles FROM users WHERE email = $1 LIMIT 1',
+      [loweredEmail],
+    );
+    const user = result?.rows?.[0];
+
+    if (!user) {
+      req.log?.warn({ email: loweredEmail }, 'auth.login.invalid_user');
+      return res
+        .status(401)
+        .json({ error: 'unauthenticated', message: 'Credenciais inválidas.' });
+    }
+
+    if (!user.password_hash) {
+      req.log?.warn({ userId: user.id, email: loweredEmail }, 'auth.login.no_password_hash');
+      return res
+        .status(401)
+        .json({ error: 'unauthenticated', message: 'Credenciais inválidas.' });
+    }
+
+    const passwordOk = await bcrypt.compare(password, user.password_hash);
+    if (!passwordOk) {
+      req.log?.warn({ email: loweredEmail, userId: user.id }, 'auth.login.invalid_password');
+      return res
+        .status(401)
+        .json({ error: 'unauthenticated', message: 'Credenciais inválidas.' });
+    }
+
+    const roles = Array.isArray(user.roles)
+      ? user.roles
+      : typeof user.roles === 'string'
+      ? [user.roles]
+      : [];
+
     const payload = {
       sub: user.id,
       id: user.id,
       email: user.email,
       name: user.name,
-      org_id: activeOrgId,
-      role: orgRole,
+      org_id: user.org_id,
+      role: roles?.[0] || null,
       roles,
     };
+
     const token = signToken(payload);
 
-    // resposta
-    return res.json({ token, user: payload });
+    return res.json({
+      ok: true,
+      token,
+      user: { id: user.id, email: user.email, name: user.name },
+      org: { id: user.org_id },
+      roles,
+    });
   } catch (err) {
-    next(err);
+    req.log?.error({ err }, 'auth.login_failed');
+    return res.status(500).json({ error: 'server_error', message: 'Falha ao autenticar.' });
   }
 });
 
-router.get("/me", authRequired, (req, res) => {
+authRouter.get('/me', authRequired, (req, res) => {
   const user = req.user || {};
   const id = user.id || user.sub || null;
   const payload = {
@@ -117,10 +100,10 @@ router.get("/me", authRequired, (req, res) => {
     email: user.email || null,
     name: user.name || null,
     org_id: user.org_id || null,
-    role: normalizeOrgRole(user.role) || "OrgViewer",
+    role: normalizeOrgRole(user.role) || 'OrgViewer',
     roles: normalizeGlobalRoles(Array.isArray(user.roles) ? user.roles : []),
   };
   res.json(payload);
 });
 
-export default router;
+export default authRouter;
