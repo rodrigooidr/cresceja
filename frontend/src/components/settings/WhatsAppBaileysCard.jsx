@@ -9,7 +9,7 @@ import {
   statusBaileys,
   getBaileysSseToken,
 } from '@/api/integrationsApi.js';
-import inboxApi from '@/api/inboxApi.js';
+import inboxApi, { API_BASE_URL } from '@/api/inboxApi.js';
 import useToast from '@/hooks/useToastFallback.js';
 import { useOrg } from '@/contexts/OrgContext.jsx';
 import { useAuth } from '@/contexts/AuthContext.jsx';
@@ -21,8 +21,15 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildSseUrl(base = '/api/integrations/providers/whatsapp_session/qr/stream', token) {
-  const url = new URL(base, window.location.origin);
+function buildSseUrl(
+  path = '/api/integrations/providers/whatsapp_session/qr/stream',
+  token
+) {
+  const base = API_BASE_URL || '/api';
+  // Se base for absoluto (http://...), monta com ele; senão usa a origem atual
+  const url = base.startsWith('http')
+    ? new URL(path, base)
+    : new URL(path, window.location.origin);
   if (token) url.searchParams.set('access_token', token);
   return url.toString();
 }
