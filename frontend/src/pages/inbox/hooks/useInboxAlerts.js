@@ -68,9 +68,9 @@ export function useInboxAlerts() {
   // SSE stream
   useEffect(() => {
     if (typeof EventSource !== 'function') return () => {};
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    const t = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
     const base = String(apiUrl || '').replace(/\/$/, '');
-    const url = `${base}/inbox/alerts/stream?access_token=${encodeURIComponent(token || '')}`;
+    const url = `${base}/inbox/alerts/stream?access_token=${encodeURIComponent(t)}`;
     const es = new EventSource(url, { withCredentials: true });
     esRef.current = es;
     es.addEventListener('alert', (ev) => {

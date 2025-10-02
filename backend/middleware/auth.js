@@ -26,7 +26,7 @@ export function auth(req, res, next) {
         .status(401)
         .json({ error: "missing_token", message: "missing token" });
     }
-    const secret = process.env.JWT_SECRET || "dev_secret";
+    const secret = process.env.JWT_SECRET || "dev-change-me";
     let payload;
 
     try {

@@ -109,7 +109,7 @@ function authFromToken(token) {
     token = token.split(',')[0];
   }
   try {
-    const secret = process.env.JWT_SECRET || 'dev_secret';
+    const secret = process.env.JWT_SECRET || 'dev-change-me';
     return jwt.verify(String(token || '').replace(/^Bearer\s+/i, '').trim(), secret);
   } catch {
     return null;
