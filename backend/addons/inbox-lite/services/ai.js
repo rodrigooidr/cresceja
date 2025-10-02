@@ -57,7 +57,7 @@ async function setPerChat(pool, chatId, enabled) {
   );
 }
 
-module.exports = {
+export {
   getGlobal,
   setGlobal,
   getPerChat,

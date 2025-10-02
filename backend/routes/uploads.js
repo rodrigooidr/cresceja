@@ -2,59 +2,38 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import crypto from 'crypto';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { orgScope } from '../middleware/orgScope.js';
-import { requireAgent } from '../middleware/rbac.js';
+import { randomUUID } from 'crypto';
+import { withOrg } from '../middleware/withOrg.js';
+import { authRequired } from '../middleware/auth.js';
+import { pool } from '#db';
 
 const router = express.Router();
-const upload = multer({ dest: path.join(process.cwd(), 'uploads') });
+const uploadDir = path.join(process.cwd(), 'uploads');
+fs.mkdirSync(uploadDir, { recursive: true });
 
-router.use(orgScope);
+const upload = multer({ dest: uploadDir });
 
-router.post('/', requireAgent, upload.single('file'), async (req, res) => {
-  // TODO: persistir em attachments; por enquanto retorna metadados
-  return res.json({
-    data: {
-      storage_key: req.file.filename,
-      mime: req.file.mimetype,
-      size_bytes: req.file.size,
-    }
-  });
-});
+router.use(authRequired, withOrg);
 
-// POST /api/uploads/sign -> { url, fields, objectUrl }
-router.post('/sign', requireAgent, async (req, res) => {
-  const { contentType, size } = req.body || {};
-  const allowed = ['image/jpeg', 'video/mp4'];
-  if (!allowed.includes(contentType)) {
-    return res.status(400).json({ error: 'invalid_type' });
+// Upload local simples, retorna URL relativa /uploads/<file>
+router.post('/', upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'missing_file' });
+    const { mimetype, filename, originalname, size } = req.file;
+    const publicUrl = `/uploads/${filename}`;
+    const db = req.db ?? pool;
+
+    // persiste em content_assets
+    await db.query(
+      `INSERT INTO content_assets (id, org_id, url, mime, meta_json)
+       VALUES ($1,$2,$3,$4,$5::jsonb)`,
+      [randomUUID(), req.orgId, publicUrl, mimetype, JSON.stringify({ originalname, size })],
+    );
+
+    res.status(201).json({ url: publicUrl, mime: mimetype, name: originalname, size });
+  } catch (e) {
+    next(e);
   }
-  const max = contentType === 'image/jpeg' ? 10 * 1024 * 1024 : 100 * 1024 * 1024;
-  if (typeof size !== 'number' || size > max) {
-    return res.status(400).json({ error: 'invalid_size' });
-  }
-  if (!process.env.S3_BUCKET) {
-    return res.status(500).json({ error: 's3_not_configured' });
-  }
-  const key = `${new Date().toISOString().slice(0,10)}/${crypto.randomBytes(16).toString('hex')}`;
-  const client = new S3Client({
-    region: process.env.S3_REGION || 'us-east-1',
-    forcePathStyle: !!process.env.S3_USE_PATH_STYLE || !!process.env.S3_FORCE_PATH_STYLE,
-    endpoint: process.env.S3_ENDPOINT || undefined,
-    credentials: process.env.S3_ACCESS_KEY_ID
-      ? { accessKeyId: process.env.S3_ACCESS_KEY_ID, secretAccessKey: process.env.S3_SECRET_ACCESS_KEY }
-      : undefined,
-  });
-  const command = new PutObjectCommand({
-    Bucket: process.env.S3_BUCKET,
-    Key: key,
-    ContentType: contentType,
-  });
-  const url = await getSignedUrl(client, command, { expiresIn: 60 });
-  const base = process.env.S3_PUBLIC_URL || `https://${process.env.S3_BUCKET}.s3.amazonaws.com`;
-  return res.json({ url, fields: { key }, objectUrl: `${base}/${key}` });
 });
 
 export default router;

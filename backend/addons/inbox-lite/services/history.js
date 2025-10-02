@@ -1,4 +1,4 @@
-const { randomUUID } = require('crypto');
+import { randomUUID } from 'crypto';
 
 const COMPAT_ORG_ID = process.env.COMPAT_INBOX_ORG_ID || '00000000-0000-0000-0000-000000000000';
 
@@ -125,7 +125,7 @@ async function appendMessage(pool, conversationId, payload) {
   return inserted.rows[0];
 }
 
-module.exports = {
+export {
   ensureConversation,
   appendMessage,
 };

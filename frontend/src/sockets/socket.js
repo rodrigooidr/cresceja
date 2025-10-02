@@ -32,6 +32,13 @@ export function useSocket() {
     if (selected && socket) socket.emit('org:switch', { orgId: selected });
   }, [selected, socket]);
 
+  useEffect(() => () => {
+    try {
+      socket?.close?.();
+      socket?.disconnect?.();
+    } catch {}
+  }, [socket]);
+
   return socket;
 }
 

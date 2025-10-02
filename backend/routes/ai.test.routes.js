@@ -1,14 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as requireRoleMod from '../middleware/requireRole.js';
-import { ROLES } from '../lib/permissions.js';
+import { requireRole, ROLES } from '../middleware/requireRole.js';
 import { getProfile } from '../services/ai/profileService.js';
 import { search as ragSearch } from '../services/ai/rag.js';
 import { run as runInference } from '../services/ai/infer.js';
 
 const router = Router();
-
-const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 const toolSchema = z.object({
   name: z.string(),

@@ -105,6 +105,7 @@ export default function MessageList({ loading, messages = [], conversation }) {
 
   useEffect(() => {
     if (ioRef.current) ioRef.current.disconnect();
+    if (typeof IntersectionObserver !== 'function') return () => {};
     const io = new IntersectionObserver(
       (entries) => {
         const updates = { in: null, out: null };

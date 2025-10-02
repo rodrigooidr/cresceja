@@ -12,10 +12,12 @@ export function useRealtimeInbox({ conversationId, onMessage, onConversation, on
 
   // cria a conexão apenas 1x
   useEffect(() => {
+    const token = typeof window !== 'undefined' ? window.localStorage?.getItem('token') : null;
     const socket = startSocketsSafe({
       path: '/socket.io',
       transports: ['websocket'],
       autoConnect: true,
+      auth: token ? { token } : undefined,
     });
     if (!socket) {
       socketRef.current = null;
@@ -35,7 +37,13 @@ export function useRealtimeInbox({ conversationId, onMessage, onConversation, on
       if (h) h(p); else alert('Handoff solicitado');
     });
 
-    return () => { try { socket.disconnect(); } catch {} socketRef.current = null; };
+    return () => {
+      try {
+        socket.close?.();
+        socket.disconnect?.();
+      } catch {}
+      socketRef.current = null;
+    };
   }, []);
 
   // entrar nas salas quando a conversa mudar

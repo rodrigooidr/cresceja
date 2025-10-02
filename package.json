@@ -3,12 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "test:backend": "NODE_OPTIONS=--experimental-vm-modules npx jest --config backend/jest.config.cjs --runInBand",
-    "test:backend:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules npx jest --config backend/jest.config.cjs --watch",
-    "test:frontend": "npx jest --config frontend/jest.config.cjs --runInBand",
+    "test:backend": "npm --prefix backend test",
+    "test:backend:watch": "npm --prefix backend run test:watch",
+    "test:frontend": "npm --prefix frontend test",
     "test": "npm run test:backend && npm run test:frontend",
     "test:frontend:orgai": "npx jest --config frontend/jest.orgai.cjs --runInBand",
     "test:orgai": "npm run test:backend && npm run test:frontend:orgai",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend start",
+    "dev:all": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
     "test:backend:junit": "NODE_OPTIONS=--experimental-vm-modules JEST_JUNIT_OUTPUT=reports/junit/backend.xml npx jest --config backend/jest.config.cjs --reporters=default --reporters=jest-junit --runInBand",
     "test:frontend:orgai:junit": "JEST_JUNIT_OUTPUT=reports/junit/frontend-orgai.xml npx jest --config frontend/jest.orgai.cjs --reporters=default --reporters=jest-junit --runInBand",
     "ci:clean": "rm -rf node_modules package-lock.json backend/node_modules frontend/node_modules",
@@ -31,6 +34,7 @@
     "@whiskeysockets/eslint-config": "https://codeload.github.com/whiskeysockets/eslint-config/tar.gz/refs/heads/main"
   },
   "devDependencies": {
+    "concurrently": "^9.1.0",
     "cross-env": "^10.0.0",
     "jest": "^29.7.0",
     "jest-junit": "^16.0.0"

@@ -11,6 +11,50 @@ try {
 // 1) Força mock APENAS do inboxApi (NÃO mockar '@/api/index' aqui)
 try { jest.mock('@/api/inboxApi'); } catch {}
 
+if (typeof globalThis.EventSource === 'undefined') {
+  const FakeEventSource = class {
+    constructor() {}
+    close() {}
+    addEventListener() {}
+    removeEventListener() {}
+    dispatchEvent() { return false; }
+  };
+  Object.defineProperty(globalThis, 'EventSource', {
+    configurable: true,
+    writable: true,
+    value: FakeEventSource,
+  });
+  if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'EventSource', {
+      configurable: true,
+      writable: true,
+      value: FakeEventSource,
+    });
+  }
+}
+
+if (typeof globalThis.IntersectionObserver === 'undefined') {
+  const FakeIntersectionObserver = class {
+    constructor() {}
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  };
+  Object.defineProperty(globalThis, 'IntersectionObserver', {
+    configurable: true,
+    writable: true,
+    value: FakeIntersectionObserver,
+  });
+  if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'IntersectionObserver', {
+      configurable: true,
+      writable: true,
+      value: FakeIntersectionObserver,
+    });
+  }
+}
+
 try {
   const mod = require('@/api/inboxApi');
   const api = (mod && (mod.default || mod)) || null;

@@ -1,11 +1,8 @@
 import { Router } from 'express';
-import * as requireRoleMod from '../middleware/requireRole.js';
-import { ROLES } from '../lib/permissions.js';
+import { requireRole, ROLES } from '../middleware/requireRole.js';
 import { logTelemetry } from '../services/telemetryService.js';
 
 const router = Router();
-
-const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 async function currentOrgId(db) {
   const { rows } = await db.query(`SELECT current_setting('app.org_id', true) AS org_id`);

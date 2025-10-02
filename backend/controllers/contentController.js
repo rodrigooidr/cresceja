@@ -1,4 +1,10 @@
+// CRUD simples de assets (content_assets) e posts (public.posts)
 import { randomUUID } from 'crypto';
+import { pool } from '#db';
+
+function getDb(req) {
+  return req.db ?? pool;
+}
 
 export async function listAssets(req, res, next) {
   try {
@@ -6,138 +12,150 @@ export async function listAssets(req, res, next) {
     const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
     const offset = (page - 1) * limit;
 
-    const totalRes = await req.db.query(
-      'SELECT COUNT(*) FROM assets WHERE org_id = $1',
-      [req.orgId]
+    const db = getDb(req);
+    const totalRes = await db.query(
+      'SELECT COUNT(*) FROM content_assets WHERE org_id = $1',
+      [req.orgId],
     );
     const total = Number(totalRes.rows[0]?.count || 0);
 
-    const { rows } = await req.db.query(
-      `SELECT id, filename, url, metadata, created_at
-         FROM assets
+    const { rows } = await db.query(
+      `SELECT id, url, mime, width, height, meta_json AS meta, created_at
+         FROM content_assets
         WHERE org_id = $1
         ORDER BY created_at DESC
         LIMIT $2 OFFSET $3`,
-      [req.orgId, limit, offset]
+      [req.orgId, limit, offset],
     );
-
-    res.json({ data: rows, meta: { page, limit, total } });
-  } catch (err) {
-    next(err);
+    return res.json({ page, limit, total, items: rows });
+  } catch (e) {
+    next(e);
   }
 }
 
 export async function createAsset(req, res, next) {
   try {
-    const { filename, data } = req.body || {};
-    if (!filename || !data) {
-      return res.status(400).json({ error: 'invalid_input' });
-    }
+    const { url, mime, width, height, meta } = req.body || {};
+    if (!url || !mime) return res.status(400).json({ error: 'missing_fields' });
 
-    let base64 = String(data);
-    const comma = base64.indexOf(',');
-    if (comma >= 0) base64 = base64.slice(comma + 1);
-    const buffer = Buffer.from(base64, 'base64');
-
-    const path = `${req.orgId}/${Date.now()}_${filename}`;
-    // TODO: integrate with real storage (S3/MinIO)
-    const url = `/assets/${path}`;
-
-    const { rows } = await req.db.query(
-      `INSERT INTO assets (org_id, filename, url, metadata)
-       VALUES ($1,$2,$3,$4)
-       RETURNING id, filename, url, metadata, created_at`,
-      [req.orgId, filename, url, JSON.stringify({ size: buffer.length })]
+    const db = getDb(req);
+    const { rows } = await db.query(
+      `INSERT INTO content_assets (id, org_id, url, mime, width, height, meta_json, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
+       RETURNING id, url, mime, width, height, meta_json AS meta, created_at`,
+      [
+        randomUUID(),
+        req.orgId,
+        url,
+        mime,
+        width ?? null,
+        height ?? null,
+        meta ? JSON.stringify(meta) : null,
+        req.user?.id ?? null,
+      ],
     );
-
-    res.status(201).json({ data: rows[0] });
-  } catch (err) {
-    next(err);
+    return res.status(201).json(rows[0]);
+  } catch (e) {
+    next(e);
   }
+}
+
+// POSTS (usa tabela public.posts se existir; senão, cria fallback em memória simples)
+async function ensurePostsTable() {
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='posts'
+      ) THEN
+        CREATE TABLE public.posts (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          org_id uuid NOT NULL,
+          title text NOT NULL,
+          body text,
+          status text NOT NULL DEFAULT 'draft',
+          created_at timestamptz NOT NULL DEFAULT now(),
+          updated_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS ix_posts_org ON public.posts(org_id, created_at DESC);
+      END IF;
+    END $$;
+  `);
 }
 
 export async function listPosts(req, res, next) {
   try {
-    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.max(parseInt(req.query.limit, 10) || 20, 1);
-    const offset = (page - 1) * limit;
-
-    const totalRes = await req.db.query(
-      'SELECT COUNT(*) FROM posts WHERE org_id = $1',
-      [req.orgId]
+    await ensurePostsTable();
+    const db = getDb(req);
+    const { rows } = await db.query(
+      `SELECT id, title, body, status, created_at, updated_at
+         FROM public.posts
+        WHERE org_id = $1
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      [req.orgId],
     );
-    const total = Number(totalRes.rows[0]?.count || 0);
-
-    const { rows } = await req.db.query(
-      `SELECT p.id, p.title, p.content, p.channels, p.preview_asset,
-              a.url AS preview_url, p.created_at, p.updated_at
-         FROM posts p
-         LEFT JOIN assets a ON a.id = p.preview_asset
-        WHERE p.org_id = $1
-        ORDER BY p.created_at DESC
-        LIMIT $2 OFFSET $3`,
-      [req.orgId, limit, offset]
-    );
-
-    res.json({ data: rows, meta: { page, limit, total } });
-  } catch (err) {
-    next(err);
+    res.json({ items: rows });
+  } catch (e) {
+    next(e);
   }
 }
 
 export async function getPost(req, res, next) {
   try {
+    await ensurePostsTable();
+    const db = getDb(req);
     const { id } = req.params;
-    const { rows } = await req.db.query(
-      `SELECT p.id, p.title, p.content, p.channels, p.preview_asset,
-              a.url AS preview_url, p.created_at, p.updated_at
-         FROM posts p
-         LEFT JOIN assets a ON a.id = p.preview_asset
-        WHERE p.id = $1 AND p.org_id = $2`,
-      [id, req.orgId]
+    const { rows } = await db.query(
+      `SELECT id, title, body, status, created_at, updated_at
+         FROM public.posts
+        WHERE org_id = $1 AND id = $2`,
+      [req.orgId, id],
     );
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ data: rows[0] });
-  } catch (err) {
-    next(err);
+    res.json(rows[0]);
+  } catch (e) {
+    next(e);
   }
 }
 
 export async function createPost(req, res, next) {
   try {
-    const { title, content, channels = [], preview_asset } = req.body || {};
-    if (!title) {
-      return res.status(400).json({ error: 'invalid_input' });
-    }
-    const { rows } = await req.db.query(
-      `INSERT INTO posts (org_id, title, content, channels, preview_asset)
-       VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, title, content, channels, preview_asset, created_at, updated_at`,
-      [req.orgId, title, content || null, channels, preview_asset || null]
+    await ensurePostsTable();
+    const db = getDb(req);
+    const { title, body, status } = req.body || {};
+    if (!title) return res.status(400).json({ error: 'missing_title' });
+    const { rows } = await db.query(
+      `INSERT INTO public.posts (id, org_id, title, body, status)
+       VALUES (gen_random_uuid(), $1, $2, $3, COALESCE($4,'draft'))
+       RETURNING id, title, body, status, created_at, updated_at`,
+      [req.orgId, title, body ?? null, status ?? 'draft'],
     );
-    res.status(201).json({ data: rows[0] });
-  } catch (err) {
-    next(err);
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    next(e);
   }
 }
 
 export async function updatePost(req, res, next) {
   try {
+    await ensurePostsTable();
+    const db = getDb(req);
     const { id } = req.params;
-    const { title, content, channels = [], preview_asset } = req.body || {};
-    const { rows } = await req.db.query(
-      `UPDATE posts
-          SET title = $1,
-              content = $2,
-              channels = $3,
-              preview_asset = $4
-        WHERE id = $5 AND org_id = $6
-        RETURNING id, title, content, channels, preview_asset, created_at, updated_at`,
-      [title, content || null, channels, preview_asset || null, id, req.orgId]
+    const { title, body, status } = req.body || {};
+    const { rows } = await db.query(
+      `UPDATE public.posts
+          SET title = COALESCE($3, title),
+              body = COALESCE($4, body),
+              status = COALESCE($5, status),
+              updated_at = now()
+        WHERE org_id = $1 AND id = $2
+        RETURNING id, title, body, status, created_at, updated_at`,
+      [req.orgId, id, title ?? null, body ?? null, status ?? null],
     );
     if (!rows[0]) return res.status(404).json({ error: 'not_found' });
-    res.json({ data: rows[0] });
-  } catch (err) {
-    next(err);
+    res.json(rows[0]);
+  } catch (e) {
+    next(e);
   }
 }
