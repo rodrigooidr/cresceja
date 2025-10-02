@@ -3,19 +3,20 @@ const config = {
   automock: false,
   rootDir: __dirname, // isola o root no diretório do frontend
   testEnvironment: 'jsdom',
-  testEnvironmentOptions: {
-    url: 'http://localhost/', // BrowserRouter lê location
-    customExportConditions: ['node', 'node-addons'],
-  },
   setupFiles: [
     '<rootDir>/test/setup.early.cjs',
     '<rootDir>/test/setup.auto-mock-inbox.cjs',
   ],
   setupFilesAfterEnv: [
     '<rootDir>/test/msw.node.mock.cjs',
+    '<rootDir>/test/setup.after.cjs',
     '<rootDir>/test/setupTests.cjs',
     '<rootDir>/test/setup.jest.cjs',
   ],
+  testEnvironmentOptions: {
+    url: 'http://localhost/', // BrowserRouter lê location
+    customExportConditions: ['node', 'node-addons'],
+  },
   testMatch: [
     '<rootDir>/test/**/*.(test|spec).(js|jsx|ts|tsx)', // só pega testes do frontend
   ],
@@ -62,6 +63,6 @@ const config = {
   fakeTimers: { enableGlobally: true, legacyFakeTimers: false },
 };
 
-config.transform['^.+\\.(js|jsx)$'] = 'babel-jest';
+config.transform['^.+\\\.(js|jsx)$'] = 'babel-jest';
 
 module.exports = config;
