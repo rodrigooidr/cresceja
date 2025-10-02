@@ -6,7 +6,7 @@ import { getClientByUserId, computeDaysRemaining, isExpired } from "../lib/subsc
 import * as Auth from "../middleware/auth.js";
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || "segredo";
+const JWT_SECRET = process.env.JWT_SECRET || "dev-change-me";
 
 // Fallback simples de autenticação via Bearer caso o middleware não exponha `auth`
 function fallbackAuth(req, res, next) {

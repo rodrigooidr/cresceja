@@ -16,7 +16,7 @@ function resolveQuery(req) {
 }
 
 function signToken(payload) {
-  const secret = process.env.JWT_SECRET || 'dev';
+  const secret = process.env.JWT_SECRET || 'dev-change-me';
   const expiresIn = process.env.JWT_EXPIRES_IN || '12h';
   return jwt.sign(payload, secret, { expiresIn });
 }

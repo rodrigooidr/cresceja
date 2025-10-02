@@ -8,6 +8,7 @@ export async function login(email, password) {
   if (!token) throw new Error("Login sem token.");
 
   setAuthToken(token);
+  // não fixe no default; o interceptor já injeta por requisição
 
   const orgId = org?.id ?? null;
   if (orgId) {
