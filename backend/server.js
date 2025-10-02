@@ -92,9 +92,12 @@ app.use((err, req, res, _next) => {
 let io;
 function authFromToken(token) {
   if (!token) return null;
+  if (typeof token === 'string' && token.includes(',')) {
+    token = token.split(',')[0];
+  }
   try {
     const secret = process.env.JWT_SECRET || 'dev_secret';
-    return jwt.verify(token.replace(/^Bearer\s+/i, ''), secret);
+    return jwt.verify(String(token || '').replace(/^Bearer\s+/i, '').trim(), secret);
   } catch {
     return null;
   }

@@ -147,14 +147,6 @@ function log(...args) {
 
 // ===== Boot headers (token/org) =====
 try {
-  const bootToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  if (bootToken) {
-    inboxApi.defaults.headers.common.Authorization = `Bearer ${bootToken}`;
-    axios.defaults.headers.common.Authorization = `Bearer ${bootToken}`;
-  }
-} catch {}
-
-try {
   const savedOrg =
     typeof window !== "undefined"
       ? localStorage.getItem("activeOrgId") ?? localStorage.getItem("active_org_id")
@@ -321,11 +313,13 @@ export function setAuthToken(token) {
   try {
     if (token) {
       localStorage.setItem("token", token);
-      inboxApi.defaults.headers.common.Authorization = `Bearer ${token}`;
-      axios.defaults.headers.common.Authorization = `Bearer ${token}`;
     } else {
       localStorage.removeItem("token");
+    }
+    if (inboxApi?.defaults?.headers?.common) {
       delete inboxApi.defaults.headers.common.Authorization;
+    }
+    if (axios?.defaults?.headers?.common) {
       delete axios.defaults.headers.common.Authorization;
     }
   } catch {}
