@@ -4,6 +4,11 @@ import { withOrg } from '../middleware/withOrg.js';
 
 const router = Router();
 
+// GET /api/inbox/alerts — alguns clientes checam um "ping" simples
+router.get('/alerts', authRequired, withOrg, (_req, res) => {
+  res.status(204).end();
+});
+
 // GET /api/inbox/alerts/stream?access_token=...
 router.get('/alerts/stream', authRequired, withOrg, (req, res) => {
   res.set({
