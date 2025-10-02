@@ -3,12 +3,16 @@ const config = {
   automock: false,
   rootDir: __dirname, // isola o root no diretório do frontend
   testEnvironment: 'jsdom',
-  testEnvironmentOptions: { url: 'http://localhost/' }, // BrowserRouter lê location
+  testEnvironmentOptions: {
+    url: 'http://localhost/', // BrowserRouter lê location
+    customExportConditions: ['node', 'node-addons'],
+  },
   setupFiles: [
     '<rootDir>/test/setup.early.cjs',
     '<rootDir>/test/setup.auto-mock-inbox.cjs',
   ],
   setupFilesAfterEnv: [
+    '<rootDir>/test/msw.node.mock.cjs',
     '<rootDir>/test/setupTests.cjs',
     '<rootDir>/test/setup.jest.cjs',
   ],
@@ -26,13 +30,12 @@ const config = {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^msw$': '<rootDir>/test/msw.mock.cjs',
     '^msw/node$': '<rootDir>/test/msw.node.mock.cjs',
-    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
-    '\\.module\\.(css|less|scss|sass)$': 'identity-obj-proxy',
-    '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/test/fileMock.cjs',
+    '\\.(css|less|scss|sass)$': '<rootDir>/test/styleMock.cjs',
+    '\\.(png|jpg|jpeg|gif|svg|webp|mp4|mp3|wav)$': '<rootDir>/test/fileMock.cjs',
   },
   transform: {},
   transformIgnorePatterns: [
-    '/node_modules/(?!(luxon|react-big-calendar|date-arithmetic|@internationalized/date)/)',
+    '/node_modules/(?!nanoid|uuid|@?react-.*|@?reduxjs|lodash-es|luxon|react-big-calendar|date-arithmetic|@internationalized/date)/',
   ],
   testPathIgnorePatterns: [
     '/dist/',

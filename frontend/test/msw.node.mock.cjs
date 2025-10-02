@@ -1,18 +1,16 @@
-function setupServer(...handlers) {
-  const state = { handlers: [...handlers] };
-  return {
-    listen() {},
-    close() {},
-    resetHandlers(...next) {
-      state.handlers = [...next];
-    },
-    use(...next) {
-      state.handlers.push(...next);
-    },
-    getHandlers() {
-      return state.handlers;
-    },
-  };
-}
+// Sobe MSW em Node e aplica o mock do socket.io-client
+jest.mock('socket.io-client', () => require('./__mocks__/socket.io-client.cjs'));
 
-module.exports = { setupServer };
+const { setupServer } = require('msw/node');
+const { handlers } = require('./handlers.cjs');
+
+const server = setupServer(...handlers);
+
+// eslint-disable-next-line no-undef
+beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
+// eslint-disable-next-line no-undef
+afterEach(() => server.resetHandlers());
+// eslint-disable-next-line no-undef
+afterAll(() => server.close());
+
+module.exports = server;
