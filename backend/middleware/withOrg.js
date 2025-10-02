@@ -3,8 +3,7 @@ import { isUuid } from '../utils/isUuid.js';
 
 // Middleware leve: apenas garante que req.orgId seja definido caso exista no token/req
 export function withOrg(req, _res, next) {
-  const orgId = req.user?.org_id || req.user?.orgId || req.orgId;
-  if (orgId) req.orgId = orgId;
+  req.orgId = req.orgId || req.user?.org_id || req.user?.orgId || null;
   next();
 }
 

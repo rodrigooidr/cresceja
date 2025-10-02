@@ -3,10 +3,8 @@ import { authRequired } from '../middleware/auth.js';
 import { withOrg } from '../middleware/withOrg.js';
 
 const router = Router();
-router.use(authRequired, withOrg);
-
-router.get('/settings', (_req, res) => {
-  res.json({ triage: true, sse: true, shortcuts: true, features: { quickReplies: true, templates: true } });
+router.get('/settings', authRequired, withOrg, (_req, res) => {
+  res.json({ providers: { openai: true }, features: { smartReplies: true, summaries: true }, limits: { dailyRequests: 1000 } });
 });
 
 export default router;

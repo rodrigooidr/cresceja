@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { apiUrl } from '../../../api/inboxApi';
 
 function createBeep({ volume = 1, ms = 700 }) {
   try {
@@ -56,7 +55,10 @@ export function useInboxAlerts() {
   // initial load of unacked alerts
   useEffect(() => {
     fetch('/api/inbox/alerts')
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (r.status === 204) return { items: [] };
+        try { return await r.json(); } catch { return { items: [] }; }
+      })
       .then(({ items }) => {
         const m = new Map();
         (items || []).forEach((x) => m.set(x.conversation_id, x));
@@ -69,8 +71,7 @@ export function useInboxAlerts() {
   useEffect(() => {
     if (typeof EventSource !== 'function') return () => {};
     const t = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
-    const base = String(apiUrl || '').replace(/\/$/, '');
-    const url = `${base}/inbox/alerts/stream?access_token=${encodeURIComponent(t)}`;
+    const url = `/api/inbox/alerts/stream?access_token=${encodeURIComponent(t || '')}`;
     const es = new EventSource(url, { withCredentials: true });
     esRef.current = es;
     es.addEventListener('alert', (ev) => {

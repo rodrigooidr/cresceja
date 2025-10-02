@@ -28,6 +28,7 @@ import organizationsRouter from './routes/organizations.js';
 import inboxTemplatesRouter from './routes/inbox.templates.js';
 import inboxAlertsRouter from './routes/inbox.alerts.js';
 import inboxSettingsRouter from './routes/inbox.settings.js';
+import aiSettingsRouter from './routes/ai.settings.js';
 import debugRouter from './routes/debug.js';
 // Adicione outras rotas **existentes** se necessário.
 
@@ -73,6 +74,7 @@ app.use('/api/orgs', organizationsRouter);
 app.use('/api/inbox', inboxAlertsRouter);
 app.use('/api/inbox', inboxSettingsRouter);
 app.use('/api/inbox', inboxTemplatesRouter);
+app.use('/api/ai', aiSettingsRouter);
 
 // Webhooks
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);

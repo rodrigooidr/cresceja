@@ -1,15 +1,21 @@
 // src/services/auth.js
-import inboxApi, { setActiveOrg, setAuthToken } from "../../api/inboxApi";
+import inboxApi, { setActiveOrg } from "../api/inboxApi";
 
+export function setToken(token) {
+  if (typeof window !== "undefined") {
+    if (!token) localStorage.removeItem('token');
+    else localStorage.setItem('token', token);
+  }
+  // NÃO setar axios.defaults aqui; o interceptor já cuida por requisição.
+}
 
 export async function login(email, password) {
   const { data } = await inboxApi.post("/auth/login", { email, password });
   const { token, user, org, roles } = data || {};
   if (!token) throw new Error("Login sem token.");
 
-  setAuthToken(token);
-  // não fixe no default; o interceptor já injeta por requisição
-
+  setToken(token);
+  
   const orgId = org?.id ?? null;
   if (orgId) {
     localStorage.setItem('activeOrgId', orgId);
@@ -31,7 +37,7 @@ export async function login(email, password) {
 }
 
 export function logout() {
-  setAuthToken(null);
+  setToken(null);
   localStorage.removeItem("user");
 }
 
