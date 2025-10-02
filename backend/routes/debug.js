@@ -1,7 +1,10 @@
 import { Router } from 'express';
-const r = Router();
+import { authRequired } from '../middleware/auth.js';
+import { withOrg } from '../middleware/withOrg.js';
 
-r.get('/rls', async (req, res, next) => {
+const router = Router();
+
+router.get('/rls', async (req, res, next) => {
   try {
     const db = req.db;
     const { rows } = await db.query(`
@@ -11,7 +14,18 @@ r.get('/rls', async (req, res, next) => {
         current_setting('app.role',   true)  AS role
     `);
     res.json(rows[0] || {});
-  } catch (e) { next(e); }
+  } catch (e) {
+    next(e);
+  }
 });
 
-export default r;
+router.get('/whoami', authRequired, withOrg, (req, res) => {
+  res.json({
+    user: req.user,
+    orgId: req.orgId || null,
+    authHeader: req.headers?.authorization || null,
+    queryToken: req.query?.access_token || null,
+  });
+});
+
+export default router;

@@ -1,11 +1,12 @@
 // backend/routes/orgs.js
 import { Router } from 'express';
+import { randomUUID } from 'crypto';
 import { pool } from '#db';
 import { z } from 'zod';
 import authRequired from '../middleware/auth.js';
+import { withOrg } from '../middleware/withOrg.js';
 import { requireRole, requireOrgRole, ROLES } from '../middleware/requireRole.js';
 import {
-  listForMe,
   listAdmin,
   getAdminById,
   createAdmin,
@@ -15,6 +16,87 @@ import {
 
 const organizationsRouter = Router();
 const orgByIdRouter = Router({ mergeParams: true });
+
+async function ensureOrgTables() {
+  if (process.env.NODE_ENV === 'production') return;
+  await pool.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='organizations') THEN
+        CREATE TABLE public.organizations (
+          id uuid PRIMARY KEY,
+          name text NOT NULL,
+          plan text NOT NULL DEFAULT 'free',
+          created_at timestamptz NOT NULL DEFAULT now()
+        );
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='org_members') THEN
+        CREATE TABLE public.org_members (
+          org_id uuid NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+          user_id uuid NOT NULL,
+          role text NOT NULL DEFAULT 'OrgOwner',
+          created_at timestamptz NOT NULL DEFAULT now(),
+          PRIMARY KEY (org_id, user_id)
+        );
+      END IF;
+    END $$;
+  `);
+}
+
+async function findOrgById(id) {
+  const { rows } = await pool.query(
+    `SELECT id, name, plan, created_at FROM public.organizations WHERE id=$1`,
+    [id],
+  );
+  return rows[0] || null;
+}
+
+async function upsertDefaultOrgForUser(user) {
+  if (!user?.id) return null;
+  await ensureOrgTables();
+
+  let orgId = user.org_id || user.orgId || null;
+  if (orgId) {
+    const org = await findOrgById(orgId);
+    if (org) {
+      await pool.query(
+        `INSERT INTO public.org_members (org_id, user_id, role)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (org_id, user_id) DO NOTHING`,
+        [org.id, user.id, user.role || 'OrgOwner'],
+      );
+      return org;
+    }
+  }
+
+  const existing = await pool.query(
+    `SELECT o.id, o.name, o.plan, o.created_at
+       FROM public.organizations o
+       JOIN public.org_members m ON m.org_id = o.id
+      WHERE m.user_id = $1
+      ORDER BY o.created_at ASC
+      LIMIT 1`,
+    [user.id],
+  );
+  if (existing.rows[0]) return existing.rows[0];
+
+  const newOrg = {
+    id: orgId || randomUUID(),
+    name: user.name ? `${user.name} Org` : 'Minha Organização',
+    plan: 'free',
+  };
+  await pool.query(
+    `INSERT INTO public.organizations (id, name, plan) VALUES ($1,$2,$3)
+     ON CONFLICT (id) DO NOTHING`,
+    [newOrg.id, newOrg.name, newOrg.plan],
+  );
+  await pool.query(
+    `INSERT INTO public.org_members (org_id, user_id, role)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (org_id, user_id) DO NOTHING`,
+    [newOrg.id, user.id, 'OrgOwner'],
+  );
+  return newOrg;
+}
 
 // GET /api/orgs/current - org ativa do usuário autenticado
 organizationsRouter.get('/current', authRequired, async (req, res, next) => {
@@ -61,8 +143,28 @@ organizationsRouter.get('/accessible', authRequired, async (req, res, next) => {
   }
 });
 
-// GET /api/orgs/me - usado pelo WorkspaceSwitcher
-organizationsRouter.get('/me', authRequired, listForMe);
+// GET /api/orgs/me - garante org padrão para o usuário
+organizationsRouter.get('/me', authRequired, withOrg, async (req, res, next) => {
+  try {
+    const org = await upsertDefaultOrgForUser(req.user);
+    if (!org) {
+      return res.status(404).json({ error: 'org_not_found' });
+    }
+    req.orgId = org.id;
+    return res.json({
+      id: org.id,
+      name: org.name,
+      plan: org.plan || 'free',
+      features: {
+        ai: true,
+        inbox: true,
+        marketing: true,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 const SwitchSchema = z.object({ orgId: z.string().uuid() });
 

@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { authRequired } from '../../middleware/auth.js';
-import { withOrg } from '../../middleware/withOrg.js';
+import { withOrgScope } from '../../middleware/withOrg.js';
 import { pool } from '#db';
 
 const router = Router();
-router.use(authRequired, withOrg);
+router.use(authRequired, withOrgScope);
 
 // Stub que guarda token de usuário da Meta (NÃO seguro para produção)
 router.post('/connect', async (req, res, next) => {

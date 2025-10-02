@@ -22,7 +22,7 @@ import {
   updateAutomationStatus,
 } from '../controllers/marketingController.js';
 import { authRequired } from '../middleware/auth.js';
-import { withOrg } from '../middleware/withOrg.js';
+import { withOrgScope } from '../middleware/withOrg.js';
 import { requireRole, ROLES } from '../middleware/requireRole.js';
 
 const router = Router();
@@ -30,7 +30,7 @@ const router = Router();
 const MARKETING_AGENT_ROLES = [ROLES.OrgAgent, ROLES.OrgAdmin, ROLES.OrgOwner, ROLES.SuperAdmin];
 const MARKETING_MANAGER_ROLES = [ROLES.OrgAdmin, ROLES.OrgOwner, ROLES.SuperAdmin];
 
-router.use(authRequired, withOrg, requireRole(MARKETING_AGENT_ROLES));
+router.use(authRequired, withOrgScope, requireRole(MARKETING_AGENT_ROLES));
 
 router.get('/lists', listLists);
 router.post('/lists', createList);

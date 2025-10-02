@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { withOrg } from '../middleware/withOrg.js';
+import { withOrgScope } from '../middleware/withOrg.js';
 import { authRequired } from '../middleware/auth.js';
 import { pool } from '#db';
 
@@ -13,7 +13,7 @@ fs.mkdirSync(uploadDir, { recursive: true });
 
 const upload = multer({ dest: uploadDir });
 
-router.use(authRequired, withOrg);
+router.use(authRequired, withOrgScope);
 
 // Upload local simples, retorna URL relativa /uploads/<file>
 router.post('/', upload.single('file'), async (req, res, next) => {
