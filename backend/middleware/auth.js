@@ -17,27 +17,25 @@ import { isUuid } from '../utils/isUuid.js';
  * Aceita "Authorization: Bearer <token>"
  */
 const isProd = String(process.env.NODE_ENV) === 'production';
+const SECRET = process.env.JWT_SECRET || 'dev-change-me';
 
 export function auth(req, res, next) {
   try {
     const token = extractBearerToken(req);
     if (!token) {
-      return res
-        .status(401)
-        .json({ error: "missing_token", message: "missing token" });
+      return res.status(401).json({ error: "invalid_token", message: "invalid token" });
     }
-    const secret = process.env.JWT_SECRET || "dev-change-me";
-    let payload;
 
+    let payload;
     try {
-      payload = jwt.verify(token, secret);
+      payload = jwt.verify(token, SECRET);
     } catch (err) {
       if (isProd) throw err;
+      // Em dev, destrava com decode (sem verify) para não travar fluxo local
       payload = jwt.decode(token) || {};
     }
 
     const payloadObj = (payload && typeof payload === 'object') ? payload : {};
-    const normalizedRole = normalizeOrgRole(payloadObj.role);
 
     const user = {
       ...payloadObj,
@@ -45,15 +43,13 @@ export function auth(req, res, next) {
       email: payloadObj.email || 'dev@example.com',
       name: payloadObj.name || 'Dev User',
       org_id: payloadObj.org_id,
-      roles: normalizeGlobalRoles(payloadObj.roles || []),
-      role: normalizedRole || 'OrgOwner',
+      roles: payloadObj.roles || [],
+      role: payloadObj.role || 'OrgOwner',
     };
     req.user = user;
     next();
   } catch (e) {
-    return res
-      .status(401)
-      .json({ error: "invalid_token", message: "invalid token" });
+    return res.status(401).json({ error: "invalid_token", message: "invalid token" });
   }
 }
 

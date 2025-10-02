@@ -7,6 +7,7 @@ import { auth as authRequired } from '../middleware/auth.js';
 import { normalizeOrgRole, normalizeGlobalRoles } from '../lib/permissions.js';
 
 export const authRouter = express.Router();
+const SECRET = process.env.JWT_SECRET || 'dev-change-me';
 
 function resolveQuery(req) {
   if (req?.db?.query && typeof req.db.query === 'function') {
@@ -16,9 +17,8 @@ function resolveQuery(req) {
 }
 
 function signToken(payload) {
-  const secret = process.env.JWT_SECRET || 'dev-change-me';
   const expiresIn = process.env.JWT_EXPIRES_IN || '12h';
-  return jwt.sign(payload, secret, { expiresIn });
+  return jwt.sign(payload, SECRET, { expiresIn });
 }
 
 authRouter.post('/login', async (req, res) => {

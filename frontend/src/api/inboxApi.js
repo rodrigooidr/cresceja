@@ -108,16 +108,14 @@ function ensureAuthHeader(config) {
   try {
     const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (!t) return config;
-    const existing = (
-      config.headers?.Authorization || config.headers?.authorization || ""
-    ).trim();
-    if (!existing) {
-      setHeader(config, "Authorization", `Bearer ${t}`);
-    } else {
-      const first = existing.split(",")[0].trim();
-      setHeader(config, "Authorization", first);
-      if (config.headers?.authorization) delete config.headers.authorization;
+    const cur = String(config.headers?.Authorization || config.headers?.authorization || "");
+    if (!/^Bearer\s+/i.test(cur)) {
+      config.headers = { ...(config.headers || {}), Authorization: `Bearer ${t}` };
     }
+    if (config.headers?.Authorization?.includes(',')) {
+      config.headers.Authorization = config.headers.Authorization.split(',')[0];
+    }
+    if (config.headers?.authorization) delete config.headers.authorization;
   } catch {}
   return config;
 }
