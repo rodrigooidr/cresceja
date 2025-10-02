@@ -1,5 +1,6 @@
 // backend/middleware/auth.js (ESM)
 import jwt from "jsonwebtoken";
+import { extractBearerToken } from './_token.js';
 import {
   GLOBAL_ROLES,
   ORG_ROLES,
@@ -17,19 +18,24 @@ import { isUuid } from '../utils/isUuid.js';
  */
 export function auth(req, res, next) {
   try {
-    const h = req.headers.authorization || "";
-    const [scheme, token] = h.split(" ");
-    if (scheme !== "Bearer" || !token) {
+    const token = extractBearerToken(req);
+    if (!token) {
       return res
         .status(401)
-        .json({ error: "missing_token", message: "missing token" });
+        .json({ error: "invalid_token", message: "invalid token" });
     }
-    const secret = process.env.JWT_SECRET || "dev-secret-change-me";
+    const secret = process.env.JWT_SECRET || "dev_secret";
     const payload = jwt.verify(token, secret);
-    if (!payload.id && payload.sub) payload.id = payload.sub; // compat
-    payload.role = normalizeOrgRole(payload.role);
-    payload.roles = normalizeGlobalRoles(payload.roles);
-    req.user = payload;
+    const user = {
+      ...payload,
+      id: payload.id || payload.sub,
+      email: payload.email,
+      name: payload.name,
+      org_id: payload.org_id,
+      roles: normalizeGlobalRoles(payload.roles || []),
+      role: normalizeOrgRole(payload.role),
+    };
+    req.user = user;
     next();
   } catch (e) {
     return res

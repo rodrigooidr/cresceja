@@ -106,9 +106,21 @@ function pathOnly(u) {
 // ===== Auth/Org headers helpers =====
 function ensureAuthHeader(config) {
   try {
-    const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    if (t && !(config.headers?.Authorization)) {
-      setHeader(config, "Authorization", `Bearer ${t}`);
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    if (token) {
+      const current = String(
+        (config.headers && (config.headers.Authorization || config.headers.authorization)) ||
+          ""
+      );
+      if (!/^Bearer\s+/i.test(current)) {
+        config.headers = { ...(config.headers || {}), Authorization: `Bearer ${token}` };
+      }
+      if (
+        typeof config.headers.Authorization === "string" &&
+        config.headers.Authorization.includes(",")
+      ) {
+        config.headers.Authorization = config.headers.Authorization.split(",")[0];
+      }
     }
   } catch {}
   return config;
