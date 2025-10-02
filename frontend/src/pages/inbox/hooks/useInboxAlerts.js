@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { apiUrl } from '../../../api/inboxApi';
 
 function createBeep({ volume = 1, ms = 700 }) {
   try {
@@ -67,7 +68,10 @@ export function useInboxAlerts() {
   // SSE stream
   useEffect(() => {
     if (typeof EventSource !== 'function') return () => {};
-    const es = new EventSource('/api/inbox/alerts/stream');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : '';
+    const base = String(apiUrl || '').replace(/\/$/, '');
+    const url = `${base}/inbox/alerts/stream?access_token=${encodeURIComponent(token || '')}`;
+    const es = new EventSource(url, { withCredentials: true });
     esRef.current = es;
     es.addEventListener('alert', (ev) => {
       try {
