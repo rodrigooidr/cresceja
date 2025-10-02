@@ -12,5 +12,3 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => server.resetHandlers());
 // eslint-disable-next-line no-undef
 afterAll(() => server.close());
-
-module.exports = server;

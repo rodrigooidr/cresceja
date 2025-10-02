@@ -330,3 +330,6 @@ try {
     route(/\/orgs\/[^/]+\/ai\/violations(\?.*)?$/, { items: [] });
   }
 } catch {}
+
+// Flag global para toggles de compat legada em testes
+global.__TEST_LEGACY_INBOX__ = true;
