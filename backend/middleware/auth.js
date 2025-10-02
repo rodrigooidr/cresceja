@@ -22,7 +22,7 @@ export function auth(req, res, next) {
     if (!token) {
       return res
         .status(401)
-        .json({ error: "invalid_token", message: "invalid token" });
+        .json({ error: "missing_token", message: "missing token" });
     }
     const secret = process.env.JWT_SECRET || "dev_secret";
     const payload = jwt.verify(token, secret);
