@@ -24,6 +24,8 @@ const config = {
     '^hooks/(.*)$': '<rootDir>/src/hooks/$1',
     '^ui/(.*)$': '<rootDir>/src/ui/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^msw$': '<rootDir>/test/msw.mock.cjs',
+    '^msw/node$': '<rootDir>/test/msw.node.mock.cjs',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.module\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(jpg|jpeg|png|gif|webp|svg)$': '<rootDir>/test/fileMock.cjs',

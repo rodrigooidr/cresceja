@@ -46,7 +46,7 @@ async function list(pool, event, limit = 100) {
   return rows;
 }
 
-module.exports = {
+export {
   log,
   list,
 };

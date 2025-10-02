@@ -128,7 +128,7 @@ function listStatuses() {
   return ['novo', 'em_andamento', 'cliente', 'perdido'];
 }
 
-module.exports = {
+export {
   getByPhone,
   createContact,
   updateContact,

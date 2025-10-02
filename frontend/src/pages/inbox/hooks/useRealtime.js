@@ -14,12 +14,15 @@ const apiWsUrl = (path = '/') => {
   }
 };
 
-const createSocket = () =>
-  startSocketsSafe({
+const createSocket = () => {
+  const token = typeof window !== 'undefined' ? window.localStorage?.getItem('token') : null;
+  return startSocketsSafe({
     url: apiWsUrl('/socket.io'),
     path: '/socket.io',
     withCredentials: true,
+    auth: token ? { token } : undefined,
   });
+};
 
 export default function useRealtime({ selRef, onNewMessage, onUpdateMessage, onConversationUpdated, onTyping }) {
   useEffect(() => {
@@ -49,7 +52,10 @@ export default function useRealtime({ selRef, onNewMessage, onUpdateMessage, onC
         s.off?.('typing', onTyping);
         s.off?.('message:typing', onTyping);
       }
-      try { s.disconnect(); } catch {}
+      try {
+        s.close?.();
+        s.disconnect?.();
+      } catch {}
     };
   }, [selRef, onNewMessage, onUpdateMessage, onConversationUpdated, onTyping]);
 }

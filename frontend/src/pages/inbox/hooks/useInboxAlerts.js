@@ -66,6 +66,7 @@ export function useInboxAlerts() {
 
   // SSE stream
   useEffect(() => {
+    if (typeof EventSource !== 'function') return () => {};
     const es = new EventSource('/api/inbox/alerts/stream');
     esRef.current = es;
     es.addEventListener('alert', (ev) => {

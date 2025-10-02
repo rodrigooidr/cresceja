@@ -1,13 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import * as requireRoleMod from '../middleware/requireRole.js';
+import { requireRole, ROLES } from '../middleware/requireRole.js';
 import { requireFeature } from '../middleware/requireFeature.js';
-import { ROLES } from '../lib/permissions.js';
 import { generateCampaign } from '../services/campaigns.js';
 
 const router = Router();
-
-const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 const schema = z.object({
   title: z.string().min(1),

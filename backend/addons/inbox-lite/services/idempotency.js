@@ -13,7 +13,7 @@ async function ensureTable(pool) {
   ensured = true;
 }
 
-async function withIdempotency(pool, key, fn) {
+export async function withIdempotency(pool, key, fn) {
   if (!key) {
     return fn();
   }
@@ -50,5 +50,3 @@ async function withIdempotency(pool, key, fn) {
     client.release();
   }
 }
-
-module.exports = { withIdempotency };

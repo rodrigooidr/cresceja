@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { pool } from '#db';
 import { z } from 'zod';
 import authRequired from '../middleware/auth.js';
-import * as requireRoleModule from '../middleware/requireRole.js';
+import { requireRole, requireOrgRole, ROLES } from '../middleware/requireRole.js';
 import {
   listForMe,
   listAdmin,
@@ -12,20 +12,6 @@ import {
   updateAdmin,
   deleteAdmin,
 } from '../controllers/organizationsController.js';
-
-const requireRole =
-  requireRoleModule.requireRole ??
-  requireRoleModule.default?.requireRole ??
-  requireRoleModule.default ??
-  requireRoleModule;
-const requireOrgRole =
-  requireRoleModule.requireOrgRole ??
-  requireRoleModule.default?.requireOrgRole ??
-  requireRoleModule.requireRole;
-const ROLES =
-  requireRoleModule.ROLES ??
-  requireRoleModule.default?.ROLES ??
-  requireRoleModule.ROLES;
 
 const organizationsRouter = Router();
 const orgByIdRouter = Router({ mergeParams: true });

@@ -2,7 +2,7 @@ import { Router } from 'express';
 
 const router = Router();
 
-// Verificação do webhook
+// Verificação do webhook (Facebook exige echo)
 router.get('/', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -11,14 +11,11 @@ router.get('/', (req, res) => {
   return res.sendStatus(403);
 });
 
-// Ingestão básica de mensagens
-router.post('/', async (req, res) => {
-  try {
-    // TODO: processar mensagens de Facebook/Instagram
-    res.sendStatus(200);
-  } catch (e) {
-    res.sendStatus(200);
-  }
+// Ingestão básica (stub)
+router.post('/', (req, res) => {
+  // Apenas loga e 200 — ajuste depois para enfileirar jobs
+  req.log?.info?.({ body: req.body }, 'meta.pages.webhook');
+  return res.sendStatus(200);
 });
 
 export default router;

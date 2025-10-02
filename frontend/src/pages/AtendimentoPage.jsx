@@ -32,7 +32,11 @@ export default function AtendimentoPage() {
     setSocket(instance);
     return () => {
       instance.off?.("message:new", handleMessage);
-      try { instance.disconnect(); } catch {}
+      try {
+        instance.close?.();
+        instance.disconnect?.();
+      } catch {}
+      setSocket(null);
     };
   }, [active]);
 

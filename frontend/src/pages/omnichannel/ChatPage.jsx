@@ -183,7 +183,10 @@ export default function ChatPage() {
     return () => {
       s.off?.("connect", handleConnect);
       s.off?.("chat:message", handleChatMessage);
-      try { s.disconnect(); } catch {}
+      try {
+        s.close?.();
+        s.disconnect?.();
+      } catch {}
     };
   }, [token, activeId]);
 

@@ -1,10 +1,7 @@
 import { Router } from 'express';
-import * as requireRoleMod from '../middleware/requireRole.js';
-import { ROLES } from '../lib/permissions.js';
+import { requireRole, ROLES } from '../middleware/requireRole.js';
 
 const router = Router();
-
-const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 // Rascunho: OrgAgent (se liberado), OrgAdmin, OrgOwner
 router.post('/', requireRole(ROLES.OrgAgent, ROLES.OrgAdmin, ROLES.OrgOwner), async (req, res, next) => {

@@ -1,11 +1,8 @@
 import { Router } from 'express';
-import * as requireRoleMod from '../middleware/requireRole.js';
-import { ROLES } from '../lib/permissions.js';
+import { requireRole, ROLES } from '../middleware/requireRole.js';
 import { ensureEditable, cancelJobs } from '../services/campaigns.js';
 
 const router = Router();
-
-const requireRole = requireRoleMod.requireRole ?? requireRoleMod.default?.requireRole ?? requireRoleMod.default ?? requireRoleMod;
 
 router.use(requireRole(ROLES.OrgAdmin, ROLES.OrgOwner, ROLES.Support, ROLES.SuperAdmin));
 
