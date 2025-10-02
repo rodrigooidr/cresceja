@@ -1,5 +1,5 @@
 // src/services/auth.js
-import inboxApi, { setActiveOrg } from "../../api/inboxApi";
+import inboxApi, { setActiveOrg, setAuthToken } from "../../api/inboxApi";
 
 
 export async function login(email, password) {
@@ -7,8 +7,7 @@ export async function login(email, password) {
   const { token, user, org, roles } = data || {};
   if (!token) throw new Error("Login sem token.");
 
-  localStorage.setItem("token", token);
-  inboxApi.defaults.headers.common.Authorization = `Bearer ${token}`;
+  setAuthToken(token);
 
   const orgId = org?.id ?? null;
   if (orgId) {
@@ -31,9 +30,8 @@ export async function login(email, password) {
 }
 
 export function logout() {
-  localStorage.removeItem("token");
+  setAuthToken(null);
   localStorage.removeItem("user");
-  delete inboxApi.defaults.headers.common.Authorization;
 }
 
 
