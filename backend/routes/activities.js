@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authRequired } from '../middleware/auth.js';
-import { withOrg } from '../middleware/withOrg.js';
+import { withOrgScope } from '../middleware/withOrg.js';
 import { requireRole, ROLES } from '../middleware/requireRole.js';
 import * as ctrl from '../controllers/activitiesController.js';
 
@@ -8,7 +8,7 @@ const router = Router();
 
 const AGENT_ROLES = [ROLES.OrgAgent, ROLES.OrgAdmin, ROLES.OrgOwner, ROLES.SuperAdmin];
 
-router.use(authRequired, withOrg, requireRole(AGENT_ROLES));
+router.use(authRequired, withOrgScope, requireRole(AGENT_ROLES));
 
 router.get('/calendars', ctrl.listCalendars);
 router.post('/calendars', ctrl.createCalendar);

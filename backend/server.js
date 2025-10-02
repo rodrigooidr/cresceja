@@ -24,6 +24,9 @@ import aiCompatRouter from './routes/ai.compat.js';
 import telemetryRouter from './routes/telemetry.js';
 import uploadsRouter from './routes/uploads.js';
 import webhooksMetaPages from './routes/webhooks/meta.pages.js';
+import organizationsRouter from './routes/organizations.js';
+import inboxTemplatesRouter from './routes/inbox.templates.js';
+import debugRouter from './routes/debug.js';
 // Adicione outras rotas **existentes** se necessário.
 
 // Util
@@ -64,6 +67,8 @@ app.use('/api/public', publicRouter);
 app.use('/api/content', contentRouter);
 app.use('/api/telemetry', telemetryRouter);
 app.use('/api/uploads', uploadsRouter);
+app.use('/api/orgs', organizationsRouter);
+app.use('/api/inbox', inboxTemplatesRouter);
 
 // Webhooks
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);
@@ -72,6 +77,10 @@ app.use('/api/webhooks/meta/pages', webhooksMetaPages);
 app.use('/api/inbox', inboxCompatRouter);
 app.use('/api/crm', crmCompatRouter);
 app.use('/api/ai', aiCompatRouter);
+
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/debug', debugRouter);
+}
 
 // Static (se houver build do frontend)
 const clientDir = path.join(__dirname, '..', 'frontend', 'build');
