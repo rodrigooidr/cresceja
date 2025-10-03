@@ -159,7 +159,10 @@
       const token = getToken();
       const orgId = getOrg();
       if (token && !u.searchParams.get('access_token')) u.searchParams.set('access_token', token);
-      if (orgId && !u.searchParams.get('org_id')) u.searchParams.set('org_id', orgId);
+      if (orgId) {
+        if (!u.searchParams.get('orgId')) u.searchParams.set('orgId', orgId);
+        if (!u.searchParams.get('org_id')) u.searchParams.set('org_id', orgId);
+      }
       return u.toString();
     }
     function Patched(url, cfg) {
