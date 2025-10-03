@@ -3,8 +3,12 @@ import { getFeatureAllowance, getUsage } from '../services/features.js';
 import { getOrgFeatures } from '../services/orgFeatures.js';
 
 const router = Router();
+const isProd = String(process.env.NODE_ENV) === 'production';
 
 router.get('/api/orgs/:id/features', async (req, res) => {
+  if (!req.org?.id && !isProd) {
+    return res.json({ feature_flags: {}, features: {} });
+  }
   const orgId = req.params.id;
   const codes = [
     'whatsapp_numbers','whatsapp_mode_baileys','whatsapp_mode_api',

@@ -99,6 +99,7 @@ export function getOrgIdFromStorage() {
 }
 
 export const getOrgId = getOrgIdFromStorage;
+export const getActiveOrgId = getOrgIdFromStorage;
 
 export function setOrgIdInStorage(orgId) {
   const storage = getLocalStorage();
@@ -112,19 +113,69 @@ export function clearOrgIdInStorage() {
 }
 
 export async function authFetch(input, init = {}) {
-  const headers = new Headers(init.headers || {});
   const token = getTokenFromStorage();
   const storedOrgId = getOrgIdFromStorage();
-  const urlLike = typeof input === 'string' ? input : input?.url || '';
+
+  const isRequestInput = typeof Request !== 'undefined' && input instanceof Request;
+  const urlLike = isRequestInput ? input.url : typeof input === 'string' ? input : input?.url || '';
   const orgIdFromUrl = findOrgIdInUrl(urlLike);
   const orgId = orgIdFromUrl || storedOrgId;
 
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  if (orgId) {
-    headers.set('X-Org-Id', orgId);
+  let url = input;
+  let options = { ...init };
+  let headers;
+
+  if (isRequestInput) {
+    const original = input.clone();
+    url = original.url;
+
+    headers = new Headers(original.headers || undefined);
+    if (init.headers) {
+      const extra = new Headers(init.headers);
+      extra.forEach((value, key) => headers.set(key, value));
+    }
+
+    const copyKeys = [
+      'cache',
+      'credentials',
+      'integrity',
+      'keepalive',
+      'mode',
+      'redirect',
+      'referrer',
+      'referrerPolicy',
+      'signal',
+      'priority',
+    ];
+    const originalInit = {};
+    for (const key of copyKeys) {
+      if (Object.prototype.hasOwnProperty.call(init, key)) continue;
+      const value = original[key];
+      if (value !== undefined) {
+        originalInit[key] = value;
+      }
+    }
+
+    options = {
+      ...originalInit,
+      ...init,
+      method: init.method ?? original.method,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(init, 'body')) {
+      options.body = init.body;
+    } else {
+      options.body = original.body ?? undefined;
+    }
+  } else {
+    url = input;
+    headers = new Headers(init.headers || undefined);
   }
 
-  return fetch(input, { ...init, headers });
+  options.headers = headers;
+
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (orgId) headers.set('X-Org-Id', orgId);
+
+  return fetch(url, options);
 }

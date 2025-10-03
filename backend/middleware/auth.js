@@ -20,14 +20,25 @@ const isProd = String(process.env.NODE_ENV) === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret';
 
 function getToken(req) {
-  const bearer = extractBearer(req);
-  if (bearer) return bearer;
+  const header = req.headers?.authorization ?? req.headers?.Authorization;
+  if (typeof header === 'string' && header) {
+    const first = header.split(',')[0]?.trim() ?? '';
+    if (/^Bearer\s+/i.test(first)) {
+      const cleaned = first.replace(/^Bearer\s+/i, '').trim();
+      if (cleaned) return cleaned;
+    }
+  }
 
-  if (req.query?.access_token) {
+  if (req.query?.access_token != null) {
     return String(req.query.access_token);
   }
 
-  return null;
+  if (req.cookies?.access_token != null) {
+    return String(req.cookies.access_token);
+  }
+
+  const bearer = extractBearer(req);
+  return bearer || null;
 }
 
 function hydrateUser(payload = {}) {

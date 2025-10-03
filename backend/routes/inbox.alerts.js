@@ -1,40 +1,34 @@
 import { Router } from 'express';
-import jwt from 'jsonwebtoken';
+import { authRequired } from '../middleware/auth.js';
+import { withOrg } from '../middleware/withOrg.js';
 
 const router = Router();
+const isProd = String(process.env.NODE_ENV) === 'production';
 
-router.get('/inbox/alerts', (_req, res) => res.json({ ok: true }));
+router.get('/inbox/alerts', authRequired, withOrg, (req, res) => {
+  if (!req.org?.id && !isProd) {
+    return res.json({ ok: true, items: [] });
+  }
+  return res.json({ ok: true });
+});
 
-router.get('/inbox/alerts/stream', (req, res) => {
-  const qToken = req.query.access_token;
-  let user = req.user;
+router.get('/inbox/alerts/stream', authRequired, withOrg, (req, res) => {
+  const orgId = req.org?.id || null;
 
-  if (!user && qToken) {
-    try {
-      user = jwt.verify(qToken, process.env.JWT_SECRET);
-    } catch {
-      return res.status(401).json({ error: 'invalid_token' });
-    }
+  if (!orgId && isProd) {
+    return res.status(403).json({ error: 'ORG_REQUIRED' });
   }
 
-  if (!user) return res.status(401).json({ error: 'unauthorized' });
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
 
-  const orgId =
-    req.query.orgId ||
-    req.get('x-org-id') ||
-    req.org?.id ||
-    user.org_id;
-
-  if (!orgId && process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ error: 'org_required' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+  const payloadOrg = orgId || '';
 
   const timer = setInterval(() => {
-    res.write(`event: ping\ndata: {"t":${Date.now()},"orgId":"${orgId || ''}"}\n\n`);
+    res.write(`event: ping\ndata: {"t":${Date.now()},"orgId":"${payloadOrg}"}\n\n`);
   }, 15000);
 
   req.on('close', () => {
@@ -42,7 +36,7 @@ router.get('/inbox/alerts/stream', (req, res) => {
   });
 
   res.write('event: ready\n');
-  res.write('data: {"ok":true}\n\n');
+  res.write(`data: {"ok":true,"orgId":"${payloadOrg}"}\n\n`);
 });
 
 export default router;
