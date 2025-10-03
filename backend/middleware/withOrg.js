@@ -2,6 +2,7 @@ import { pool } from '#db';
 import { isUuid } from '../utils/isUuid.js';
 
 const isProd = String(process.env.NODE_ENV) === 'production';
+const allowDevTokens = String(process.env.ALLOW_DEV_TOKENS) === '1';
 
 const normalize = (value) => {
   if (value == null) return null;
@@ -55,7 +56,7 @@ export function withOrg(req, res, next) {
   );
   const resolved = setOrgOnRequest(req, resolveOrgId(req));
 
-  if (isProd) {
+  if (isProd && !allowDevTokens) {
     if (!resolved) {
       return res
         .status(403)
