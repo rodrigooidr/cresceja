@@ -16,6 +16,7 @@ module.exports = function (app) {
         const org = req.headers['x-org-id'];
         if (authz) proxyReq.setHeader('authorization', authz);
         if (org) proxyReq.setHeader('x-org-id', org);
+        // Preserve outros custom headers se necessário
         return proxyReq;
       },
     })

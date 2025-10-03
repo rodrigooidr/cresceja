@@ -128,6 +128,7 @@ function pathOnly(u) {
 // ===== Auth/Org headers helpers =====
 function ensureAuthHeader(config) {
   try {
+    if (!config.headers) config.headers = {};
     const token = getToken();
     if (!token) {
       delHeader(config, 'Authorization');
@@ -135,8 +136,10 @@ function ensureAuthHeader(config) {
       return config;
     }
 
-    if (!config.headers) config.headers = {};
-    config.headers.Authorization = `Bearer ${token}`;
+    const hasHeader = getHeader(config, 'Authorization');
+    if (!hasHeader) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     if (config.headers.authorization) delete config.headers.authorization;
   } catch {}
   return config;
@@ -193,10 +196,13 @@ inboxApi.interceptors.request.use((config) => {
         ? String(baseCandidate)
         : 'http://localhost';
     const parsed = new URL(config.url || '', baseUrl);
-    orgFromUrl =
-      parsed.searchParams.get('orgId') ||
-      parsed.pathname.match(/\/orgs\/([0-9a-f-]{36})/)?.[1] ||
-      null;
+    const pathMatch = parsed.pathname.match(/\/api\/orgs\/([a-f0-9-]{36})/i);
+    if (pathMatch?.[1]) {
+      orgFromUrl = pathMatch[1];
+    } else {
+      const qsOrg = parsed.searchParams.get('orgId') || parsed.searchParams.get('org_id');
+      if (qsOrg) orgFromUrl = qsOrg;
+    }
   } catch {}
   if (!orgFromUrl) {
     try {

@@ -118,67 +118,20 @@ export function clearOrgIdInStorage() {
 }
 
 export async function authFetch(input, init = {}) {
+  const isRequest = typeof Request !== 'undefined' && input instanceof Request;
+  const baseRequest = isRequest ? input : new Request(input, init);
+  const overrides = init ?? {};
+
   const token = getTokenFromStorage();
   const storedOrgId = getActiveOrgId();
-
-  const isRequestInput = typeof Request !== 'undefined' && input instanceof Request;
-  const urlLike = isRequestInput ? input.url : typeof input === 'string' ? input : input?.url || '';
-  const orgIdFromUrl = findOrgIdInUrl(urlLike);
+  const orgIdFromUrl = findOrgIdInUrl(baseRequest.url || input?.url || '');
   const orgId = orgIdFromUrl || storedOrgId;
 
-  let url = input;
-  let options = { ...init };
-  let headers;
-  let originalRequest = null;
-
-  if (isRequestInput) {
-    originalRequest = input.clone();
-    url = originalRequest.url;
-
-    headers = new Headers(originalRequest.headers || undefined);
-    if (init.headers) {
-      const extra = new Headers(init.headers);
-      extra.forEach((value, key) => headers.set(key, value));
-    }
-
-    const copyKeys = [
-      'cache',
-      'credentials',
-      'integrity',
-      'keepalive',
-      'mode',
-      'redirect',
-      'referrer',
-      'referrerPolicy',
-      'signal',
-      'priority',
-    ];
-    const originalInit = {};
-    for (const key of copyKeys) {
-      if (Object.prototype.hasOwnProperty.call(init, key)) continue;
-      const value = originalRequest[key];
-      if (value !== undefined) {
-        originalInit[key] = value;
-      }
-    }
-
-    options = {
-      ...originalInit,
-      ...init,
-      method: init.method ?? original.method,
-    };
-
-    if (Object.prototype.hasOwnProperty.call(init, 'body')) {
-      options.body = init.body;
-    } else {
-      options.body = originalRequest.body ?? undefined;
-    }
-  } else {
-    url = input;
-    headers = new Headers(init.headers || undefined);
+  const headers = new Headers(baseRequest.headers || undefined);
+  if (overrides.headers) {
+    const extra = new Headers(overrides.headers);
+    extra.forEach((value, key) => headers.set(key, value));
   }
-
-  options.headers = headers;
 
   if (token) headers.set('Authorization', `Bearer ${token}`);
   else headers.delete('Authorization');
@@ -186,11 +139,24 @@ export async function authFetch(input, init = {}) {
   if (orgId) headers.set('X-Org-Id', orgId);
   else headers.delete('X-Org-Id');
 
-  if (options.credentials === undefined) {
-    const originalCredentials = originalRequest?.credentials ?? (isRequestInput ? input.credentials : undefined);
-    options.credentials =
-      init.credentials ?? originalCredentials ?? 'include';
+  const nextInit = {
+    method: overrides.method ?? baseRequest.method,
+    headers,
+    body: overrides.body !== undefined ? overrides.body : baseRequest.body ?? undefined,
+    mode: overrides.mode ?? baseRequest.mode,
+    credentials: overrides.credentials ?? baseRequest.credentials ?? 'include',
+    cache: overrides.cache ?? baseRequest.cache,
+    redirect: overrides.redirect ?? baseRequest.redirect,
+    referrer: overrides.referrer ?? baseRequest.referrer,
+    referrerPolicy: overrides.referrerPolicy ?? baseRequest.referrerPolicy,
+    integrity: overrides.integrity ?? baseRequest.integrity,
+    keepalive: overrides.keepalive ?? baseRequest.keepalive,
+    signal: overrides.signal ?? baseRequest.signal,
+  };
+
+  if (overrides.priority !== undefined) {
+    nextInit.priority = overrides.priority;
   }
 
-  return fetch(url, options);
+  return fetch(baseRequest.url, nextInit);
 }
