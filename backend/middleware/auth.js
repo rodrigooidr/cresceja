@@ -1,6 +1,6 @@
 // backend/middleware/auth.js (ESM)
 import jwt from "jsonwebtoken";
-import { extractBearerToken } from './_token.js';
+import { extractBearer } from './_token.js';
 import {
   GLOBAL_ROLES,
   ORG_ROLES,
@@ -17,56 +17,77 @@ import { isUuid } from '../utils/isUuid.js';
  * Aceita "Authorization: Bearer <token>"
  */
 const isProd = String(process.env.NODE_ENV) === 'production';
-const SECRET = process.env.JWT_SECRET || 'dev-change-me';
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret';
+
+function hydrateUser(payload = {}) {
+  if (!payload || typeof payload !== "object") return undefined;
+
+  const base = { ...payload };
+  const orgId = base.org_id ?? base.orgId ?? base.org?.id ?? null;
+  const roles = Array.isArray(base.roles)
+    ? base.roles
+    : base.roles
+    ? [base.roles]
+    : [];
+
+  return {
+    ...base,
+    id:
+      base.id ||
+      base.sub ||
+      base.user_id ||
+      base.userId ||
+      base.email ||
+      "dev-user",
+    email: base.email || base.user?.email || "dev@example.com",
+    name: base.name || base.user?.name || "Dev User",
+    org_id: orgId || undefined,
+    roles,
+    role: base.role || base.org_role || roles?.[0] || "OrgOwner",
+  };
+}
 
 export function authRequired(req, res, next) {
+  const token = extractBearer(req);
+  if (!token) {
+    return res.status(401).json({ error: "invalid_token", message: "invalid token" });
+  }
+
   try {
-    const token = extractBearerToken(req);
-    if (!token) return res.status(401).json({ error: "invalid_token", message: "invalid token" });
-
-    let payload;
-    try {
-      payload = jwt.verify(token, SECRET);
-    } catch (e) {
-      if (isProd) throw e;
-      payload = jwt.decode(token) || {};
-    }
-
-    req.user = {
-      id: payload?.id || payload?.sub || 'dev-user',
-      email: payload?.email || 'dev@example.com',
-      name: payload?.name || 'Dev User',
-      org_id: payload?.org_id,
-      roles: payload?.roles || [],
-      role: payload?.role || 'OrgOwner',
-    };
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = hydrateUser(payload) || undefined;
     return next();
-  } catch {
+  } catch (err) {
+    if (!isProd) {
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded) {
+          req.user = hydrateUser(decoded) || undefined;
+          return next();
+        }
+      } catch {}
+    }
     return res.status(401).json({ error: "invalid_token", message: "invalid token" });
   }
 }
 
 export function authOptional(req, res, next) {
   try {
-    const token = extractBearerToken(req);
+    const token = extractBearer(req);
     if (!token) return next();
 
-    let payload;
     try {
-      payload = jwt.verify(token, SECRET);
-    } catch (e) {
-      if (isProd) throw e;
-      payload = jwt.decode(token) || {};
+      const payload = jwt.verify(token, JWT_SECRET);
+      req.user = hydrateUser(payload) || undefined;
+    } catch (err) {
+      if (isProd) throw err;
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded) {
+          req.user = hydrateUser(decoded) || undefined;
+        }
+      } catch {}
     }
-
-    req.user = {
-      id: payload?.id || payload?.sub || 'dev-user',
-      email: payload?.email || 'dev@example.com',
-      name: payload?.name || 'Dev User',
-      org_id: payload?.org_id,
-      roles: payload?.roles || [],
-      role: payload?.role || 'OrgOwner',
-    };
   } catch {}
   return next();
 }
