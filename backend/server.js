@@ -38,6 +38,10 @@ const __dirname = path.dirname(__filename);
 
 // App
 const app = express();
+if (process.env.NODE_ENV !== 'production') {
+  const mask = (s) => (s ? String(s).slice(0, 3) + '***' : '(unset)');
+  console.log('[BOOT] NODE_ENV=', process.env.NODE_ENV, ' JWT_SECRET=', mask(process.env.JWT_SECRET));
+}
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
 app.use(express.json({ limit: '10mb' }));
