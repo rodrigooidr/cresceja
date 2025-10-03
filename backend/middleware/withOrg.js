@@ -3,92 +3,77 @@ import { isUuid } from '../utils/isUuid.js';
 
 const isProd = String(process.env.NODE_ENV) === 'production';
 
-const pick = (value) => {
-  if (value == null) return '';
-  return String(value).trim().toLowerCase();
+const normalize = (value) => {
+  if (value == null) return null;
+  const str = String(value).trim();
+  return str || null;
 };
 
-const SOURCE_PRIORITY = [
-  'path',
-  'header',
-  'query',
-  'token',
-  'cookie',
-];
-
 function setOrgOnRequest(req, orgId) {
-  const value = orgId != null && orgId !== '' ? String(orgId) : null;
-  if (!req.org || typeof req.org !== 'object') {
-    req.org = {};
+  const value = normalize(orgId);
+  if (value) {
+    const current = typeof req.org === 'object' && req.org !== null ? req.org : {};
+    req.org = { ...current, id: value };
+  } else {
+    req.org = null;
   }
-  req.org.id = value;
   req.orgId = value;
-  req.orgResolved = value;
+  return value;
 }
 
-function collectOrgCandidates(req) {
-  const raw = {
-    path: req.params?.orgId ?? req.params?.org_id ?? req.params?.id ?? null,
-    header: req.get?.('x-org-id') ?? req.headers?.['x-org-id'] ?? null,
-    query: req.query?.orgId ?? req.query?.org_id ?? req.query?.org ?? null,
-    token: req.orgFromToken ?? req.user?.org_id ?? req.user?.orgId ?? null,
-    cookie: req.cookies?.orgId ?? req.cookies?.org_id ?? req.cookies?.org ?? null,
-  };
-
-  return SOURCE_PRIORITY.map((source) => {
-    const value = raw[source];
-    return { source, value, normalized: pick(value) };
-  });
+// helper: pega possivel org do path /api/orgs/:id/* ou /api/inbox/... com ?orgId
+function orgFromPath(req) {
+  const path = req.path || req.originalUrl || '';
+  const match = path.match(/\/api\/orgs\/([a-f0-9-]{36})/i);
+  if (match?.[1]) return match[1];
+  return null;
 }
 
-function debugCandidates(candidates, resolved) {
-  if (isProd || process.env.DEBUG_ORG !== '1') return;
-  try {
-    const sources = candidates.reduce((acc, item) => {
-      acc[item.source] = item.value ?? null;
-      return acc;
-    }, {});
-    // eslint-disable-next-line no-console
-    console.log('[withOrg]', {
-      sources,
-      resolved: resolved?.value ?? null,
-      normalized: candidates.filter((c) => c.normalized).map((c) => c.normalized),
-    });
-  } catch {}
+function resolveOrgId(req) {
+  const fromPath = normalize(
+    orgFromPath(req) ??
+      req.params?.orgId ??
+      req.params?.org_id ??
+      req.params?.id ??
+      null
+  );
+  const fromHeader = normalize(req.get?.('x-org-id') ?? req.headers?.['x-org-id']);
+  const fromQuery = normalize(req.query?.orgId ?? req.query?.org_id);
+  const fromToken = normalize(req.orgFromToken ?? req.user?.org_id ?? req.user?.orgId);
+  const fromCookie = normalize(req.cookies?.orgId ?? req.cookies?.org_id);
+
+  return (
+    fromPath ||
+    fromHeader ||
+    fromQuery ||
+    fromToken ||
+    fromCookie ||
+    null
+  );
 }
 
 export function withOrg(req, res, next) {
-  const candidates = collectOrgCandidates(req);
-  const nonEmpty = candidates.filter((item) => item.normalized);
+  const resolved = setOrgOnRequest(req, resolveOrgId(req));
 
-  if (!nonEmpty.length) {
-    debugCandidates(candidates, null);
-    if (!isProd) {
-      setOrgOnRequest(req, null);
-      return next();
+  if (isProd) {
+    if (!resolved) {
+      return res
+        .status(403)
+        .json({ error: 'org_required', message: 'organization id required' });
     }
-    return res.status(403).json({ error: 'ORG_REQUIRED' });
+
+    const tokenOrg = normalize(req.user?.org_id ?? req.user?.orgId);
+    if (tokenOrg && resolved && tokenOrg.toLowerCase() !== resolved.toLowerCase()) {
+      return res
+        .status(403)
+        .json({ error: 'org_mismatch', message: 'organization mismatch' });
+    }
   }
 
-  const resolved = nonEmpty[0];
-  const distinct = new Set(nonEmpty.map((item) => item.normalized));
-
-  debugCandidates(candidates, resolved);
-
-  if (distinct.size > 1) {
-    if (isProd) {
-      return res.status(403).json({ error: 'ORG_MISMATCH' });
-    }
-    try {
-      // eslint-disable-next-line no-console
-      console.warn('[withOrg:mismatch]', {
-        candidates: nonEmpty.map((item) => ({ source: item.source, value: item.value })),
-        resolved: resolved.value ?? null,
-      });
-    } catch {}
+  if (!resolved) {
+    req.org = null;
   }
 
-  setOrgOnRequest(req, resolved.value);
   return next();
 }
 

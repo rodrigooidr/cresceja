@@ -11,8 +11,9 @@ import { fileURLToPath } from 'url';
 import http from 'http';
 import { Server as IOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
 
-import { authOptional as auth } from './middleware/auth.js';
+import auth from './middleware/auth.js';
 import withOrg from './middleware/withOrg.js';
 
 import { healthcheck } from '#db';
@@ -28,6 +29,7 @@ import telemetryRouter from './routes/telemetry.js';
 import uploadsRouter from './routes/uploads.js';
 import webhooksMetaPages from './routes/webhooks/meta.pages.js';
 import organizationsRouter from './routes/organizations.js';
+import orgsFeaturesRouter from './routes/orgs.features.js';
 import inboxTemplatesRouter from './routes/inbox.templates.js';
 import inboxAlertsRouter from './routes/inbox.alerts.js';
 import inboxSettingsRouter from './routes/inbox.settings.js';
@@ -81,6 +83,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(pinoHttp({ logger }));
+app.use(cookieParser());
 
 // Rate limit básico em /api
 const limiter = rateLimit({
@@ -101,25 +104,27 @@ app.get('/health', async (req, res) => {
 });
 
 // Montagem de rotas
+app.use('/api/public', publicRouter);
+app.use('/api/auth', authRouter);
+app.use('/api/webhooks/meta/pages', webhooksMetaPages);
+
 app.use('/api', auth);
 
-app.use('/api/auth', authRouter);
-app.use('/api/public', publicRouter);
+app.use('/api', withOrg);
+
 app.use('/api/content', contentRouter);
 app.use('/api/telemetry', telemetryRouter);
 app.use('/api/uploads', uploadsRouter);
 
-app.use('/api/orgs', withOrg, organizationsRouter);
-app.use('/api/inbox', withOrg, inboxSettingsRouter);
-app.use('/api/inbox', withOrg, inboxAlertsRouter);
-app.use('/api/inbox', withOrg, inboxTemplatesRouter);
-app.use('/api/ai', withOrg, aiSettingsRouter);
-
-// Webhooks
-app.use('/api/webhooks/meta/pages', webhooksMetaPages);
+app.use('/api/inbox', inboxAlertsRouter);
+app.use('/api/inbox', inboxSettingsRouter);
+app.use('/api/inbox', inboxTemplatesRouter);
+app.use('/api/orgs', organizationsRouter);
+app.use('/api/orgs', orgsFeaturesRouter);
+app.use('/api/ai', aiSettingsRouter);
 
 // Compat (mantém frontend antigo rodando)
-app.use('/api', withOrg, inboxCompatRouter);
+app.use('/api', inboxCompatRouter);
 app.use('/api/crm', crmCompatRouter);
 app.use('/api/ai', aiCompatRouter);
 

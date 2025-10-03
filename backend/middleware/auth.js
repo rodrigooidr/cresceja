@@ -16,8 +16,9 @@ import { isUuid } from '../utils/isUuid.js';
  * Aceita "Authorization: Bearer <token>"
  */
 const isProd = String(process.env.NODE_ENV) === 'production';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const DEV_VERIFY_OPTIONS = isProd ? undefined : { ignoreExpiration: true };
+const DEV_BYPASS_TOKENS = new Set(['dev-change-me', 'dev', 'local']);
 
 function maskToken(token) {
   if (!token) return '(empty)';
@@ -50,8 +51,8 @@ function getToken(req) {
 
   const queryToken =
     req.query?.access_token ??
-    req.query?.token ??
     req.query?.accessToken ??
+    req.query?.token ??
     null;
   if (queryToken != null && queryToken !== '') {
     const token = String(queryToken).trim();
@@ -62,6 +63,7 @@ function getToken(req) {
   }
 
   const cookieToken =
+    req.cookies?.authToken ??
     req.cookies?.token ??
     req.cookies?.access_token ??
     req.cookies?.accessToken ??
@@ -74,6 +76,16 @@ function getToken(req) {
     }
   }
 
+  return null;
+}
+
+function resolveOrgOverride(req) {
+  const header = req.get?.('x-org-id') ?? req.headers?.['x-org-id'];
+  if (header) return header;
+  const fromQuery = req.query?.orgId ?? req.query?.org_id;
+  if (fromQuery) return fromQuery;
+  const fromCookie = req.cookies?.orgId ?? req.cookies?.org_id;
+  if (fromCookie) return fromCookie;
   return null;
 }
 
@@ -124,16 +136,40 @@ function applyUserFromPayload(req, payload, source = 'verified') {
   return true;
 }
 
+function applyDevBypassUser(req, token) {
+  if (!token || isProd || !DEV_BYPASS_TOKENS.has(token)) return false;
+
+  const orgOverride = resolveOrgOverride(req);
+  const orgId = orgOverride != null && orgOverride !== '' ? String(orgOverride) : null;
+
+  req.user = {
+    id: 'dev-user',
+    email: 'dev@local',
+    name: 'Dev User',
+    role: 'SuperAdmin',
+    roles: ['SuperAdmin'],
+    org_id: orgId,
+    orgId,
+    is_superadmin: true,
+    _devBypass: true,
+  };
+  req.orgFromToken = orgId;
+  return true;
+}
+
 export function authRequired(req, res, next) {
   req.orgFromToken = null;
+  req.token = null;
+
   const token = getToken(req);
   if (!token) {
-    if (!isProd) {
-      req.user = req.user || { dev: true };
-      req.orgFromToken = null;
-      return next();
-    }
-    return res.status(401).json({ error: "invalid_token", message: "invalid token" });
+    return res.status(401).json({ error: 'missing_token', message: 'missing token' });
+  }
+
+  req.token = token;
+
+  if (applyDevBypassUser(req, token)) {
+    return next();
   }
 
   try {
@@ -141,42 +177,30 @@ export function authRequired(req, res, next) {
     if (applyUserFromPayload(req, payload, 'verified')) {
       return next();
     }
-  } catch (err) {
-    if (!isProd) {
-      try {
-        const decoded = jwt.decode(token);
-        if (decoded && applyUserFromPayload(req, decoded, 'decoded')) {
-          return next();
-        }
-      } catch {}
-    }
-    return res.status(401).json({ error: "invalid_token", message: "invalid token" });
-  }
+  } catch {}
 
-  return res.status(401).json({ error: "invalid_token", message: "invalid token" });
+  return res.status(401).json({ error: 'invalid_token', message: 'invalid token' });
 }
 
 export function authOptional(req, res, next) {
   try {
     req.orgFromToken = null;
+    req.token = null;
     const token = getToken(req);
     if (!token) {
-      if (!isProd) {
-        req.user = req.user || { dev: true };
-      }
+      return next();
+    }
+
+    req.token = token;
+
+    if (applyDevBypassUser(req, token)) {
       return next();
     }
 
     try {
       const payload = jwt.verify(token, JWT_SECRET, DEV_VERIFY_OPTIONS);
       applyUserFromPayload(req, payload, 'verified');
-    } catch (err) {
-      if (isProd) throw err;
-      try {
-        const decoded = jwt.decode(token);
-        if (decoded) applyUserFromPayload(req, decoded, 'decoded');
-      } catch {}
-    }
+    } catch {}
   } catch {}
   return next();
 }
