@@ -101,25 +101,25 @@ app.get('/health', async (req, res) => {
 });
 
 // Montagem de rotas
+app.use('/api', auth);
+
 app.use('/api/auth', authRouter);
 app.use('/api/public', publicRouter);
 app.use('/api/content', contentRouter);
 app.use('/api/telemetry', telemetryRouter);
 app.use('/api/uploads', uploadsRouter);
 
-app.use('/api', auth);
-app.use('/api', withOrg);
-app.use('/api', inboxSettingsRouter);
-app.use('/api', organizationsRouter);
-app.use('/api', inboxAlertsRouter);
-app.use('/api', aiSettingsRouter);
-app.use('/api/inbox', inboxTemplatesRouter);
+app.use('/api/orgs', withOrg, organizationsRouter);
+app.use('/api/inbox', withOrg, inboxSettingsRouter);
+app.use('/api/inbox', withOrg, inboxAlertsRouter);
+app.use('/api/inbox', withOrg, inboxTemplatesRouter);
+app.use('/api/ai', withOrg, aiSettingsRouter);
 
 // Webhooks
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);
 
 // Compat (mantém frontend antigo rodando)
-app.use('/api/inbox', inboxCompatRouter);
+app.use('/api', withOrg, inboxCompatRouter);
 app.use('/api/crm', crmCompatRouter);
 app.use('/api/ai', aiCompatRouter);
 

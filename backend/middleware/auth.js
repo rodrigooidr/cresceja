@@ -17,6 +17,7 @@ import { isUuid } from '../utils/isUuid.js';
  */
 const isProd = String(process.env.NODE_ENV) === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret';
+const DEV_VERIFY_OPTIONS = isProd ? undefined : { ignoreExpiration: true };
 
 function maskToken(token) {
   if (!token) return '(empty)';
@@ -47,16 +48,30 @@ function getToken(req) {
     }
   }
 
-  if (req.query?.access_token != null) {
-    const token = String(req.query.access_token);
-    debugTokenSource('query', token);
-    return token;
+  const queryToken =
+    req.query?.access_token ??
+    req.query?.token ??
+    req.query?.accessToken ??
+    null;
+  if (queryToken != null && queryToken !== '') {
+    const token = String(queryToken).trim();
+    if (token) {
+      debugTokenSource('query', token);
+      return token;
+    }
   }
 
-  if (req.cookies?.token != null) {
-    const token = String(req.cookies.token);
-    debugTokenSource('cookie', token);
-    return token;
+  const cookieToken =
+    req.cookies?.token ??
+    req.cookies?.access_token ??
+    req.cookies?.accessToken ??
+    null;
+  if (cookieToken != null && cookieToken !== '') {
+    const token = String(cookieToken).trim();
+    if (token) {
+      debugTokenSource('cookie', token);
+      return token;
+    }
   }
 
   return null;
@@ -122,7 +137,7 @@ export function authRequired(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET);
+    const payload = jwt.verify(token, JWT_SECRET, DEV_VERIFY_OPTIONS);
     if (applyUserFromPayload(req, payload, 'verified')) {
       return next();
     }
@@ -153,7 +168,7 @@ export function authOptional(req, res, next) {
     }
 
     try {
-      const payload = jwt.verify(token, JWT_SECRET);
+      const payload = jwt.verify(token, JWT_SECRET, DEV_VERIFY_OPTIONS);
       applyUserFromPayload(req, payload, 'verified');
     } catch (err) {
       if (isProd) throw err;

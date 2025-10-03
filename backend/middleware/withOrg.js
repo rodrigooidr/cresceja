@@ -8,6 +8,14 @@ const pick = (value) => {
   return String(value).trim().toLowerCase();
 };
 
+const SOURCE_PRIORITY = [
+  'path',
+  'header',
+  'query',
+  'token',
+  'cookie',
+];
+
 function setOrgOnRequest(req, orgId) {
   const value = orgId != null && orgId !== '' ? String(orgId) : null;
   if (!req.org || typeof req.org !== 'object') {
@@ -19,47 +27,42 @@ function setOrgOnRequest(req, orgId) {
 }
 
 function collectOrgCandidates(req) {
-  return [
-    { source: 'header', value: req.get?.('x-org-id') ?? req.headers?.['x-org-id'] },
-    { source: 'query', value: req.query?.orgId ?? req.query?.org_id ?? req.query?.org },
-    { source: 'path', value: req.params?.orgId ?? req.params?.org_id ?? req.params?.id },
-    { source: 'cookie', value: req.cookies?.orgId ?? req.cookies?.org_id ?? null },
-    {
-      source: 'token',
-      value: req.orgFromToken ?? req.user?.org_id ?? req.user?.orgId ?? null,
-    },
-  ];
+  const raw = {
+    path: req.params?.orgId ?? req.params?.org_id ?? req.params?.id ?? null,
+    header: req.get?.('x-org-id') ?? req.headers?.['x-org-id'] ?? null,
+    query: req.query?.orgId ?? req.query?.org_id ?? req.query?.org ?? null,
+    token: req.orgFromToken ?? req.user?.org_id ?? req.user?.orgId ?? null,
+    cookie: req.cookies?.orgId ?? req.cookies?.org_id ?? req.cookies?.org ?? null,
+  };
+
+  return SOURCE_PRIORITY.map((source) => {
+    const value = raw[source];
+    return { source, value, normalized: pick(value) };
+  });
+}
+
+function debugCandidates(candidates, resolved) {
+  if (isProd || process.env.DEBUG_ORG !== '1') return;
+  try {
+    const sources = candidates.reduce((acc, item) => {
+      acc[item.source] = item.value ?? null;
+      return acc;
+    }, {});
+    // eslint-disable-next-line no-console
+    console.log('[withOrg]', {
+      sources,
+      resolved: resolved?.value ?? null,
+      normalized: candidates.filter((c) => c.normalized).map((c) => c.normalized),
+    });
+  } catch {}
 }
 
 export function withOrg(req, res, next) {
   const candidates = collectOrgCandidates(req);
-  const normalized = candidates
-    .map(({ source, value }) => ({ source, value, normalized: pick(value) }))
-    .filter((item) => item.normalized);
-  const uniq = [...new Set(normalized.map((item) => item.normalized))];
+  const nonEmpty = candidates.filter((item) => item.normalized);
 
-  const resolvedNormalized = uniq[0] || null;
-  const resolvedRaw = resolvedNormalized
-    ? normalized.find((item) => item.normalized === resolvedNormalized)?.value ?? resolvedNormalized
-    : null;
-
-  setOrgOnRequest(req, resolvedRaw);
-
-  if (!isProd && process.env.DEBUG_ORG === '1') {
-    try {
-      // eslint-disable-next-line no-console
-      console.log('[withOrg]', {
-        sources: candidates.reduce((acc, { source, value }) => {
-          acc[source] = value ?? null;
-          return acc;
-        }, {}),
-        resolved: resolvedRaw || null,
-        normalized: uniq,
-      });
-    } catch {}
-  }
-
-  if (!uniq.length) {
+  if (!nonEmpty.length) {
+    debugCandidates(candidates, null);
     if (!isProd) {
       setOrgOnRequest(req, null);
       return next();
@@ -67,11 +70,25 @@ export function withOrg(req, res, next) {
     return res.status(403).json({ error: 'ORG_REQUIRED' });
   }
 
-  if (uniq.length > 1 && isProd) {
-    return res.status(403).json({ error: 'ORG_MISMATCH' });
+  const resolved = nonEmpty[0];
+  const distinct = new Set(nonEmpty.map((item) => item.normalized));
+
+  debugCandidates(candidates, resolved);
+
+  if (distinct.size > 1) {
+    if (isProd) {
+      return res.status(403).json({ error: 'ORG_MISMATCH' });
+    }
+    try {
+      // eslint-disable-next-line no-console
+      console.warn('[withOrg:mismatch]', {
+        candidates: nonEmpty.map((item) => ({ source: item.source, value: item.value })),
+        resolved: resolved.value ?? null,
+      });
+    } catch {}
   }
 
-  setOrgOnRequest(req, resolvedRaw);
+  setOrgOnRequest(req, resolved.value);
   return next();
 }
 
