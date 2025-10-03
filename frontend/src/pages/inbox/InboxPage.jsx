@@ -21,6 +21,7 @@ import ChannelPicker from "../../components/inbox/ChannelPicker.jsx";
 import { useInboxAlerts } from "./hooks/useInboxAlerts.js";
 import HandoffBanner from "./components/HandoffBanner.jsx";
 import ScheduleModal from "./components/ScheduleModal.jsx";
+import { authFetch } from "../../services/session.js";
 
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
@@ -471,7 +472,7 @@ export default function InboxPage({ addToast: addToastProp }) {
           if (!window.confirm('Cancelar este agendamento?')) return;
           try {
             const queryParam = event.calendarId ? `?calendarId=${encodeURIComponent(event.calendarId)}` : '';
-            const resp = await fetch(`/api/calendar/events/${encodeURIComponent(event.id)}${queryParam}`, {
+            const resp = await authFetch(`/api/calendar/events/${encodeURIComponent(event.id)}${queryParam}`, {
               method: 'DELETE',
             });
             if (!resp.ok) throw new Error('cancel_failed');

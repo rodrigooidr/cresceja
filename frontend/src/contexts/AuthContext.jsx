@@ -1,6 +1,7 @@
 // src/contexts/AuthContext.jsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import inboxApi, { setActiveOrg, setAuthToken } from '../api/inboxApi';
+import { clearOrgIdInStorage, setOrgIdInStorage } from '../services/session.js';
 
 export const AuthContext = React.createContext(null);
 
@@ -112,14 +113,10 @@ export function AuthProvider({ children }) {
 
       setAuthToken(tk);
       if (orgId) {
-        try {
-          localStorage.setItem('activeOrgId', orgId);
-        } catch {}
+        setOrgIdInStorage(orgId);
         setActiveOrg(orgId);
       } else {
-        try {
-          localStorage.removeItem('activeOrgId');
-        } catch {}
+        clearOrgIdInStorage();
         setActiveOrg(null);
       }
       const next = { user: usr, token: tk };

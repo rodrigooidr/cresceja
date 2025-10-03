@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { authFetch } from '../services/session.js';
 
 const STEPS = [
   { key: 'connect-whatsapp', label: 'Conectar WhatsApp' },
@@ -12,9 +13,7 @@ function OnboardingChecklist() {
   const [completed, setCompleted] = useState([]);
 
   useEffect(() => {
-    fetch('/api/onboarding/progress', {
-      headers: { Authorization: 'Bearer fake-jwt-token' }
-    })
+    authFetch('/api/onboarding/progress')
       .then(res => res.json())
       .then(data => {
         setCompleted(data.map(d => d.step));
@@ -22,11 +21,10 @@ function OnboardingChecklist() {
   }, []);
 
   const markAsDone = async (stepKey) => {
-    await fetch('/api/onboarding/check', {
+    await authFetch('/api/onboarding/check', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-jwt-token'
       },
       body: JSON.stringify({ step: stepKey })
     });

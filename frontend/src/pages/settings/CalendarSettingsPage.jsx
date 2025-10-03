@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import CalendarPermissionsEditor from "@/pages/settings/CalendarPermissionsEditor";
+import { authFetch } from "@/services/session.js";
 
 function Section({ title, children }) {
   return (
@@ -50,10 +51,10 @@ export default function CalendarSettingsPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/calendar/calendars")
+      authFetch("/api/calendar/calendars")
         .then((r) => r.json())
         .catch(() => ({ items: [] })),
-      fetch("/api/calendar/services")
+      authFetch("/api/calendar/services")
         .then((r) => r.json())
         .catch(() => ({ items: [] })),
     ])
@@ -69,7 +70,7 @@ export default function CalendarSettingsPage() {
   }, [services]);
 
   async function saveServices() {
-    const r = await fetch('/api/calendar/services', {
+    const r = await authFetch('/api/calendar/services', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ items: svcDraft }),
@@ -144,7 +145,7 @@ export default function CalendarSettingsPage() {
               <CalendarPermissionsEditor
                 calendars={calendars}
                 onSaved={() => {
-                  fetch('/api/calendar/calendars')
+                  authFetch('/api/calendar/calendars')
                     .then((r) => r.json())
                     .then((js) => setCalendars(js.items || []));
                 }}

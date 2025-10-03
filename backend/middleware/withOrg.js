@@ -34,6 +34,17 @@ export function withOrg(req, res, next) {
 
   setOrgOnRequest(req, resolved);
 
+  if (!isProd && process.env.DEBUG_ORG === '1') {
+    // eslint-disable-next-line no-console
+    console.log('[withOrg]', {
+      hdr: header || null,
+      qry: query || null,
+      claim: claim || null,
+      param: req.params?.orgId || null,
+      resolved: req.org?.id || resolved || null,
+    });
+  }
+
   if (
     isProd &&
     claim &&

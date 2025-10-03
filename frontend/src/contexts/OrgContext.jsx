@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { getCurrentOrg, getMyOrgs, setActiveOrg } from "../api/inboxApi";
+import { getOrgIdFromStorage } from "../services/session.js";
 import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
@@ -55,11 +56,7 @@ export function OrgProvider({ children }) {
   // Seleção atual (1 org)
   const [selected, setSelected] = useState(() => {
     if (START_BLANK) return null;
-    try {
-      return localStorage.getItem("active_org_id") || readTokenOrgId() || null;
-    } catch {
-      return null;
-    }
+    return getOrgIdFromStorage() || readTokenOrgId() || null;
   });
   const [orgChangeTick, setOrgChangeTick] = useState(0);
   const [org, setOrg] = useState(null);

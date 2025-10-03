@@ -1,3 +1,5 @@
+import { getOrgIdFromStorage } from "../services/session.js";
+
 let orgIdProvider = null;
 
 const globalScope =
@@ -19,12 +21,11 @@ export function computeOrgId() {
       if (v != null && v !== "") return String(v);
     } catch {}
   }
-  // 2) localStorage (persistência da seleção)
-  try {
-    const v = localStorage.getItem("activeOrgId") ?? localStorage.getItem("active_org_id");
-    if (v != null && v !== "") return String(v);
-  } catch {}
-  // 3) fallback de testes (agora priorizado para compat com suíte)
+  // 2) Persistência padrão (localStorage/session + fallback de testes)
+  const stored = getOrgIdFromStorage();
+  if (stored != null && stored !== "") return String(stored);
+
+  // 3) fallback explícito (mantém compat com antigos debugs globais)
   const t = globalScope?.__TEST_ORG__?.id;
   if (t != null && t !== "") return String(t);
 

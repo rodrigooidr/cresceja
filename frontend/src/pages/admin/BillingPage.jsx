@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { authFetch } from '../../services/session.js';
 
 export default function BillingPage() {
   const [orgId, setOrgId] = useState('');
@@ -9,14 +10,14 @@ export default function BillingPage() {
 
   async function load() {
     if (!orgId) return;
-    const r = await fetch(`/api/admin/billing/${orgId}`);
+    const r = await authFetch(`/api/admin/billing/${orgId}`);
     const data = await r.json();
     setStatus(data);
   }
 
   async function save() {
     if (!orgId || !planId) return;
-    await fetch(`/api/admin/billing/${orgId}/subscription`, {
+    await authFetch(`/api/admin/billing/${orgId}/subscription`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan_id: planId, provider, due_date: dueDate }),
@@ -26,7 +27,7 @@ export default function BillingPage() {
 
   async function reactivate() {
     if (!orgId) return;
-    await fetch(`/api/admin/billing/${orgId}/reactivate`, { method: 'POST' });
+    await authFetch(`/api/admin/billing/${orgId}/reactivate`, { method: 'POST' });
     await load();
   }
 
