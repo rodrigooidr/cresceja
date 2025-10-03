@@ -12,6 +12,9 @@ import http from 'http';
 import { Server as IOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 
+import { authOptional as auth } from './middleware/auth.js';
+import withOrg from './middleware/withOrg.js';
+
 import { healthcheck } from '#db';
 
 // Rotas (importe SOMENTE as que existem no repo)
@@ -103,11 +106,14 @@ app.use('/api/public', publicRouter);
 app.use('/api/content', contentRouter);
 app.use('/api/telemetry', telemetryRouter);
 app.use('/api/uploads', uploadsRouter);
-app.use('/api/orgs', organizationsRouter);
-app.use('/api/inbox', inboxAlertsRouter);
-app.use('/api/inbox', inboxSettingsRouter);
+
+app.use('/api', auth);
+app.use('/api', withOrg);
+app.use('/api', inboxSettingsRouter);
+app.use('/api', organizationsRouter);
+app.use('/api', inboxAlertsRouter);
+app.use('/api', aiSettingsRouter);
 app.use('/api/inbox', inboxTemplatesRouter);
-app.use('/api/ai', aiSettingsRouter);
 
 // Webhooks
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);

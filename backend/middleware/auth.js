@@ -41,7 +41,7 @@ function hydrateUser(payload = {}) {
       "dev-user",
     email: base.email || base.user?.email || "dev@example.com",
     name: base.name || base.user?.name || "Dev User",
-    org_id: orgId || undefined,
+    org_id: orgId || null,
     roles,
     role: base.role || base.org_role || roles?.[0] || "OrgOwner",
   };

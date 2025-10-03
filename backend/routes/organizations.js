@@ -71,4 +71,12 @@ router.get('/me', authRequired, withOrg, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+router.get('/orgs/:orgId/features', (req, res) => {
+  if (process.env.NODE_ENV !== 'production') {
+    return res.json({ inbox: true, sse: true, templates: true, quickReplies: true });
+  }
+  // ...produção: validações reais
+  return res.status(501).json({ error: 'not_implemented' });
+});
+
 export default router;

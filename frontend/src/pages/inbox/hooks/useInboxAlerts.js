@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { getToken, getOrgId } from '../../../services/session.js';
+import { getToken, getOrgId, authFetch } from '../../../services/session.js';
 
 export function openAlertsStream() {
   if (typeof EventSource !== 'function' || typeof window === 'undefined') return null;
@@ -15,24 +15,6 @@ export function openAlertsStream() {
   }
 
   return new EventSource(url.toString(), { withCredentials: false });
-}
-
-function buildAuthHeaders(base) {
-  const headers = { ...(base || {}) };
-  const token = getToken();
-  if (token && !headers.Authorization) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  const orgId = getOrgId();
-  if (orgId && !headers['X-Org-Id']) {
-    headers['X-Org-Id'] = orgId;
-  }
-  return headers;
-}
-
-function authFetch(url, options = {}) {
-  const headers = buildAuthHeaders(options.headers);
-  return fetch(url, { ...options, headers });
 }
 
 function createBeep({ volume = 1, ms = 700 }) {
