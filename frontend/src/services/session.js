@@ -1,56 +1,67 @@
-import { computeOrgId } from '../api/orgHeader.js';
+const globalScope = typeof globalThis !== 'undefined' ? globalThis : {};
 
-const globalScope =
-  typeof globalThis !== 'undefined'
-    ? globalThis
-    : typeof window !== 'undefined'
-    ? window
-    : {};
-
-function parseJSON(value) {
+function getLocalStorage() {
   try {
-    return value ? JSON.parse(value) : null;
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage;
+    }
+    if (typeof localStorage !== 'undefined') {
+      return localStorage;
+    }
+  } catch {}
+  return null;
+}
+
+function safeParse(value) {
+  try {
+    return JSON.parse(value || 'null');
   } catch {
     return null;
   }
 }
 
 export function getToken() {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const direct =
-        window.localStorage.getItem('token') ||
-        window.localStorage.getItem('authToken');
-      if (direct) return String(direct);
+  const storage = getLocalStorage();
+  if (!storage) return null;
 
-      const saved = parseJSON(window.localStorage.getItem('auth'));
-      if (saved?.token) return String(saved.token);
-    }
-  } catch {}
+  const direct = storage.getItem('token') || storage.getItem('authToken');
+  if (direct) return String(direct);
 
-  const fromGlobal =
-    globalScope.__TEST_AUTH__?.token ||
-    globalScope.__TEST_TOKEN__ ||
-    null;
+  const auth = safeParse(storage.getItem('auth'));
+  if (auth?.token) return String(auth.token);
+
+  const fromGlobal = globalScope.__TEST_AUTH__?.token || globalScope.__TEST_TOKEN__;
   return fromGlobal != null ? String(fromGlobal) : null;
 }
 
 export function getOrgId() {
-  const computed = computeOrgId();
-  if (computed != null && computed !== '') return String(computed);
+  const storage = getLocalStorage();
+  if (!storage) return null;
 
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const stored =
-        window.localStorage.getItem('activeOrgId') ??
-        window.localStorage.getItem('active_org_id');
-      if (stored) return String(stored);
-    }
-  } catch {}
-
-  const fromGlobal =
-    globalScope.__TEST_ORG__?.id ||
-    globalScope.__TEST_ORG_ID__ ||
+  const orgId =
+    storage.getItem('orgId') ||
+    storage.getItem('activeOrgId') ||
+    storage.getItem('active_org_id') ||
+    safeParse(storage.getItem('user'))?.org_id ||
     null;
+
+  if (orgId) return String(orgId);
+
+  const fromGlobal = globalScope.__TEST_ORG__?.id || globalScope.__TEST_ORG_ID__;
   return fromGlobal != null ? String(fromGlobal) : null;
+}
+
+export async function authFetch(input, init = {}) {
+  const headers = new Headers(init.headers || {});
+  const token = getToken();
+  const orgId = getOrgId();
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (orgId) {
+    headers.set('X-Org-Id', orgId);
+  }
+
+  return fetch(input, { ...init, headers });
 }
