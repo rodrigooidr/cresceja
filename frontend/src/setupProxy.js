@@ -10,7 +10,12 @@ module.exports = function (app) {
       xfwd: true,
       ws: false, // não proxie /ws do dev-server
       logLevel: 'warn',
-      onProxyReq(proxyReq) {
+      preserveHeaderKeyCase: true,
+      onProxyReq(proxyReq, req) {
+        const auth = req.headers['authorization'];
+        if (auth) proxyReq.setHeader('Authorization', auth);
+        const orgId = req.headers['x-org-id'];
+        if (orgId) proxyReq.setHeader('X-Org-Id', orgId);
         return proxyReq;
       },
     })

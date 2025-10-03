@@ -5,14 +5,14 @@ import { withOrg } from '../middleware/withOrg.js';
 const router = Router();
 const isProd = String(process.env.NODE_ENV) === 'production';
 
-router.get('/inbox/alerts', authRequired, withOrg, (req, res) => {
+router.get('/alerts', authRequired, withOrg, (req, res) => {
   if (!req.org?.id && !isProd) {
     return res.json({ ok: true, items: [] });
   }
   return res.json({ ok: true });
 });
 
-router.get('/inbox/alerts/stream', authRequired, withOrg, (req, res) => {
+router.get('/alerts/stream', authRequired, withOrg, (req, res) => {
   const queryOrg = req.query?.orgId || req.query?.org_id || null;
   let orgId = (typeof req.org === 'string' ? req.org : req.org?.id) || null;
 

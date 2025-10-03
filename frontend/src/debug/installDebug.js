@@ -41,25 +41,73 @@
   if (typeof window !== 'undefined' && !window.__DEBUG_FETCH_PATCHED__) {
     const orig = window.fetch.bind(window);
     window.fetch = (input, init = {}) => {
-      const url = typeof input === 'string' ? input : input?.url || '';
-      const rewritten = rewrite(url);
-      if (isApi(url)) {
-        const h = new Headers(init.headers || {});
+      const isRequest = typeof Request !== 'undefined' && input instanceof Request;
+      const originalRequest = isRequest ? input : null;
+      const originalUrl = isRequest
+        ? originalRequest.url
+        : typeof input === 'string'
+        ? input
+        : input?.url || '';
+
+      let options = { ...init };
+      let headers = new Headers(options.headers || undefined);
+
+      if (isRequest) {
+        headers = new Headers(originalRequest.headers || undefined);
+        if (init.headers) {
+          const extra = new Headers(init.headers);
+          extra.forEach((value, key) => headers.set(key, value));
+        }
+
+        const copyKeys = [
+          'cache',
+          'credentials',
+          'integrity',
+          'keepalive',
+          'mode',
+          'redirect',
+          'referrer',
+          'referrerPolicy',
+          'signal',
+          'priority',
+        ];
+        copyKeys.forEach((key) => {
+          if (key in options) return;
+          const value = originalRequest[key];
+          if (value !== undefined) options[key] = value;
+        });
+
+        if (!('method' in options)) {
+          options.method = originalRequest.method;
+        }
+
+        if (!('body' in options)) {
+          try {
+            options.body = originalRequest.bodyUsed ? originalRequest.clone().body : originalRequest.body;
+          } catch {}
+        }
+      }
+
+      const rewritten = rewrite(originalUrl);
+      const finalUrl = isApi(originalUrl) ? rewritten : originalUrl;
+
+      if (isApi(originalUrl)) {
         const token = getToken();
         const orgId = getOrg();
         if (token) {
-          const cur = h.get('Authorization') || h.get('authorization') || '';
+          const cur = headers.get('Authorization') || headers.get('authorization') || '';
           if (!cur) {
-            h.set('Authorization', `Bearer ${token}`);
+            headers.set('Authorization', `Bearer ${token}`);
           } else if (cur.includes(',')) {
-            h.set('Authorization', cur.split(',')[0].trim());
+            headers.set('Authorization', cur.split(',')[0].trim());
           }
         }
-        if (h.has('authorization')) h.delete('authorization');
-        if (orgId && !h.has('X-Org-Id')) h.set('X-Org-Id', orgId);
-        init = { ...init, headers: h };
+        if (headers.has('authorization')) headers.delete('authorization');
+        if (orgId && !headers.has('X-Org-Id')) headers.set('X-Org-Id', orgId);
       }
-      return orig(rewritten, init);
+
+      options.headers = headers;
+      return orig(finalUrl, options);
     };
     window.__DEBUG_FETCH_PATCHED__ = true;
   }

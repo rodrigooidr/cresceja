@@ -3,15 +3,15 @@ import { Router } from 'express';
 const router = Router();
 const isProd = String(process.env.NODE_ENV) === 'production';
 
-router.get('/inbox/templates', (req, res) => {
+router.get('/templates', (req, res) => {
   if (!req.org?.id && !isProd) return res.json([]);
   return res.json([]);
 });
-router.get('/inbox/quick-replies', (req, res) => {
+router.get('/quick-replies', (req, res) => {
   if (!req.org?.id && !isProd) return res.json([]);
   return res.json([]);
 });
-router.get('/inbox/conversations', (req, res) => {
+router.get('/conversations', (req, res) => {
   if (!req.org?.id && !isProd) {
     const { status = 'open', limit = 50 } = req.query;
     return res.json({ items: [], status, limit: Number(limit) });
