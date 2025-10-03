@@ -1,18 +1,36 @@
 import { pool } from '#db';
 import { isUuid } from '../utils/isUuid.js';
 
+const isProd = String(process.env.NODE_ENV) === 'production';
+
+function normalizeOrg(value) {
+  if (value == null) return '';
+  return String(value).trim();
+}
+
 export function withOrg(req, res, next) {
-  const headerOrg = req.headers?.['x-org-id'];
-  const queryOrg = req.query?.orgId || req.params?.orgId;
-  const claimOrg = req.user?.org_id || req.user?.orgId;
+  const headerOrg = normalizeOrg(req.headers?.['x-org-id']);
+  const queryOrg = normalizeOrg(req.query?.orgId || req.params?.orgId);
+  const claimOrg = normalizeOrg(req.user?.org_id || req.user?.orgId);
 
-  req.orgId = String(headerOrg || queryOrg || claimOrg || '').trim();
-
-  if (!req.orgId) {
+  const pick = headerOrg || queryOrg || claimOrg;
+  if (!pick) {
     return res.status(400).json({
-      error: 'missing_org',
+      error: 'ORG_ID_REQUIRED',
       message: 'Envie X-Org-Id header ou orgId',
     });
+  }
+
+  req.orgId = pick;
+
+  if (claimOrg && pick && claimOrg.toLowerCase() !== pick.toLowerCase()) {
+    if (isProd) {
+      return res.status(403).json({
+        error: 'ORG_MISMATCH',
+        detail: { token: claimOrg, provided: pick },
+      });
+    }
+    console.warn('[withOrg] org mismatch (dev relax):', { token: claimOrg, provided: pick });
   }
 
   return next();
