@@ -42,7 +42,8 @@ services:
     env_file:
       - ../backend/.env.docker         # defina DATABASE_URL e REDIS_URL aqui
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
+      JWT_SECRET: dev-change-me
       PORT: "4000"
       # Se o backend faz CORS, mantenha as origins separadas por vírgula
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
@@ -66,7 +67,8 @@ services:
     env_file:
       - ../backend/.env.docker
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
+      JWT_SECRET: dev-change-me
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +85,8 @@ services:
     env_file:
       - ../backend/.env.docker
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
+      JWT_SECRET: dev-change-me
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,7 +103,8 @@ services:
     env_file:
       - ../backend/.env.docker
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
+      JWT_SECRET: dev-change-me
     depends_on:
       postgres:
         condition: service_healthy
