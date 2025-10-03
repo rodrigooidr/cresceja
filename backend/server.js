@@ -78,12 +78,12 @@ try {
   }
 }
 
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(pinoHttp({ logger }));
-app.use(cookieParser());
 
 // Rate limit básico em /api
 const limiter = rateLimit({
@@ -108,29 +108,31 @@ app.use('/api/public', publicRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);
 
-app.use('/api', auth);
+const protectedApi = express.Router();
+protectedApi.use(auth);
+protectedApi.use(withOrg);
 
-app.use('/api', withOrg);
+protectedApi.use('/content', contentRouter);
+protectedApi.use('/telemetry', telemetryRouter);
+protectedApi.use('/uploads', uploadsRouter);
 
-app.use('/api/content', contentRouter);
-app.use('/api/telemetry', telemetryRouter);
-app.use('/api/uploads', uploadsRouter);
-
-app.use('/api/inbox', inboxAlertsRouter);
-app.use('/api/inbox', inboxSettingsRouter);
-app.use('/api/inbox', inboxTemplatesRouter);
-app.use('/api/orgs', organizationsRouter);
-app.use('/api/orgs', orgsFeaturesRouter);
-app.use('/api/ai', aiSettingsRouter);
+protectedApi.use('/inbox', inboxAlertsRouter);
+protectedApi.use('/inbox', inboxSettingsRouter);
+protectedApi.use('/inbox', inboxTemplatesRouter);
+protectedApi.use('/orgs', organizationsRouter);
+protectedApi.use('/orgs', orgsFeaturesRouter);
+protectedApi.use('/ai', aiSettingsRouter);
 
 // Compat (mantém frontend antigo rodando)
-app.use('/api', inboxCompatRouter);
-app.use('/api/crm', crmCompatRouter);
-app.use('/api/ai', aiCompatRouter);
+protectedApi.use('/', inboxCompatRouter);
+protectedApi.use('/crm', crmCompatRouter);
+protectedApi.use('/ai', aiCompatRouter);
 
 if (process.env.NODE_ENV !== 'production') {
-  app.use('/api/debug', debugRouter);
+  protectedApi.use('/debug', debugRouter);
 }
+
+app.use('/api', protectedApi);
 
 // Static (se houver build do frontend)
 const clientDir = path.join(__dirname, '..', 'frontend', 'build');

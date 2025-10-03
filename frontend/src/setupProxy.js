@@ -12,10 +12,10 @@ module.exports = function (app) {
       logLevel: 'warn',
       preserveHeaderKeyCase: true,
       onProxyReq(proxyReq, req) {
-        const auth = req.headers['authorization'];
-        if (auth) proxyReq.setHeader('Authorization', auth);
-        const orgId = req.headers['x-org-id'];
-        if (orgId) proxyReq.setHeader('X-Org-Id', orgId);
+        const authz = req.headers['authorization'];
+        const org = req.headers['x-org-id'];
+        if (authz) proxyReq.setHeader('authorization', authz);
+        if (org) proxyReq.setHeader('x-org-id', org);
         return proxyReq;
       },
     })
