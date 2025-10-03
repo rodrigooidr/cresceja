@@ -25,6 +25,8 @@ backend/.nyc_output/
 # Env files
 backend/.env
 backend/.env.*    # ex: .env.local, .env.development, .env.docker
+!backend/.env
+!backend/.env.docker
 
 # ========================================
 # Frontend / React
