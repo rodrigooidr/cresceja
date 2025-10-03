@@ -4,8 +4,9 @@ import { isUuid } from '../utils/isUuid.js';
 const isProd = String(process.env.NODE_ENV) === 'production';
 
 function normalize(value) {
-  if (value == null) return '';
-  return String(value).trim();
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed === '' ? null : trimmed;
 }
 
 function setOrgOnRequest(req, orgId) {
@@ -18,40 +19,44 @@ function setOrgOnRequest(req, orgId) {
 }
 
 export function withOrg(req, res, next) {
-  const header = normalize(req.get?.('x-org-id') || req.headers?.['x-org-id']);
-  const query = normalize(req.query?.orgId ?? req.query?.org);
-  const claim = normalize(req.user?.org_id ?? req.user?.orgId);
+  const fromPath = normalize(req.params?.orgId ?? req.params?.id);
+  const fromHeader = normalize(req.get?.('x-org-id') ?? req.headers?.['x-org-id']);
+  const fromQuery = normalize(req.query?.orgId ?? req.query?.org_id ?? req.query?.org);
+  const fromToken = normalize(req.user?.org_id ?? req.user?.orgId);
 
-  const resolved = header || query || claim;
-
-  if (!resolved) {
-    if (!isProd) {
-      setOrgOnRequest(req, null);
-      return next();
-    }
-    return res.status(403).json({ error: 'org_required' });
-  }
+  const resolved =
+    fromPath?.toLowerCase() ||
+    fromHeader?.toLowerCase() ||
+    fromQuery?.toLowerCase() ||
+    fromToken?.toLowerCase() ||
+    null;
 
   setOrgOnRequest(req, resolved);
 
   if (!isProd && process.env.DEBUG_ORG === '1') {
     // eslint-disable-next-line no-console
     console.log('[withOrg]', {
-      hdr: header || null,
-      qry: query || null,
-      claim: claim || null,
-      param: req.params?.orgId || null,
-      resolved: req.org?.id || resolved || null,
+      path: fromPath || null,
+      header: fromHeader || null,
+      query: fromQuery || null,
+      token: fromToken || null,
+      resolved,
     });
   }
 
-  if (
-    isProd &&
-    claim &&
-    header &&
-    header.toLowerCase() !== claim.toLowerCase()
-  ) {
-    return res.status(403).json({ error: 'org_mismatch' });
+  const candidates = [fromPath, fromHeader, fromQuery, fromToken]
+    .filter(Boolean)
+    .map((value) => value.toLowerCase());
+
+  const mismatch = candidates.length > 1 && new Set(candidates).size > 1;
+
+  if (mismatch && isProd) {
+    return res.status(403).json({ error: 'ORG_MISMATCH' });
+  }
+
+  if (!resolved) {
+    if (!isProd) return next();
+    return res.status(400).json({ error: 'ORG_REQUIRED' });
   }
 
   return next();

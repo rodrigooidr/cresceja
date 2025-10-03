@@ -67,6 +67,22 @@ function delHeader(config, name) {
     else delete config.headers[name];
   } catch {}
 }
+function getHeader(config, name) {
+  try {
+    if (!config?.headers) return undefined;
+    if (typeof config.headers.get === "function") {
+      const direct = config.headers.get(name);
+      if (direct != null) return direct;
+      return config.headers.get(name.toLowerCase());
+    }
+    const direct = config.headers[name];
+    if (direct != null) return direct;
+    const lookup = Object.keys(config.headers).find((key) => key?.toLowerCase() === String(name).toLowerCase());
+    return lookup ? config.headers[lookup] : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 // ===== Helpers (FormData, ids, etc.) =====
 function getFromFormData(fd, key) {
@@ -201,13 +217,14 @@ inboxApi.interceptors.request.use((config) => {
     if (isGlobal || noAuth || isPublic) {
       delHeader(config, "X-Org-Id");
     } else {
-      const orgIdFromUrl = findOrgIdInUrl(config.url || "");
-      const resolvedOrgId = orgIdFromUrl || computeOrgId();
-      if (resolvedOrgId) {
-        setHeader(config, "X-Org-Id", String(resolvedOrgId));
-      } else {
-        delHeader(config, "X-Org-Id");
-      }
+      const url = config.url || "";
+      const pathOrgId = findOrgIdInUrl(url);
+      const activeOrgId = computeOrgId();
+      const headerOrgId = getHeader(config, "X-Org-Id");
+      const finalOrgId = pathOrgId || activeOrgId || headerOrgId || null;
+
+      if (finalOrgId) setHeader(config, "X-Org-Id", String(finalOrgId));
+      else delHeader(config, "X-Org-Id");
     }
   } catch {}
 
