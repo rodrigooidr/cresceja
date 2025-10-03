@@ -2,18 +2,19 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { getToken, getOrgId } from '../../../services/session.js';
 
 export function openAlertsStream() {
-  if (typeof EventSource !== 'function') return null;
+  if (typeof EventSource !== 'function' || typeof window === 'undefined') return null;
 
   const token = getToken();
   if (!token) return null;
 
   const orgId = getOrgId();
-  const params = new URLSearchParams();
-  params.set('access_token', token);
-  if (orgId) params.set('orgId', orgId);
+  const url = new URL('/api/inbox/alerts/stream', window.location.origin);
+  url.searchParams.set('access_token', token);
+  if (orgId) {
+    url.searchParams.set('orgId', orgId);
+  }
 
-  const url = `/api/inbox/alerts/stream?${params.toString()}`;
-  return new EventSource(url, { withCredentials: false });
+  return new EventSource(url.toString(), { withCredentials: false });
 }
 
 function buildAuthHeaders(base) {
