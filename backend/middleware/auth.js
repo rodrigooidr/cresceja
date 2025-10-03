@@ -12,9 +12,9 @@ import { isUuid } from '../utils/isUuid.js';
 
 const isProd = String(process.env.NODE_ENV) === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
-const ALLOW_DEV_TOKENS = String(process.env.ALLOW_DEV_TOKENS) === '1';
-const VERIFY_OPTIONS = ALLOW_DEV_TOKENS ? { ignoreExpiration: true } : undefined;
+const DEV_VERIFY_OPTIONS = isProd ? undefined : { ignoreExpiration: true };
 const DEV_BYPASS_TOKENS = new Set(['dev-change-me', 'dev', 'local']);
+const allowDevTokens = String(process.env.ALLOW_DEV_TOKENS || '') === '1';
 
 function parseBearer(authz) {
   if (!authz) return null;
@@ -86,8 +86,9 @@ function applyUser(req, user) {
   return true;
 }
 
-function applyDevBypass(req, token) {
-  if (!token || !ALLOW_DEV_TOKENS || !DEV_BYPASS_TOKENS.has(token)) return false;
+function applyDevBypassUser(req, token) {
+  // Em produção, só permite se ALLOW_DEV_TOKENS=1
+  if (!token || (!allowDevTokens && isProd) || !DEV_BYPASS_TOKENS.has(token)) return false;
 
   const rawOrg = resolveDevOrg(req);
   const orgId = rawOrg != null && String(rawOrg).trim() !== '' ? String(rawOrg).trim() : null;
@@ -117,15 +118,15 @@ export function authRequired(req, res, next) {
 
     req.token = token;
 
-    if (applyDevBypass(req, token)) {
+    if (applyDevBypassUser(req, token)) {
       return next();
     }
 
     let payload;
     try {
-      payload = jwt.verify(token, JWT_SECRET, VERIFY_OPTIONS);
+      payload = jwt.verify(token, JWT_SECRET, DEV_VERIFY_OPTIONS);
     } catch (err) {
-      if (ALLOW_DEV_TOKENS && err && err.name === 'TokenExpiredError') {
+      if (!isProd && err && err.name === 'TokenExpiredError') {
         payload = jwt.decode(token);
       } else {
         return res.status(401).json({ error: 'invalid_token', message: 'invalid token' });
@@ -168,12 +169,12 @@ export function authOptional(req, res, next) {
 
     req.token = token;
 
-    if (applyDevBypass(req, token)) {
+    if (applyDevBypassUser(req, token)) {
       return next();
     }
 
     try {
-      const payload = jwt.verify(token, JWT_SECRET, VERIFY_OPTIONS);
+      const payload = jwt.verify(token, JWT_SECRET, DEV_VERIFY_OPTIONS);
       const user = hydrateUserFromPayload(payload) || {};
       if (!user.roles?.length && payload?.role) {
         user.roles = [payload.role];
@@ -184,7 +185,7 @@ export function authOptional(req, res, next) {
       }
       applyUser(req, user);
     } catch (err) {
-      if (ALLOW_DEV_TOKENS && err && err.name === 'TokenExpiredError') {
+      if (!isProd && err && err.name === 'TokenExpiredError') {
         const payload = jwt.decode(token);
         const user = hydrateUserFromPayload(payload) || {};
         if (!user.roles?.length && payload?.role) {
