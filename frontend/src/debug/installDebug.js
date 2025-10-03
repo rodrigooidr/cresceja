@@ -43,7 +43,15 @@
         const h = new Headers(init.headers || {});
         const token = getToken();
         const orgId = getOrg();
-        if (token && !h.has('Authorization')) h.set('Authorization', `Bearer ${token}`);
+        if (token) {
+          const cur = h.get('Authorization') || h.get('authorization') || '';
+          if (!cur) {
+            h.set('Authorization', `Bearer ${token}`);
+          } else if (cur.includes(',')) {
+            h.set('Authorization', cur.split(',')[0].trim());
+          }
+        }
+        if (h.has('authorization')) h.delete('authorization');
         if (orgId && !h.has('X-Org-Id')) h.set('X-Org-Id', orgId);
         init = { ...init, headers: h };
       }
@@ -56,8 +64,18 @@
   if (typeof XMLHttpRequest !== 'undefined' && !XMLHttpRequest.__DEBUG_XHR_PATCHED__) {
     const oOpen = XMLHttpRequest.prototype.open;
     const oSend = XMLHttpRequest.prototype.send;
+    const oSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+      try {
+        const key = typeof name === 'string' ? name.toLowerCase() : '';
+        if (!this.__debugHeaders) this.__debugHeaders = {};
+        if (key) this.__debugHeaders[key] = value;
+      } catch {}
+      return oSetRequestHeader.call(this, name, value);
+    };
     XMLHttpRequest.prototype.open = function (m, u, a, us, pw) {
       this.__isApi = isApi(u);
+      this.__debugHeaders = {};
       const ru = rewrite(u);
       return oOpen.call(this, m, ru, a, us, pw);
     };
@@ -65,7 +83,14 @@
       if (this.__isApi) {
         const token = getToken();
         const orgId = getOrg();
-        if (token) this.setRequestHeader('Authorization', `Bearer ${token}`);
+        if (token) {
+          const cur = this.__debugHeaders?.authorization || '';
+          if (!cur) {
+            this.setRequestHeader('Authorization', `Bearer ${token}`);
+          } else if (typeof cur === 'string' && cur.includes(',')) {
+            this.setRequestHeader('Authorization', cur.split(',')[0].trim());
+          }
+        }
         if (orgId) this.setRequestHeader('X-Org-Id', orgId);
       }
       return oSend.call(this, body);

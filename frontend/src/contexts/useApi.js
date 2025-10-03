@@ -64,8 +64,8 @@ export function useApi() {
   const { token } = useAuth();
   const config = {
     baseURL: "/api",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
   };
+  void token; // garante re-render quando o token mudar, sem injetar header aqui
 
   const candidates = process.env.NODE_ENV === "test"
     ? [apiModule, inboxApi, axios]
