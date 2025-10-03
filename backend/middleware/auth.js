@@ -19,38 +19,56 @@ import { isUuid } from '../utils/isUuid.js';
 const isProd = String(process.env.NODE_ENV) === 'production';
 const SECRET = process.env.JWT_SECRET || 'dev-change-me';
 
-export function auth(req, res, next) {
+export function authRequired(req, res, next) {
   try {
     const token = extractBearerToken(req);
-    if (!token) {
-      return res.status(401).json({ error: "invalid_token", message: "invalid token" });
-    }
+    if (!token) return res.status(401).json({ error: "invalid_token", message: "invalid token" });
 
     let payload;
     try {
       payload = jwt.verify(token, SECRET);
-    } catch (err) {
-      if (isProd) throw err;
-      // Em dev, destrava com decode (sem verify) para não travar fluxo local
+    } catch (e) {
+      if (isProd) throw e;
       payload = jwt.decode(token) || {};
     }
 
-    const payloadObj = (payload && typeof payload === 'object') ? payload : {};
-
-    const user = {
-      ...payloadObj,
-      id: payloadObj.id || payloadObj.sub || 'dev-user',
-      email: payloadObj.email || 'dev@example.com',
-      name: payloadObj.name || 'Dev User',
-      org_id: payloadObj.org_id,
-      roles: payloadObj.roles || [],
-      role: payloadObj.role || 'OrgOwner',
+    req.user = {
+      id: payload?.id || payload?.sub || 'dev-user',
+      email: payload?.email || 'dev@example.com',
+      name: payload?.name || 'Dev User',
+      org_id: payload?.org_id,
+      roles: payload?.roles || [],
+      role: payload?.role || 'OrgOwner',
     };
-    req.user = user;
-    next();
-  } catch (e) {
+    return next();
+  } catch {
     return res.status(401).json({ error: "invalid_token", message: "invalid token" });
   }
+}
+
+export function authOptional(req, res, next) {
+  try {
+    const token = extractBearerToken(req);
+    if (!token) return next();
+
+    let payload;
+    try {
+      payload = jwt.verify(token, SECRET);
+    } catch (e) {
+      if (isProd) throw e;
+      payload = jwt.decode(token) || {};
+    }
+
+    req.user = {
+      id: payload?.id || payload?.sub || 'dev-user',
+      email: payload?.email || 'dev@example.com',
+      name: payload?.name || 'Dev User',
+      org_id: payload?.org_id,
+      roles: payload?.roles || [],
+      role: payload?.role || 'OrgOwner',
+    };
+  } catch {}
+  return next();
 }
 
 export function normalizeRoles(req, _res, next) {
@@ -172,8 +190,8 @@ export function orgScope(req, res, next) {
 }
 
 /* ---- Aliases de compatibilidade com código legado ---- */
-export const authRequired = auth;
-export const ensureAuth = auth;
-export const requireAuth = auth;
+export const auth = authRequired;
+export const ensureAuth = authRequired;
+export const requireAuth = authRequired;
 
-export default auth;
+export default authRequired;
