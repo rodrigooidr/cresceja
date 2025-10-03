@@ -6,9 +6,13 @@ module.exports = function (app) {
     ['/api', '/auth'], // <— apenas rotas de backend
     createProxyMiddleware({
       target: 'http://localhost:4000',
-      changeOrigin: true,
+      changeOrigin: false,
+      xfwd: true,
       ws: false, // não proxie /ws do dev-server
       logLevel: 'warn',
+      onProxyReq(proxyReq) {
+        return proxyReq;
+      },
     })
   );
 };

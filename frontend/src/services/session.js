@@ -1,7 +1,6 @@
 const globalScope = typeof globalThis !== 'undefined' ? globalThis : {};
 
-const ORG_STORAGE_PRIMARY_KEY = 'active_org_id';
-const ORG_STORAGE_LEGACY_KEYS = ['activeOrgId', 'orgId', 'org_id'];
+const ORG_KEYS_LEGACY = ['org_id', 'active_org_id', 'activeOrgId', 'orgId'];
 
 function getLocalStorage() {
   try {
@@ -13,18 +12,6 @@ function getLocalStorage() {
     }
   } catch {}
   return null;
-}
-
-function syncOrgId(storage, value) {
-  if (!storage) return;
-  const keys = [ORG_STORAGE_PRIMARY_KEY, ...ORG_STORAGE_LEGACY_KEYS];
-  try {
-    if (value != null && value !== '') {
-      for (const key of keys) storage.setItem(key, value);
-    } else {
-      for (const key of keys) storage.removeItem(key);
-    }
-  } catch {}
 }
 
 function resolveUrlPath(urlLike) {
@@ -67,54 +54,72 @@ export function getTokenFromStorage() {
 
 export const getToken = getTokenFromStorage;
 
-export function getOrgIdFromStorage() {
+function resolveOrgIdFromStorage() {
   const storage = getLocalStorage();
   if (!storage) return null;
 
-  const keys = [ORG_STORAGE_PRIMARY_KEY, ...ORG_STORAGE_LEGACY_KEYS];
-  for (const key of keys) {
-    const value = storage.getItem(key);
-    if (value != null && value !== '') {
-      const str = String(value);
-      syncOrgId(storage, str);
-      return str;
-    }
+  for (const key of ORG_KEYS_LEGACY) {
+    try {
+      const value = storage.getItem(key);
+      if (value) return String(value);
+    } catch {}
   }
 
-  const userOrg = safeParse(storage.getItem('user'))?.org_id ?? null;
-  if (userOrg != null && userOrg !== '') {
-    const str = String(userOrg);
-    syncOrgId(storage, str);
-    return str;
-  }
+  try {
+    const userOrg = safeParse(storage.getItem('user'))?.org_id ?? null;
+    if (userOrg) return String(userOrg);
+  } catch {}
 
   const fromGlobal = globalScope.__TEST_ORG__?.id || globalScope.__TEST_ORG_ID__;
-  if (fromGlobal != null && fromGlobal !== '') {
-    const str = String(fromGlobal);
-    syncOrgId(storage, str);
-    return str;
-  }
+  return fromGlobal ? String(fromGlobal) : null;
+}
 
+export function getActiveOrgId() {
+  const resolved = resolveOrgIdFromStorage();
+  if (resolved) {
+    try {
+      setActiveOrgId(resolved);
+    } catch {}
+    return resolved;
+  }
   return null;
 }
 
-export const getOrgId = getOrgIdFromStorage;
-export const getActiveOrgId = getOrgIdFromStorage;
+export const getOrgIdFromStorage = getActiveOrgId;
+export const getOrgId = getActiveOrgId;
 
-export function setOrgIdInStorage(orgId) {
+export function setActiveOrgId(id) {
+  if (!id) return;
   const storage = getLocalStorage();
   if (!storage) return;
-  const value = orgId != null && orgId !== '' ? String(orgId) : null;
-  syncOrgId(storage, value);
+  const value = String(id);
+  try {
+    ORG_KEYS_LEGACY.forEach((key) => {
+      try { storage.removeItem(key); } catch {}
+    });
+    storage.setItem('orgId', value);
+  } catch {}
+}
+
+export function setOrgIdInStorage(orgId) {
+  if (!orgId) {
+    clearOrgIdInStorage();
+    return;
+  }
+  setActiveOrgId(orgId);
 }
 
 export function clearOrgIdInStorage() {
-  setOrgIdInStorage(null);
+  const storage = getLocalStorage();
+  if (!storage) return;
+  ORG_KEYS_LEGACY.forEach((key) => {
+    try { storage.removeItem(key); } catch {}
+  });
 }
 
 export async function authFetch(input, init = {}) {
   const token = getTokenFromStorage();
-  const storedOrgId = getOrgIdFromStorage();
+  const storedOrgId = getActiveOrgId();
 
   const isRequestInput = typeof Request !== 'undefined' && input instanceof Request;
   const urlLike = isRequestInput ? input.url : typeof input === 'string' ? input : input?.url || '';
@@ -124,12 +129,13 @@ export async function authFetch(input, init = {}) {
   let url = input;
   let options = { ...init };
   let headers;
+  let originalRequest = null;
 
   if (isRequestInput) {
-    const original = input.clone();
-    url = original.url;
+    originalRequest = input.clone();
+    url = originalRequest.url;
 
-    headers = new Headers(original.headers || undefined);
+    headers = new Headers(originalRequest.headers || undefined);
     if (init.headers) {
       const extra = new Headers(init.headers);
       extra.forEach((value, key) => headers.set(key, value));
@@ -150,7 +156,7 @@ export async function authFetch(input, init = {}) {
     const originalInit = {};
     for (const key of copyKeys) {
       if (Object.prototype.hasOwnProperty.call(init, key)) continue;
-      const value = original[key];
+      const value = originalRequest[key];
       if (value !== undefined) {
         originalInit[key] = value;
       }
@@ -165,7 +171,7 @@ export async function authFetch(input, init = {}) {
     if (Object.prototype.hasOwnProperty.call(init, 'body')) {
       options.body = init.body;
     } else {
-      options.body = original.body ?? undefined;
+      options.body = originalRequest.body ?? undefined;
     }
   } else {
     url = input;
@@ -175,7 +181,16 @@ export async function authFetch(input, init = {}) {
   options.headers = headers;
 
   if (token) headers.set('Authorization', `Bearer ${token}`);
+  else headers.delete('Authorization');
+
   if (orgId) headers.set('X-Org-Id', orgId);
+  else headers.delete('X-Org-Id');
+
+  if (options.credentials === undefined) {
+    const originalCredentials = originalRequest?.credentials ?? (isRequestInput ? input.credentials : undefined);
+    options.credentials =
+      init.credentials ?? originalCredentials ?? 'include';
+  }
 
   return fetch(url, options);
 }

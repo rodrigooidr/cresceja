@@ -11,6 +11,21 @@ import { PricingProvider } from "./contexts/PricingContext";   // se existir
 import { AuthProvider } from "./contexts/AuthContext";         // se existir
 import { OrgProvider } from "./contexts/OrgContext";
 
+(function migrateOrgKeys() {
+  if (typeof window === "undefined") return;
+  try {
+    const storage = window.localStorage;
+    if (!storage) return;
+    const legacy = ["org_id", "active_org_id", "activeOrgId"];
+    const existing = storage.getItem("orgId");
+    if (!existing) {
+      const firstLegacy = legacy.map((key) => storage.getItem(key)).find((value) => value);
+      if (firstLegacy) storage.setItem("orgId", firstLegacy);
+    }
+    legacy.forEach((key) => storage.removeItem(key));
+  } catch {}
+})();
+
 if (typeof window !== "undefined") {
   window.inboxApi = window.inboxApi || inboxApi;
 }

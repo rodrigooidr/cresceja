@@ -13,7 +13,17 @@ router.get('/inbox/alerts', authRequired, withOrg, (req, res) => {
 });
 
 router.get('/inbox/alerts/stream', authRequired, withOrg, (req, res) => {
-  const orgId = req.org?.id || null;
+  const queryOrg = req.query?.orgId || req.query?.org_id || null;
+  let orgId = (typeof req.org === 'string' ? req.org : req.org?.id) || null;
+
+  if (!orgId && req.user && !isProd) {
+    orgId = queryOrg ? String(queryOrg) : req.orgFromToken || null;
+    if (orgId) {
+      req.org = req.org && typeof req.org === 'object' ? req.org : {};
+      req.org.id = String(orgId);
+      req.orgId = String(orgId);
+    }
+  }
 
   if (!orgId && isProd) {
     return res.status(403).json({ error: 'ORG_REQUIRED' });

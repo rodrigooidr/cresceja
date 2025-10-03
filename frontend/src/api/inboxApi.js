@@ -1,8 +1,8 @@
 // src/api/inboxApi.js
 import axios from "axios";
 import {
-  getTokenFromStorage,
-  getOrgIdFromStorage,
+  getToken,
+  getActiveOrgId,
   setOrgIdInStorage,
   findOrgIdInUrl,
 } from "../services/session.js";
@@ -128,25 +128,15 @@ function pathOnly(u) {
 // ===== Auth/Org headers helpers =====
 function ensureAuthHeader(config) {
   try {
-    const token = getTokenFromStorage();
+    const token = getToken();
     if (!token) {
-      delHeader(config, "Authorization");
+      delHeader(config, 'Authorization');
       if (config.headers?.authorization) delete config.headers.authorization;
       return config;
     }
 
     if (!config.headers) config.headers = {};
-    const currentRaw = config.headers.Authorization ?? config.headers.authorization ?? '';
-    const sanitized = typeof currentRaw === 'string' ? currentRaw.split(',')[0].trim() : '';
-    const bearerMatch = sanitized.match(/^Bearer\s+(.+)$/i);
-    const currentToken = bearerMatch?.[1]?.trim();
-
-    if (!currentToken || currentToken !== token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      config.headers.Authorization = `Bearer ${currentToken}`;
-    }
-
+    config.headers.Authorization = `Bearer ${token}`;
     if (config.headers.authorization) delete config.headers.authorization;
   } catch {}
   return config;
@@ -173,7 +163,7 @@ function log(...args) {
 
 // ===== Boot headers (token/org) =====
 try {
-  const savedOrg = getOrgIdFromStorage();
+  const savedOrg = getActiveOrgId();
   if (savedOrg) {
     inboxApi.defaults.headers.common["X-Org-Id"] = savedOrg;
   } else if (inboxApi?.defaults?.headers?.common?.["X-Org-Id"]) {
@@ -194,6 +184,31 @@ inboxApi.interceptors.request.use((config) => {
     path.startsWith("/webhooks") ||
     path === "/health" ||
     path === "/ping";
+
+  let orgFromUrl = null;
+  try {
+    const baseCandidate = typeof window !== 'undefined' ? window.location.origin : API_BASE_URL;
+    const baseUrl =
+      baseCandidate && /^https?:/i.test(String(baseCandidate))
+        ? String(baseCandidate)
+        : 'http://localhost';
+    const parsed = new URL(config.url || '', baseUrl);
+    orgFromUrl =
+      parsed.searchParams.get('orgId') ||
+      parsed.pathname.match(/\/orgs\/([0-9a-f-]{36})/)?.[1] ||
+      null;
+  } catch {}
+  if (!orgFromUrl) {
+    try {
+      orgFromUrl = findOrgIdInUrl(config.url || '') || null;
+    } catch {
+      orgFromUrl = null;
+    }
+  }
+
+  const computedOrgId = computeOrgId();
+  const fallbackOrgId = computedOrgId ?? getActiveOrgId();
+  const orgId = orgFromUrl || fallbackOrgId || null;
 
   // Authorization
   if (noAuth) {
@@ -217,21 +232,18 @@ inboxApi.interceptors.request.use((config) => {
     if (isGlobal || noAuth || isPublic) {
       delHeader(config, "X-Org-Id");
     } else {
-      const url = config.url || "";
-      const pathOrgId = findOrgIdInUrl(url);
-      const activeOrgId = computeOrgId();
-      const headerOrgId = getHeader(config, "X-Org-Id");
-      const finalOrgId = pathOrgId || activeOrgId || headerOrgId || null;
-
-      if (finalOrgId) setHeader(config, "X-Org-Id", String(finalOrgId));
-      else delHeader(config, "X-Org-Id");
+      if (orgId) {
+        setHeader(config, "X-Org-Id", String(orgId));
+      } else {
+        delHeader(config, "X-Org-Id");
+      }
     }
   } catch {}
 
   // active channel header
   try {
-    const orgId = computeOrgId();
-    const key = orgId ? `active_channel_id::${orgId}` : null;
+    const channelOrgId = orgId || computedOrgId || computeOrgId();
+    const key = channelOrgId ? `active_channel_id::${channelOrgId}` : null;
     const ch = key ? localStorage.getItem(key) : null;
     if (ch) setHeader(config, 'X-Channel-Id', ch);
   } catch {}
