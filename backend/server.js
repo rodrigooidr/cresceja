@@ -42,7 +42,36 @@ if (process.env.NODE_ENV !== 'production') {
   const mask = (s) => (s ? String(s).slice(0, 3) + '***' : '(unset)');
   console.log('[BOOT] NODE_ENV=', process.env.NODE_ENV, ' JWT_SECRET=', mask(process.env.JWT_SECRET));
 }
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+function makePinoConfig() {
+  const level = process.env.LOG_LEVEL || 'info';
+  const pretty = process.env.LOG_PRETTY === '1' || process.env.NODE_ENV !== 'production';
+  if (pretty) {
+    return {
+      level,
+      transport: {
+        target: 'pino-pretty',
+        options: { colorize: true, singleLine: true, translateTime: 'SYS:HH:MM:ss' },
+      },
+    };
+  }
+  return { level };
+}
+
+let logger;
+try {
+  logger = pino(makePinoConfig());
+} catch (err) {
+  if (
+    err?.code === 'ERR_MODULE_NOT_FOUND' ||
+    err?.code === 'MODULE_NOT_FOUND' ||
+    /pino-pretty/i.test(err?.message || '')
+  ) {
+    console.warn('[LOG] pino-pretty indisponível; usando logger básico.');
+    logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+  } else {
+    throw err;
+  }
+}
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
