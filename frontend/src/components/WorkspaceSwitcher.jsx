@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { adminListOrgs, getMyOrgs, switchOrg } from '@/api/inboxApi';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  getOrgIdFromStorage,
+  getTokenFromStorage,
+  setOrgIdInStorage,
+} from '@/services/session.js';
 
 export default function WorkspaceSwitcher({ collapsed = false }) {
   const [items, setItems] = useState([]);
@@ -22,7 +27,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
   const isGlobalAdmin = roleSet.has('SuperAdmin') || roleSet.has('Support');
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+    const token = getTokenFromStorage();
     if (!token) return; // sem token, não busca orgs
 
     let alive = true;
@@ -55,15 +60,13 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
           name: org.name ?? org.razao_social ?? 'Org',
           slug: org.slug ?? null,
         }));
-        const storedCurrent =
-          localStorage.getItem('org_id') || localStorage.getItem('active_org_id') || '';
+        const storedCurrent = getOrgIdFromStorage() || '';
         const nextCurrent =
           storedCurrent || payload?.currentOrgId || (mapped[0]?.id ?? '');
         setItems(mapped);
         setCurrent(nextCurrent);
         if (nextCurrent) {
-          localStorage.setItem('org_id', nextCurrent);
-          localStorage.setItem('active_org_id', nextCurrent);
+          setOrgIdInStorage(nextCurrent);
         }
       } catch {
         if (alive) {
@@ -82,8 +85,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
     const orgId = e.target.value;
     setCurrent(orgId);
     if (orgId) {
-      localStorage.setItem('org_id', orgId);
-      localStorage.setItem('active_org_id', orgId);
+      setOrgIdInStorage(orgId);
     }
     try {
       await switchOrg(orgId);
@@ -95,7 +97,7 @@ export default function WorkspaceSwitcher({ collapsed = false }) {
   };
 
   // não renderiza sem token ou enquanto carrega, ou se só existe 0/1 organização
-  if (!localStorage.getItem('token')) return null;
+  if (!getTokenFromStorage()) return null;
   if (loading) return null;
   if (!items?.length || items.length <= 1) return null;
 

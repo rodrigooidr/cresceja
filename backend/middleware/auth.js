@@ -19,6 +19,17 @@ import { isUuid } from '../utils/isUuid.js';
 const isProd = String(process.env.NODE_ENV) === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret';
 
+function getToken(req) {
+  const bearer = extractBearer(req);
+  if (bearer) return bearer;
+
+  if (req.query?.access_token) {
+    return String(req.query.access_token);
+  }
+
+  return null;
+}
+
 function hydrateUser(payload = {}) {
   if (!payload || typeof payload !== "object") return undefined;
 
@@ -48,7 +59,7 @@ function hydrateUser(payload = {}) {
 }
 
 export function authRequired(req, res, next) {
-  const token = extractBearer(req);
+  const token = getToken(req);
   if (!token) {
     return res.status(401).json({ error: "invalid_token", message: "invalid token" });
   }
@@ -73,7 +84,7 @@ export function authRequired(req, res, next) {
 
 export function authOptional(req, res, next) {
   try {
-    const token = extractBearer(req);
+    const token = getToken(req);
     if (!token) return next();
 
     try {

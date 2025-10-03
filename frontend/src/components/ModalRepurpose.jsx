@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { authFetch } from '../services/session.js';
 
 function ModalRepurpose({ postId, onClose }) {
   const [type, setType] = useState('story');
@@ -6,11 +7,10 @@ function ModalRepurpose({ postId, onClose }) {
   const [output, setOutput] = useState(null);
 
   const handleRepurpose = async () => {
-    const res = await fetch(`/api/posts/${postId}/repurpose`, {
+    const res = await authFetch(`/api/posts/${postId}/repurpose`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-jwt-token'
       },
       body: JSON.stringify({ type, tone })
     });

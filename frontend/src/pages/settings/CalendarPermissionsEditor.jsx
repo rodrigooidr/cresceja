@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { authFetch } from "../../services/session.js";
 
 function normalizeList(list = []) {
   return list
@@ -69,7 +70,7 @@ export default function CalendarPermissionsEditor({ calendars = [], onSaved }) {
       },
     };
 
-    const response = await fetch(
+    const response = await authFetch(
       `/api/calendar/calendars/${encodeURIComponent(group.name)}/permissions`,
       {
         method: "PUT",

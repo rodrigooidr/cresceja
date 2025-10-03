@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import inboxApi, { setActiveOrg } from 'api/inboxApi';
+import { getOrgIdFromStorage } from '../services/session.js';
 
 export default function OrgSwitcher({ onChange }) {
   const [orgs, setOrgs] = useState([]);
-  const [sel, setSel] = useState(localStorage.getItem('active_org_id') || '');
+  const [sel, setSel] = useState(() => getOrgIdFromStorage() || '');
 
   useEffect(() => {
     inboxApi

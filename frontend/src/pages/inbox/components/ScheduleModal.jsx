@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { authFetch } from "../../../services/session.js";
 
 /**
  * Props:
@@ -81,10 +82,10 @@ export default function ScheduleModal({
     if (!open) return;
     setError("");
     Promise.all([
-      fetch("/api/calendar/calendars")
+      authFetch("/api/calendar/calendars")
         .then((r) => r.json())
         .catch(() => ({ items: [] })),
-      fetch("/api/calendar/services")
+      authFetch("/api/calendar/services")
         .then((r) => r.json())
         .catch(() => ({ items: [] })),
     ]).then(([cals, serv]) => {
@@ -127,7 +128,7 @@ export default function ScheduleModal({
 
     setSuggesting(true);
     try {
-      const r = await fetch(url.toString());
+      const r = await authFetch(url.toString());
       const js = await r.json();
       // o backend retorna { items: { [person]: [{start,end},...] } }
       const firstList = js?.items && Object.values(js.items)[0];
@@ -171,7 +172,7 @@ export default function ScheduleModal({
     };
 
     try {
-      const r = await fetch("/api/calendar/events", {
+      const r = await authFetch("/api/calendar/events", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

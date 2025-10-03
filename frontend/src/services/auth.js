@@ -1,5 +1,6 @@
 // src/services/auth.js
 import inboxApi, { setActiveOrg } from "../api/inboxApi";
+import { clearOrgIdInStorage, setOrgIdInStorage } from "./session.js";
 
 export function setToken(token) {
   if (typeof window !== "undefined") {
@@ -18,10 +19,10 @@ export async function login(email, password) {
   
   const orgId = org?.id ?? null;
   if (orgId) {
-    localStorage.setItem('activeOrgId', orgId);
+    setOrgIdInStorage(orgId);
     setActiveOrg(orgId);
   } else {
-    localStorage.removeItem('activeOrgId');
+    clearOrgIdInStorage();
     setActiveOrg(null);
   }
 
@@ -39,6 +40,8 @@ export async function login(email, password) {
 export function logout() {
   setToken(null);
   localStorage.removeItem("user");
+  clearOrgIdInStorage();
+  setActiveOrg(null);
 }
 
 

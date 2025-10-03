@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { authFetch } from '../services/session.js';
 
 function ApprovalPanel({ postId }) {
   const [history, setHistory] = useState([]);
@@ -6,9 +7,7 @@ function ApprovalPanel({ postId }) {
   const [status, setStatus] = useState('');
 
   const fetchHistory = async () => {
-    const res = await fetch(`/api/approvals/${postId}/approval-history`, {
-      headers: { Authorization: 'Bearer fake-jwt-token' }
-    });
+    const res = await authFetch(`/api/approvals/${postId}/approval-history`);
     const data = await res.json();
     setHistory(data);
     setStatus(data?.[0]?.status || 'draft');
@@ -19,19 +18,17 @@ function ApprovalPanel({ postId }) {
   }, [postId]);
 
   const requestApproval = async () => {
-    await fetch(`/api/approvals/${postId}/request-approval`, {
+    await authFetch(`/api/approvals/${postId}/request-approval`, {
       method: 'POST',
-      headers: { Authorization: 'Bearer fake-jwt-token' }
     });
     fetchHistory();
   };
 
   const approve = async () => {
-    await fetch(`/api/approvals/${postId}/approve`, {
+    await authFetch(`/api/approvals/${postId}/approve`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-jwt-token'
       },
       body: JSON.stringify({ comment })
     });
@@ -39,11 +36,10 @@ function ApprovalPanel({ postId }) {
   };
 
   const reject = async () => {
-    await fetch(`/api/approvals/${postId}/reject`, {
+    await authFetch(`/api/approvals/${postId}/reject`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer fake-jwt-token'
       },
       body: JSON.stringify({ comment })
     });

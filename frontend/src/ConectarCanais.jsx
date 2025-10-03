@@ -1,30 +1,29 @@
 import React, { useEffect, useState } from 'react';
+import { authFetch } from './services/session.js';
 
 export default function ConectarCanais() {
   const [status, setStatus] = useState(null);
   const [qr, setQr] = useState(null);
   const [to, setTo] = useState('55');
   const [body, setBody] = useState('Olá do CresceJá!');
-  const token = localStorage.getItem('token');
-
-  const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+  const headers = { 'Content-Type': 'application/json' };
 
   const init = async () => {
-    const res = await fetch('/api/test-whatsapp/init', { method: 'POST', headers });
+    const res = await authFetch('/api/test-whatsapp/init', { method: 'POST', headers });
     const data = await res.json();
     setStatus(data.status);
     setQr(data.qr);
   };
 
   const refreshStatus = async () => {
-    const res = await fetch('/api/test-whatsapp/status', { headers });
+    const res = await authFetch('/api/test-whatsapp/status', { headers });
     const data = await res.json();
     setStatus(data.status);
     setQr(data.qr);
   };
 
   const send = async () => {
-    const res = await fetch('/api/test-whatsapp/send', {
+    const res = await authFetch('/api/test-whatsapp/send', {
       method: 'POST',
       headers,
       body: JSON.stringify({ to, body })

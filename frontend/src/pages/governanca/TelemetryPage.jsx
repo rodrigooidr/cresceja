@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import TelemetryCharts from '@/pages/governanca/TelemetryCharts';
 import inboxApi from '@/api/inboxApi';
+import { authFetch } from '@/services/session.js';
 
 function Table({ title, cols, rows, empty = 'Sem dados' }) {
   return (
@@ -74,18 +75,18 @@ export default function TelemetryPage() {
         const overviewUrl = queryString
           ? `/api/telemetry/overview?${queryString}`
           : '/api/telemetry/overview';
-        const overviewPromise = fetch(overviewUrl).then((r) => r.json());
+        const overviewPromise = authFetch(overviewUrl).then((r) => r.json());
         const urlAppt = new URL('/api/telemetry/appointments/overview', window.location.origin);
         if (range.from) urlAppt.searchParams.set('from', range.from);
         if (range.to) urlAppt.searchParams.set('to', range.to);
-        const appointmentsPromise = fetch(urlAppt.toString())
+        const appointmentsPromise = authFetch(urlAppt.toString())
           .then((r) => r.json())
           .catch(() => ({ items: [] }));
 
         const funnelUrl = new URL('/api/telemetry/appointments/funnel', window.location.origin);
         if (range.from) funnelUrl.searchParams.set('from', range.from);
         if (range.to) funnelUrl.searchParams.set('to', range.to);
-        const funnelPromise = fetch(funnelUrl.toString())
+        const funnelPromise = authFetch(funnelUrl.toString())
           .then((r) => r.json())
           .catch(() => ({ items: [] }));
 
@@ -95,7 +96,7 @@ export default function TelemetryPage() {
         );
         if (range.from) personServiceUrl.searchParams.set('from', range.from);
         if (range.to) personServiceUrl.searchParams.set('to', range.to);
-        const personServicePromise = fetch(personServiceUrl.toString())
+        const personServicePromise = authFetch(personServiceUrl.toString())
           .then((r) => r.json())
           .catch(() => ({ items: [] }));
 

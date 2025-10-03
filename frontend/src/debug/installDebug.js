@@ -17,7 +17,11 @@
   }
   function getOrg() {
     try {
-      return localStorage.getItem('activeOrgId') || '';
+      return (
+        localStorage.getItem('active_org_id') ||
+        localStorage.getItem('activeOrgId') ||
+        ''
+      );
     } catch {
       return '';
     }

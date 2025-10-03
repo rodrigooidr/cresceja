@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { startSocketsSafe } from '../debug/installDebug';
 import escalationSound from '../assets/sounds/escalation.mp3';
+import { getOrgIdFromStorage, getTokenFromStorage } from '../services/session.js';
 
 export function useRealtimeInbox({ conversationId, onMessage, onConversation, onEscalation }) {
   const socketRef = useRef(null);
@@ -12,7 +13,7 @@ export function useRealtimeInbox({ conversationId, onMessage, onConversation, on
 
   // cria a conexão apenas 1x
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? window.localStorage?.getItem('token') : null;
+    const token = getTokenFromStorage();
     const socket = startSocketsSafe({
       path: '/socket.io',
       transports: ['websocket'],
@@ -50,7 +51,7 @@ export function useRealtimeInbox({ conversationId, onMessage, onConversation, on
   useEffect(() => {
     const socket = socketRef.current;
     if (!socket) return;
-    const orgId = localStorage.getItem('org_id');
+    const orgId = getOrgIdFromStorage();
     if (!orgId) return;
 
     socket.emit('join', { orgId });

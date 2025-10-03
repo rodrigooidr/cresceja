@@ -1,7 +1,12 @@
 // src/api/inboxApi.js
 import axios from "axios";
-import { getToken, getOrgId } from "../services/session.js";
-import { applyOrgIdHeader, computeOrgId } from "./orgHeader.js";
+import {
+  getTokenFromStorage,
+  getOrgIdFromStorage,
+  setOrgIdInStorage,
+  findOrgIdInUrl,
+} from "../services/session.js";
+import { computeOrgId } from "./orgHeader.js";
 
 const isBrowser = typeof window !== "undefined";
 const isTest = process.env.NODE_ENV === "test";
@@ -107,7 +112,7 @@ function pathOnly(u) {
 // ===== Auth/Org headers helpers =====
 function ensureAuthHeader(config) {
   try {
-    const token = getToken();
+    const token = getTokenFromStorage();
     if (!token) {
       delHeader(config, "Authorization");
       if (config.headers?.authorization) delete config.headers.authorization;
@@ -152,7 +157,7 @@ function log(...args) {
 
 // ===== Boot headers (token/org) =====
 try {
-  const savedOrg = getOrgId();
+  const savedOrg = getOrgIdFromStorage();
   if (savedOrg) {
     inboxApi.defaults.headers.common["X-Org-Id"] = savedOrg;
   } else if (inboxApi?.defaults?.headers?.common?.["X-Org-Id"]) {
@@ -196,7 +201,13 @@ inboxApi.interceptors.request.use((config) => {
     if (isGlobal || noAuth || isPublic) {
       delHeader(config, "X-Org-Id");
     } else {
-      config.headers = applyOrgIdHeader(config.headers || {});
+      const orgIdFromUrl = findOrgIdInUrl(config.url || "");
+      const resolvedOrgId = orgIdFromUrl || computeOrgId();
+      if (resolvedOrgId) {
+        setHeader(config, "X-Org-Id", String(resolvedOrgId));
+      } else {
+        delHeader(config, "X-Org-Id");
+      }
     }
   } catch {}
 
@@ -333,11 +344,10 @@ export function getAuthToken() { try { return localStorage.getItem("token"); } c
 
 export function setActiveOrg(id) {
   try {
+    setOrgIdInStorage(id);
     if (id) {
-      localStorage.setItem("active_org_id", id);
-      inboxApi.defaults.headers.common["X-Org-Id"] = id;
+      inboxApi.defaults.headers.common["X-Org-Id"] = String(id);
     } else {
-      localStorage.removeItem("active_org_id");
       delete inboxApi.defaults.headers.common["X-Org-Id"];
     }
   } catch {}

@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { authFetch } from '../services/session.js';
 
 function AiCreditsPanel() {
   const [credits, setCredits] = useState(null);
 
   useEffect(() => {
-    fetch('/api/ai-credits/status', {
-      headers: { Authorization: 'Bearer fake-jwt-token' }
-    })
+    authFetch('/api/ai-credits/status')
       .then(res => res.json())
       .then(data => setCredits(data));
   }, []);

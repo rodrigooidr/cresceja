@@ -5,6 +5,7 @@ import { canEditClients } from "../../auth/roles";
 import useWhatsApp from "../../hooks/useWhatsApp.js";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 import FilterBar from "../../ui/filters/FilterBar.jsx";
+import { setOrgIdInStorage } from "../../services/session.js";
 
 function coerce(payload) {
   if (!payload) return [];
@@ -44,17 +45,7 @@ export default function ClientsPage() {
     if (typeof setOrgIdHeaderProvider === "function") {
       setOrgIdHeaderProvider(() => selected || null);
     }
-    try {
-      const keyA = "activeOrgId";
-      const keyB = "active_org_id";
-      if (selected) {
-        localStorage.setItem(keyA, String(selected));
-        localStorage.setItem(keyB, String(selected));
-      } else {
-        localStorage.removeItem(keyA);
-        localStorage.removeItem(keyB);
-      }
-    } catch {}
+    setOrgIdInStorage(selected || null);
   }, [selected]);
 
   useEffect(() => {
