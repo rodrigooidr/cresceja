@@ -87,7 +87,7 @@ function applyUser(req, user) {
 }
 
 function applyDevBypassUser(req, token) {
-  // Em produção, só permite se ALLOW_DEV_TOKENS=1
+  // Em produção só habilita se ALLOW_DEV_TOKENS=1; em dev sempre (como antes).
   if (!token || (!allowDevTokens && isProd) || !DEV_BYPASS_TOKENS.has(token)) return false;
 
   const rawOrg = resolveDevOrg(req);

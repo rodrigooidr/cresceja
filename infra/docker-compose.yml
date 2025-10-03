@@ -45,6 +45,7 @@ services:
       NODE_ENV: production
       LOG_PRETTY: "0"
       JWT_SECRET: dev-change-me
+      ALLOW_DEV_TOKENS: "1"
       PORT: "4000"
       # Se o backend faz CORS, mantenha as origins separadas por vírgula
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
@@ -71,6 +72,7 @@ services:
       NODE_ENV: production
       LOG_PRETTY: "0"
       JWT_SECRET: dev-change-me
+      ALLOW_DEV_TOKENS: "1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,6 +92,7 @@ services:
       NODE_ENV: production
       LOG_PRETTY: "0"
       JWT_SECRET: dev-change-me
+      ALLOW_DEV_TOKENS: "1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +112,7 @@ services:
       NODE_ENV: production
       LOG_PRETTY: "0"
       JWT_SECRET: dev-change-me
+      ALLOW_DEV_TOKENS: "1"
     depends_on:
       postgres:
         condition: service_healthy
