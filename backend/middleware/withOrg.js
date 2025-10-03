@@ -3,62 +3,75 @@ import { isUuid } from '../utils/isUuid.js';
 
 const isProd = String(process.env.NODE_ENV) === 'production';
 
-function normalize(value) {
-  if (value == null) return null;
-  const trimmed = String(value).trim();
-  return trimmed === '' ? null : trimmed;
-}
+const pick = (value) => {
+  if (value == null) return '';
+  return String(value).trim().toLowerCase();
+};
 
 function setOrgOnRequest(req, orgId) {
+  const value = orgId != null && orgId !== '' ? String(orgId) : null;
   if (!req.org || typeof req.org !== 'object') {
-    req.org = { id: orgId ?? null };
-  } else {
-    req.org.id = orgId ?? null;
+    req.org = {};
   }
-  req.orgId = orgId ?? null;
+  req.org.id = value;
+  req.orgId = value;
+  req.orgResolved = value;
+}
+
+function collectOrgCandidates(req) {
+  return [
+    { source: 'header', value: req.get?.('x-org-id') ?? req.headers?.['x-org-id'] },
+    { source: 'query', value: req.query?.orgId ?? req.query?.org_id ?? req.query?.org },
+    { source: 'path', value: req.params?.orgId ?? req.params?.org_id ?? req.params?.id },
+    { source: 'cookie', value: req.cookies?.orgId ?? req.cookies?.org_id ?? null },
+    {
+      source: 'token',
+      value: req.orgFromToken ?? req.user?.org_id ?? req.user?.orgId ?? null,
+    },
+  ];
 }
 
 export function withOrg(req, res, next) {
-  const fromPath = normalize(req.params?.orgId ?? req.params?.id);
-  const fromHeader = normalize(req.get?.('x-org-id') ?? req.headers?.['x-org-id']);
-  const fromQuery = normalize(req.query?.orgId ?? req.query?.org_id ?? req.query?.org);
-  const fromToken = normalize(req.user?.org_id ?? req.user?.orgId);
+  const candidates = collectOrgCandidates(req);
+  const normalized = candidates
+    .map(({ source, value }) => ({ source, value, normalized: pick(value) }))
+    .filter((item) => item.normalized);
+  const uniq = [...new Set(normalized.map((item) => item.normalized))];
 
-  const resolved =
-    fromPath?.toLowerCase() ||
-    fromHeader?.toLowerCase() ||
-    fromQuery?.toLowerCase() ||
-    fromToken?.toLowerCase() ||
-    null;
+  const resolvedNormalized = uniq[0] || null;
+  const resolvedRaw = resolvedNormalized
+    ? normalized.find((item) => item.normalized === resolvedNormalized)?.value ?? resolvedNormalized
+    : null;
 
-  setOrgOnRequest(req, resolved);
+  setOrgOnRequest(req, resolvedRaw);
 
   if (!isProd && process.env.DEBUG_ORG === '1') {
-    // eslint-disable-next-line no-console
-    console.log('[withOrg]', {
-      path: fromPath || null,
-      header: fromHeader || null,
-      query: fromQuery || null,
-      token: fromToken || null,
-      resolved,
-    });
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[withOrg]', {
+        sources: candidates.reduce((acc, { source, value }) => {
+          acc[source] = value ?? null;
+          return acc;
+        }, {}),
+        resolved: resolvedRaw || null,
+        normalized: uniq,
+      });
+    } catch {}
   }
 
-  const candidates = [fromPath, fromHeader, fromQuery, fromToken]
-    .filter(Boolean)
-    .map((value) => value.toLowerCase());
+  if (!uniq.length) {
+    if (!isProd) {
+      setOrgOnRequest(req, null);
+      return next();
+    }
+    return res.status(403).json({ error: 'ORG_REQUIRED' });
+  }
 
-  const mismatch = candidates.length > 1 && new Set(candidates).size > 1;
-
-  if (mismatch && isProd) {
+  if (uniq.length > 1 && isProd) {
     return res.status(403).json({ error: 'ORG_MISMATCH' });
   }
 
-  if (!resolved) {
-    if (!isProd) return next();
-    return res.status(400).json({ error: 'ORG_REQUIRED' });
-  }
-
+  setOrgOnRequest(req, resolvedRaw);
   return next();
 }
 

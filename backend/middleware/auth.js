@@ -1,6 +1,5 @@
 // backend/middleware/auth.js (ESM)
 import jwt from "jsonwebtoken";
-import { extractBearer } from './_token.js';
 import {
   GLOBAL_ROLES,
   ORG_ROLES,
@@ -19,26 +18,48 @@ import { isUuid } from '../utils/isUuid.js';
 const isProd = String(process.env.NODE_ENV) === 'production';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-secret';
 
+function maskToken(token) {
+  if (!token) return '(empty)';
+  const str = String(token);
+  if (str.length <= 6) return `${str.slice(0, 2)}***`;
+  return `${str.slice(0, 3)}***${str.slice(-2)}`;
+}
+
+function debugTokenSource(source, token) {
+  if (isProd) return;
+  if (process.env.DEBUG_AUTH !== '1') return;
+  try {
+    // eslint-disable-next-line no-console
+    console.log('[auth]', { source, token: maskToken(token) });
+  } catch {}
+}
+
 function getToken(req) {
   const header = req.headers?.authorization ?? req.headers?.Authorization;
   if (typeof header === 'string' && header) {
     const first = header.split(',')[0]?.trim() ?? '';
     if (/^Bearer\s+/i.test(first)) {
       const cleaned = first.replace(/^Bearer\s+/i, '').trim();
-      if (cleaned) return cleaned;
+      if (cleaned) {
+        debugTokenSource('header', cleaned);
+        return cleaned;
+      }
     }
   }
 
   if (req.query?.access_token != null) {
-    return String(req.query.access_token);
+    const token = String(req.query.access_token);
+    debugTokenSource('query', token);
+    return token;
   }
 
-  if (req.cookies?.access_token != null) {
-    return String(req.cookies.access_token);
+  if (req.cookies?.token != null) {
+    const token = String(req.cookies.token);
+    debugTokenSource('cookie', token);
+    return token;
   }
 
-  const bearer = extractBearer(req);
-  return bearer || null;
+  return null;
 }
 
 function hydrateUser(payload = {}) {
@@ -69,45 +90,76 @@ function hydrateUser(payload = {}) {
   };
 }
 
+function applyUserFromPayload(req, payload, source = 'verified') {
+  const user = hydrateUser(payload);
+  if (!user) return false;
+  req.user = user;
+  const orgFromToken =
+    user.org_id ??
+    user.orgId ??
+    (user.org && (user.org.id || user.org.org_id)) ??
+    null;
+  req.orgFromToken = orgFromToken != null && orgFromToken !== '' ? String(orgFromToken) : null;
+  if (!isProd && process.env.DEBUG_AUTH === '1') {
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[auth:user]', { source, orgFromToken: req.orgFromToken || null });
+    } catch {}
+  }
+  return true;
+}
+
 export function authRequired(req, res, next) {
+  req.orgFromToken = null;
   const token = getToken(req);
   if (!token) {
+    if (!isProd) {
+      req.user = req.user || { dev: true };
+      req.orgFromToken = null;
+      return next();
+    }
     return res.status(401).json({ error: "invalid_token", message: "invalid token" });
   }
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    req.user = hydrateUser(payload) || undefined;
-    return next();
+    if (applyUserFromPayload(req, payload, 'verified')) {
+      return next();
+    }
   } catch (err) {
     if (!isProd) {
       try {
         const decoded = jwt.decode(token);
-        if (decoded) {
-          req.user = hydrateUser(decoded) || undefined;
+        if (decoded && applyUserFromPayload(req, decoded, 'decoded')) {
           return next();
         }
       } catch {}
     }
     return res.status(401).json({ error: "invalid_token", message: "invalid token" });
   }
+
+  return res.status(401).json({ error: "invalid_token", message: "invalid token" });
 }
 
 export function authOptional(req, res, next) {
   try {
+    req.orgFromToken = null;
     const token = getToken(req);
-    if (!token) return next();
+    if (!token) {
+      if (!isProd) {
+        req.user = req.user || { dev: true };
+      }
+      return next();
+    }
 
     try {
       const payload = jwt.verify(token, JWT_SECRET);
-      req.user = hydrateUser(payload) || undefined;
+      applyUserFromPayload(req, payload, 'verified');
     } catch (err) {
       if (isProd) throw err;
       try {
         const decoded = jwt.decode(token);
-        if (decoded) {
-          req.user = hydrateUser(decoded) || undefined;
-        }
+        if (decoded) applyUserFromPayload(req, decoded, 'decoded');
       } catch {}
     }
   } catch {}
