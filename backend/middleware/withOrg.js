@@ -17,61 +17,35 @@ function setOrgOnRequest(req, orgId) {
   } else {
     req.org = null;
   }
-  req.orgId = value;
+  req.orgId = value || undefined;
   return value;
 }
 
-// helper: pega possivel org do path /api/orgs/:id/* ou /api/inbox/... com ?orgId
-function orgFromPath(req) {
-  const path = req.path || req.originalUrl || '';
-  const match = path.match(/\/api\/orgs\/([a-f0-9-]{36})/i);
-  if (match?.[1]) return match[1];
-  return null;
-}
-
 function resolveOrgId(req) {
-  const fromPath = normalize(
-    orgFromPath(req) ??
-      req.params?.orgId ??
-      req.params?.org_id ??
-      req.params?.id ??
-      null
-  );
+  const fromPath = normalize(req.params?.orgId ?? req.params?.org_id ?? null);
   const fromHeader = normalize(req.get?.('x-org-id') ?? req.headers?.['x-org-id']);
   const fromQuery = normalize(req.query?.orgId ?? req.query?.org_id);
-  const fromToken = normalize(req.orgFromToken ?? req.user?.org_id ?? req.user?.orgId);
-  const fromCookie = normalize(req.cookies?.orgId ?? req.cookies?.org_id);
+  const fromToken = normalize(req.user?.org_id ?? req.user?.orgId ?? req.orgFromToken);
+  const fromCookie = normalize(req.cookies?.org_id ?? req.cookies?.orgId);
 
-  return (
-    fromPath ||
-    fromHeader ||
-    fromQuery ||
-    fromToken ||
-    fromCookie ||
-    null
-  );
+  return fromPath || fromHeader || fromQuery || fromToken || fromCookie || null;
 }
 
 export function withOrg(req, res, next) {
+  const fromPath = normalize(req.params?.orgId ?? req.params?.org_id ?? null);
   const resolved = setOrgOnRequest(req, resolveOrgId(req));
 
   if (isProd) {
     if (!resolved) {
       return res
         .status(403)
-        .json({ error: 'org_required', message: 'organization id required' });
+        .json({ error: 'org_required', message: 'organization required' });
     }
-
-    const tokenOrg = normalize(req.user?.org_id ?? req.user?.orgId);
-    if (tokenOrg && resolved && tokenOrg.toLowerCase() !== resolved.toLowerCase()) {
+    if (fromPath && resolved && fromPath.toLowerCase() !== resolved.toLowerCase()) {
       return res
         .status(403)
         .json({ error: 'org_mismatch', message: 'organization mismatch' });
     }
-  }
-
-  if (!resolved) {
-    req.org = null;
   }
 
   return next();
