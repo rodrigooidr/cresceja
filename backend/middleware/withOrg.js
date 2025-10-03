@@ -1,16 +1,28 @@
 import { pool } from '#db';
 import { isUuid } from '../utils/isUuid.js';
 
-// Middleware leve: apenas garante que req.orgId seja definido caso exista no token/req
-export function withOrg(req, _res, next) {
-  req.orgId = req.orgId || req.user?.org_id || req.user?.orgId || null;
-  next();
+export function withOrg(req, res, next) {
+  const headerOrg = req.headers?.['x-org-id'];
+  const queryOrg = req.query?.orgId || req.params?.orgId;
+  const claimOrg = req.user?.org_id || req.user?.orgId;
+
+  req.orgId = String(headerOrg || queryOrg || claimOrg || '').trim();
+
+  if (!req.orgId) {
+    return res.status(400).json({
+      error: 'missing_org',
+      message: 'Envie X-Org-Id header ou orgId',
+    });
+  }
+
+  return next();
 }
 
 // Middleware completo usado nas rotas que precisam de escopo/org + conexão pg
 export async function withOrgScope(req, res, next) {
   try {
     withOrg(req, res, () => {});
+    if (res.headersSent) return;
 
     const user = req.user || {};
     let orgId = req.orgId;

@@ -1,18 +1,19 @@
-// ESM
-export function extractBearerToken(req) {
-  // 1) Authorization (normaliza vírgulas/dúplicas)
-  let raw = req.headers?.authorization || req.headers?.Authorization || '';
-  if (typeof raw === 'string' && raw.includes(',')) raw = raw.split(',')[0];
-  const m = /^Bearer\s+(.+)$/i.exec(raw || '');
-  if (m?.[1]) return m[1].trim();
+// backend/middleware/_token.js
+export function extractBearer(req) {
+  const rawHeader = req.headers?.authorization ?? req.headers?.Authorization ?? '';
+  const candidates = String(rawHeader || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((value) => value.replace(/^Bearer\s+/i, ''));
 
-  // 2) Query (?access_token= ou ?token=) — útil p/ EventSource
-  const q = req.query?.access_token || req.query?.token;
-  if (typeof q === 'string' && q.length > 10) return q.trim();
+  if (req.query?.access_token) {
+    candidates.unshift(String(req.query.access_token));
+  }
 
-  // 3) Cookie (se existir)
-  const c = req.cookies?.access_token;
-  if (typeof c === 'string' && c.length > 10) return c.trim();
+  if (req.cookies?.authToken) {
+    candidates.unshift(String(req.cookies.authToken));
+  }
 
-  return null;
+  return candidates.find((token) => token && token.length > 10) || null;
 }

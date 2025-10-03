@@ -1,4 +1,38 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { getToken, getOrgId } from '../../../services/session.js';
+
+export function openAlertsStream() {
+  if (typeof EventSource !== 'function') return null;
+
+  const token = getToken();
+  if (!token) return null;
+
+  const orgId = getOrgId();
+  const params = new URLSearchParams();
+  params.set('access_token', token);
+  if (orgId) params.set('orgId', orgId);
+
+  const url = `/api/inbox/alerts/stream?${params.toString()}`;
+  return new EventSource(url, { withCredentials: false });
+}
+
+function buildAuthHeaders(base) {
+  const headers = { ...(base || {}) };
+  const token = getToken();
+  if (token && !headers.Authorization) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const orgId = getOrgId();
+  if (orgId && !headers['X-Org-Id']) {
+    headers['X-Org-Id'] = orgId;
+  }
+  return headers;
+}
+
+function authFetch(url, options = {}) {
+  const headers = buildAuthHeaders(options.headers);
+  return fetch(url, { ...options, headers });
+}
 
 function createBeep({ volume = 1, ms = 700 }) {
   try {
@@ -26,7 +60,7 @@ export function useInboxAlerts() {
 
   // load org sound config once
   useEffect(() => {
-    fetch('/api/ai/settings')
+    authFetch('/api/ai/settings')
       .then((r) => r.json())
       .then((data) => {
         const url = data?.alert_sound || null;
@@ -54,7 +88,7 @@ export function useInboxAlerts() {
 
   // initial load of unacked alerts
   useEffect(() => {
-    fetch('/api/inbox/alerts')
+    authFetch('/api/inbox/alerts')
       .then(async (r) => {
         if (r.status === 204) return { items: [] };
         try { return await r.json(); } catch { return { items: [] }; }
@@ -69,10 +103,8 @@ export function useInboxAlerts() {
 
   // SSE stream
   useEffect(() => {
-    if (typeof EventSource !== 'function') return () => {};
-    const t = typeof window !== 'undefined' ? localStorage.getItem('token') || '' : '';
-    const url = `/api/inbox/alerts/stream?access_token=${encodeURIComponent(t || '')}`;
-    const es = new EventSource(url, { withCredentials: true });
+    const es = openAlertsStream();
+    if (!es) return () => {};
     esRef.current = es;
     es.addEventListener('alert', (ev) => {
       try {
@@ -96,7 +128,7 @@ export function useInboxAlerts() {
   }, [playSound]);
 
   const ack = useCallback(async (conversationId) => {
-    await fetch(`/api/inbox/alerts/${conversationId}/ack`, { method: 'POST' }).catch(() => {});
+    await authFetch(`/api/inbox/alerts/${conversationId}/ack`, { method: 'POST' }).catch(() => {});
     setPending((prev) => {
       const m = new Map(prev);
       m.delete(conversationId);

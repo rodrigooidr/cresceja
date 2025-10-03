@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authRequired } from '../middleware/auth.js';
-import { extractBearerToken } from '../middleware/_token.js';
+import { extractBearer } from '../middleware/_token.js';
 import { withOrg } from '../middleware/withOrg.js';
 
 const router = Router();
@@ -32,7 +32,7 @@ router.get('/whoami', authRequired, withOrg, (req, res) => {
 router.get('/authdump', (req, res) => {
   res.json({
     authHeader: req.headers?.authorization || null,
-    tokenExtracted: extractBearerToken(req),
+    tokenExtracted: extractBearer(req),
     queryToken: req.query?.access_token || req.query?.token || null,
   });
 });

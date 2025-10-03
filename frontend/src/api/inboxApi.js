@@ -1,5 +1,6 @@
 // src/api/inboxApi.js
 import axios from "axios";
+import { getToken, getOrgId } from "../services/session.js";
 import { applyOrgIdHeader, computeOrgId } from "./orgHeader.js";
 
 const isBrowser = typeof window !== "undefined";
@@ -106,16 +107,26 @@ function pathOnly(u) {
 // ===== Auth/Org headers helpers =====
 function ensureAuthHeader(config) {
   try {
-    const t = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    if (!t) return config;
-    const cur = String(config.headers?.Authorization || config.headers?.authorization || "");
-    if (!/^Bearer\s+/i.test(cur)) {
-      config.headers = { ...(config.headers || {}), Authorization: `Bearer ${t}` };
+    const token = getToken();
+    if (!token) {
+      delHeader(config, "Authorization");
+      if (config.headers?.authorization) delete config.headers.authorization;
+      return config;
     }
-    if (config.headers?.Authorization?.includes(',')) {
-      config.headers.Authorization = config.headers.Authorization.split(',')[0];
+
+    if (!config.headers) config.headers = {};
+    const currentRaw = config.headers.Authorization ?? config.headers.authorization ?? '';
+    const sanitized = typeof currentRaw === 'string' ? currentRaw.split(',')[0].trim() : '';
+    const bearerMatch = sanitized.match(/^Bearer\s+(.+)$/i);
+    const currentToken = bearerMatch?.[1]?.trim();
+
+    if (!currentToken || currentToken !== token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      config.headers.Authorization = `Bearer ${currentToken}`;
     }
-    if (config.headers?.authorization) delete config.headers.authorization;
+
+    if (config.headers.authorization) delete config.headers.authorization;
   } catch {}
   return config;
 }
@@ -141,12 +152,11 @@ function log(...args) {
 
 // ===== Boot headers (token/org) =====
 try {
-  const savedOrg =
-    typeof window !== "undefined"
-      ? localStorage.getItem("activeOrgId") ?? localStorage.getItem("active_org_id")
-      : null;
+  const savedOrg = getOrgId();
   if (savedOrg) {
     inboxApi.defaults.headers.common["X-Org-Id"] = savedOrg;
+  } else if (inboxApi?.defaults?.headers?.common?.["X-Org-Id"]) {
+    delete inboxApi.defaults.headers.common["X-Org-Id"];
   }
 } catch {}
 
