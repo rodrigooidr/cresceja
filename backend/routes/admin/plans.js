@@ -10,14 +10,24 @@ import { getPlanFeatures, upsertPlanFeatures } from '../../services/plans.js';
 const router = Router();
 
 function normalizePlan(row) {
+  // garante array no modules e inclui label
+  const rawModules = row.modules;
+  const modules =
+    Array.isArray(rawModules)
+      ? rawModules
+      : (rawModules && typeof rawModules === 'object' && rawModules !== null
+          ? rawModules
+          : []); // fallback em array
+
   return {
     id: row.id,
     id_legacy_text: row.id_legacy_text ?? null,
+    label: row.label ?? row.name ?? null,     // <- novo
     name: row.name,
     currency: row.currency ?? 'BRL',
     price_cents: Number(row.price_cents ?? 0),
     monthly_price: row.monthly_price ?? null,
-    modules: row.modules ?? {},
+    modules,
     is_active: Boolean(row.is_active),
     is_published: Boolean(row.is_published),
     billing_period_months: Number(row.billing_period_months ?? 1),
