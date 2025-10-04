@@ -34,12 +34,11 @@ import inboxTemplatesRouter from './routes/inbox.templates.js';
 import inboxAlertsRouter from './routes/inbox.alerts.js';
 import inboxSettingsRouter from './routes/inbox.settings.js';
 import aiSettingsRouter from './routes/ai.settings.js';
+import aiCreditsStatusRouter from './routes/ai.credits.status.js';
+import integrationsRouter from './routes/integrations/index.js';
 import debugRouter from './routes/debug.js';
 import adminApp from './app.js';
-// NOVOS imports (compat e integrações)
-import integrationsRouter from './routes/integrations/index.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
-import aiCreditsStatusRouter from './routes/ai.credits.status.js';
 import testWhatsappRouter from './routes/testWhatsappRoutes.js';
 import onboardingRouter from './routes/onboarding.js';
 // Adicione outras rotas **existentes** se necessário.
@@ -132,10 +131,11 @@ app.use('/api/inbox', inboxTemplatesRouter);
 app.use('/api/orgs', organizationsRouter);
 app.use('/api/orgs', orgsFeaturesRouter);
 app.use('/api/ai', aiSettingsRouter);
-// NOVOS mounts
-app.use('/api/integrations', integrationsRouter); // para /api/integrations/**
+// 🔗 Novas rotas (precisavam ser montadas)
+app.use('/api/ai-credits', aiCreditsStatusRouter);
+app.use('/api/integrations', integrationsRouter);
+
 app.use('/api/calendar', calendarCompatRouter); // para /api/calendar/**
-app.use('/api/ai-credits', aiCreditsStatusRouter); // para /api/ai-credits/status
 app.use('/api/test-whatsapp', testWhatsappRouter); // para /api/test-whatsapp/**
 app.use('/api/onboarding', onboardingRouter); // expõe /api/onboarding/* (já existe o arquivo)
 
@@ -155,7 +155,7 @@ const clientDir = path.join(__dirname, '..', 'frontend', 'build');
 app.use(express.static(clientDir));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-// 404 básico da API
+// 404 básico da API (deixe por último)
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
 
 // Error handler
