@@ -337,7 +337,7 @@ async function _get(path, config = {}) {
     }
   }
 
-  if (url === "/admin/orgs") {
+  if (url === "/orgs") {
     const status =
       config?.params?.status || searchParams.get('status') || "active";
     const q = String(
@@ -782,7 +782,7 @@ const inboxApi = {
 function callListAdminOrgs(status = "active", options = {}) {
   const cfg = { ...(options || {}) };
   cfg.params = { ...(cfg.params || {}), status };
-  return inboxApi.get(`/admin/orgs`, cfg);
+  return inboxApi.get(`/orgs`, cfg);
 }
 
 async function callAdminListOrgs(params = {}, options = {}) {
@@ -790,7 +790,7 @@ async function callAdminListOrgs(params = {}, options = {}) {
   const normalized = { status: 'active', q: '', ...(params || {}) };
   cfg.params = { ...(cfg.params || {}), status: normalized.status };
   if (normalized.q) cfg.params.q = normalized.q;
-  const response = await inboxApi.get(`/admin/orgs`, cfg);
+  const response = await inboxApi.get(`/orgs`, cfg);
   const payload = response?.data;
   const list = Array.isArray(payload?.items)
     ? payload.items
@@ -807,7 +807,7 @@ async function callAdminListOrgs(params = {}, options = {}) {
 }
 
 function callPatchAdminOrg(orgId, payload, options = {}) {
-  return inboxApi.patch(`/admin/orgs/${orgId}`, payload, options);
+  return inboxApi.patch(`/orgs/${orgId}`, payload, options);
 }
 
 function callPutAdminOrgPlan(orgId, payload, options = {}) {

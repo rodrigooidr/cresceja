@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import inboxApi from '../../api/inboxApi';
+import { getAdminOrg } from '../../api/inboxApi';
 
 const tabs = ['overview','billing','whatsapp','integrations','users','credits','logs','data'];
 
@@ -12,8 +12,8 @@ export default function AdminOrgDetails(){
   useEffect(()=>{
     (async ()=>{
       try {
-        const res = await inboxApi.get(`/admin/orgs/${id}`, { meta:{ scope:'global' }});
-        setOrg(res.data);
+        const data = await getAdminOrg(id);
+        setOrg(data);
       } catch(e){
         console.error(e);
       }

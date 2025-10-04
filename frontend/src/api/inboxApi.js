@@ -7,6 +7,13 @@ import {
   findOrgIdInUrl,
 } from "../services/session.js";
 import { computeOrgId } from "./orgHeader.js";
+import {
+  listOrgs as listAdminOrgsBase,
+  getOrg as getAdminOrgBase,
+  createOrg as createAdminOrgBase,
+  updateOrg as updateAdminOrgBase,
+  deleteOrg as deleteAdminOrgBase,
+} from './admin/orgsApi';
 
 const isBrowser = typeof window !== "undefined";
 const isTest = process.env.NODE_ENV === "test";
@@ -405,41 +412,42 @@ function withGlobalScope(options = {}) {
   return next;
 }
 
-export async function adminListOrgs({ status = 'active', q = '' } = {}) {
-  const search = typeof q === 'string' ? q.trim() : '';
-  const params = { status };
-  if (search) params.q = search;
-  const config = withGlobalScope({ params });
-  const { data } = await api.get('/admin/orgs', config);
-  return data?.items ?? [];
-}
+export { listOrgs as adminListOrgs } from './admin/orgsApi';
 
 export async function listAdminOrgs(status = "active", options = {}) {
-  const config = withGlobalScope(options);
-  config.params = { ...(config.params || {}), status };
-  return inboxApi.get(`/admin/orgs`, config);
+  const params = { status };
+  const q =
+    options?.params?.q ??
+    options?.params?.search ??
+    options?.q ??
+    options?.search ??
+    '';
+  if (q) params.q = String(q).trim();
+  const extras = { ...(options?.params || {}) };
+  delete extras.q;
+  delete extras.search;
+  delete extras.status;
+  Object.entries(extras).forEach(([key, value]) => {
+    if (value != null) params[key] = value;
+  });
+  return listAdminOrgsBase(params);
 }
 
-export async function patchAdminOrg(orgId, payload, options = {}) {
-  return inboxApi.patch(`/admin/orgs/${orgId}`, payload, withGlobalScope(options));
+export async function patchAdminOrg(orgId, payload, _options = {}) {
+  return updateAdminOrgBase(orgId, payload);
 }
 
-export async function getAdminOrg(orgId, options = {}) {
+export async function getAdminOrg(orgId, _options = {}) {
   if (!orgId) return null;
-  const response = await api.get(`/admin/orgs/${orgId}`, withGlobalScope(options));
-  const data = response?.data;
-  if (!data || typeof data !== 'object') return null;
-  return data.org ?? data.organization ?? null;
+  return getAdminOrgBase(orgId);
 }
 
-export async function postAdminOrg(payload) {
-  const config = withGlobalScope();
-  const { data } = await api.post('/admin/orgs', payload, config);
-  return data;
+export async function postAdminOrg(payload, _options = {}) {
+  return createAdminOrgBase(payload);
 }
 
-export async function deleteAdminOrg(id) {
-  await api.delete(`/admin/orgs/${id}`, withGlobalScope());
+export async function deleteAdminOrg(id, _options = {}) {
+  return deleteAdminOrgBase(id);
 }
 
 export async function getCurrentOrg(options = {}) {

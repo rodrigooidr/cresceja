@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import inboxApi from "../../api/inboxApi";
+import { adminListOrgs } from "../../api/inboxApi";
 import useActiveOrgGate from "../../hooks/useActiveOrgGate";
 import { useOrg } from "../../contexts/OrgContext.jsx";
 
@@ -15,15 +15,11 @@ export default function OrgsListPage({ minRole = "SuperAdmin" }) {
     let alive = true;
     (async () => {
       try {
-        // Admin endpoint em ESCOPO GLOBAL (sem X-Org-Id)
-        const res = await inboxApi.get("/admin/orgs", {
-          params: { q },
-          meta: { scope: "global" },
-        });
-        const raw = res?.data;
+        const raw = await adminListOrgs({ q });
         const items =
           Array.isArray(raw?.items) ? raw.items :
           Array.isArray(raw?.orgs) ? raw.orgs :
+          Array.isArray(raw?.data) ? raw.data :
           Array.isArray(raw) ? raw : [];
         if (!alive) return;
         setState({ loading: false, items, error: null });

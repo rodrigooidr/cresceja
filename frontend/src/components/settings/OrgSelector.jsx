@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import inboxApi, { getImpersonateOrgId, setImpersonateOrgId } from 'api/inboxApi';
+import { adminListOrgs, getImpersonateOrgId, setImpersonateOrgId } from 'api/inboxApi';
 
 export default function OrgSelector({ onChanged }) {
   const [orgs, setOrgs] = useState([]);
@@ -13,15 +13,14 @@ export default function OrgSelector({ onChanged }) {
       setLoading(true);
       setError('');
       try {
-        const { data } = await inboxApi.get('/admin/orgs', {
-          params: { status: 'active' },
-          meta: { scope: 'global' },
-        });
+        const data = await adminListOrgs({ status: 'active' });
         if (!mounted) return;
         const list = Array.isArray(data?.data)
           ? data.data
           : Array.isArray(data?.items)
           ? data.items
+          : Array.isArray(data?.orgs)
+          ? data.orgs
           : Array.isArray(data)
           ? data
           : [];
