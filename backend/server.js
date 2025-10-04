@@ -131,6 +131,8 @@ app.use('/api/ai', aiSettingsRouter);
 app.use('/api', inboxCompatRouter);
 app.use('/api', crmCompatRouter);
 app.use('/api', aiCompatRouter);
+// Admin (/api/admin/*)
+app.use(adminApp);
 
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/debug', debugRouter);
@@ -140,9 +142,6 @@ if (process.env.NODE_ENV !== 'production') {
 const clientDir = path.join(__dirname, '..', 'frontend', 'build');
 app.use(express.static(clientDir));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-
-// monta as rotas admin (/api/admin/...)
-app.use(adminApp);
 
 // 404 básico da API
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
