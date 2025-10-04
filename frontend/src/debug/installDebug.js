@@ -305,6 +305,7 @@ export function startSocketsSafe(options = {}) {
   }
 }
 
+// EXPORTS — mantenha **apenas esta** linha de export no arquivo.
 export { getSocketUrl, socketsDisabled, startSocketsSafe };
 
 // Semeia orgs/conversas quando há mock em dev:
