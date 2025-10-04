@@ -1411,3 +1411,77 @@ BEGIN
     EXECUTE 'DROP TYPE public.org_role';
   END IF;
 END$$;
+
+-- Habilita UUID v4 via pgcrypto (gen_random_uuid)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Cria a tabela, se ainda não existir
+CREATE TABLE IF NOT EXISTS public.messages (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id            uuid NOT NULL,
+  conversation_id   uuid NOT NULL,
+
+  channel           text NOT NULL,                 -- ex.: 'whatsapp' | 'instagram' | 'messenger' | 'webchat'
+  direction         text NOT NULL,                 -- 'in' (recebida) | 'out' (enviada)
+
+  external_message_id text,                        -- id do provedor (twilio/meta/etc.)
+  sender_id         uuid,
+  sender_name       text,
+  sender_role       text,                          -- ex.: 'agent' | 'bot' | 'customer'
+
+  content           text,                          -- corpo textual
+  content_type      text DEFAULT 'text',           -- 'text' | 'image' | 'audio' | 'file' | ...
+  attachments       jsonb NOT NULL DEFAULT '[]',   -- lista de anexos
+  meta              jsonb NOT NULL DEFAULT '{}',   -- metadados diversos
+
+  status            text NOT NULL DEFAULT 'queued',-- 'queued'|'sent'|'delivered'|'read'|'failed'|'received'
+  error             text,                          -- mensagem de erro (se falhou)
+
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  updated_at        timestamptz NOT NULL DEFAULT now(),
+  sent_at           timestamptz,
+  delivered_at      timestamptz,
+  read_at           timestamptz
+);
+
+-- Garante a constraint pedida (nome exato) sem quebrar se já existir
+DO $$
+BEGIN
+  IF to_regclass('public.messages') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1
+        FROM pg_constraint
+       WHERE conname = 'messages_direction_check'
+         AND conrelid = to_regclass('public.messages')
+    ) THEN
+      ALTER TABLE public.messages
+        ADD CONSTRAINT messages_direction_check
+        CHECK (direction IN ('in','out'));
+    END IF;
+  END IF;
+END$$;
+
+-- (Opcional) valida status permitido
+DO $$
+BEGIN
+  IF to_regclass('public.messages') IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1
+        FROM pg_constraint
+       WHERE conname = 'messages_status_check'
+         AND conrelid = to_regclass('public.messages')
+    ) THEN
+      ALTER TABLE public.messages
+        ADD CONSTRAINT messages_status_check
+        CHECK (status IN ('queued','sent','delivered','read','failed','received'));
+    END IF;
+  END IF;
+END$$;
+
+-- Índices úteis (idempotentes)
+CREATE INDEX IF NOT EXISTS idx_messages_org    ON public.messages (org_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conv   ON public.messages (conversation_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_chan   ON public.messages (channel, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_status ON public.messages (status);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON public.messages (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_meta_gin ON public.messages USING GIN (meta);
