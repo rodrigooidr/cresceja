@@ -36,6 +36,12 @@ import inboxSettingsRouter from './routes/inbox.settings.js';
 import aiSettingsRouter from './routes/ai.settings.js';
 import debugRouter from './routes/debug.js';
 import adminApp from './app.js';
+// NOVOS imports (compat e integrações)
+import integrationsRouter from './routes/integrations/index.js';
+import calendarCompatRouter from './routes/calendar.compat.js';
+import aiCreditsStatusRouter from './routes/ai.credits.status.js';
+import testWhatsappRouter from './routes/testWhatsappRoutes.js';
+import onboardingRouter from './routes/onboarding.js';
 // Adicione outras rotas **existentes** se necessário.
 
 // Util
@@ -126,6 +132,12 @@ app.use('/api/inbox', inboxTemplatesRouter);
 app.use('/api/orgs', organizationsRouter);
 app.use('/api/orgs', orgsFeaturesRouter);
 app.use('/api/ai', aiSettingsRouter);
+// NOVOS mounts
+app.use('/api/integrations', integrationsRouter); // para /api/integrations/**
+app.use('/api/calendar', calendarCompatRouter); // para /api/calendar/**
+app.use('/api/ai-credits', aiCreditsStatusRouter); // para /api/ai-credits/status
+app.use('/api/test-whatsapp', testWhatsappRouter); // para /api/test-whatsapp/**
+app.use('/api/onboarding', onboardingRouter); // expõe /api/onboarding/* (já existe o arquivo)
 
 // Compat (mantém frontend antigo rodando)
 app.use('/api', inboxCompatRouter);
