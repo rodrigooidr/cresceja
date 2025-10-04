@@ -1,48 +1,12 @@
 {
-  "name": "cresceja",
+  "name": "cresceja-monorepo",
   "private": true,
-  "version": "1.0.0",
-  "scripts": {
-    "test:backend": "cross-env-shell NODE_OPTIONS=--experimental-vm-modules npm --prefix backend run test",
-    "test:backend:watch": "npm --prefix backend run test:watch",
-    "test:frontend": "npm --prefix frontend run test",
-    "test:all": "npm run test:backend && CI=1 npm run test:frontend",
-    "test": "npm run test:all",
-    "test:frontend:orgai": "npx jest --config frontend/jest.orgai.cjs --runInBand",
-    "test:orgai": "npm run test:backend && npm run test:frontend:orgai",
-    "dev:backend": "npm --prefix backend run dev",
-    "dev:frontend": "npm --prefix frontend start",
-    "dev:all": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
-    "test:backend:junit": "NODE_OPTIONS=--experimental-vm-modules JEST_JUNIT_OUTPUT=reports/junit/backend.xml npx jest --config backend/jest.config.cjs --reporters=default --reporters=jest-junit --runInBand",
-    "test:frontend:orgai:junit": "JEST_JUNIT_OUTPUT=reports/junit/frontend-orgai.xml npx jest --config frontend/jest.orgai.cjs --reporters=default --reporters=jest-junit --runInBand",
-    "ci:clean": "rm -rf node_modules package-lock.json backend/node_modules frontend/node_modules",
-    "ci:prepare-lock": "bash -lc 'if [ ! -f package-lock.json ]; then NPM_CONFIG_OPTIONAL=false npm i --package-lock-only --no-audit --no-fund; fi; sed -i \"s#ssh://git@github.com/#https://github.com/#g\" package-lock.json; sed -i \"s#git@github.com:#https://github.com/#g\" package-lock.json; sed -i \"s#git://#https://#g\" package-lock.json'",
-    "ci:install:no-optional": "NPM_CONFIG_OPTIONAL=false npm ci --no-progress",
-    "deps:rewrite-git": "bash -lc 'if [ -f package-lock.json ]; then sed -i \"s#ssh://git@github.com/#https://github.com/#g\" package-lock.json && sed -i \"s#git@github.com:#https://github.com/#g\" package-lock.json && sed -i \"s#git://#https://#g\" package-lock.json; fi'",
-    "preinstall": "bash -lc 'git config --global url.\"https://github.com/\".insteadOf ssh://git@github.com/ && git config --global url.\"https://github.com/\".insteadOf git@github.com: && git config --global url.\"https://\".insteadOf git:// && if [ -f package-lock.json ]; then sed -i \"s#ssh://git@github.com/#https://github.com/#g\" package-lock.json && sed -i \"s#git@github.com:#https://github.com/#g\" package-lock.json && sed -i \"s#git://#https://#g\" package-lock.json; fi'",
-    "deps:backend:lock": "npm --prefix backend i --package-lock-only --no-audit --no-fund",
-    "deps:backend:ci": "NPM_CONFIG_OPTIONAL=false npm --prefix backend ci --no-progress",
-    "test:backend:only": "NODE_OPTIONS=--experimental-vm-modules npm --prefix backend test -- --runInBand",
-    "fix:backend:deps": "npm --prefix backend i -D supertest express express-rate-limit node-fetch@2 zod dotenv pino axios luxon pg"
-  },
-  "overrides": {
-    "libsignal-node": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
-    "libsignal": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
-    "@whiskeysockets/baileys": {
-      "libsignal": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1",
-      "libsignal-node": "git+https://github.com/whiskeysockets/libsignal-node.git#e81ecfc32eb74951d789ab37f7e341ab66d5fff1"
-    },
-    "@whiskeysockets/eslint-config": "https://codeload.github.com/whiskeysockets/eslint-config/tar.gz/refs/heads/main"
-  },
-  "devDependencies": {
-    "concurrently": "^9.1.0",
-    "cross-env": "^10.1.0",
-    "cross-env-shell": "^7.0.3",
-    "jest": "^29.7.0",
-    "jest-junit": "^16.0.0"
-  },
   "workspaces": [
     "backend",
     "frontend"
-  ]
+  ],
+  "scripts": {
+    "preinstall": "node scripts/preinstall-fix.cjs",
+    "postinstall": "node scripts/postinstall-info.cjs"
+  }
 }

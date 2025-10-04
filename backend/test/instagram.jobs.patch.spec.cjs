@@ -9,7 +9,7 @@ if (!process.execArgv.join(' ').includes('--experimental-vm-modules')) {
 }
 
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 
 const initial = [
   { id:'j1', org_id:'o1', status:'pending', scheduled_at:new Date().toISOString() },

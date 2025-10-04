@@ -1,5 +1,5 @@
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 
 const axiosGet = jest.fn();
 const attachmentWorker = jest.fn();

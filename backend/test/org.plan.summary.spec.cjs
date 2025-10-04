@@ -1,4 +1,4 @@
-const express = require('express');
+import express from 'express';
 const request = require('supertest');
 
 describe('GET /api/orgs/:orgId/plan/summary', () => {

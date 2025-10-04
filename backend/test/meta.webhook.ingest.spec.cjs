@@ -1,5 +1,5 @@
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 const crypto = require('crypto');
 
 let router;

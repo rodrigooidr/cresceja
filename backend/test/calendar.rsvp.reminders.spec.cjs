@@ -1,5 +1,5 @@
 /* eslint-env jest */
-const express = require('express');
+import express from 'express';
 const request = require('supertest');
 
 const queryMock = jest.fn();

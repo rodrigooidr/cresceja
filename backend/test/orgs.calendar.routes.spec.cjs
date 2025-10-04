@@ -9,7 +9,7 @@ if (!process.execArgv.join(' ').includes('--experimental-vm-modules')) {
 }
 
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 
 process.env.GOOGLE_TOKEN_ENC_KEY = '12345678901234567890123456789012';
 

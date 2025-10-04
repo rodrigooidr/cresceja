@@ -9,7 +9,7 @@ if (!process.execArgv.join(' ').includes('--experimental-vm-modules')) {
 }
 
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 let router;
 const jobs = { job1:{ id:'job1', org_id:'o1', status:'pending', scheduled_at:'2024-01-01T00:00:00Z' } };
 const mockQuery = jest.fn((sql, params) => {

@@ -3,28 +3,29 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Dependências para builds que precisem de git/ssh
+# Dependências úteis para hooks que usam git/ssh (se não precisar, pode remover)
 RUN apk add --no-cache git openssh-client
 
-# Copia apenas os manifests primeiro (melhor cache de build)
+# 1) Copia apenas os manifests (melhor cache)
 COPY package*.json ./
 
-# Define ambiente e instala dependências de produção, de forma determinística
+# 2) Copia scripts antes do npm ci (necessário para pre/postinstall encontrarem os arquivos)
+#    Se o seu backend NÃO tiver a pasta /scripts, remova a linha abaixo.
+COPY scripts ./scripts
+
+# 3) Instala dependências de produção, determinístico
 ENV NODE_ENV=production
 RUN npm ci --omit=dev --no-audit --no-fund
 
-# Copia o resto do código
+# 4) Copia o restante do código
 COPY . .
 
-# Cria pasta persistente de uploads
+# 5) Prepara pasta de uploads com permissão correta
 RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
 
-# Usa usuário não-root
+# 6) Usa usuário não-root para rodar o app
 USER node
 
 EXPOSE 4000
-
-# força sobrescrita do arquivo com a versão atual
-COPY middleware/requireRole.js ./middleware/requireRole.js
 
 CMD ["node", "server.js"]

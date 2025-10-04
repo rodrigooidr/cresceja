@@ -1,7 +1,7 @@
 /* eslint-env jest */
 
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 
 async function setupApp({ role = 'OrgAdmin' } = {}) {
   jest.resetModules();

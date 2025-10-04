@@ -1,6 +1,6 @@
 /* eslint-disable no-undef */
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 
 const ORG_ID = '11111111-1111-1111-1111-111111111111';
 

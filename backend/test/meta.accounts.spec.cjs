@@ -1,5 +1,5 @@
 const request = require('supertest');
-const express = require('express');
+import express from 'express';
 
 const fbSub = jest.fn(() => Promise.resolve());
 const igSub = jest.fn(() => Promise.resolve());
