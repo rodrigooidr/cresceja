@@ -1,18 +1,38 @@
 import { Router } from 'express';
 import { authRequired, orgScope } from '../../middleware/auth.js';
 import whatsappSession from '../integrations/whatsapp.session.js';
+import { Pool } from 'pg';
 // Se/quando houver outros provedores, importe aqui
 // import whatsappCloud from '../integrations/whatsapp.cloud.js';
 
 const r = Router();
 r.use(authRequired, orgScope);
 
-// -------- Status & Events (stubs seguros) --------
-// O frontend consome isso para mostrar “dashboard de integrações”
-r.get('/status', async (_req, res) => {
-  // TODO: ligar com fonte real (DB), por enquanto devolve estrutura válida
-  return res.json({ ok: true, items: [] });
+// Pool Postgres
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX || 10),
+  idleTimeoutMillis: 30_000,
 });
+
+// -------- Status real (usa view/função SQL) --------
+r.get('/status', async (req, res) => {
+  try {
+    const orgId = req.orgId;
+    if (!orgId) return res.status(400).json({ error: 'missing_org', message: 'orgId not resolved' });
+    const { rows } = await pool.query(
+      'SELECT public.get_integrations_status($1) AS payload',
+      [orgId]
+    );
+    const payload = rows?.[0]?.payload ?? null;
+    return res.json(payload ?? { ok: true, whatsapp: [], other: [] });
+  } catch (err) {
+    req.log?.error?.({ err }, 'integrations-status failed');
+    return res.status(500).json({ error: 'integrations_status_failed' });
+  }
+});
+
+// -------- Events (mantém simples por ora; pode virar leitura de integration_events) --------
 r.get('/events', async (_req, res) => {
   return res.json({ ok: true, items: [] });
 });
