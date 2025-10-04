@@ -23,7 +23,7 @@ import authRouter from './routes/auth.js';
 import publicRouter from './routes/public.js';
 import contentRouter from './routes/content.js';
 import inboxCompatRouter from './routes/inbox.compat.js';
-import crmCompatRouter from './routes/crm.compat.js';
+import crmCompatRouter from './routes/crm.contact.js';
 import aiCompatRouter from './routes/ai.compat.js';
 import telemetryRouter from './routes/telemetry.js';
 import uploadsRouter from './routes/uploads.js';

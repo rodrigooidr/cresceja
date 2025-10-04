@@ -184,22 +184,24 @@ router.get('/', async (req, res, next) => {
       { rows: plan_features = [] },
     ] = await Promise.all([
       q(
-        `SELECT id,
-                id_legacy_text,
-                name,
-                monthly_price,
-                currency,
-                modules,
-                is_published,
-                is_active,
-                price_cents,
-                billing_period_months,
-                trial_days,
-                sort_order,
-                created_at,
-                updated_at
-           FROM public.plans
-          ORDER BY COALESCE(sort_order, 999999), name ASC`
+        `SELECT
+            p.id,
+            p.id_legacy_text,
+            COALESCE(p.label, p.name)         AS label,
+            p.name,
+            p.monthly_price,
+            p.currency,
+            COALESCE(p.modules, '[]'::jsonb)  AS modules,
+            p.is_published,
+            p.is_active,
+            p.price_cents,
+            p.billing_period_months,
+            p.trial_days,
+            p.sort_order,
+            p.created_at,
+            p.updated_at
+         FROM public.plans p
+         ORDER BY COALESCE(p.sort_order, 999999), p.name ASC`
       ),
       q(
         `SELECT code,
