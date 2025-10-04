@@ -35,6 +35,7 @@ import inboxAlertsRouter from './routes/inbox.alerts.js';
 import inboxSettingsRouter from './routes/inbox.settings.js';
 import aiSettingsRouter from './routes/ai.settings.js';
 import debugRouter from './routes/debug.js';
+import adminApp from './app.js';
 // Adicione outras rotas **existentes** se necessário.
 
 // Util
@@ -139,6 +140,9 @@ if (process.env.NODE_ENV !== 'production') {
 const clientDir = path.join(__dirname, '..', 'frontend', 'build');
 app.use(express.static(clientDir));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+// monta as rotas admin (/api/admin/...)
+app.use(adminApp);
 
 // 404 básico da API
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));

@@ -10,18 +10,20 @@ router.get('/plans', async (_req, res) => {
       SELECT
         p.id,
         p.name,
-        p.monthly_price              AS "monthlyPrice",
-        p.currency,
-        p.modules,
-        p.is_published               AS "is_published",
-        p.sort_order                 AS "sort_order",
-        p.is_free                    AS "is_free",
-        p.trial_days                 AS "trial_days",
-        p.billing_period_months      AS "billing_period_months",
-        COALESCE(pm.max_users, 1)    AS "max_users"
+        -- converte centavos p/ número, com fallback 0
+        (COALESCE(p.price_cents, 0) / 100.0)::numeric AS "monthlyPrice",
+        COALESCE(p.currency, 'BRL')                  AS currency,
+        COALESCE(p.modules, '[]'::jsonb)             AS modules,
+        COALESCE(p.is_published, true)               AS "is_published",
+        p.sort_order                                 AS "sort_order",
+        COALESCE(p.is_free, false)                   AS "is_free",
+        COALESCE(p.trial_days, 0)                    AS "trial_days",
+        COALESCE(p.billing_period_months, 1)         AS "billing_period_months",
+        COALESCE(pm.max_users, 1)                    AS "max_users"
       FROM public.plans p
       LEFT JOIN public.plans_meta pm ON pm.plan_id = p.id
-      WHERE p.is_published = TRUE
+      -- se não existir is_published, o COALESCE(true) acima garante exibição
+      WHERE COALESCE(p.is_published, true) = TRUE
       ORDER BY p.sort_order NULLS LAST, p.id
     `;
 

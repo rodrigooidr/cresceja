@@ -1,7 +1,17 @@
 import { Router } from 'express';
+import { authRequired } from '../middleware/auth.js';
+import { withOrg } from '../middleware/withOrg.js';
 
 const router = Router();
 const isProd = String(process.env.NODE_ENV) === 'production';
+
+router.get('/settings', authRequired, withOrg, async (req, res) => {
+  res.json({
+    ai_enabled: true,
+    handoff_keywords: ['humano', 'atendente', 'pessoa'],
+    templates_channels: ['whatsapp', 'instagram', 'facebook'],
+  });
+});
 
 router.get('/templates', (req, res) => {
   if (!req.org?.id && !isProd) return res.json([]);
