@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict NmGnak5rfNE7jCHSkWY2WHD8u3QgylPZBdgIbdwNbNtnnJm6Zyv4dlL0NA8vWLk
+\restrict cnq6d0maMvIwaPnh42uu7enofA8k0TV7nIJhQVOmhnc3Fs09FV3OZaavIDW8X6P
 
 -- Dumped from database version 16.10
 -- Dumped by pg_dump version 16.10
@@ -4537,5 +4537,5 @@ ALTER TABLE ONLY public.whatsapp_channels
 -- PostgreSQL database dump complete
 --
 
-\unrestrict NmGnak5rfNE7jCHSkWY2WHD8u3QgylPZBdgIbdwNbNtnnJm6Zyv4dlL0NA8vWLk
+\unrestrict cnq6d0maMvIwaPnh42uu7enofA8k0TV7nIJhQVOmhnc3Fs09FV3OZaavIDW8X6P
 
