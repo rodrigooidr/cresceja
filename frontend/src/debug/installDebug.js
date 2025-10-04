@@ -305,7 +305,7 @@ export function startSocketsSafe(options = {}) {
   }
 }
 
-export { getSocketUrl, socketsDisabled };
+export { getSocketUrl, socketsDisabled, startSocketsSafe };
 
 // Semeia orgs/conversas quando há mock em dev:
 try {
