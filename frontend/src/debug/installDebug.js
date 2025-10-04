@@ -285,7 +285,7 @@ try {
   io = io?.io || io?.default || io;
 } catch {}
 
-export function startSocketsSafe(options = {}) {
+function startSocketsSafe(options = {}) {
   if (!io || socketsDisabled) return null;
   try {
     const { url: overrideUrl, ...rest } = options || {};
