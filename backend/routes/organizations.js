@@ -15,7 +15,7 @@ router.get('/', authRequired, async (req, res, next) => {
          FROM public.organizations o
          JOIN public.org_users ou ON ou.org_id = o.id
         WHERE ou.user_id = $1
-        ORDER BY o.created_at DESC`,
+        ORDER BY o.created_at DESC NULLS LAST, o.id`,
       [userId]
     );
     res.json({ items: rows });
