@@ -323,7 +323,7 @@ api.__mockMetaReset = __mockMetaReset;
 // === Named exports esperados por testes ===
 // Observação: eles apenas delegam para o mock default (GET/POST etc.)
 export async function searchOrgs(query = "", opts = {}) {
-  return api.get("/admin/orgs", { ...(opts || {}), params: { q: query, ...(opts?.params || {}) } });
+  return api.get("/orgs", { ...(opts || {}), params: { q: query, ...(opts?.params || {}) } });
 }
 export async function searchClients(query = "", opts = {}) {
   return api.get("/admin/clients", { ...(opts || {}), params: { q: query, ...(opts?.params || {}) } });

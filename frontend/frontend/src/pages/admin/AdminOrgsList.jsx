@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import inboxApi from '../../api/inboxApi';
+import { adminListOrgs } from '../../api/inboxApi';
 import { useOrg } from '../../contexts/OrgContext.jsx';
 import useToastFallback from '../../hooks/useToastFallback';
 
@@ -36,11 +36,13 @@ export default function AdminOrgsList() {
     setLoading(true);
     setError(false);
     try {
-      const res = await inboxApi.get('/admin/orgs', {
-        params: { q: debouncedQ, page, pageSize: 20 },
-        meta: { scope: 'global' },
-      });
-      setItems(res.data.items || []);
+      const raw = await adminListOrgs({ q: debouncedQ, page, pageSize: 20 });
+      const list =
+        Array.isArray(raw?.items) ? raw.items :
+        Array.isArray(raw?.data) ? raw.data :
+        Array.isArray(raw?.orgs) ? raw.orgs :
+        Array.isArray(raw) ? raw : [];
+      setItems(list);
     } catch (e) {
       setError(true);
       toast({ title: 'Falha ao carregar organizações' });

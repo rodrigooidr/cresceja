@@ -1,46 +1,56 @@
-import inboxApi from '@/api/inboxApi';
+// src/api/admin/orgsApi.js
+// Rotas corretas: backend monta em /api/orgs (não /api/admin/orgs)
+const BASE = '/api/orgs';
 
-export async function fetchMyOrganizations() {
-  const { data } = await inboxApi.get('/api/orgs/me', {
-    meta: { scope: 'global' },
-  });
-  return Array.isArray(data?.items) ? data.items : [];
+let httpClientPromise;
+async function getHttpClient() {
+  if (!httpClientPromise) {
+    httpClientPromise = import('../inboxApi').then((module) => {
+      const client =
+        module?.default || module?.client || module?.api || module?.inboxApi;
+      if (!client) throw new Error('HTTP client indisponível');
+      return client;
+    });
+  }
+  return httpClientPromise;
 }
 
-export async function fetchAdminOrganizations({ status = 'active' } = {}) {
-  const { data } = await inboxApi.get('/api/admin/orgs', {
-    params: status ? { status } : {},
-    meta: { scope: 'global' },
-  });
-  return Array.isArray(data?.items) ? data.items : [];
+export async function listOrgs({ status, q, ...rest } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (q) params.set('q', q);
+  if (rest && typeof rest === 'object') {
+    Object.entries(rest).forEach(([key, value]) => {
+      if (value == null) return;
+      params.set(key, value);
+    });
+  }
+  const url = params.toString() ? `${BASE}?${params}` : BASE;
+  const http = await getHttpClient();
+  const { data } = await http.get(url);
+  return data;
 }
 
-export async function fetchAdminOrganization(orgId) {
-  if (!orgId) return null;
-  const { data } = await inboxApi.get(`/api/admin/orgs/${orgId}`, {
-    meta: { scope: 'global' },
-  });
-  return data?.organization ?? null;
+export async function getOrg(id) {
+  const http = await getHttpClient();
+  const { data } = await http.get(`${BASE}/${id}`);
+  return data;
 }
 
-export async function createAdminOrganization(payload) {
-  const { data } = await inboxApi.post('/api/admin/orgs', payload, {
-    meta: { scope: 'global' },
-  });
-  return data?.organization ?? null;
+export async function createOrg(payload) {
+  const http = await getHttpClient();
+  const { data } = await http.post(BASE, payload);
+  return data;
 }
 
-export async function updateAdminOrganization(orgId, payload) {
-  if (!orgId) throw new Error('orgId_required');
-  const { data } = await inboxApi.patch(`/api/admin/orgs/${orgId}`, payload, {
-    meta: { scope: 'global' },
-  });
-  return data?.organization ?? null;
+export async function updateOrg(id, payload) {
+  const http = await getHttpClient();
+  const { data } = await http.patch(`${BASE}/${id}`, payload);
+  return data;
 }
 
-export async function deleteAdminOrganization(orgId) {
-  if (!orgId) return;
-  await inboxApi.delete(`/api/admin/orgs/${orgId}`, {
-    meta: { scope: 'global' },
-  });
+export async function deleteOrg(id) {
+  const http = await getHttpClient();
+  const { data } = await http.delete(`${BASE}/${id}`);
+  return data;
 }
