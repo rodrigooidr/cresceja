@@ -123,7 +123,7 @@ function parseBoolean(value) {
   if (typeof value === 'string') {
     const trimmed = value.trim().toLowerCase();
     if (['true', '1', 'yes', 'sim'].includes(trimmed)) return true;
-    if (['false', '0', 'no', 'nao', 'não'].includes(trimmed)) return false;
+    if (['false', '0', 'no', 'nao', 'nÃ£o'].includes(trimmed)) return false;
   }
   throw new Error('invalid_boolean');
 }
@@ -630,7 +630,7 @@ router.post('/:id/duplicate', async (req, res) => {
       return res.status(404).json({ error: 'plan_not_found' });
     }
 
-    const duplicateName = `${source.name} (cópia)`;
+    const duplicateName = `${source.name} (cÃ³pia)`;
     const duplicateLegacy = makeLegacyId(
       `${source.name || 'plan'}-copy-${randomBytes(2).toString('hex')}`
     );

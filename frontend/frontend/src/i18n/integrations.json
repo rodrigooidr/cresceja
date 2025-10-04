@@ -1,0 +1,94 @@
+{
+  "pt-BR": {
+    "status": {
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "pending": "Pendente",
+      "connecting": "Conectando…",
+      "error": "Erro",
+      "unknown": "Indefinido"
+    },
+    "errors": {
+      "generic": "Falha ao completar a ação. Tente novamente.",
+      "load_status": "Falha ao carregar status.",
+      "connect": "Falha ao conectar.",
+      "subscribe": "Falha ao assinar webhook.",
+      "test": "Falha ao executar teste.",
+      "disconnect": "Falha ao desconectar."
+    },
+    "toasts": {
+      "whatsapp_cloud": {
+        "connect_success": "WhatsApp Cloud conectado",
+        "connect_error": "Erro ao conectar WhatsApp Cloud",
+        "subscribe_success": "Webhook assinado com sucesso",
+        "subscribe_error": "Erro ao assinar webhook",
+        "test_success": "Mensagem de teste enviada",
+        "test_error": "Erro no teste",
+        "disconnect_success": "WhatsApp Cloud desconectado",
+        "disconnect_error": "Erro ao desconectar WhatsApp Cloud"
+      },
+      "whatsapp_session": {
+        "connect_success": "Sessão WhatsApp iniciada",
+        "connect_error": "Erro ao iniciar sessão",
+        "test_success": "Mensagem de teste enviada",
+        "test_error": "Erro no teste",
+        "disconnect_success": "Sessão encerrada",
+        "disconnect_error": "Erro ao desconectar sessão"
+      },
+      "instagram": {
+        "connect_success": "Instagram conectado",
+        "connect_error": "Erro ao conectar Instagram",
+        "subscribe_success": "Webhook do Instagram ativo",
+        "subscribe_error": "Erro ao assinar webhook",
+        "test_success": "Teste enviado",
+        "test_error": "Erro no teste",
+        "disconnect_success": "Instagram desconectado",
+        "disconnect_error": "Erro ao desconectar Instagram"
+      },
+      "facebook": {
+        "connect_success": "Facebook conectado",
+        "connect_error": "Erro ao conectar Facebook",
+        "subscribe_success": "Webhook do Facebook ativo",
+        "subscribe_error": "Erro ao assinar webhook",
+        "test_success": "Teste enviado",
+        "test_error": "Erro no teste",
+        "disconnect_success": "Facebook desconectado",
+        "disconnect_error": "Erro ao desconectar Facebook"
+      },
+      "google_calendar": {
+        "connect_success": "Google Calendar conectado",
+        "connect_error": "Falha ao conectar Google Calendar",
+        "test_success": "Teste enviado",
+        "test_error": "Erro ao testar Google Calendar",
+        "disconnect_success": "Google Calendar desconectado",
+        "disconnect_error": "Erro ao desconectar Google Calendar"
+      },
+      "events": {
+        "load_error": "Erro ao carregar eventos de integrações"
+      }
+    },
+    "events": {
+      "title": "Eventos de Integrações",
+      "empty": "Nenhum evento encontrado no período selecionado.",
+      "provider_all": "Todos os provedores",
+      "period_all": "Todo o período",
+      "period_last_24h": "Últimas 24h",
+      "period_last_7d": "Últimos 7 dias",
+      "period_last_30d": "Últimos 30 dias",
+      "received_at": "Recebido em",
+      "provider": "Provedor",
+      "event_type": "Tipo de evento",
+      "summary": "Resumo",
+      "actions": "Ações",
+      "view_json": "Ver JSON",
+      "modal_title": "Detalhes do evento",
+      "close": "Fechar",
+      "loading": "Carregando eventos…"
+    },
+    "pagination": {
+      "showing": "Mostrando {{start}}-{{end}} de {{total}}",
+      "previous": "Anterior",
+      "next": "Próximo"
+    }
+  }
+}
