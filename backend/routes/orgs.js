@@ -1,14 +1,40 @@
 // backend/routes/orgs.js (ESM)
 import { Router } from "express";
 import { query as dbQuery } from "#db"; // mantém seu client já usado noutros módulos
+import { requireAuth, requireSuperAdmin } from "../middlewares/auth.js";
+import slugify from "slugify";
 import { z } from "zod";
 
 const router = Router();
 
 /* --- Auth mínimo (evita ReferenceError e garante req.user) --- */
-const requireAuth = (req, res, next) => {
+const fallbackRequireAuth = (req, res, next) => {
   if (req?.user?.id) return next();
   return res.status(401).json({ error: "unauthorized" });
+};
+
+const ensureAuth = (req, res, next) => {
+  try {
+    if (typeof requireAuth === "function") {
+      return requireAuth(req, res, next);
+    }
+  } catch {}
+  return fallbackRequireAuth(req, res, next);
+};
+
+const fallbackRequireSuperAdmin = (req, res, next) => {
+  const roles = new Set([req?.user?.role, ...(req?.user?.roles || [])].filter(Boolean));
+  if (roles.has("SuperAdmin")) return next();
+  return res.status(403).json({ error: "forbidden" });
+};
+
+const ensureSuperAdmin = (req, res, next) => {
+  try {
+    if (typeof requireSuperAdmin === "function") {
+      return requireSuperAdmin(req, res, next);
+    }
+  } catch {}
+  return fallbackRequireSuperAdmin(req, res, next);
 };
 
 /* --- Regras de acesso: SuperAdmin / Support têm acesso global --- */
@@ -17,12 +43,41 @@ function hasGlobalAccess(user) {
   return roles.has("SuperAdmin") || roles.has("Support");
 }
 
+async function getBillingHistoryForOrg(db, orgId) {
+  const client = db?.query ? db : { query: dbQuery };
+  const safeQuery = async (sql, params) => {
+    try {
+      const { rows } = await client.query(sql, params);
+      return rows || [];
+    } catch {
+      return [];
+    }
+  };
+
+  const invoices = await safeQuery(
+    `SELECT * FROM invoices WHERE org_id = $1 ORDER BY created_at DESC LIMIT 200`,
+    [orgId]
+  );
+
+  const plan_events = await safeQuery(
+    `SELECT * FROM org_plan_events WHERE org_id = $1 ORDER BY created_at DESC LIMIT 200`,
+    [orgId]
+  );
+
+  const usage = await safeQuery(
+    `SELECT * FROM org_credits_usage WHERE org_id = $1 ORDER BY period_start DESC LIMIT 200`,
+    [orgId]
+  );
+
+  return { invoices, plan_events, usage };
+}
+
 /* =========================================================================
    GET /api/orgs
    - SuperAdmin/Support: lista TODAS
    - Demais (OrgOwner/OrgAdmin/OrgAgent): apenas onde há vínculo em org_users
    ========================================================================= */
-router.get("/", requireAuth, async (req, res, next) => {
+router.get("/", ensureAuth, async (req, res, next) => {
   try {
     if (hasGlobalAccess(req.user)) {
       const { rows } = await dbQuery(
@@ -53,7 +108,7 @@ router.get("/", requireAuth, async (req, res, next) => {
    - SuperAdmin/Support podem selecionar qualquer uma
    - Demais, somente onde têm vínculo
    ========================================================================= */
-router.post("/select", requireAuth, async (req, res) => {
+router.post("/select", ensureAuth, async (req, res) => {
   try {
     const { orgId } = req.body || {};
     if (!orgId) return res.status(400).json({ error: "org_id_required" });
@@ -97,7 +152,7 @@ router.post("/select", requireAuth, async (req, res) => {
    - Lê org ativa do header X-Org-Id (prioritário), depois req.user.org_id
    - Verifica permissão (membro ou acesso global)
    ========================================================================= */
-router.get("/current", requireAuth, async (req, res, next) => {
+router.get("/current", ensureAuth, async (req, res, next) => {
   try {
     const orgId =
       req.headers["x-org-id"] || req.org?.id || req.user?.org_id || null;
@@ -129,7 +184,7 @@ router.get("/current", requireAuth, async (req, res, next) => {
 
 // ===== CODEx: BEGIN org plan/status/history endpoints =====
 // PUT /api/admin/orgs/:id/plan  -> define plano da organização
-router.put("/admin/orgs/:id/plan", requireAuth, async (req, res) => {
+router.put("/admin/orgs/:id/plan", ensureAuth, async (req, res) => {
   const id = req.params.id;
   const db = req.db?.query ? req.db : { query: dbQuery };
 
@@ -156,7 +211,7 @@ router.put("/admin/orgs/:id/plan", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/admin/orgs/:id/status  -> ativa/inativa/suspende
-router.patch("/admin/orgs/:id/status", requireAuth, async (req, res) => {
+router.patch("/admin/orgs/:id/status", ensureAuth, async (req, res) => {
   const id = req.params.id;
   const db = req.db?.query ? req.db : { query: dbQuery };
   const schema = z.object({
@@ -181,38 +236,26 @@ router.patch("/admin/orgs/:id/status", requireAuth, async (req, res) => {
 });
 
 // GET /api/admin/orgs/:id/billing/history  -> histórico consolidado
-router.get("/admin/orgs/:id/billing/history", requireAuth, async (req, res) => {
-  const id = req.params.id;
-  const db = req.db?.query ? req.db : { query: dbQuery };
+router.get("/admin/orgs/:orgId/billing/history", ensureAuth, ensureSuperAdmin, async (req, res) => {
+  const { orgId } = req.params;
+  const hist = await getBillingHistoryForOrg(req.db, orgId);
+  return res.json({ ok: true, data: hist });
+});
 
-  const safeQuery = async (sql, params) => {
-    try {
-      const { rows } = await db.query(sql, params);
-      return rows || [];
-    } catch {
-      return [];
-    }
-  };
+router.get("/orgs/:orgId/billing/history", ensureAuth, async (req, res) => {
+  const { orgId } = req.params;
+  const user = req.user || {};
 
-  const invoices = await safeQuery(
-    `SELECT id, external_id, status, amount_cents, currency, due_date, paid_at, created_at
-     FROM invoices WHERE org_id = $1 ORDER BY created_at DESC LIMIT 200`,
-    [id]
-  );
+  const isSameOrg = user.org_id === orgId;
+  const roles = new Set([...(user.roles || []), user.role].filter(Boolean));
+  const isPrivileged = roles.has("SuperAdmin") || roles.has("OrgAdmin") || roles.has("OrgOwner");
 
-  const plan_events = await safeQuery(
-    `SELECT id, event_type, data, created_at
-     FROM org_plan_events WHERE org_id = $1 ORDER BY created_at DESC LIMIT 200`,
-    [id]
-  );
+  if (!isPrivileged || (!roles.has("SuperAdmin") && !isSameOrg)) {
+    return res.status(403).json({ error: "forbidden" });
+  }
 
-  const credits = await safeQuery(
-    `SELECT id, meter, used, period_start, period_end
-     FROM org_credits_usage WHERE org_id = $1 ORDER BY period_start DESC LIMIT 200`,
-    [id]
-  );
-
-  res.json({ invoices, plan_events, credits });
+  const hist = await getBillingHistoryForOrg(req.db, orgId);
+  return res.json({ ok: true, data: hist });
 });
 // ===== CODEx: END org plan/status/history endpoints =====
 

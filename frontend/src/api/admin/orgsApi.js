@@ -133,6 +133,10 @@ export async function updateOrgStatus(orgId, status) {
 
 export async function getOrgBillingHistory(orgId) {
   if (!orgId) throw new Error("org_id_required");
-  return requestJson("GET", `/orgs/${encodeURIComponent(orgId)}/billing/history`);
+  const resp = await requestJson("GET", `/orgs/${encodeURIComponent(orgId)}/billing/history`);
+  if (resp && typeof resp === "object" && resp.ok && resp.data) {
+    return resp.data;
+  }
+  return resp;
 }
 // ===== CODEx: END admin org helpers =====
