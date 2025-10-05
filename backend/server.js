@@ -220,7 +220,7 @@ function startSockets(server) {
     socket.on('org:switch', ({ orgId }) => {
       try {
         for (const room of socket.rooms) {
-          if (room.startsWith('org:')) socket.leave(room);
+          if (String(room).startsWith('org:')) socket.leave(room);
         }
         if (orgId) socket.join(`org:${orgId}`);
       } catch {}
