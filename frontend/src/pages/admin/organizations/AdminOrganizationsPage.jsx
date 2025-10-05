@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   adminListOrgs,
   deleteAdminOrg,
@@ -230,6 +231,12 @@ export default function AdminOrganizationsPage() {
                   </td>
                   <td className="px-4 py-3 text-right text-sm">
                     <div className="flex justify-end gap-2">
+                      <Link
+                        to={`/admin/organizations/${org.id}/history`}
+                        className="rounded border border-blue-200 px-3 py-1 text-sm text-blue-600 transition hover:bg-blue-50"
+                      >
+                        Histórico
+                      </Link>
                       <button
                         type="button"
                         onClick={() => openEditModal(org)}

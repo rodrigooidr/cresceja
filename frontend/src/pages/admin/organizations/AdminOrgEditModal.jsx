@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { lookupCEP, lookupCNPJ, patchAdminOrg, postAdminOrg } from "@/api/inboxApi";
+import {
+  adminListPlans,
+  lookupCEP,
+  lookupCNPJ,
+  patchAdminOrg,
+  postAdminOrg,
+  putAdminOrgPlan,
+} from "@/api/inboxApi";
+import { updateOrgStatus } from "@/api/admin/orgsApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { hasGlobalRole } from "@/auth/roles";
 import {
@@ -22,13 +30,14 @@ const STATUS_OPTIONS = [
   { value: "active", label: "Ativa" },
   { value: "inactive", label: "Inativa" },
   { value: "suspended", label: "Suspensa" },
-  { value: "canceled", label: "Cancelada" },
 ];
+const ALLOWED_STATUS_VALUES = new Set(STATUS_OPTIONS.map((option) => option.value));
 
 const emptyForm = {
   name: "",
   slug: "",
   status: "active",
+  plan_id: "",
   cnpj: "",
   razao_social: "",
   nome_fantasia: "",
@@ -80,6 +89,7 @@ function mapOrgToForm(org) {
     name: org.name || org.razao_social || "",
     slug: org.slug || "",
     status: org.status || "active",
+    plan_id: org.plan_id || "",
     cnpj: maskCnpj(org.cnpj || ""),
     razao_social: org.razao_social || "",
     nome_fantasia: org.nome_fantasia || "",
@@ -123,6 +133,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   const [cnpjLookupLoading, setCnpjLookupLoading] = useState(false);
   const [cepLookupLoading, setCepLookupLoading] = useState(false);
   const [globalError, setGlobalError] = useState("");
+  const [plans, setPlans] = useState([]);
 
   const isCreate = mode === "create";
 
@@ -140,6 +151,21 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   };
 
   useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const { plans: fetchedPlans } = await adminListPlans();
+        if (mounted) setPlans(Array.isArray(fetchedPlans) ? fetchedPlans : []);
+      } catch {
+        if (mounted) setPlans([]);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     setForm(mapOrgToForm(org));
     setErrors({});
@@ -150,6 +176,11 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   }, [open, org]);
 
   const statusOptions = useMemo(() => STATUS_OPTIONS, []);
+  const hasCurrentStatusOption = statusOptions.some(
+    (option) => option.value === form.status
+  );
+  const hasCurrentPlan =
+    !!form.plan_id && !plans.some((plan) => plan?.id === form.plan_id);
 
   if (!open) return null;
 
@@ -441,6 +472,8 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     const cepDigits = onlyDigits(form.endereco.cep);
     const cpfDigits = onlyDigits(form.responsavel.cpf);
     const payload = {
+      name: form.name.trim(),
+      slug: form.slug.trim() || null,
       cnpj: cnpjDigits,
       razao_social: form.razao_social || form.name,
       nome_fantasia: form.nome_fantasia || form.name,
@@ -521,16 +554,42 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
 
     setSaving(true);
     try {
+      let orgId = org?.id || null;
+
       if (isCreate) {
         const payload = buildCreatePayload({ orgPhoneE164, respPhoneE164 });
         const response = await postAdminOrg(payload);
-        const createdId = response?.id || null;
+        const createdId =
+          response?.id ||
+          response?.data?.id ||
+          response?.data?.data?.id ||
+          null;
+        orgId = createdId || orgId;
         setFeedback("Organização criada com sucesso.");
-        onSaved?.({ id: createdId });
       } else if (org?.id) {
         const payload = buildUpdatePayload({ orgPhoneE164, respPhoneE164 });
         await patchAdminOrg(org.id, payload);
+        orgId = org.id;
         setFeedback("Organização atualizada.");
+      }
+
+      if (orgId && form.plan_id) {
+        await putAdminOrgPlan(orgId, { plan_id: form.plan_id });
+      }
+
+      if (
+        !isCreate &&
+        orgId &&
+        form.status &&
+        ALLOWED_STATUS_VALUES.has(form.status) &&
+        form.status !== org?.status
+      ) {
+        await updateOrgStatus(orgId, form.status);
+      }
+
+      if (isCreate) {
+        onSaved?.(orgId ? { id: orgId } : undefined);
+      } else if (org?.id) {
         onSaved?.();
       }
     } catch (err) {
@@ -609,9 +668,30 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                   value={form.status}
                   onChange={handleInputChange("status")}
                 >
+                  {!hasCurrentStatusOption && form.status && (
+                    <option value={form.status}>{form.status}</option>
+                  )}
                   {statusOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm">
+                <span className="text-gray-600">Plano</span>
+                <select
+                  className="mt-1 w-full rounded border px-3 py-2"
+                  value={form.plan_id}
+                  onChange={handleInputChange("plan_id")}
+                >
+                  <option value="">Selecione um plano</option>
+                  {hasCurrentPlan && (
+                    <option value={form.plan_id}>Plano atual</option>
+                  )}
+                  {plans.map((plan) => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name || plan.slug || plan.id}
                     </option>
                   ))}
                 </select>
