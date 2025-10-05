@@ -27,10 +27,25 @@ import {
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Ativa" },
-  { value: "inactive", label: "Inativa" },
+  { value: "trial", label: "Em avaliação" },
   { value: "suspended", label: "Suspensa" },
+  { value: "canceled", label: "Cancelada" },
 ];
 const ALLOWED_STATUS_VALUES = new Set(STATUS_OPTIONS.map((option) => option.value));
+
+const LEGACY_STATUS_MAP = new Map([
+  ["inactive", "suspended"],
+  ["inativa", "suspended"],
+  ["ativa", "active"],
+]);
+
+function normalizeStatusForForm(status) {
+  if (status == null) return null;
+  const normalized = String(status).trim().toLowerCase();
+  if (ALLOWED_STATUS_VALUES.has(normalized)) return normalized;
+  if (LEGACY_STATUS_MAP.has(normalized)) return LEGACY_STATUS_MAP.get(normalized);
+  return "active";
+}
 
 const emptyForm = {
   name: "",
@@ -83,11 +98,13 @@ const maskPhone = (value) => {
 
 function mapOrgToForm(org) {
   if (!org) return { ...emptyForm };
+  const normalizedStatus =
+    org?.status == null ? null : normalizeStatusForForm(org.status);
   return {
     ...emptyForm,
     name: org.name || org.razao_social || "",
     slug: org.slug || "",
-    status: org.status || "active",
+    status: normalizedStatus,
     plan_id: org.plan_id || "",
     cnpj: maskCnpj(org.cnpj || ""),
     razao_social: org.razao_social || "",
@@ -175,9 +192,6 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   }, [open, org]);
 
   const statusOptions = useMemo(() => STATUS_OPTIONS, []);
-  const hasCurrentStatusOption = statusOptions.some(
-    (option) => option.value === form.status
-  );
   const hasCurrentPlan =
     !!form.plan_id && !plans.some((plan) => plan?.id === form.plan_id);
 
@@ -212,6 +226,12 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
 
   const handleInputChange = (field) => (event) => {
     setField(field, event.target.value);
+  };
+
+  const handleStatusChange = (event) => {
+    const { value } = event.target;
+    setForm((prev) => ({ ...prev, status: value }));
+    clearFieldError("status");
   };
 
   const handleCheckboxChange = (field) => (event) => {
@@ -685,13 +705,11 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
               <label className="text-sm">
                 <span className="text-gray-600">Status</span>
                 <select
+                  name="status"
                   className="mt-1 w-full rounded border px-3 py-2"
-                  value={form.status}
-                  onChange={handleInputChange("status")}
+                  value={form.status ?? "active"}
+                  onChange={handleStatusChange}
                 >
-                  {!hasCurrentStatusOption && form.status && (
-                    <option value={form.status}>{form.status}</option>
-                  )}
                   {statusOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}

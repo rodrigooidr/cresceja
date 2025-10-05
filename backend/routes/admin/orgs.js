@@ -8,6 +8,51 @@ import { db } from './orgs.shared.js';
 
 const router = Router();
 
+const STATUS_VALUES = ['active', 'trial', 'suspended', 'canceled'];
+const ALLOWED_STATUS = new Set(STATUS_VALUES);
+const LEGACY_STATUS_MAP = new Map([
+  ['inactive', 'suspended'],
+  ['inativa', 'suspended'],
+  ['ativa', 'active'],
+  ['ativo', 'active'],
+  ['em avaliacao', 'trial'],
+  ['em avaliação', 'trial'],
+  ['avaliacao', 'trial'],
+  ['avaliação', 'trial'],
+  ['cancelada', 'canceled'],
+  ['cancelado', 'canceled'],
+]);
+
+function normalizeStatusInput(status) {
+  if (status == null) return null;
+  const trimmed = String(status).trim().toLowerCase();
+  if (ALLOWED_STATUS.has(trimmed)) return trimmed;
+  if (LEGACY_STATUS_MAP.has(trimmed)) return LEGACY_STATUS_MAP.get(trimmed);
+
+  const withoutDiacritics = trimmed
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  if (ALLOWED_STATUS.has(withoutDiacritics)) return withoutDiacritics;
+  if (LEGACY_STATUS_MAP.has(withoutDiacritics)) {
+    return LEGACY_STATUS_MAP.get(withoutDiacritics);
+  }
+  return withoutDiacritics;
+}
+
+function assertValidStatus(status) {
+  if (status == null) return null;
+  const normalized = normalizeStatusInput(status);
+  if (!ALLOWED_STATUS.has(normalized)) {
+    const allowed = Array.from(ALLOWED_STATUS).join(', ');
+    const error = new Error(`Status inválido. Use um destes: ${allowed}.`);
+    error.status = 400;
+    error.code = 'invalid_status';
+    error.field = 'status';
+    throw error;
+  }
+  return normalized;
+}
+
 // Middlewares de auth/role (apenas SuperAdmin e Support podem usar rotas admin)
 router.use(authRequired);
 router.use(requireRole([ROLES.SuperAdmin, ROLES.Support]));
@@ -31,8 +76,11 @@ router.get('/', async (req, res, next) => {
     const params = [];
     const where = [];
 
-    if (status && status !== 'all') {
-      params.push(status);
+    const normalizedStatus =
+      status && status !== 'all' ? assertValidStatus(status) : status;
+
+    if (normalizedStatus && normalizedStatus !== 'all') {
+      params.push(normalizedStatus);
       where.push(`o.status = $${params.length}`);
     }
 
@@ -52,6 +100,13 @@ router.get('/', async (req, res, next) => {
     const { rows } = await db.query(sql, params);
     return res.json({ items: rows });
   } catch (err) {
+    if (err?.code === 'invalid_status') {
+      return res.status(400).json({
+        error: 'invalid_status',
+        field: 'status',
+        message: err.message,
+      });
+    }
     return next(err);
   }
 });
@@ -86,11 +141,14 @@ router.get('/:orgId', async (req, res, next) => {
  * PUT /api/admin/orgs/:orgId
  * ========================================================================== */
 
+const StatusEnum = z.enum(STATUS_VALUES);
+const NullableStatusEnum = StatusEnum.nullable();
+
 const OrgCreateSchema = z
   .object({
     name: z.string().min(1, 'Required'),
     slug: z.string().min(1, 'Required'),
-    status: z.enum(['active', 'inactive']).default('active'),
+    status: NullableStatusEnum.optional(),
 
     cnpj: z.string().optional().nullable(),
     razao_social: z.string().optional().nullable(),
@@ -135,7 +193,7 @@ const OrgUpdateSchema = z
   .object({
     name: z.string().min(1, 'Required').optional(),
     slug: z.string().min(1, 'Required').optional(),
-    status: z.enum(['active', 'inactive']).optional(),
+    status: NullableStatusEnum.optional(),
 
     cnpj: z.string().optional().nullable(),
     razao_social: z.string().optional().nullable(),
@@ -178,15 +236,6 @@ const OrgUpdateSchema = z
 
 const toNull = (v) => (v === undefined || v === null || (typeof v === 'string' && v.trim() === '') ? null : v);
 
-function normalizeStatusValue(value, fallback = undefined) {
-  if (value == null) return fallback;
-  const norm = String(value).toLowerCase();
-  if (norm === 'ativa') return 'active';
-  if (norm === 'inativa') return 'inactive';
-  if (norm === 'active' || norm === 'inactive') return norm;
-  return fallback;
-}
-
 router.post('/', async (req, res, next) => {
   try {
     const raw = req.body || {};
@@ -199,7 +248,8 @@ router.post('/', async (req, res, next) => {
       raw.razao_social ??
       null;
     let slug = raw.slug ?? null;
-    const status = normalizeStatusValue(raw.status, 'active');
+    const normalizedStatus = assertValidStatus(raw.status);
+    const status = normalizedStatus ?? 'active';
 
     if (!slug && name) {
       slug = slugify(String(name), { lower: true, strict: true, locale: 'pt' }).slice(0, 64);
@@ -284,24 +334,32 @@ router.post('/', async (req, res, next) => {
 
     return res.status(201).json({ ok: true, org });
   } catch (err) {
+    if (err?.code === 'invalid_status') {
+      return res.status(400).json({
+        error: 'invalid_status',
+        field: 'status',
+        message: err.message,
+      });
+    }
     // Postgres unique violation
     if (err && err.code === '23505') {
+      const constraint = err.constraint;
       // err.constraint traz o nome do índice único violado
-      if (err.constraint === 'ux_orgs_email_lower') {
+      if (constraint === 'ux_orgs_email_lower' || constraint === 'ux_org_email_lower') {
         return res.status(409).json({
           error: 'conflict',
           field: 'email',
           message: 'Este e-mail já está em uso por outra organização.',
         });
       }
-      if (err.constraint === 'ux_orgs_cnpj_digits') {
+      if (constraint === 'ux_orgs_cnpj_digits' || constraint === 'ux_org_document_digits') {
         return res.status(409).json({
           error: 'conflict',
           field: 'cnpj',
           message: 'Este CNPJ já está em uso por outra organização.',
         });
       }
-      if (err.constraint === 'ux_orgs_slug') {
+      if (constraint === 'ux_orgs_slug' || constraint === 'ux_org_slug' || constraint === 'organizations_slug_key') {
         return res.status(409).json({
           error: 'conflict',
           field: 'slug',
@@ -338,7 +396,8 @@ router.put('/:orgId', async (req, res, next) => {
       raw.razao_social ??
       null;
     let slug = raw.slug ?? null;
-    const status = normalizeStatusValue(raw.status, undefined);
+    const hasStatus = Object.prototype.hasOwnProperty.call(raw, 'status');
+    const normalizedStatus = hasStatus ? assertValidStatus(raw.status) : undefined;
 
     if (!slug && name) {
       slug = slugify(String(name), { lower: true, strict: true, locale: 'pt' }).slice(0, 64);
@@ -348,7 +407,7 @@ router.put('/:orgId', async (req, res, next) => {
       ...raw,
       ...(name != null ? { name } : {}),
       ...(slug != null ? { slug } : {}),
-      ...(status != null ? { status } : {}),
+      ...(hasStatus ? { status: normalizedStatus } : {}),
     });
 
     if (!parsed.success) {
@@ -437,6 +496,13 @@ router.put('/:orgId', async (req, res, next) => {
 
     return res.json({ ok: true, org: updated });
   } catch (err) {
+    if (err?.code === 'invalid_status') {
+      return res.status(400).json({
+        error: 'invalid_status',
+        field: 'status',
+        message: err.message,
+      });
+    }
     if (err?.name === 'ZodError') {
       return res.status(422).json({ error: 'validation', issues: err.issues });
     }

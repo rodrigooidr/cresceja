@@ -7,11 +7,28 @@ import {
 } from '@/api/inboxApi';
 import AdminOrgEditModal from './AdminOrgEditModal.jsx';
 
+const STATUS_LABELS = {
+  active: 'Ativa',
+  trial: 'Em avaliação',
+  suspended: 'Suspensa',
+  canceled: 'Cancelada',
+};
+
 const STATUS_FILTERS = [
   { value: 'active', label: 'Ativas' },
-  { value: 'inactive', label: 'Inativas' },
+  { value: 'trial', label: 'Em avaliação' },
+  { value: 'suspended', label: 'Suspensas' },
+  { value: 'canceled', label: 'Canceladas' },
   { value: 'all', label: 'Todas' },
 ];
+
+function normalizeStatus(value) {
+  if (value == null) return 'active';
+  const normalized = String(value).trim().toLowerCase();
+  if (STATUS_LABELS[normalized]) return normalized;
+  if (normalized === 'inactive' || normalized === 'inativa') return 'suspended';
+  return 'active';
+}
 
 function useDebounced(value, delay = 300) {
   const [debounced, setDebounced] = useState(value);
@@ -28,29 +45,35 @@ function normalizeOrgData(org) {
       id: null,
       name: '',
       slug: '',
-      status: 'inactive',
+      status: 'active',
       plan: null,
     };
   }
-  const status = String(org.status ?? '').toLowerCase();
+  const status = normalizeStatus(org.status);
   return {
     id: org.id ?? null,
     name: org.name ?? org.razao_social ?? 'Sem nome',
     slug: org.slug ?? '',
-    status: status || 'inactive',
+    status,
     plan: org.plan ?? null,
     raw: org,
   };
 }
 
 function StatusBadge({ status }) {
-  const active = String(status).toLowerCase() === 'active';
+  const normalized = normalizeStatus(status);
+  const label = STATUS_LABELS[normalized] ?? 'Desconhecido';
+  const colorMap = {
+    active: 'bg-green-500',
+    trial: 'bg-blue-500',
+    suspended: 'bg-amber-500',
+    canceled: 'bg-red-500',
+  };
+  const color = colorMap[normalized] ?? 'bg-gray-300';
   return (
     <span className="inline-flex items-center gap-2">
-      <span
-        className={`inline-block h-2.5 w-2.5 rounded-full ${active ? 'bg-green-500' : 'bg-gray-300'}`}
-      />
-      {active ? 'Ativa' : 'Inativa'}
+      <span className={`inline-block h-2.5 w-2.5 rounded-full ${color}`} />
+      {label}
     </span>
   );
 }

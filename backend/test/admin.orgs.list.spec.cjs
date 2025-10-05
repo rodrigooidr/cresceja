@@ -130,7 +130,7 @@ describe('Admin Orgs API', () => {
         expect(sql).toMatch(/ILIKE/);
         expect(sql).not.toMatch(/::uuid/i);
         expect(sql).toMatch(/LEFT\s+JOIN\s+public\.plans\s+p/i);
-        expect(params).toEqual(['inactive', '%Org%']);
+        expect(params).toEqual(['suspended', '%Org%']);
         return { rows: [] };
       }
       return { rows: [] };
