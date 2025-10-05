@@ -7,8 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { getCurrentOrg, getMyOrgs, setActiveOrg, switchOrg, listAdminOrgs as listAllOrgs, } from "../api/inboxApi";
-import { getOrgIdFromStorage } from "../services/session.js";
+import { getCurrentOrg, getMyOrgs, setActiveOrg, switchOrg, listAdminOrgs as listAllOrgs, setOrgIdHeaderProvider } from "../api/inboxApi";
+import { getOrgIdFromStorage, setOrgIdInStorage } from "../services/session.js";
 import { useAuth } from "./AuthContext";
 
 export const OrgContext = createContext(null);
@@ -113,6 +113,20 @@ export function OrgProvider({ children }) {
   const [org, setOrg] = useState(null);
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState(null);
+
+  // Sempre que a org ativa mudar, injeta o X-Org-Id globalmente e persiste no storage
+  useEffect(() => {
+    // 1) Header dinâmico para todos os requests axios (interceptor usa esse provider)
+    if (typeof setOrgIdHeaderProvider === "function") {
+      setOrgIdHeaderProvider(() => selected || null);
+    }
+    // 2) Storage (fallback para o interceptor e para reloads)
+    try {
+      setOrgIdInStorage(selected || "");
+      // Mantém também o default do axios (útil para libs que liam defaults)
+      setActiveOrg(selected || "");
+    } catch {}
+  }, [selected]);
 
   // Quem vê o seletor
   // Quem vê o seletor (robusto com fallback para token e user.roles)
