@@ -96,6 +96,13 @@ export default function AdminOrgsList() {
               <td className="p-2">{org.status}</td>
               <td className="p-2 space-x-2">
                 <Link to={`/admin/orgs/${org.id}`} className="text-blue-600 hover:underline">Ver</Link>
+                <Link
+                  to={`/admin/organizations/${org.id}/history`}
+                  className="btn btn-light"
+                  style={{ marginLeft: 8 }}
+                >
+                  Histórico
+                </Link>
                 <button onClick={() => handleImpersonate(org)} className="text-blue-600 hover:underline">Impersonar</button>
               </td>
             </tr>
