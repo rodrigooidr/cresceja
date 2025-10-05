@@ -27,6 +27,7 @@ import GovLogsPage from "./pages/marketing/GovLogsPage.jsx";
 import TelemetryPage from "./pages/governanca/TelemetryPage.jsx";
 import OrganizationsPage from "./pages/admin/OrganizationsPage.jsx";
 import OrgDetailsPage from "./pages/admin/OrgDetailsPage.jsx"; // ← detalhe da org
+import OrgBillingHistory from "./pages/admin/OrgBillingHistory.jsx";
 import PlansAdminPage from "./pages/admin/PlansAdminPage.jsx";
 import OrgPlanPage from "./pages/org/OrgPlanPage.jsx";
 
@@ -70,6 +71,10 @@ export default function App() {
             >
               <Route path="/admin/organizations" element={<OrganizationsPage />} />
               <Route path="/admin/organizations/:id" element={<OrgDetailsPage />} />{/* ← add */}
+              <Route
+                path="/admin/organizations/:id/history"
+                element={<OrgBillingHistory />}
+              />
               <Route path="/admin/plans" element={<PlansAdminPage />} />
             </Route>
 

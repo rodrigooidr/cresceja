@@ -1,6 +1,7 @@
 // backend/routes/orgs.js (ESM)
 import { Router } from "express";
 import { query as dbQuery } from "#db"; // mantém seu client já usado noutros módulos
+import { z } from "zod";
 
 const router = Router();
 
@@ -125,5 +126,94 @@ router.get("/current", requireAuth, async (req, res, next) => {
     next(err);
   }
 });
+
+// ===== CODEx: BEGIN org plan/status/history endpoints =====
+// PUT /api/admin/orgs/:id/plan  -> define plano da organização
+router.put("/admin/orgs/:id/plan", requireAuth, async (req, res) => {
+  const id = req.params.id;
+  const db = req.db?.query ? req.db : { query: dbQuery };
+
+  const schema = z.object({
+    plan_id: z.string().uuid(),
+  });
+  const body = schema.parse(req.body || {});
+
+  await db.query(
+    `UPDATE organizations SET plan_id = $1, updated_at = NOW() WHERE id = $2`,
+    [body.plan_id, id]
+  );
+
+  // log de evento (tabela opcional; se não existir, ignore o erro silenciosamente)
+  try {
+    await db.query(
+      `INSERT INTO org_plan_events (org_id, event_type, data)
+       VALUES ($1,'plan_updated', $2::jsonb)`,
+      [id, JSON.stringify({ plan_id: body.plan_id })]
+    );
+  } catch {}
+
+  res.json({ ok: true });
+});
+
+// PATCH /api/admin/orgs/:id/status  -> ativa/inativa/suspende
+router.patch("/admin/orgs/:id/status", requireAuth, async (req, res) => {
+  const id = req.params.id;
+  const db = req.db?.query ? req.db : { query: dbQuery };
+  const schema = z.object({
+    status: z.enum(["active", "inactive", "suspended"]),
+  });
+  const { status } = schema.parse(req.body || {});
+
+  await db.query(
+    `UPDATE organizations SET status = $1, updated_at = NOW() WHERE id = $2`,
+    [status, id]
+  );
+
+  try {
+    await db.query(
+      `INSERT INTO org_plan_events (org_id, event_type, data)
+       VALUES ($1,'status_changed', $2::jsonb)`,
+      [id, JSON.stringify({ status })]
+    );
+  } catch {}
+
+  res.json({ ok: true });
+});
+
+// GET /api/admin/orgs/:id/billing/history  -> histórico consolidado
+router.get("/admin/orgs/:id/billing/history", requireAuth, async (req, res) => {
+  const id = req.params.id;
+  const db = req.db?.query ? req.db : { query: dbQuery };
+
+  const safeQuery = async (sql, params) => {
+    try {
+      const { rows } = await db.query(sql, params);
+      return rows || [];
+    } catch {
+      return [];
+    }
+  };
+
+  const invoices = await safeQuery(
+    `SELECT id, external_id, status, amount_cents, currency, due_date, paid_at, created_at
+     FROM invoices WHERE org_id = $1 ORDER BY created_at DESC LIMIT 200`,
+    [id]
+  );
+
+  const plan_events = await safeQuery(
+    `SELECT id, event_type, data, created_at
+     FROM org_plan_events WHERE org_id = $1 ORDER BY created_at DESC LIMIT 200`,
+    [id]
+  );
+
+  const credits = await safeQuery(
+    `SELECT id, meter, used, period_start, period_end
+     FROM org_credits_usage WHERE org_id = $1 ORDER BY period_start DESC LIMIT 200`,
+    [id]
+  );
+
+  res.json({ invoices, plan_events, credits });
+});
+// ===== CODEx: END org plan/status/history endpoints =====
 
 export default router;

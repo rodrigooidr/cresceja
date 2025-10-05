@@ -122,3 +122,17 @@ export async function deleteOrg(id) {
   if (!id) throw new Error("org_id_required");
   return requestJson("DELETE", `/orgs/${encodeURIComponent(id)}`);
 }
+
+// ===== CODEx: BEGIN admin org helpers =====
+export async function updateOrgStatus(orgId, status) {
+  if (!orgId) throw new Error("org_id_required");
+  return requestJson("PATCH", `/orgs/${encodeURIComponent(orgId)}/status`, {
+    body: { status },
+  });
+}
+
+export async function getOrgBillingHistory(orgId) {
+  if (!orgId) throw new Error("org_id_required");
+  return requestJson("GET", `/orgs/${encodeURIComponent(orgId)}/billing/history`);
+}
+// ===== CODEx: END admin org helpers =====
