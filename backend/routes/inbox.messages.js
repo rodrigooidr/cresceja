@@ -1,3 +1,4 @@
+// backend/routes/inbox.messages.js
 import { Router } from 'express';
 import { query as rootQuery } from '#db';
 import { withOrg } from '../middleware/withOrg.js';
@@ -5,19 +6,16 @@ import { withOrg } from '../middleware/withOrg.js';
 const router = Router();
 router.use(withOrg);
 
-function q(db) {
-  return (text, params) => (db?.query ? db.query(text, params) : rootQuery(text, params));
-}
+function q(db) { return (t, p) => (db?.query ? db.query(t, p) : rootQuery(t, p)); }
 
+/** POST /api/inbox/send  { conversationId, text?, media?: { url, mime, filename } } */
 router.post('/send', async (req, res, next) => {
   try {
     const orgId = req.org?.id || req.headers['x-org-id'] || null;
     const { conversationId, text, media } = req.body || {};
-    if (!conversationId) {
-      return res.status(400).json({ error: 'missing_conversationId' });
-    }
+    if (!conversationId) return res.status(400).json({ error: 'missing_conversationId' });
 
-    const created = await q(req.db)(
+    const { rows } = await q(req.db)(
       `INSERT INTO public.messages (conversation_id, org_id, direction, provider, "from", type, text, media_url, media_mime, media_filename, created_at)
        VALUES ($1,$2,'out','internal','agent', $3, $4, $5, $6, $7, now())
        RETURNING *`,
@@ -37,15 +35,14 @@ router.post('/send', async (req, res, next) => {
       [conversationId, orgId]
     );
 
+    // broadcast opcional via socket
     try {
       const io = req.app.get('io');
-      io?.to(`org:${orgId}`).emit('message:new', { conversationId, message: created.rows[0] });
+      io?.to(`org:${orgId}`).emit('message:new', { conversationId, message: rows[0] });
     } catch {}
 
-    res.json({ ok: true, message: created.rows[0] });
-  } catch (err) {
-    next(err);
-  }
+    res.json({ ok: true, message: rows[0] });
+  } catch (err) { next(err); }
 });
 
 export default router;
