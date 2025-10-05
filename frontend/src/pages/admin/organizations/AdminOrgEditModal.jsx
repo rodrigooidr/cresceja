@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  adminListPlans,
+  adminListPlansShort,
   lookupCEP,
   lookupCNPJ,
   patchAdminOrg,
   postAdminOrg,
-  putAdminOrgPlan,
 } from "@/api/inboxApi";
 import { updateOrgStatus } from "@/api/admin/orgsApi";
 import { useAuth } from "@/contexts/AuthContext";
@@ -154,7 +153,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     let mounted = true;
     (async () => {
       try {
-        const { plans: fetchedPlans } = await adminListPlans();
+        const fetchedPlans = await adminListPlansShort();
         if (mounted) setPlans(Array.isArray(fetchedPlans) ? fetchedPlans : []);
       } catch {
         if (mounted) setPlans([]);
@@ -501,6 +500,16 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       },
     };
 
+    const normalizedPlanId =
+      form.plan_id == null
+        ? ""
+        : typeof form.plan_id === "string"
+        ? form.plan_id.trim()
+        : String(form.plan_id).trim();
+    if (normalizedPlanId) {
+      payload.plan_id = normalizedPlanId;
+    }
+
     if (canManageBaileys) {
       payload.whatsapp_baileys_enabled = !!form.whatsapp_baileys_enabled;
       payload.whatsapp_mode = form.whatsapp_baileys_enabled ? "baileys" : "none";
@@ -537,6 +546,22 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       resp_phone_e164: respPhoneE164 || null,
     };
 
+    const normalizedPlanId =
+      form.plan_id == null
+        ? ""
+        : typeof form.plan_id === "string"
+        ? form.plan_id.trim()
+        : String(form.plan_id).trim();
+    const currentPlanId =
+      (org?.plan_id && String(org.plan_id)) ||
+      (org?.plan?.id && String(org.plan.id)) ||
+      "";
+    if (normalizedPlanId) {
+      payload.plan_id = normalizedPlanId;
+    } else if (currentPlanId) {
+      payload.plan_id = null;
+    }
+
     if (canManageBaileys) {
       payload.whatsapp_baileys_enabled = !!form.whatsapp_baileys_enabled;
       payload.whatsapp_mode = form.whatsapp_baileys_enabled ? "baileys" : "none";
@@ -571,10 +596,6 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
         await patchAdminOrg(org.id, payload);
         orgId = org.id;
         setFeedback("Organização atualizada.");
-      }
-
-      if (orgId && form.plan_id) {
-        await putAdminOrgPlan(orgId, { plan_id: form.plan_id });
       }
 
       if (
@@ -685,7 +706,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                   value={form.plan_id}
                   onChange={handleInputChange("plan_id")}
                 >
-                  <option value="">Selecione um plano</option>
+                  <option value="">— sem plano —</option>
                   {hasCurrentPlan && (
                     <option value={form.plan_id}>Plano atual</option>
                   )}
