@@ -34,6 +34,8 @@ import orgsFeaturesRouter from './routes/orgs.features.js';
 import inboxTemplatesRouter from './routes/inbox.templates.js';
 import inboxAlertsRouter from './routes/inbox.alerts.js';
 import inboxSettingsRouter from './routes/inbox.settings.js';
+import inboxConversationsRouter from './routes/inbox.conversations.js';
+import inboxMessagesRouter from './routes/inbox.messages.js';
 import aiSettingsRouter from './routes/ai.settings.js';
 import aiCreditsStatusRouter from './routes/ai.credits.status.js';
 import integrationsRouter from './routes/integrations/index.js';
@@ -139,6 +141,8 @@ app.use('/api/uploads', uploadsRouter);
 app.use('/api/inbox', inboxAlertsRouter);
 app.use('/api/inbox', inboxSettingsRouter);
 app.use('/api/inbox', inboxTemplatesRouter);
+app.use('/api/inbox', inboxConversationsRouter);
+app.use('/api/inbox', inboxMessagesRouter);
 app.use('/api/orgs', organizationsRouter);
 app.use('/api/orgs', orgsFeaturesRouter);
 app.use('/api/ai', aiSettingsRouter);
@@ -212,6 +216,15 @@ function startSockets(server) {
     socket.join(`user:${user.id}`);
 
     socket.emit('connected', { ok: true });
+
+    socket.on('org:switch', ({ orgId }) => {
+      try {
+        for (const room of socket.rooms) {
+          if (room.startsWith('org:')) socket.leave(room);
+        }
+        if (orgId) socket.join(`org:${orgId}`);
+      } catch {}
+    });
 
     socket.on('disconnect', () => {
       // noop

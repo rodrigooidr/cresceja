@@ -16,6 +16,11 @@ router.get('/alerts/stream', (req, res) => {
     Connection: 'keep-alive',
   });
 
+  const isProd = String(process.env.NODE_ENV) === 'production';
+  if (!isProd) {
+    res.write(`event: hello\ndata: "dev-stream-ready"\n\n`);
+  }
+
   const ping = setInterval(() => {
     res.write(`event: ping\ndata: ${Date.now()}\n\n`);
   }, 15000);

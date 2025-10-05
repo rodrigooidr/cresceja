@@ -13,21 +13,21 @@ router.get('/settings', authRequired, withOrg, async (_req, res) => {
   });
 });
 
-router.get('/templates', (req, res) => {
-  if (!req.org?.id && !isProd) return res.json([]);
-  return res.json([]);
-});
 router.get('/quick-replies', (req, res) => {
-  if (!req.org?.id && !isProd) return res.json([]);
+  if (!req.org?.id && isProd) return res.json([]);
+  return res.json([
+    { id: 'saudacao', text: 'Olá! Como posso te ajudar?' },
+    { id: 'retorno', text: 'Já verifico e retorno em instantes.' },
+  ]);
+});
+
+router.get('/templates', (req, res) => {
+  if (!req.org?.id && isProd) return res.json([]);
   return res.json([]);
 });
-router.get('/conversations', (req, res) => {
-  if (!req.org?.id && !isProd) {
-    const { status = 'open', limit = 50 } = req.query;
-    return res.json({ items: [], status, limit: Number(limit) });
-  }
-  const { status = 'open', limit = 50 } = req.query;
-  res.json({ items: [], status, limit: Number(limit) });
+
+router.get('/conversations', (_req, res) => {
+  res.status(410).json({ error: 'use /api/inbox/conversations (nova rota)' });
 });
 
 export default router;
