@@ -32,7 +32,7 @@ export default function ActiveOrgGate({
   showWhileLoading = null, // pode trocar por um spinner
 }) {
   const { isAuthenticated, user } = useAuth();
-  const { org, orgLoading, orgError, refreshOrg } = useOrg();
+  const { org, orgLoading, orgError, refreshOrg, selected } = useOrg();
 
   // Carrega org caso o usuário esteja autenticado e ainda não tenhamos org
   useEffect(() => {
@@ -68,13 +68,25 @@ export default function ActiveOrgGate({
   }, [allowedRoles, user]);
 
   // 1) Se estamos carregando org, mostre a UI de loading e NÃO bloqueie antes da hora.
-  if (orgLoading) return showWhileLoading;
+  if (orgLoading) {
+    return showWhileLoading ?? <div>Carregando…</div>;
+  }
 
   // 2) Regras mínimas
   if (!isAuthenticated) return fallback;
+  if (!selected) {
+    return <div>Selecione uma organização para continuar.</div>;
+  }
+  if (orgError) {
+    return (
+      <div style={{ padding: 16, color: 'crimson' }}>
+        <strong>Falha ao carregar organização</strong>
+        <div>{String(orgError?.message || 'Erro desconhecido')}</div>
+      </div>
+    );
+  }
   if (!org?.id) {
-    // se houve erro carregando org, ainda assim mostre fallback
-    return fallback;
+    return <div>Selecione uma organização para continuar.</div>;
   }
 
   // 3) Roles

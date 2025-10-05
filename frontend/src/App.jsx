@@ -72,7 +72,7 @@ export default function App() {
               <Route path="/admin/organizations" element={<OrganizationsPage />} />
               <Route path="/admin/organizations/:id" element={<OrgDetailsPage />} />{/* ← add */}
               <Route
-                path="/admin/organizations/:id/history"
+                path="/admin/organizations/:orgId/history"
                 element={<OrgBillingHistory />}
               />
               <Route path="/admin/plans" element={<PlansAdminPage />} />

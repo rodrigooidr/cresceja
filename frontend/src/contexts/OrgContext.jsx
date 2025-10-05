@@ -309,6 +309,23 @@ export function OrgProvider({ children }) {
       const data = await getCurrentOrg();
       setOrg(data ?? null);
       persistActiveOrg(data); // ✅ persiste activeOrg
+      try {
+        const credits = data?.plan?.limits || data?.plan?.credits || [];
+        const alerts = [];
+        for (const c of credits) {
+          const limit = Number(c?.limit ?? 0);
+          const used = Number(c?.used ?? 0);
+          if (limit > 0) {
+            const pct = (used / limit) * 100;
+            if (pct >= 90) {
+              alerts.push(`${c?.meter}: ${pct.toFixed(0)}% do limite`);
+            }
+          }
+        }
+        if (alerts.length) {
+          console.warn('[limits]', alerts.join(' | '));
+        }
+      } catch {}
       return data ?? null;
     } catch (err) {
       setOrg(null);

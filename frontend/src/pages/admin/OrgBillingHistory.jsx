@@ -1,117 +1,113 @@
-// ===== CODEx: BEGIN OrgBillingHistory.jsx =====
-import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { getOrgBillingHistory } from "@/api/admin/orgsApi";
-import { centsToBRL } from "@/api/inboxApi";
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { adminGetOrgBillingHistory, adminListPlansShort, adminPutOrgPlan } from '../../api/inboxApi';
+import { saveAs } from 'file-saver';
 
 export default function OrgBillingHistory() {
-  const { id } = useParams();
+  const { orgId } = useParams();
+  const [data, setData] = useState({ invoices: [], plan_events: [], usage: [] });
   const [loading, setLoading] = useState(true);
-  const [data, setData] = useState({ invoices: [], plan_events: [], credits: [] });
+  const [err, setErr] = useState(null);
+  const [plans, setPlans] = useState([]);
+  const [changing, setChanging] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState('');
 
   useEffect(() => {
-    let mounted = true;
+    let alive = true;
     (async () => {
-      setLoading(true);
       try {
-        const resp = await getOrgBillingHistory(id);
-        if (mounted) setData(resp || { invoices: [], plan_events: [], credits: [] });
+        setLoading(true);
+        const [hist, ps] = await Promise.all([
+          adminGetOrgBillingHistory(orgId),
+          adminListPlansShort()
+        ]);
+        if (!alive) return;
+        setData(hist || { invoices: [], plan_events: [], usage: [] });
+        setPlans(ps);
+      } catch (e) {
+        if (!alive) return;
+        setErr(e);
       } finally {
-        if (mounted) setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
-    return () => { mounted = false; };
-  }, [id]);
+    return () => { alive = false; };
+  }, [orgId]);
 
-  if (loading) return <div className="p-4">Carregando…</div>;
+  const csv = useMemo(() => {
+    const rows = [
+      ['type','created_at','amount','description','meta'],
+      ...data.invoices.map(i => ['invoice', i.created_at, i.amount ?? '', i.description ?? '', JSON.stringify(i)]),
+      ...data.plan_events.map(p => ['plan_event', p.created_at, '', p.event ?? '', JSON.stringify(p)]),
+      ...data.usage.map(u => ['usage', u.created_at, u.qty ?? '', u.meter ?? '', JSON.stringify(u)]),
+    ];
+    return rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+  }, [data]);
+
+  function exportCsv() {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    saveAs(blob, `org-${orgId}-history.csv`);
+  }
+
+  async function changePlan() {
+    if (!selectedPlan) return;
+    setChanging(true);
+    try {
+      await adminPutOrgPlan(orgId, selectedPlan);
+      const hist = await adminGetOrgBillingHistory(orgId);
+      setData(hist || { invoices: [], plan_events: [], usage: [] });
+      alert('Plano atualizado');
+    } catch (e) {
+      alert('Falha ao mudar o plano');
+    } finally {
+      setChanging(false);
+    }
+  }
+
+  if (loading) return <div>Carregando…</div>;
+  if (err) return <div style={{color:'crimson'}}>ERRO<br/>{String(err?.message || err)}</div>;
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Histórico da organização</h1>
-        <Link to="/admin/organizations" className="btn btn-ghost">Voltar</Link>
+    <div className="container">
+      <div style={{display:'flex', gap:12, alignItems:'center', marginBottom:16}}>
+        <Link to="/admin/organizations" className="btn btn-light">Voltar</Link>
+        <button className="btn btn-secondary" onClick={exportCsv}>Exportar CSV</button>
+        <div style={{marginLeft:'auto'}} />
+        <select value={selectedPlan} onChange={e => setSelectedPlan(e.target.value)}>
+          <option value="">— Mudar plano —</option>
+          {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <button className="btn btn-primary" disabled={!selectedPlan || changing} onClick={changePlan}>
+          {changing ? 'Trocando…' : 'Mudar plano'}
+        </button>
       </div>
 
-      <section>
-        <h2 className="text-lg font-medium mb-2">Pagamentos / Faturas</h2>
-        {data.invoices.length === 0 ? (
-          <div className="text-sm text-muted">Sem faturas cadastradas.</div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Nº</th>
-                <th>Status</th>
-                <th>Valor</th>
-                <th>Vencimento</th>
-                <th>Pago em</th>
-                <th>Criado em</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.invoices.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.external_id || f.id.slice(0,8)}</td>
-                  <td>{f.status}</td>
-                  <td>{centsToBRL(f.amount_cents || 0)}</td>
-                  <td>{f.due_date ? new Date(f.due_date).toLocaleString() : "—"}</td>
-                  <td>{f.paid_at ? new Date(f.paid_at).toLocaleString() : "—"}</td>
-                  <td>{new Date(f.created_at).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <h3>Pagamentos / Faturas</h3>
+      {data.invoices?.length ? (
+        <ul>
+          {data.invoices.map(inv => (
+            <li key={inv.id || inv.created_at}>{inv.created_at} — {inv.description || 'Fatura'}</li>
+          ))}
+        </ul>
+      ) : <p>Sem faturas cadastradas.</p>}
 
-      <section>
-        <h2 className="text-lg font-medium mb-2">Eventos de Plano</h2>
-        {data.plan_events.length === 0 ? (
-          <div className="text-sm text-muted">Sem eventos.</div>
-        ) : (
-          <ul className="space-y-2">
-            {data.plan_events.map((e) => (
-              <li key={e.id} className="p-3 rounded border">
-                <div className="text-sm">
-                  <b>{e.event_type}</b> — {new Date(e.created_at).toLocaleString()}
-                </div>
-                <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-auto">
-                  {JSON.stringify(e.data, null, 2)}
-                </pre>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <h3>Eventos de Plano</h3>
+      {data.plan_events?.length ? (
+        <ul>
+          {data.plan_events.map(ev => (
+            <li key={ev.id || ev.created_at}>{ev.created_at} — {ev.event || 'evento'}</li>
+          ))}
+        </ul>
+      ) : <p>Sem registros.</p>}
 
-      <section>
-        <h2 className="text-lg font-medium mb-2">Consumo de Recursos</h2>
-        {data.credits.length === 0 ? (
-          <div className="text-sm text-muted">Sem registros.</div>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Métrica</th>
-                <th>Usado</th>
-                <th>Início</th>
-                <th>Fim</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.credits.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.meter}</td>
-                  <td>{c.used}</td>
-                  <td>{new Date(c.period_start).toLocaleDateString()}</td>
-                  <td>{new Date(c.period_end).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+      <h3>Consumo de Recursos</h3>
+      {data.usage?.length ? (
+        <ul>
+          {data.usage.map(us => (
+            <li key={us.id || us.created_at}>{us.created_at} — {us.meter}: {us.qty}</li>
+          ))}
+        </ul>
+      ) : <p>Sem registros.</p>}
     </div>
   );
 }
-// ===== CODEx: END OrgBillingHistory.jsx =====

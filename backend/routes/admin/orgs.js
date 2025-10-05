@@ -1,6 +1,7 @@
 // backend/routes/admin/orgs.js
 import { Router } from 'express';
 import { z } from 'zod';
+import slugify from 'slugify';
 import authRequired from '../../middleware/auth.js';
 import { requireRole, ROLES } from '../../middleware/requireRole.js';
 import { db } from './orgs.shared.js';
@@ -85,140 +86,168 @@ router.get('/:orgId', async (req, res, next) => {
  * PUT /api/admin/orgs/:orgId
  * ========================================================================== */
 
-const UpdateSchema = z
+const OrgCreateSchema = z
   .object({
-    // básicos
-    name: z.string().min(2).optional(),
-    slug: z.string().min(2).optional(),
-    // front manda “Ativa / Inativa” às vezes; normalizamos depois
-    status: z.enum(['active', 'inactive']).optional(),
-    email: z.string().email().optional(),
-    phone_e164: z.string().optional(),
+    name: z.string().min(1, 'Required'),
+    slug: z.string().min(1, 'Required'),
+    status: z.enum(['active', 'inactive']).default('active'),
 
-    // empresa
-    cnpj: z.string().optional(),
-    razao_social: z.string().optional(),
-    nome_fantasia: z.string().optional(),
-    site: z.string().url().optional(),
-    ie: z.string().optional(),
-    ie_isento: z.boolean().optional(),
+    cnpj: z.string().optional().nullable(),
+    razao_social: z.string().optional().nullable(),
+    nome_fantasia: z.string().optional().nullable(),
+    site: z.string().optional().nullable(),
+    email: z.string().optional().nullable(),
+    phone_e164: z.string().optional().nullable(),
+    ie: z.string().optional().nullable(),
+    ie_isento: z.boolean().optional().nullable(),
 
-    // endereço
     endereco: z
       .object({
-        cep: z.string().optional(),
-        logradouro: z.string().optional(),
-        numero: z.string().optional(),
-        complemento: z.string().optional(),
-        bairro: z.string().optional(),
-        cidade: z.string().optional(),
-        uf: z.string().optional(),
-        country: z.string().optional(),
+        cep: z.string().optional().nullable(),
+        logradouro: z.string().optional().nullable(),
+        numero: z.string().optional().nullable(),
+        complemento: z.string().optional().nullable(),
+        bairro: z.string().optional().nullable(),
+        cidade: z.string().optional().nullable(),
+        uf: z.string().optional().nullable(),
+        country: z.string().optional().nullable(),
       })
-      .partial()
-      .optional(),
+      .optional()
+      .nullable(),
 
-    // responsável
     responsavel: z
       .object({
-        nome: z.string().optional(),
-        cpf: z.string().optional(),
-        email: z.string().email().optional(),
-        phone_e164: z.string().optional(),
+        nome: z.string().optional().nullable(),
+        cpf: z.string().optional().nullable(),
+        email: z.string().optional().nullable(),
+        phone_e164: z.string().optional().nullable(),
       })
-      .partial()
-      .optional(),
+      .optional()
+      .nullable(),
 
-    // flag do formulário: “Habilitar WhatsApp (Baileys)”
-    whatsapp_baileys: z.boolean().optional(),
+    whatsapp_baileys_enabled: z.boolean().optional().nullable(),
+    whatsapp_mode: z.enum(['baileys', 'cloud']).optional().nullable(),
+    plan_id: z.string().uuid().optional().nullable(),
   })
-  .passthrough();
+  .strict();
 
-// -------- CREATE (POST) ----------
-const CreateSchema = z.object({
-  // básicos
-  name: z.string().min(2),
-  slug: z.string().min(2).optional().nullable(),
-  status: z.string().optional().nullable(), // pode vir "Ativa" do front
+const OrgUpdateSchema = z
+  .object({
+    name: z.string().min(1, 'Required').optional(),
+    slug: z.string().min(1, 'Required').optional(),
+    status: z.enum(['active', 'inactive']).optional(),
 
-  email: z.string().email().optional().nullable(),
-  phone_e164: z.string().optional().nullable(),
-
-  // empresa
-  cnpj: z.string().optional().nullable(),
-  razao_social: z.string().optional().nullable(),
-  nome_fantasia: z.string().optional().nullable(),
-  site: z.string().url().optional().nullable(),
-  ie: z.string().optional().nullable(),
-  ie_isento: z.boolean().optional().nullable(),
-
-  // endereço
-  endereco: z.object({
-    cep: z.string().optional().nullable(),
-    logradouro: z.string().optional().nullable(),
-    numero: z.string().optional().nullable(),
-    complemento: z.string().optional().nullable(),
-    bairro: z.string().optional().nullable(),
-    cidade: z.string().optional().nullable(),
-    uf: z.string().optional().nullable(),
-    country: z.string().optional().nullable(),
-  }).optional().nullable(),
-
-  // responsável
-  responsavel: z.object({
-    nome: z.string().optional().nullable(),
-    cpf: z.string().optional().nullable(),
-    email: z.string().email().optional().nullable(),
+    cnpj: z.string().optional().nullable(),
+    razao_social: z.string().optional().nullable(),
+    nome_fantasia: z.string().optional().nullable(),
+    site: z.string().optional().nullable(),
+    email: z.string().optional().nullable(),
     phone_e164: z.string().optional().nullable(),
-  }).optional().nullable(),
+    ie: z.string().optional().nullable(),
+    ie_isento: z.boolean().optional().nullable(),
 
-  whatsapp_baileys: z.boolean().optional().nullable(),
-}).passthrough();
+    endereco: z
+      .object({
+        cep: z.string().optional().nullable(),
+        logradouro: z.string().optional().nullable(),
+        numero: z.string().optional().nullable(),
+        complemento: z.string().optional().nullable(),
+        bairro: z.string().optional().nullable(),
+        cidade: z.string().optional().nullable(),
+        uf: z.string().optional().nullable(),
+        country: z.string().optional().nullable(),
+      })
+      .optional()
+      .nullable(),
 
-// helper para normalizar vazio -> null
+    responsavel: z
+      .object({
+        nome: z.string().optional().nullable(),
+        cpf: z.string().optional().nullable(),
+        email: z.string().optional().nullable(),
+        phone_e164: z.string().optional().nullable(),
+      })
+      .optional()
+      .nullable(),
+
+    whatsapp_baileys_enabled: z.boolean().optional().nullable(),
+    whatsapp_mode: z.enum(['baileys', 'cloud']).optional().nullable(),
+    plan_id: z.string().uuid().optional().nullable(),
+  })
+  .strict();
+
 const toNull = (v) => (v === undefined || v === null || (typeof v === 'string' && v.trim() === '') ? null : v);
+
+function normalizeStatusValue(value, fallback = undefined) {
+  if (value == null) return fallback;
+  const norm = String(value).toLowerCase();
+  if (norm === 'ativa') return 'active';
+  if (norm === 'inativa') return 'inactive';
+  if (norm === 'active' || norm === 'inactive') return norm;
+  return fallback;
+}
 
 router.post('/', async (req, res, next) => {
   try {
-    const body = CreateSchema.parse(req.body ?? {});
+    const raw = req.body || {};
 
-    const statusNorm = (body.status || '').toString().toLowerCase();
-    const status =
-      statusNorm === 'ativa' ? 'active' :
-      statusNorm === 'inativa' ? 'inactive' :
-      (['active','inactive'].includes(statusNorm) ? statusNorm : null);
+    let name =
+      raw.name ??
+      raw.nome ??
+      raw.company?.name ??
+      raw.nome_fantasia ??
+      raw.razao_social ??
+      null;
+    let slug = raw.slug ?? null;
+    const status = normalizeStatusValue(raw.status, 'active');
 
-    const e = body.endereco || {};
-    const r = body.responsavel || {};
+    if (!slug && name) {
+      slug = slugify(String(name), { lower: true, strict: true, locale: 'pt' }).slice(0, 64);
+    }
+
+    const parsed = OrgCreateSchema.safeParse({
+      ...raw,
+      name,
+      slug,
+      status,
+    });
+
+    if (!parsed.success) {
+      return res.status(422).json({ error: 'validation', issues: parsed.error.issues });
+    }
+
+    const input = parsed.data;
+    const endereco = input.endereco || {};
+    const responsavel = input.responsavel || {};
 
     const params = [
-      toNull(body.name),                 // 1 obrigatório no schema (já garantido)
-      toNull(body.slug),                 // 2
-      toNull(status),                    // 3
+      toNull(input.name),
+      toNull(input.slug),
+      toNull(input.status),
 
-      toNull(body.cnpj),                 // 4
-      toNull(body.razao_social),         // 5
-      toNull(body.nome_fantasia),        // 6
-      toNull(body.site),                 // 7
-      toNull(body.email),                // 8
-      toNull(body.phone_e164),           // 9
+      toNull(input.cnpj),
+      toNull(input.razao_social),
+      toNull(input.nome_fantasia),
+      toNull(input.site),
+      toNull(input.email),
+      toNull(input.phone_e164),
 
-      toNull(body.ie),                   // 10
-      body.ie_isento ?? null,            // 11
+      toNull(input.ie),
+      input.ie_isento ?? null,
 
-      toNull(e.cep),                     // 12
-      toNull(e.logradouro),              // 13
-      toNull(e.numero),                  // 14
-      toNull(e.complemento),             // 15
-      toNull(e.bairro),                  // 16
-      toNull(e.cidade),                  // 17
-      toNull(e.uf),                      // 18
-      toNull(e.country),                 // 19
+      toNull(endereco.cep),
+      toNull(endereco.logradouro),
+      toNull(endereco.numero),
+      toNull(endereco.complemento),
+      toNull(endereco.bairro),
+      toNull(endereco.cidade),
+      toNull(endereco.uf),
+      toNull(endereco.country),
 
-      toNull(r.nome),                    // 20
-      toNull(r.cpf),                     // 21
-      toNull(r.email),                   // 22
-      toNull(r.phone_e164),              // 23
+      toNull(responsavel.nome),
+      toNull(responsavel.cpf),
+      toNull(responsavel.email),
+      toNull(responsavel.phone_e164),
     ];
 
     const sql = `
@@ -244,102 +273,18 @@ router.post('/', async (req, res, next) => {
     const { rows } = await db.query(sql, params);
     const org = rows[0];
 
-    if (body.whatsapp_baileys === true) {
+    if (input.whatsapp_baileys_enabled === true || input.whatsapp_mode === 'baileys') {
       await db.query(
         `INSERT INTO public.channels (id, org_id, type, mode, status, created_at, updated_at)
          VALUES (gen_random_uuid(), $1, 'whatsapp', 'baileys', 'disconnected', now(), now())
          ON CONFLICT (org_id, type, mode) DO NOTHING;`,
-        [org.id],
+        [org.id]
       );
     }
 
     return res.status(201).json({ ok: true, org });
   } catch (err) {
-    if (err.name === 'ZodError') {
-      return res.status(422).json({ error: 'validation', issues: err.issues });
-    }
-    return next(err);
-  }
-});
-
-
-router.post('/', async (req, res, next) => {
-  try {
-    const body = CreateSchema.parse(req.body ?? {});
-
-    const e = body.endereco || {};
-    const r = body.responsavel || {};
-
-    // status vindo da UI (ex.: "Ativa") → 'active'
-    const statusNorm = (body.status || '').toString().toLowerCase();
-    const status =
-      statusNorm === 'ativa' ? 'active' :
-      statusNorm === 'inativa' ? 'inactive' :
-      (['active','inactive'].includes(statusNorm) ? statusNorm : 'active');
-
-    const params = [
-      body.name,                    // 1
-      body.slug ?? null,            // 2
-      status,                       // 3
-      body.cnpj ?? null,            // 4
-      body.razao_social ?? null,    // 5
-      body.nome_fantasia ?? null,   // 6
-      body.site ?? null,            // 7
-      body.email ?? null,           // 8
-      body.phone_e164 ?? null,      // 9
-      body.ie ?? null,              // 10
-      body.ie_isento ?? null,       // 11
-      e.cep ?? null,                // 12
-      e.logradouro ?? null,         // 13
-      e.numero ?? null,             // 14
-      e.complemento ?? null,        // 15
-      e.bairro ?? null,             // 16
-      e.cidade ?? null,             // 17
-      e.uf ?? null,                 // 18
-      e.country ?? null,            // 19
-      r.nome ?? null,               // 20
-      r.cpf ?? null,                // 21
-      r.email ?? null,              // 22
-      r.phone_e164 ?? null,         // 23
-    ];
-
-    const sql = `
-      INSERT INTO public.organizations (
-        id, name, slug, status,
-        cnpj, razao_social, nome_fantasia, site, email, phone_e164,
-        ie, ie_isento,
-        cep, logradouro, numero, complemento, bairro, cidade, uf, country,
-        resp_nome, resp_cpf, resp_email, resp_phone_e164,
-        created_at, updated_at
-      ) VALUES (
-        gen_random_uuid(),
-        $1,
-        COALESCE(util_slugify($2), util_slugify($1)),
-        $3,
-        util_digits($4), $5, $6, $7, lower($8), util_parse_e164($9, 'BR'),
-        $10, $11,
-        util_digits($12), $13, $14, $15, $16, $17, upper($18), upper($19),
-        $20, util_digits($21), lower($22), util_parse_e164($23, 'BR'),
-        now(), now()
-      )
-      RETURNING *;
-    `;
-
-    const { rows } = await db.query(sql, params);
-    const created = rows[0];
-
-    if (body.whatsapp_baileys === true) {
-      await db.query(
-        `INSERT INTO public.channels (id, org_id, type, mode, status, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, 'whatsapp', 'baileys', 'disconnected', now(), now())
-         ON CONFLICT (org_id, type, mode) DO NOTHING;`,
-        [created.id]
-      );
-    }
-
-    return res.status(201).json({ ok: true, org: created });
-  } catch (err) {
-    if (err.name === 'ZodError') {
+    if (err?.name === 'ZodError') {
       return res.status(422).json({ error: 'validation', issues: err.issues });
     }
     return next(err);
@@ -350,48 +295,62 @@ router.post('/', async (req, res, next) => {
 router.put('/:orgId', async (req, res, next) => {
   try {
     const orgId = z.string().uuid().parse(req.params.orgId);
-    const body = UpdateSchema.parse(req.body ?? {});
+    const raw = req.body || {};
 
-    // de/para campos aninhados
-    const e = body.endereco || {};
-    const r = body.responsavel || {};
+    let name =
+      raw.name ??
+      raw.nome ??
+      raw.company?.name ??
+      raw.nome_fantasia ??
+      raw.razao_social ??
+      null;
+    let slug = raw.slug ?? null;
+    const status = normalizeStatusValue(raw.status, undefined);
 
-    // status amigável vindo do front -> 'active'/'inactive'
-    const statusNorm = (body.status || '').toString().toLowerCase();
-    const status =
-      statusNorm === 'ativa'
-        ? 'active'
-        : statusNorm === 'inativa'
-        ? 'inactive'
-        : ['active', 'inactive'].includes(statusNorm)
-        ? statusNorm
-        : undefined;
+    if (!slug && name) {
+      slug = slugify(String(name), { lower: true, strict: true, locale: 'pt' }).slice(0, 64);
+    }
+
+    const parsed = OrgUpdateSchema.safeParse({
+      ...raw,
+      ...(name != null ? { name } : {}),
+      ...(slug != null ? { slug } : {}),
+      ...(status != null ? { status } : {}),
+    });
+
+    if (!parsed.success) {
+      return res.status(422).json({ error: 'validation', issues: parsed.error.issues });
+    }
+
+    const input = parsed.data;
+    const endereco = input.endereco || {};
+    const responsavel = input.responsavel || {};
 
     const params = [
-      body.name ?? null, // 1
-      body.slug ?? null, // 2
-      status ?? null, // 3
-      body.cnpj ?? null, // 4
-      body.razao_social ?? null, // 5
-      body.nome_fantasia ?? null, // 6
-      body.site ?? null, // 7
-      body.email ?? null, // 8
-      body.phone_e164 ?? null, // 9
-      body.ie ?? null, // 10
-      body.ie_isento ?? null, // 11
-      e.cep ?? null, // 12
-      e.logradouro ?? null, // 13
-      e.numero ?? null, // 14
-      e.complemento ?? null, // 15
-      e.bairro ?? null, // 16
-      e.cidade ?? null, // 17
-      e.uf ?? null, // 18
-      e.country ?? null, // 19
-      r.nome ?? null, // 20
-      r.cpf ?? null, // 21
-      r.email ?? null, // 22
-      r.phone_e164 ?? null, // 23
-      orgId, // 24
+      toNull(input.name),
+      toNull(input.slug),
+      toNull(input.status),
+      toNull(input.cnpj),
+      toNull(input.razao_social),
+      toNull(input.nome_fantasia),
+      toNull(input.site),
+      toNull(input.email),
+      toNull(input.phone_e164),
+      toNull(input.ie),
+      input.ie_isento ?? null,
+      toNull(endereco.cep),
+      toNull(endereco.logradouro),
+      toNull(endereco.numero),
+      toNull(endereco.complemento),
+      toNull(endereco.bairro),
+      toNull(endereco.cidade),
+      toNull(endereco.uf),
+      toNull(endereco.country),
+      toNull(responsavel.nome),
+      toNull(responsavel.cpf),
+      toNull(responsavel.email),
+      toNull(responsavel.phone_e164),
+      orgId,
     ];
 
     const sql = `
@@ -434,7 +393,7 @@ router.put('/:orgId', async (req, res, next) => {
     const updated = rows[0];
 
     // (opcional) habilitar WhatsApp Baileys
-    if (body.whatsapp_baileys === true) {
+    if (input.whatsapp_baileys_enabled === true || input.whatsapp_mode === 'baileys') {
       await db.query(
         `INSERT INTO public.channels (id, org_id, type, mode, status, created_at, updated_at)
            VALUES (gen_random_uuid(), $1, 'whatsapp', 'baileys', 'disconnected', now(), now())

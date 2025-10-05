@@ -430,6 +430,40 @@ export async function adminPutPlanFeatures(planId, features, options = {}) {
   return api.put(`/admin/plans/${planId}/features`, features, withGlobalScope(options));
 }
 
+// ===== Billing / Histórico =====
+export async function adminGetOrgBillingHistory(orgId) {
+  const { data } = await api.get(`/admin/orgs/${orgId}/billing/history`, {
+    meta: { scope: 'global' },
+  });
+  if (!data?.ok) throw new Error(JSON.stringify(data || {}));
+  return data.data;
+}
+
+export async function getOrgBillingHistory(orgId) {
+  const { data } = await api.get(`/orgs/${orgId}/billing/history`);
+  if (!data?.ok) throw new Error(JSON.stringify(data || {}));
+  return data.data;
+}
+
+// ===== Planos =====
+export async function adminListPlansShort() {
+  const { data: resp } = await api.get(`/admin/plans`, { meta: { scope: 'global' } });
+  const plans =
+    (resp?.data?.plans ?? resp?.plans ?? resp?.data ?? (Array.isArray(resp) ? resp : [])).map((p) => ({
+      id: p.id ?? p.plan_id ?? p.uuid,
+      name: p.name ?? p.title ?? p.slug ?? 'Plano',
+    }));
+  return plans;
+}
+
+export async function adminPutOrgPlan(orgId, planId) {
+  return api.put(
+    `/admin/orgs/${orgId}/plan`,
+    { plan_id: planId },
+    { meta: { scope: 'global' } }
+  );
+}
+
 export {
   adminCreatePlan as createPlan,
   adminUpdatePlan as updatePlan,
