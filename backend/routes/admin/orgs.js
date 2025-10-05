@@ -284,10 +284,43 @@ router.post('/', async (req, res, next) => {
 
     return res.status(201).json({ ok: true, org });
   } catch (err) {
-    if (err?.name === 'ZodError') {
-      return res.status(422).json({ error: 'validation', issues: err.issues });
+    // Postgres unique violation
+    if (err && err.code === '23505') {
+      // err.constraint traz o nome do índice único violado
+      if (err.constraint === 'ux_orgs_email_lower') {
+        return res.status(409).json({
+          error: 'conflict',
+          field: 'email',
+          message: 'Este e-mail já está em uso por outra organização.',
+        });
+      }
+      if (err.constraint === 'ux_orgs_cnpj_digits') {
+        return res.status(409).json({
+          error: 'conflict',
+          field: 'cnpj',
+          message: 'Este CNPJ já está em uso por outra organização.',
+        });
+      }
+      if (err.constraint === 'ux_orgs_slug') {
+        return res.status(409).json({
+          error: 'conflict',
+          field: 'slug',
+          message: 'Este slug já está em uso por outra organização.',
+        });
+      }
     }
-    return next(err);
+
+    // Check constraint (usaremos no item 2)
+    if (err && err.code === '23514' && err.constraint === 'chk_organizations_status') {
+      return res.status(400).json({
+        error: 'invalid_status',
+        field: 'status',
+        message: 'Status inválido para organização.',
+      });
+    }
+
+    // fallback
+    next(err);
   }
 });
 
