@@ -41,6 +41,8 @@ import adminApp from './app.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import testWhatsappRouter from './routes/testWhatsappRoutes.js';
 import onboardingRouter from './routes/onboarding.js';
+import adminOrgsRouter from './routes/admin/orgs.js';
+import orgsPublicRouter from './routes/orgs.public.js';
 // Adicione outras rotas **existentes** se necessário.
 
 // Util
@@ -113,6 +115,8 @@ app.get('/health', async (req, res) => {
 app.use('/api/public', publicRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);
+app.use('/api/orgs', orgsPublicRouter);
+app.use('/api/admin/orgs', adminOrgsRouter);
 
 // Autenticação obrigatória
 app.use('/api', auth);
