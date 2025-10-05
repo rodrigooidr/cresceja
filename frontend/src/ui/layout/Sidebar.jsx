@@ -1,5 +1,5 @@
 // frontend/src/ui/layout/Sidebar.jsx
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import {
   MessageSquare,
@@ -26,9 +26,7 @@ import {
   hasOrgRole,
 } from "../../auth/roles";
 import { canUse, limitKeyFor } from "../../utils/featureGate.js";
-
-const LS_KEY = "sidebarCollapsed";
-const LEGACY_KEY = "sidebar:collapsed";
+import OrgSelect from "../../components/OrgSelect.jsx";
 
 function NavItem({
   to,
@@ -83,83 +81,33 @@ function NavItem({
 }
 
 function OrgPicker({ collapsed }) {
-  const {
-    orgs,
-    loading,
-    selected,
-    setSelected,
-    canSeeSelector,
-    publicMode,
-    searchOrgs,
-    loadMoreOrgs,
-    hasMore,
-    q,
-  } = useOrg();
-  const [query, setQuery] = useState(q || "");
-
-  useEffect(() => {
-    searchOrgs(query);
-  }, [query, searchOrgs]);
-
-  if (collapsed) {
-    if (publicMode || !canSeeSelector) {
-      return (
-        <div className="p-3 border-b flex items-center justify-center text-xs text-gray-500">
-          Público
-        </div>
-      );
-    }
-    const active = orgs.find((o) => String(o.id) === String(selected));
-    return (
-      <div className="p-3 border-b flex items-center justify-center text-xs font-semibold">
-        <span title={active?.name || "Selecione uma organização"}>
-          {(active?.name || "Org").slice(0, 2).toUpperCase()}
-        </span>
-      </div>
-    );
-  }
+  const { orgs, selected, canSeeSelector, publicMode } = useOrg();
+  const active = orgs.find((org) => String(org.id) === String(selected));
 
   if (publicMode || !canSeeSelector) {
     return (
       <div className="p-3 border-b space-y-2">
         <div className="text-xs text-gray-500">Organização</div>
-        <div className="px-3 py-2 rounded bg-gray-50">Modo público</div>
+        <div className="px-3 py-2 rounded bg-gray-50">
+          {publicMode ? 'Modo público' : 'Acesso restrito'}
+        </div>
+      </div>
+    );
+  }
+
+  if (collapsed) {
+    return (
+      <div className="p-3 border-b flex items-center justify-center text-xs font-semibold uppercase">
+        <span title={active?.name || 'Selecionar organização'}>
+          {(active?.name || active?.slug || 'Org').slice(0, 2).toUpperCase()}
+        </span>
       </div>
     );
   }
 
   return (
-    <div className="p-3 border-b space-y-2">
-      <div className="text-xs text-gray-500">Organização</div>
-
-      <input
-        className="w-full input input-bordered"
-        placeholder="Buscar cliente/empresa…"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-      />
-
-      <select
-        className="w-full select select-bordered"
-        value={selected || ""}
-        onChange={(e) => setSelected(e.target.value || null)}
-      >
-        <option value="">{loading ? "Carregando..." : "— Selecione —"}</option>
-        {orgs.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.name}
-          </option>
-        ))}
-      </select>
-
-      <div className="text-xs text-gray-500">
-        {!loading && orgs.length === 0 && "Nenhum resultado"}
-        {hasMore && (
-          <button className="btn btn-ghost btn-xs ml-2" onClick={loadMoreOrgs}>
-            Carregar mais…
-          </button>
-        )}
-      </div>
+    <div className="p-3 border-b">
+      <OrgSelect />
     </div>
   );
 }
@@ -171,29 +119,14 @@ export default function Sidebar() {
   const canManageOrgAI = hasOrgRole(["OrgAdmin", "OrgOwner"], user) || hasGlobalRole(["SuperAdmin"], user);
   const isSuperAdmin = hasGlobalRole(["SuperAdmin"], user);
 
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      const saved = localStorage.getItem(LS_KEY);
-      if (saved != null) return saved === 'true';
-      const legacy = localStorage.getItem(LEGACY_KEY);
-      return legacy === '1';
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_KEY, String(collapsed));
-      localStorage.removeItem(LEGACY_KEY);
-    } catch {}
-  }, [collapsed]);
+  const [hovered, setHovered] = useState(false);
+  const collapsed = !hovered;
 
   useEffect(() => {
     const onResize = () => {
       if (typeof window === 'undefined') return;
       if (window.innerWidth < 1024) {
-        setCollapsed(true);
+        setHovered(false);
       }
     };
     if (typeof window !== 'undefined') {
@@ -207,28 +140,16 @@ export default function Sidebar() {
     return () => {};
   }, []);
 
-  const toggle = useCallback(() => setCollapsed((c) => !c), []);
-
   return (
     <aside
-      className={`h-full flex flex-col border-r bg-white ${collapsed ? 'w-16' : 'w-72'}`}
+      className={`group/sidebar h-full flex flex-col border-r bg-white transition-[width] duration-200 ease-in-out ${
+        collapsed ? 'w-16' : 'w-72'
+      }`}
       data-testid="sidebar"
       aria-label="sidebar"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      <div className="flex items-center justify-between p-2 border-b">
-        <span className="font-semibold text-sm">{collapsed ? '' : 'Menu'}</span>
-        <button
-          data-testid="sidebar-toggle"
-          className="btn btn-ghost btn-xs"
-          onClick={toggle}
-          aria-label="Alternar menu"
-          aria-expanded={!collapsed}
-          aria-controls="sidebar-panel"
-        >
-          {collapsed ? '>>' : '<<'}
-        </button>
-      </div>
-
       <OrgPicker collapsed={collapsed} />
 
       <div className="p-3 space-y-1 flex-1 overflow-auto" id="sidebar-panel">

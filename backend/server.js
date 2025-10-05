@@ -15,6 +15,7 @@ import cookieParser from 'cookie-parser';
 
 import auth from './middleware/auth.js';
 import withOrg from './middleware/withOrg.js';
+import orgContext from './middleware/orgContext.js';
 
 import { healthcheck } from '#db';
 
@@ -41,7 +42,8 @@ import adminApp from './app.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import testWhatsappRouter from './routes/testWhatsappRoutes.js';
 import onboardingRouter from './routes/onboarding.js';
-import orgsRouter from './routes/admin/orgs.js';
+import adminOrgsRouter from './routes/admin/orgs.js';
+import orgsRouter from './routes/orgs.js';
 
 // Adicione outras rotas **existentes** se necessário.
 
@@ -115,11 +117,16 @@ app.get('/health', async (req, res) => {
 app.use('/api/public', publicRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);
-app.use('/api/orgs', orgsRouter);
-app.use('/api/admin/orgs', orgsRouter); 
+app.use('/api/admin/orgs', adminOrgsRouter);
 
 // Autenticação obrigatória
 app.use('/api', auth);
+
+// Contexto da organização ativa (x-org-id)
+app.use('/api', orgContext);
+
+// Seleção/listagem de organizações (antes de exigir org ativa)
+app.use('/api/orgs', orgsRouter);
 
 // Seleção/validação de organização
 app.use('/api', withOrg);

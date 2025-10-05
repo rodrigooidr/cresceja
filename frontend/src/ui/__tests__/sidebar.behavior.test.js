@@ -1,4 +1,4 @@
-import { fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import { fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../../test/utils/renderWithProviders';
 import Sidebar from '../../ui/layout/Sidebar';

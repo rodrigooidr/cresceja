@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { getCurrentOrg, getMyOrgs, setActiveOrg } from "../api/inboxApi";
+import { getCurrentOrg, getMyOrgs, setActiveOrg, switchOrg } from "../api/inboxApi";
 import { getOrgIdFromStorage } from "../services/session.js";
 import { useAuth } from "./AuthContext";
 
@@ -44,6 +44,37 @@ function readTokenOrgId() {
 
 export function OrgProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.fetch !== "function") return undefined;
+    const originalFetch = window.fetch.bind(window);
+
+    window.fetch = (input, init = {}) => {
+      const config = { ...(init || {}) };
+      const headers = { ...(config.headers || {}) };
+
+      try {
+        const token = localStorage.getItem("token");
+        if (token && !("Authorization" in headers) && !("authorization" in headers)) {
+          headers.Authorization = `Bearer ${token}`;
+        }
+      } catch {}
+
+      try {
+        const storedOrgId = localStorage.getItem("orgId");
+        if (storedOrgId && !headers["x-org-id"] && !headers["X-Org-Id"]) {
+          headers["x-org-id"] = storedOrgId;
+        }
+      } catch {}
+
+      config.headers = headers;
+      return originalFetch(input, config);
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
 
   // Lista / paginação
   const [orgs, setOrgs] = useState([]);
@@ -223,6 +254,13 @@ export function OrgProvider({ children }) {
     async (orgId) => {
       if (!isAuthenticated) return;
       if (!orgId || orgId === selected) return;
+      try {
+        await switchOrg(orgId);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[org] switch_failed', err);
+        throw err;
+      }
       setSelected(orgId);
       setActiveOrg(orgId);
       setOrg(null);
