@@ -143,7 +143,6 @@ app.use('/api/inbox', inboxSettingsRouter);
 app.use('/api/inbox', inboxTemplatesRouter);
 app.use('/api/inbox', inboxConversationsRouter);
 app.use('/api/inbox', inboxMessagesRouter);
-app.use('/api/orgs', organizationsRouter);
 app.use('/api/orgs', orgsFeaturesRouter);
 app.use('/api/ai', aiSettingsRouter);
 // 🔗 Novas rotas (precisavam ser montadas)

@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { getCurrentOrg, getMyOrgs, setActiveOrg, switchOrg } from "../api/inboxApi";
+import { getCurrentOrg, getMyOrgs, setActiveOrg, switchOrg, listAdminOrgs as listAllOrgs, } from "../api/inboxApi";
 import { getOrgIdFromStorage } from "../services/session.js";
 import { useAuth } from "./AuthContext";
 
@@ -17,16 +17,33 @@ const globalScope =
   typeof globalThis !== "undefined"
     ? globalThis
     : typeof window !== "undefined"
-    ? window
-    : {};
+      ? window
+      : {};
 
-const START_BLANK = true;
+const START_BLANK = false;
+
+// --- persiste activeOrg para componentes legados (sidebar, etc.)
+function persistActiveOrg(data) {
+  try {
+    if (data && data.id) {
+      const minimal = {
+        id: data.id,
+        name: data.name ?? data.company?.name ?? null,
+        slug: data.slug ?? null,
+      };
+      localStorage.setItem("activeOrg", JSON.stringify(minimal));
+      localStorage.setItem("orgId", String(data.id));
+    } else {
+      localStorage.removeItem("activeOrg");
+    }
+  } catch { }
+}
 
 // Broadcast opcional (quem quiser ouvir “org:changed”)
 function announceOrgChanged(orgId) {
   try {
     window.dispatchEvent(new CustomEvent("org:changed", { detail: { orgId } }));
-  } catch {}
+  } catch { }
 }
 
 function readTokenOrgId() {
@@ -45,34 +62,37 @@ function readTokenOrgId() {
 export function OrgProvider({ children }) {
   const { user, isAuthenticated } = useAuth();
 
+  // Patch do fetch: injeta Authorization e X-Org-Id sem mexer no body
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.fetch !== "function") return undefined;
-    const originalFetch = window.fetch.bind(window);
+    if (typeof window === "undefined" || typeof window.fetch !== "function") return;
+    const origFetch = window.fetch.bind(window);
 
     window.fetch = (input, init = {}) => {
-      const config = { ...(init || {}) };
-      const headers = { ...(config.headers || {}) };
+      const cfg = { ...init };
+      const headers = new Headers(init && init.headers ? init.headers : undefined);
+
+      const token = localStorage.getItem("token");
+      if (token && !headers.has("Authorization")) {
+        headers.set("Authorization", "Bearer " + token);
+      }
 
       try {
-        const token = localStorage.getItem("token");
-        if (token && !("Authorization" in headers) && !("authorization" in headers)) {
-          headers.Authorization = `Bearer ${token}`;
+        const active = localStorage.getItem("activeOrg");
+        if (active) {
+          const org = JSON.parse(active);
+          if (org?.id) headers.set("x-org-id", org.id);
         }
-      } catch {}
+      } catch { }
 
-      try {
-        const storedOrgId = localStorage.getItem("orgId");
-        if (storedOrgId && !headers["x-org-id"] && !headers["X-Org-Id"]) {
-          headers["x-org-id"] = storedOrgId;
-        }
-      } catch {}
-
-      config.headers = headers;
-      return originalFetch(input, config);
+      cfg.headers = headers;
+      if (Object.prototype.hasOwnProperty.call(init, "body")) {
+        cfg.body = init.body;
+      }
+      return origFetch(input, cfg);
     };
 
     return () => {
-      window.fetch = originalFetch;
+      window.fetch = origFetch;
     };
   }, []);
 
@@ -95,11 +115,27 @@ export function OrgProvider({ children }) {
   const [orgError, setOrgError] = useState(null);
 
   // Quem vê o seletor
+  // Quem vê o seletor (robusto com fallback para token e user.roles)
   const canSeeSelector = useMemo(() => {
-    if (!isAuthenticated || !user) return false;
-    const r = user.role;
-    return ["SuperAdmin", "Support", "OrgOwner", "OrgAdmin"].includes(r);
+    if (!isAuthenticated) return false;
+
+    const roles = new Set();
+    if (user?.role) roles.add(String(user.role));
+    (user?.roles || []).forEach((r) => r && roles.add(String(r)));
+
+    try {
+      const t = localStorage.getItem("token");
+      if (t) {
+        const p = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (p?.role) roles.add(String(p.role));
+        (p?.roles || []).forEach((r) => r && roles.add(String(r)));
+      }
+    } catch { }
+
+    const allowed = ["SuperAdmin", "Support", "OrgOwner", "OrgAdmin"];
+    return allowed.some((a) => roles.has(a));
   }, [isAuthenticated, user]);
+
 
   // Visibilidade da listagem
   const visibility = useMemo(() => {
@@ -122,61 +158,72 @@ export function OrgProvider({ children }) {
     qRef.current = q;
   }, [q]);
 
-  // Carrega lista (server-side)
-  const refreshOrgs = useCallback(
-    async () => {
-      if (!isAuthenticated) {
-        setLoading(false);
-        setOrgs([]);
-        setAllOrgs([]);
-        setHasMore(false);
-        setQ("");
-        return;
+  function hasSuperPower(user) {
+    const roles = new Set();
+    if (user?.role) roles.add(String(user.role));
+    (user?.roles || []).forEach(r => r && roles.add(String(r)));
+    try {
+      const t = localStorage.getItem("token");
+      if (t) {
+        const p = JSON.parse(atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+        if (p?.role) roles.add(String(p.role));
+        (p?.roles || []).forEach(r => r && roles.add(String(r)));
       }
+    } catch { }
+    return roles.has("SuperAdmin") || roles.has("Support");
+  }
 
-      setLoading(true);
-      try {
-        const data = await getMyOrgs();
-        const rawItems = Array.isArray(data?.items)
-          ? data.items
-          : Array.isArray(data?.orgs)
+  // ===== lista de organizações (server-side)
+  const refreshOrgs = useCallback(async () => {
+    if (!isAuthenticated) {
+      setLoading(false);
+      setOrgs([]);
+      setAllOrgs([]);
+      setHasMore(false);
+      setQ("");
+      return;
+    }
+    setLoading(true);
+    try {
+      // SuperAdmin/Support -> lista TODAS as orgs
+      const data = hasSuperPower(user)
+        ? await listAllOrgs("active") // admin endpoint
+        : await getMyOrgs();          // somente as do usuário
+      const rawItems = Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.orgs)
           ? data.orgs
           : Array.isArray(data)
-          ? data
-          : [];
+            ? data
+            : Array.isArray(data?.data)     // alguns endpoints retornam {data:[...]}
+              ? data.data
+              : [];
 
-        const items = rawItems.map((o) => ({
-          id: o.id ?? o._id ?? null,
-          name: o.company?.name ?? o.name ?? o.fantasy_name ?? "Sem nome",
-          slug: o.slug ?? null,
-        }));
+      const items = rawItems.map((o) => ({
+        id: o.id ?? o._id ?? null,
+        name: o.company?.name ?? o.name ?? o.fantasy_name ?? "Sem nome",
+        slug: o.slug ?? null,
+      }));
 
-        setAllOrgs(items);
-        const activeQuery = qRef.current;
-        setOrgs(applyFilter(items, activeQuery));
-        setHasMore(false);
+      setAllOrgs(items);
+      setOrgs(applyFilter(items, qRef.current));
+      setHasMore(false);
 
-        const current = data?.currentOrgId ?? null;
-        if (current && !selected) {
-          setSelected(current);
-          setActiveOrg(current);
-        }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[orgs] list fail:",
-          err?.response?.status,
-          err?.response?.data || err?.message
-        );
-        setOrgs([]);
-        setAllOrgs([]);
-        setHasMore(false);
-      } finally {
-        setLoading(false);
+      // se ainda não há seleção e existir 1 org, seleciona
+      if (!selected && items[0]?.id && !START_BLANK) {
+        setSelected(items[0].id);
+        setActiveOrg(items[0].id);
       }
-    },
-    [applyFilter, isAuthenticated, selected]
-  );
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[orgs] list fail:", err?.response?.status, err?.response?.data || err?.message);
+      setOrgs([]);
+      setAllOrgs([]);
+      setHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [applyFilter, isAuthenticated, selected, user]);
 
   const searchOrgs = useCallback(
     (query) => {
@@ -213,7 +260,6 @@ export function OrgProvider({ children }) {
       setOrgLoading(false);
       return;
     }
-    // Se não for para iniciar em branco e o token já traz org, seleciona
     const tokOrg = readTokenOrgId();
     if (!START_BLANK && tokOrg) {
       setSelected(tokOrg);
@@ -233,7 +279,7 @@ export function OrgProvider({ children }) {
         return;
       }
     }
-    // 2) Seleção inválida → se token tiver org válida, aplica; caso contrário, mantém EM BRANCO
+    // 2) Seleção inválida → se token tiver org válida, aplica; se não, mantém
     const exists = selected && orgs.some((o) => o.id === selected);
     if (!exists) {
       const fromToken = readTokenOrgId();
@@ -242,12 +288,37 @@ export function OrgProvider({ children }) {
         setSelected(fromToken);
         setActiveOrg(fromToken);
       } else if (!START_BLANK && orgs[0]?.id) {
-        // fallback antigo (desativado por START_BLANK): pegar a primeira
         setSelected(orgs[0].id);
         setActiveOrg(orgs[0].id);
       }
     }
   }, [isAuthenticated, loading, orgs, selected, user?.role]);
+
+  // ===== org atual
+  const refreshOrg = useCallback(async () => {
+    if (!isAuthenticated || !selected) {
+      setOrg(null);
+      setOrgError(null);
+      setOrgLoading(false);
+      try { localStorage.removeItem("activeOrg"); } catch { }
+      return null;
+    }
+    setOrgLoading(true);
+    setOrgError(null);
+    try {
+      const data = await getCurrentOrg();
+      setOrg(data ?? null);
+      persistActiveOrg(data); // ✅ persiste activeOrg
+      return data ?? null;
+    } catch (err) {
+      setOrg(null);
+      setOrgError(err);
+      try { localStorage.removeItem("activeOrg"); } catch { }
+      throw err;
+    } finally {
+      setOrgLoading(false);
+    }
+  }, [isAuthenticated, selected]);
 
   // Troca de org
   const choose = useCallback(
@@ -258,7 +329,7 @@ export function OrgProvider({ children }) {
         await switchOrg(orgId);
       } catch (err) {
         // eslint-disable-next-line no-console
-        console.warn('[org] switch_failed', err);
+        console.warn("[org] switch_failed", err);
         throw err;
       }
       setSelected(orgId);
@@ -267,32 +338,17 @@ export function OrgProvider({ children }) {
       setOrgError(null);
       announceOrgChanged(orgId);
       setOrgChangeTick((n) => n + 1);
+
+      // carrega e persiste
+      try {
+        const data = await refreshOrg();
+        if (!data) persistActiveOrg({ id: orgId });
+      } catch { }
     },
-    [isAuthenticated, selected]
+    [isAuthenticated, selected, refreshOrg]
   );
 
-  const refreshOrg = useCallback(async () => {
-    if (!isAuthenticated || !selected) {
-      setOrg(null);
-      setOrgError(null);
-      setOrgLoading(false);
-      return null;
-    }
-    setOrgLoading(true);
-    setOrgError(null);
-    try {
-      const data = await getCurrentOrg();
-      setOrg(data ?? null);
-      return data ?? null;
-    } catch (err) {
-      setOrg(null);
-      setOrgError(err);
-      throw err;
-    } finally {
-      setOrgLoading(false);
-    }
-  }, [isAuthenticated, selected]);
-
+  // carrega org ao mudar seleção / tick
   useEffect(() => {
     if (!isAuthenticated) {
       setOrg(null);
@@ -315,6 +371,7 @@ export function OrgProvider({ children }) {
         const data = await getCurrentOrg();
         if (cancelled) return;
         setOrg(data ?? null);
+        persistActiveOrg(data);
       } catch (err) {
         if (cancelled) return;
         setOrg(null);
@@ -325,10 +382,7 @@ export function OrgProvider({ children }) {
     };
 
     load();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [isAuthenticated, selected, orgChangeTick]);
 
   const value = useMemo(
@@ -368,6 +422,9 @@ export function OrgProvider({ children }) {
     ]
   );
 
+  // debug: inspeção rápida no console
+  try { window.__orgctx__ = value; } catch { }
+
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;
 }
 
@@ -384,14 +441,12 @@ export function useOrg() {
       plan: { limits: {} },
       channels: {},
     };
-    // No fallback não mutamos estado real; devolvemos stubs
     return {
       org: testOrg,
-      selected: testOrg.id,            // 🔴 muitos testes usam isso
-      setSelected: () => {},           // no-op
-      setOrg: () => {},
+      selected: testOrg.id,
+      setSelected: () => { },
+      setOrg: () => { },
       refreshOrg: async () => testOrg,
-      // stubs comuns p/ listas/UX
       orgs: [{ id: testOrg.id, name: testOrg.name }],
       loading: false,
       orgLoading: false,
@@ -406,6 +461,5 @@ export function useOrg() {
     };
   }
 
-  // Produção/dev continuam exigindo Provider
   throw new Error("useOrg must be used within OrgProvider");
 }

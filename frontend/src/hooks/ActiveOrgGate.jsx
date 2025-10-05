@@ -1,33 +1,85 @@
-// frontend/src/hooks/ActiveOrgGate.jsx
-import React from "react";
-import { Outlet } from "react-router-dom";
-import useActiveOrgGate from "./useActiveOrgGate";
+// src/hooks/ActiveOrgGate.jsx
+import React, { useEffect, useMemo } from "react";
+import { useOrg } from "@/contexts/OrgContext";
+import { useAuth } from "@/contexts/AuthContext";
 
-export default function ActiveOrgGate() {
-  const { allowed, hasOrg } = useActiveOrgGate({
-    minRole: 'Agent',
-    mode: "silent",
-  });
+// Componente simples de fallback, se você já tiver um Forbidden, pode importar e usar no prop `fallback`
+function DefaultForbidden() {
+  return (
+    <div style={{ padding: 16 }}>
+      <h3>Acesso não permitido</h3>
+      <p>Você não possui permissão para acessar esta área.</p>
+    </div>
+  );
+}
 
-  if (!allowed) {
-    return (
-      <div className="p-8">
-        <h2 className="text-xl font-semibold mb-2">Acesso não permitido</h2>
-        <p className="text-gray-600">Você não possui permissão para acessar esta área.</p>
-      </div>
-    );
+/**
+ * Gate para telas que exigem:
+ *  - usuário autenticado
+ *  - uma organização ativa carregada
+ *  - (opcional) roles permitidas
+ *
+ * Props:
+ *  - children: nós protegidos
+ *  - allowedRoles?: string[] = ["SuperAdmin","Support","OrgOwner","OrgAdmin"]
+ *  - fallback?: ReactNode (exibido quando o acesso é negado)
+ *  - showWhileLoading?: ReactNode | null (UI enquanto org está carregando)
+ */
+export default function ActiveOrgGate({
+  children,
+  allowedRoles = ["SuperAdmin", "Support", "OrgOwner", "OrgAdmin"],
+  fallback = <DefaultForbidden />,
+  showWhileLoading = null, // pode trocar por um spinner
+}) {
+  const { isAuthenticated, user } = useAuth();
+  const { org, orgLoading, orgError, refreshOrg } = useOrg();
+
+  // Carrega org caso o usuário esteja autenticado e ainda não tenhamos org
+  useEffect(() => {
+    if (isAuthenticated && !org && !orgLoading) {
+      // silencioso; erros serão refletidos em orgError
+      refreshOrg().catch(() => {});
+    }
+  }, [isAuthenticated, org, orgLoading, refreshOrg]);
+
+  // Monte o conjunto de roles de maneira resiliente (AuthContext, user.roles e token)
+  const hasAllowedRole = useMemo(() => {
+    if (!Array.isArray(allowedRoles) || allowedRoles.length === 0) return true;
+
+    const roles = new Set();
+
+    if (user?.role) roles.add(String(user.role));
+    (user?.roles || []).forEach((r) => r && roles.add(String(r)));
+
+    try {
+      const t = localStorage.getItem("token");
+      if (t) {
+        const p = JSON.parse(
+          atob(t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+        );
+        if (p?.role) roles.add(String(p.role));
+        (p?.roles || []).forEach((r) => r && roles.add(String(r)));
+      }
+    } catch {
+      // ignore
+    }
+
+    return allowedRoles.some((r) => roles.has(String(r)));
+  }, [allowedRoles, user]);
+
+  // 1) Se estamos carregando org, mostre a UI de loading e NÃO bloqueie antes da hora.
+  if (orgLoading) return showWhileLoading;
+
+  // 2) Regras mínimas
+  if (!isAuthenticated) return fallback;
+  if (!org?.id) {
+    // se houve erro carregando org, ainda assim mostre fallback
+    return fallback;
   }
 
-  if (!hasOrg) {
-    return (
-      <div className="p-8">
-        <h2 className="text-xl font-semibold mb-2">Selecione uma organização</h2>
-        <p className="text-gray-600">
-          Use o seletor no lado esquerdo para escolher o cliente/empresa que deseja acessar.
-        </p>
-      </div>
-    );
-  }
+  // 3) Roles
+  if (!hasAllowedRole) return fallback;
 
-  return <Outlet />;
+  // 4) Acesso liberado
+  return <>{children}</>;
 }
