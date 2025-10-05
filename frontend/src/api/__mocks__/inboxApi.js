@@ -801,8 +801,22 @@ async function callAdminListOrgs(params = {}, options = {}) {
     : [];
   return list.map((org) => {
     const active = typeof org?.active === 'boolean' ? org.active : org?.status === 'active';
-    const statusValue = org?.status ?? (typeof active === 'boolean' ? (active ? 'active' : 'inactive') : undefined);
-    return { ...org, active, status: statusValue };
+    const statusNormalized = (() => {
+      if (org?.status != null) {
+        const normalized = String(org.status).trim().toLowerCase();
+        if (['active', 'trial', 'suspended', 'canceled'].includes(normalized)) {
+          return normalized;
+        }
+        if (normalized === 'inactive' || normalized === 'inativa') {
+          return 'suspended';
+        }
+      }
+      if (typeof active === 'boolean') {
+        return active ? 'active' : 'suspended';
+      }
+      return undefined;
+    })();
+    return { ...org, active, status: statusNormalized };
   });
 }
 
