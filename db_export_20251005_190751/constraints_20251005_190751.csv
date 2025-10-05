@@ -1,0 +1,212 @@
+table_name,constraint_name,constraint_def
+ai_credit_usage,ai_credit_usage_pkey,PRIMARY KEY (id)
+ai_credit_usage,fk_ai_credit_usage_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+ai_credit_usage,fk_ai_credit_usage_user_id__users_id,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+ai_guardrail_violations,ai_guardrail_violations_pkey,PRIMARY KEY (id)
+ai_guardrail_violations,fk_ai_guardrail_violations_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+ai_guardrail_violations,fk_ai_guardrail_violations_user_id__users_id,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+ai_meters,ai_meters_pkey,PRIMARY KEY (id)
+ai_meters,fk_ai_meters_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+ai_usage,ai_usage_pkey,PRIMARY KEY (id)
+ai_usage,fk_ai_usage_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+ai_usage,fk_ai_usage_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+ai_usage_logs,ai_usage_logs_pkey,PRIMARY KEY (id)
+assets,assets_pkey,PRIMARY KEY (id)
+audit_logs,audit_logs_pkey,PRIMARY KEY (id)
+calendar_events,calendar_events_pkey,PRIMARY KEY (id)
+calendar_events,fk_calendar_events_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+calendar_members,calendar_members_pkey,PRIMARY KEY (id)
+calendars,calendars_pkey,PRIMARY KEY (id)
+calendars,fk_calendars_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+channel_accounts,channel_accounts_pkey,PRIMARY KEY (id)
+channel_accounts,fk_channel_accounts_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+channel_id_map,channel_id_map_pkey,PRIMARY KEY (id)
+channels,channels_pkey,PRIMARY KEY (id)
+channels,fk_channels_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+clients,clients_pkey,PRIMARY KEY (id)
+clients,fk_clients_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+contact_identities,contact_identities_pkey,PRIMARY KEY (id)
+contact_identities,fk_contact_identities_account_id__channel_accounts_id,FOREIGN KEY (account_id) REFERENCES channel_accounts(id) ON DELETE SET NULL
+contact_identities,fk_contact_identities_contact,FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+contact_identities,fk_contact_identities_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+contact_identities,ux_contact_identities_org_channel_identity,"UNIQUE (org_id, channel, identity)"
+contact_identities,ux_contact_identity_per_org_channel,"UNIQUE (org_id, channel, identity)"
+contact_tags,contact_tags_pkey,PRIMARY KEY (id)
+contact_tags,fk_contact_tags_contact,FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+contact_tags,fk_contact_tags_contact_id__contacts_id,FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
+contact_tags,fk_contact_tags_tag,FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+contact_tags,fk_contact_tags_tag_id__tags_id,FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+contacts,contacts_pkey,PRIMARY KEY (id)
+contacts,fk_contacts_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+contacts,fk_contacts_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+contacts,ux_contacts_phone_per_org,"UNIQUE (org_id, phone_e164)"
+content_assets,content_assets_pkey,PRIMARY KEY (id)
+content_campaigns,content_campaigns_pkey,PRIMARY KEY (id)
+content_campaigns,fk_content_campaigns_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+content_suggestions,content_suggestions_pkey,PRIMARY KEY (id)
+conversations,conversations_pkey,PRIMARY KEY (id)
+conversations,fk_conversations_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+conversations,fk_conversations_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+crm_opportunities,crm_opportunities_pkey,PRIMARY KEY (id)
+email_automation_steps,email_automation_steps_pkey,PRIMARY KEY (id)
+email_automations,email_automations_pkey,PRIMARY KEY (id)
+email_campaign_recipients,email_campaign_recipients_pkey,PRIMARY KEY (id)
+email_campaigns,email_campaigns_pkey,PRIMARY KEY (id)
+email_events,email_events_pkey,PRIMARY KEY (id)
+email_lists,email_lists_pkey,PRIMARY KEY (id)
+email_subscriptions,email_subscriptions_pkey,PRIMARY KEY (id)
+email_subscriptions,fk_email_subscriptions_list_id__email_lists_id,FOREIGN KEY (list_id) REFERENCES email_lists(id) ON DELETE CASCADE
+email_subscriptions,fk_email_subscriptions_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+email_suppressions,email_suppressions_pkey,PRIMARY KEY (id)
+email_suppressions,fk_email_suppressions_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+email_templates,email_templates_pkey,PRIMARY KEY (id)
+facebook_oauth_tokens,facebook_oauth_tokens_pkey,PRIMARY KEY (id)
+facebook_oauth_tokens,fk_facebook_oauth_tokens_page_id__facebook_pages_id,FOREIGN KEY (page_id) REFERENCES facebook_pages(id) ON DELETE CASCADE
+facebook_pages,facebook_pages_pkey,PRIMARY KEY (id)
+facebook_pages,fk_facebook_pages_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+facebook_publish_jobs,chk_fb_jobs_status_domain,"CHECK ((status = ANY (ARRAY['pending'::text, 'creating'::text, 'ready'::text, 'publishing'::text, 'done'::text, 'failed'::text, 'canceled'::text])))"
+facebook_publish_jobs,facebook_publish_jobs_pkey,PRIMARY KEY (id)
+facebook_publish_jobs,fk_facebook_publish_jobs_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+facebook_publish_jobs,fk_facebook_publish_jobs_page_id__facebook_pages_id,FOREIGN KEY (page_id) REFERENCES facebook_pages(id) ON DELETE CASCADE
+facebook_publish_jobs,fk_fb_jobs_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+feature_defs,feature_defs_pkey,PRIMARY KEY (id)
+google_calendar_accounts,fk_google_calendar_accounts_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+google_calendar_accounts,fk_google_calendar_accounts_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+google_calendar_accounts,google_calendar_accounts_pkey,PRIMARY KEY (id)
+google_oauth_tokens,google_oauth_tokens_pkey,PRIMARY KEY (id)
+inbox_ai_flags,fk_inbox_ai_flags_conversation_id__conversations_id,FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+inbox_ai_flags,fk_inbox_ai_flags_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+inbox_ai_flags,inbox_ai_flags_pkey,PRIMARY KEY (id)
+inbox_audit_events,fk_inbox_audit_events_actor_id__users_id,FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+inbox_audit_events,fk_inbox_audit_events_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+inbox_audit_events,inbox_audit_events_pkey,PRIMARY KEY (id)
+inbox_idempotency,inbox_idempotency_pkey,PRIMARY KEY (id)
+instagram_accounts,fk_instagram_accounts_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+instagram_accounts,instagram_accounts_pkey,PRIMARY KEY (id)
+instagram_oauth_tokens,fk_instagram_oauth_tokens_account_id__instagram_accounts_id,FOREIGN KEY (account_id) REFERENCES instagram_accounts(id) ON DELETE CASCADE
+instagram_oauth_tokens,instagram_oauth_tokens_pkey,PRIMARY KEY (id)
+instagram_publish_jobs,fk_instagram_publish_jobs_account_id__instagram_accounts_id,FOREIGN KEY (account_id) REFERENCES instagram_accounts(id) ON DELETE CASCADE
+instagram_publish_jobs,fk_instagram_publish_jobs_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+instagram_publish_jobs,instagram_publish_jobs_pkey,PRIMARY KEY (id)
+integration_events,fk_integration_events_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+integration_events,integration_events_pkey,PRIMARY KEY (id)
+invoices,fk_invoices_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+invoices,invoices_pkey,PRIMARY KEY (id)
+kb_documents,fk_kb_documents_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+kb_documents,kb_documents_pkey,PRIMARY KEY (id)
+leads,fk_leads_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+leads,fk_leads_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+leads,leads_pkey,PRIMARY KEY (id)
+lgpd_consents,lgpd_consents_pkey,PRIMARY KEY (id)
+lgpd_erasure_requests,lgpd_erasure_requests_pkey,PRIMARY KEY (id)
+message_attachments,fk_message_attachments_message_id__messages_id,FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+message_attachments,message_attachments_pkey,PRIMARY KEY (id)
+message_status_events,fk_message_status_events_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+message_status_events,message_status_events_pkey,PRIMARY KEY (id)
+message_templates,fk_message_templates_org,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+message_templates,message_templates_pkey,PRIMARY KEY (id)
+message_transcripts,message_transcripts_pkey,PRIMARY KEY (id)
+messages,fk_messages_conversation_id__conversations_id,FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+messages,fk_messages_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+messages,fk_messages_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+messages,messages_direction_check,"CHECK ((direction = ANY (ARRAY['in'::text, 'out'::text])))"
+messages,messages_pkey,PRIMARY KEY (id)
+messages,messages_status_check,"CHECK ((status = ANY (ARRAY['queued'::text, 'sent'::text, 'delivered'::text, 'read'::text, 'failed'::text, 'received'::text])))"
+meta_tokens,fk_meta_tokens_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+meta_tokens,meta_tokens_org_id_key,UNIQUE (org_id)
+meta_tokens,meta_tokens_pkey,PRIMARY KEY (id)
+nps_responses,nps_responses_pkey,PRIMARY KEY (id)
+nps_surveys,nps_surveys_pkey,PRIMARY KEY (id)
+onboarding_tasks,onboarding_tasks_pkey,PRIMARY KEY (id)
+opportunities,fk_opportunities_lead_id__leads_id,FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE SET NULL
+opportunities,fk_opportunities_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+opportunities,fk_opportunities_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+opportunities,opportunities_pkey,PRIMARY KEY (id)
+org_ai_profiles,fk_org_ai_profiles_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_ai_profiles,org_ai_profiles_pkey,PRIMARY KEY (id)
+org_ai_settings,fk_org_ai_settings_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_ai_settings,org_ai_settings_pkey,PRIMARY KEY (id)
+org_credits,fk_org_credits_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+org_credits,org_credits_pkey,PRIMARY KEY (id)
+org_credits_usage,org_credits_usage_pkey,PRIMARY KEY (id)
+org_features,fk_org_features_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_features,org_features_pkey,PRIMARY KEY (id)
+org_integration_logs,fk_org_integration_logs_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+org_integration_logs,fk_org_integration_logs_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_integration_logs,org_integration_logs_pkey,PRIMARY KEY (id)
+org_integrations,fk_org_integrations_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+org_integrations,fk_org_integrations_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_integrations,org_integrations_pkey,PRIMARY KEY (id)
+org_plan_events,org_plan_events_pkey,PRIMARY KEY (id)
+org_plan_history,fk_org_plan_history_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_plan_history,fk_org_plan_history_plan_id__plans_id,FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE SET NULL
+org_plan_history,org_plan_history_pkey,PRIMARY KEY (id)
+org_settings,fk_org_settings_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_settings,org_settings_pkey,PRIMARY KEY (id)
+org_subscriptions,fk_org_subscriptions_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_subscriptions,fk_org_subscriptions_plan_id__plans_id,FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE SET NULL
+org_subscriptions,org_subscriptions_pkey,PRIMARY KEY (id)
+org_users,fk_org_users_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+org_users,fk_org_users_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_users,fk_org_users_user_id__users,FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
+org_users,fk_org_users_user_id__users_id,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+org_users,org_users_pkey,PRIMARY KEY (id)
+organizations,chk_organizations_status,"CHECK (((status IS NULL) OR (status = ANY (ARRAY['active'::text, 'trial'::text, 'suspended'::text, 'canceled'::text]))))"
+organizations,organizations_pkey,PRIMARY KEY (id)
+organizations,organizations_slug_key,UNIQUE (slug)
+payments,fk_payments_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+payments,payments_pkey,PRIMARY KEY (id)
+plan_credits,fk_plan_credits_plan_id__plans_id,FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+plan_credits,plan_credits_pkey,PRIMARY KEY (id)
+plan_features,fk_plan_features_plan_id__plans_id,FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+plan_features,plan_features_pkey,PRIMARY KEY (id)
+plans,chk_plans_price_nonneg,CHECK ((price_cents >= 0))
+plans,plans_code_key,UNIQUE (code)
+plans,plans_pkey,PRIMARY KEY (id)
+plans,ux_plans_code,UNIQUE (code)
+plans_meta,fk_plans_meta_plan_id__plans_id,FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+plans_meta,plans_meta_pkey,PRIMARY KEY (id)
+post_approvals,fk_post_approvals_approver_id__users_id,FOREIGN KEY (approver_id) REFERENCES users(id) ON DELETE SET NULL
+post_approvals,fk_post_approvals_post_id__posts_id,FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+post_approvals,post_approvals_pkey,PRIMARY KEY (id)
+posts,posts_pkey,PRIMARY KEY (id)
+purchases,fk_purchases_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+purchases,purchases_pkey,PRIMARY KEY (id)
+quick_replies,fk_quick_replies_company_id__organizations_id,FOREIGN KEY (company_id) REFERENCES organizations(id) ON DELETE CASCADE
+quick_replies,quick_replies_pkey,PRIMARY KEY (id)
+reminder_logs,reminder_logs_pkey,PRIMARY KEY (id)
+repurpose_jobs,fk_repurpose_jobs_post_id__posts_id,FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+repurpose_jobs,repurpose_jobs_pkey,PRIMARY KEY (id)
+rewards,rewards_pkey,PRIMARY KEY (id)
+segments,segments_pkey,PRIMARY KEY (id)
+social_posts,fk_social_posts_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+social_posts,social_posts_pkey,PRIMARY KEY (id)
+subscriptions,fk_subscriptions_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+subscriptions,subscriptions_pkey,PRIMARY KEY (id)
+support_audit_logs,support_audit_logs_pkey,PRIMARY KEY (id)
+support_tickets,fk_support_tickets_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+support_tickets,support_tickets_pkey,PRIMARY KEY (id)
+tags,fk_tags_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+tags,tags_pkey,PRIMARY KEY (id)
+telemetry_events,fk_telemetry_events_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+telemetry_events,fk_telemetry_events_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+telemetry_events,fk_telemetry_events_user_id__users_id,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+telemetry_events,telemetry_events_pkey,PRIMARY KEY (id)
+telemetry_kpis_daily,fk_telemetry_kpis_daily_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+telemetry_kpis_daily,telemetry_kpis_daily_pkey,PRIMARY KEY (id)
+usage_counters,fk_usage_counters_client_id__clients_id,FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+usage_counters,usage_counters_pkey,PRIMARY KEY (id)
+usage_reports,fk_usage_reports_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+usage_reports,usage_reports_pkey,PRIMARY KEY (id)
+user_orgs,fk_user_orgs_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+user_orgs,fk_user_orgs_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+user_orgs,fk_user_orgs_user_id__users,FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
+user_orgs,fk_user_orgs_user_id__users_id,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+user_orgs,user_orgs_pkey,PRIMARY KEY (id)
+users,fk_users_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE SET NULL
+users,fk_users_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE SET NULL
+users,users_pkey,PRIMARY KEY (id)
+whatsapp_channels,chk_whatsapp_channels_status,"CHECK (((status IS NULL) OR (status = ANY (ARRAY['connected'::text, 'disconnected'::text, 'error'::text, 'unknown'::text]))))"
+whatsapp_channels,fk_whatsapp_channels_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
+whatsapp_channels,fk_whatsapp_channels_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+whatsapp_channels,whatsapp_channels_pkey,PRIMARY KEY (id)

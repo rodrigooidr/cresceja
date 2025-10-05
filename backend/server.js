@@ -19,7 +19,7 @@ import orgContext from './middleware/orgContext.js';
 
 import { healthcheck } from '#db';
 
-// Rotas (importe SOMENTE as que existem no repo)
+// Rotas (somente as existentes no repo)
 import authRouter from './routes/auth.js';
 import publicRouter from './routes/public.js';
 import contentRouter from './routes/content.js';
@@ -47,8 +47,6 @@ import onboardingRouter from './routes/onboarding.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import orgsRouter from './routes/orgs.js';
 
-// Adicione outras rotas **existentes** se necessário.
-
 // Util
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,30 +57,20 @@ if (process.env.NODE_ENV !== 'production') {
   const mask = (s) => (s ? String(s).slice(0, 3) + '***' : '(unset)');
   console.log('[BOOT] NODE_ENV=', process.env.NODE_ENV, ' JWT_SECRET=', mask(process.env.JWT_SECRET));
 }
+
 function makePinoConfig() {
   const level = process.env.LOG_LEVEL || 'info';
   const pretty = process.env.LOG_PRETTY === '1' || process.env.NODE_ENV !== 'production';
-  if (pretty) {
-    return {
-      level,
-      transport: {
-        target: 'pino-pretty',
-        options: { colorize: true, singleLine: true, translateTime: 'SYS:HH:MM:ss' },
-      },
-    };
-  }
-  return { level };
+  return pretty
+    ? { level, transport: { target: 'pino-pretty', options: { colorize: true, singleLine: true, translateTime: 'SYS:HH:MM:ss' } } }
+    : { level };
 }
 
 let logger;
 try {
   logger = pino(makePinoConfig());
 } catch (err) {
-  if (
-    err?.code === 'ERR_MODULE_NOT_FOUND' ||
-    err?.code === 'MODULE_NOT_FOUND' ||
-    /pino-pretty/i.test(err?.message || '')
-  ) {
+  if (err?.code === 'ERR_MODULE_NOT_FOUND' || err?.code === 'MODULE_NOT_FOUND' || /pino-pretty/i.test(err?.message || '')) {
     console.warn('[LOG] pino-pretty indisponível; usando logger básico.');
     logger = pino({ level: process.env.LOG_LEVEL || 'info' });
   } else {
@@ -97,7 +85,7 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(pinoHttp({ logger }));
 app.use(cookieParser());
 
-// Rate limit básico em /api
+// Rate limit básico somente em /api
 const limiter = rateLimit({
   windowMs: 60_000,
   max: Number(process.env.RATE_LIMIT_PER_MINUTE || 300),
@@ -115,62 +103,73 @@ app.get('/health', async (req, res) => {
   }
 });
 
-// Montagem de rotas
+// ==== Rotas públicas / sem auth
 app.use('/api/public', publicRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/webhooks/meta/pages', webhooksMetaPages);
-app.use('/api/admin/orgs', adminOrgsRouter);
 
-// Autenticação obrigatória
+// ==== A partir daqui: exige autenticação
 app.use('/api', auth);
 
-// Contexto da organização ativa (x-org-id)
+// Contexto de organização (lê X-Org-Id / token e injeta em req.org)
 app.use('/api', orgContext);
 
-// Seleção/listagem de organizações (antes de exigir org ativa)
+// Endpoints de /api/orgs que não precisam de withOrg (ex: current, list, select)
 app.use('/api/orgs', orgsRouter);
 
-// Seleção/validação de organização
+// Se a rota exigir dados da organização ativa, garanta withOrg
 app.use('/api', withOrg);
 
-// Rotas que exigem auth + org (ou org opcional com fallback em dev)
+// ==== Rotas autenticadas (com org quando necessário)
 app.use('/api/content', contentRouter);
 app.use('/api/telemetry', telemetryRouter);
 app.use('/api/uploads', uploadsRouter);
 
+// inbox
 app.use('/api/inbox', inboxAlertsRouter);
 app.use('/api/inbox', inboxSettingsRouter);
 app.use('/api/inbox', inboxTemplatesRouter);
 app.use('/api/inbox', inboxConversationsRouter);
 app.use('/api/inbox', inboxMessagesRouter);
+
+// org features & ai
 app.use('/api/orgs', orgsFeaturesRouter);
 app.use('/api/ai', aiSettingsRouter);
-// 🔗 Novas rotas (precisavam ser montadas)
 app.use('/api/ai-credits', aiCreditsStatusRouter);
-app.use('/api/integrations', integrationsRouter);
 
-app.use('/api/calendar', calendarCompatRouter); // para /api/calendar/**
-app.use('/api/test-whatsapp', testWhatsappRouter); // para /api/test-whatsapp/**
-app.use('/api/onboarding', onboardingRouter); // expõe /api/onboarding/* (já existe o arquivo)
+// integrações e outros módulos
+app.use('/api/integrations', integrationsRouter);
+app.use('/api/calendar', calendarCompatRouter);
+app.use('/api/test-whatsapp', testWhatsappRouter);
+app.use('/api/onboarding', onboardingRouter);
+
+// ==== Rotas admin autenticadas
+app.use('/api/admin/orgs', adminOrgsRouter);
 
 // Compat (mantém frontend antigo rodando)
 app.use('/api', inboxCompatRouter);
 app.use('/api', crmCompatRouter);
 app.use('/api', aiCompatRouter);
-// Admin (/api/admin/*)
+
+// Admin (/api/admin/*) legacy app
 app.use(adminApp);
 
 if (process.env.NODE_ENV !== 'production') {
   app.use('/api/debug', debugRouter);
 }
 
-// Static (se houver build do frontend)
+// Static do frontend
 const clientDir = path.join(__dirname, '..', 'frontend', 'build');
 app.use(express.static(clientDir));
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-// 404 básico da API (deixe por último)
+// 404 da API (deixe por último entre as rotas /api)
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not_found' }));
+
+// Fallback SPA (qualquer rota não-API volta pro index.html)
+app.get(/^(?!\/api\/).+$/, (_req, res) => {
+  res.sendFile(path.join(clientDir, 'index.html'));
+});
 
 // Error handler
 // eslint-disable-next-line no-unused-vars
@@ -179,13 +178,11 @@ app.use((err, req, res, _next) => {
   res.status(err.status || 500).json({ error: 'internal_error', message: err.message });
 });
 
-// Socket.io
+// ===== Socket.io =====
 let io;
 function authFromToken(token) {
   if (!token) return null;
-  if (typeof token === 'string' && token.includes(',')) {
-    token = token.split(',')[0];
-  }
+  if (typeof token === 'string' && token.includes(',')) token = token.split(',')[0];
   try {
     const secret = process.env.JWT_SECRET || 'dev-change-me';
     return jwt.verify(String(token || '').replace(/^Bearer\s+/i, '').trim(), secret);
@@ -213,7 +210,6 @@ function startSockets(server) {
   io.on('connection', (socket) => {
     const { user } = socket.data;
     socket.join(`user:${user.id}`);
-
     socket.emit('connected', { ok: true });
 
     socket.on('org:switch', ({ orgId }) => {
@@ -236,13 +232,12 @@ function startSockets(server) {
 // Bootstrap http + sockets
 let httpServer;
 let started = false;
+
 export async function start() {
   if (started) return { httpServer, io };
-
   const port = Number(process.env.PORT || 4000);
   httpServer = http.createServer(app);
   startSockets(httpServer);
-
   await new Promise((resolve) => httpServer.listen(port, resolve));
   logger.info({ port }, 'Server started');
   started = true;

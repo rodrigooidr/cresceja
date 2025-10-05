@@ -1,0 +1,610 @@
+table_name,column_name,data_type,is_nullable,column_default
+ai_credit_usage,id,uuid,NO,gen_random_uuid()
+ai_credit_usage,category,text,YES,
+ai_credit_usage,org_id,uuid,YES,
+ai_credit_usage,period_start,timestamp with time zone,YES,
+ai_credit_usage,user_id,uuid,YES,
+ai_credit_usage,used,text,YES,
+ai_credit_usage,used_num,numeric,YES,
+ai_credit_usage,created_at,timestamp with time zone,YES,now()
+ai_credit_usage,updated_at,timestamp with time zone,YES,now()
+ai_guardrail_violations,channel,text,YES,
+ai_guardrail_violations,created_at,timestamp with time zone,YES,now()
+ai_guardrail_violations,created_by,text,YES,
+ai_guardrail_violations,id,uuid,NO,public.gen_random_uuid()
+ai_guardrail_violations,input_excerpt,text,YES,
+ai_guardrail_violations,intent,text,YES,
+ai_guardrail_violations,message,text,YES,
+ai_guardrail_violations,org_id,uuid,YES,public.gen_random_uuid()
+ai_guardrail_violations,output_excerpt,text,YES,
+ai_guardrail_violations,payload,text,YES,
+ai_guardrail_violations,rule,text,YES,
+ai_guardrail_violations,stage,text,YES,
+ai_guardrail_violations,updated_at,timestamp with time zone,YES,now()
+ai_guardrail_violations,user_id,uuid,YES,public.gen_random_uuid()
+ai_meters,code,text,YES,
+ai_meters,created_at,timestamp with time zone,YES,now()
+ai_meters,id,uuid,NO,public.gen_random_uuid()
+ai_meters,name,text,YES,
+ai_meters,unit,text,YES,
+ai_meters,updated_at,timestamp with time zone,YES,now()
+ai_meters,org_id,uuid,YES,
+ai_usage,created_at,timestamp with time zone,YES,now()
+ai_usage,id,uuid,NO,public.gen_random_uuid()
+ai_usage,meta,text,YES,
+ai_usage,meter_code,text,YES,
+ai_usage,org_id,uuid,YES,public.gen_random_uuid()
+ai_usage,qty,text,YES,
+ai_usage,source,text,YES,
+ai_usage,updated_at,timestamp with time zone,YES,now()
+ai_usage,category,text,YES,
+ai_usage,user_id,uuid,YES,
+ai_usage,qty_num,numeric,YES,
+ai_usage_logs,id,uuid,NO,gen_random_uuid()
+assets,id,uuid,NO,gen_random_uuid()
+audit_logs,id,uuid,NO,gen_random_uuid()
+calendar_events,id,uuid,NO,gen_random_uuid()
+calendar_events,org_id,uuid,YES,
+calendar_members,id,uuid,NO,gen_random_uuid()
+calendars,id,uuid,NO,gen_random_uuid()
+calendars,org_id,uuid,YES,
+channel_accounts,channel,text,YES,
+channel_accounts,external_account_id,uuid,YES,
+channel_accounts,id,uuid,NO,gen_random_uuid()
+channel_accounts,org_id,uuid,YES,
+channel_id_map,id,uuid,NO,gen_random_uuid()
+channel_id_map,channel_type,text,YES,
+channel_id_map,external_id,uuid,YES,
+channel_id_map,org_id,uuid,YES,
+channels,id,uuid,NO,gen_random_uuid()
+channels,mode,text,YES,
+channels,org_id,uuid,YES,
+channels,type,text,YES,
+channels,config,jsonb,YES,'{}'::jsonb
+channels,secrets,jsonb,YES,'{}'::jsonb
+channels,upsertchannel,text,YES,
+channels,status,text,NO,'disconnected'::text
+channels,name,text,YES,
+channels,created_at,timestamp with time zone,YES,now()
+channels,updated_at,timestamp with time zone,YES,now()
+clients,id,uuid,NO,public.gen_random_uuid()
+clients,org_id,uuid,YES,
+contact_identities,account_id,uuid,YES,
+contact_identities,channel,text,YES,
+contact_identities,id,uuid,NO,gen_random_uuid()
+contact_identities,identity,text,YES,
+contact_identities,org_id,uuid,YES,
+contact_identities,contact_id,uuid,YES,
+contact_identities,created_at,timestamp with time zone,YES,now()
+contact_tags,id,uuid,NO,gen_random_uuid()
+contact_tags,contact_id,uuid,YES,
+contact_tags,tag_id,uuid,YES,
+contact_tags,org_id,uuid,NO,
+contacts,id,uuid,NO,public.gen_random_uuid()
+contacts,org_id,uuid,YES,
+contacts,phone_e164,text,YES,
+contacts,email,text,YES,
+contacts,photo_asset_id,uuid,YES,
+contacts,name,text,YES,
+contacts,birthdate,date,YES,
+contacts,created_at,timestamp with time zone,YES,now()
+contacts,updated_at,timestamp with time zone,YES,now()
+content_assets,id,uuid,NO,gen_random_uuid()
+content_campaigns,id,uuid,NO,gen_random_uuid()
+content_campaigns,org_id,uuid,YES,
+content_suggestions,id,uuid,NO,gen_random_uuid()
+conversations,account_id,uuid,YES,
+conversations,channel,text,YES,
+conversations,chat_id,uuid,YES,
+conversations,external_user_id,uuid,YES,
+conversations,id,uuid,NO,gen_random_uuid()
+conversations,org_id,uuid,YES,
+conversations,transport,text,YES,
+conversations,last_message_at,timestamp with time zone,YES,
+conversations,status,text,YES,
+conversations,tags,ARRAY,YES,ARRAY[]::text[]
+conversations,assigned_to,uuid,YES,
+crm_opportunities,id,uuid,NO,gen_random_uuid()
+crm_opportunities,org_id,uuid,YES,
+crm_opportunities,lead_id,uuid,YES,
+crm_opportunities,title,text,YES,
+crm_opportunities,stage,text,YES,
+crm_opportunities,status,text,YES,
+crm_opportunities,responsavel,text,YES,
+crm_opportunities,valor_estimado,numeric,YES,
+crm_opportunities,created_at,timestamp with time zone,YES,now()
+crm_opportunities,updated_at,timestamp with time zone,YES,now()
+email_automation_steps,id,uuid,NO,gen_random_uuid()
+email_automations,id,uuid,NO,gen_random_uuid()
+email_campaign_recipients,id,uuid,NO,gen_random_uuid()
+email_campaigns,id,uuid,NO,gen_random_uuid()
+email_events,id,uuid,NO,gen_random_uuid()
+email_lists,id,uuid,NO,gen_random_uuid()
+email_subscriptions,email,text,YES,
+email_subscriptions,id,uuid,NO,gen_random_uuid()
+email_subscriptions,list_id,uuid,YES,
+email_subscriptions,org_id,uuid,YES,
+email_suppressions,UNIQUE,text,YES,
+email_suppressions,created_at,timestamp with time zone,YES,now()
+email_suppressions,email,USER-DEFINED,YES,
+email_suppressions,id,uuid,NO,public.gen_random_uuid()
+email_suppressions,org_id,uuid,YES,public.gen_random_uuid()
+email_suppressions,reason,text,YES,
+email_suppressions,updated_at,timestamp with time zone,YES,now()
+email_templates,id,uuid,NO,gen_random_uuid()
+facebook_oauth_tokens,id,uuid,NO,gen_random_uuid()
+facebook_oauth_tokens,page_id,uuid,YES,
+facebook_pages,id,uuid,NO,gen_random_uuid()
+facebook_pages,org_id,uuid,YES,
+facebook_pages,page_id,uuid,YES,
+facebook_publish_jobs,id,uuid,NO,public.gen_random_uuid()
+facebook_publish_jobs,org_id,uuid,YES,
+facebook_publish_jobs,page_id,uuid,YES,
+facebook_publish_jobs,status,text,YES,'pending'::text
+facebook_publish_jobs,scheduled_at,timestamp with time zone,YES,
+feature_defs,code,text,YES,
+feature_defs,id,uuid,NO,gen_random_uuid()
+feature_defs,label,text,YES,
+feature_defs,unit,text,YES,
+feature_defs,category,text,YES,
+feature_defs,sort_order,integer,YES,
+feature_defs,is_public,boolean,YES,true
+feature_defs,show_as_tick,boolean,YES,false
+feature_defs,description,text,YES,
+feature_defs,updated_at,timestamp with time zone,YES,now()
+feature_defs,created_at,timestamp with time zone,YES,now()
+feature_defs,enum_options,text,YES,
+feature_defs,type,text,YES,
+google_calendar_accounts,google_user_id,uuid,YES,
+google_calendar_accounts,id,uuid,NO,gen_random_uuid()
+google_calendar_accounts,org_id,uuid,YES,
+google_oauth_tokens,id,uuid,NO,gen_random_uuid()
+inbox_ai_flags,conversation_id,uuid,YES,public.gen_random_uuid()
+inbox_ai_flags,created_at,timestamp with time zone,YES,now()
+inbox_ai_flags,flag,text,YES,
+inbox_ai_flags,id,uuid,NO,public.gen_random_uuid()
+inbox_ai_flags,org_id,uuid,YES,public.gen_random_uuid()
+inbox_ai_flags,updated_at,timestamp with time zone,YES,now()
+inbox_audit_events,action,text,YES,
+inbox_audit_events,actor_id,uuid,YES,public.gen_random_uuid()
+inbox_audit_events,created_at,timestamp with time zone,YES,now()
+inbox_audit_events,id,uuid,NO,public.gen_random_uuid()
+inbox_audit_events,meta,text,YES,
+inbox_audit_events,org_id,uuid,YES,public.gen_random_uuid()
+inbox_audit_events,target_id,uuid,YES,public.gen_random_uuid()
+inbox_audit_events,target_type,text,YES,
+inbox_audit_events,updated_at,timestamp with time zone,YES,now()
+inbox_idempotency,created_at,timestamp with time zone,YES,now()
+inbox_idempotency,id,uuid,NO,public.gen_random_uuid()
+inbox_idempotency,key,text,YES,
+inbox_idempotency,ttl,text,YES,
+inbox_idempotency,updated_at,timestamp with time zone,YES,now()
+instagram_accounts,id,uuid,NO,gen_random_uuid()
+instagram_accounts,ig_user_id,uuid,YES,
+instagram_accounts,org_id,uuid,YES,
+instagram_oauth_tokens,account_id,uuid,YES,
+instagram_oauth_tokens,id,uuid,NO,gen_random_uuid()
+instagram_publish_jobs,account_id,uuid,YES,
+instagram_publish_jobs,client_dedupe_key,text,YES,
+instagram_publish_jobs,id,uuid,NO,public.gen_random_uuid()
+instagram_publish_jobs,org_id,uuid,YES,
+instagram_publish_jobs,status,USER-DEFINED,NO,'pending'::instagram_publish_status
+integration_events,created_at,timestamp with time zone,YES,now()
+integration_events,event_type,text,YES,
+integration_events,id,uuid,NO,public.gen_random_uuid()
+integration_events,org_id,uuid,YES,public.gen_random_uuid()
+integration_events,payload,text,YES,
+integration_events,provider,text,YES,
+integration_events,received_at,timestamp with time zone,YES,now()
+integration_events,updated_at,timestamp with time zone,YES,now()
+invoices,id,uuid,NO,gen_random_uuid()
+invoices,org_id,uuid,YES,
+invoices,created_at,timestamp with time zone,YES,now()
+kb_documents,active,text,YES,
+kb_documents,checksum,text,YES,
+kb_documents,created_at,timestamp with time zone,YES,now()
+kb_documents,id,uuid,NO,public.gen_random_uuid()
+kb_documents,lang,text,YES,
+kb_documents,meta,text,YES,
+kb_documents,org_id,uuid,YES,public.gen_random_uuid()
+kb_documents,source_type,text,YES,
+kb_documents,tags,ARRAY,YES,ARRAY[]::text[]
+kb_documents,title,text,YES,
+kb_documents,updated_at,timestamp with time zone,YES,now()
+kb_documents,uri,text,YES,
+leads,id,uuid,NO,public.gen_random_uuid()
+leads,org_id,uuid,YES,
+lgpd_consents,id,uuid,NO,gen_random_uuid()
+lgpd_erasure_requests,id,uuid,NO,gen_random_uuid()
+message_attachments,id,uuid,NO,gen_random_uuid()
+message_attachments,idx,text,YES,
+message_attachments,message_id,uuid,YES,
+message_status_events,id,uuid,NO,gen_random_uuid()
+message_status_events,org_id,uuid,YES,
+message_templates,id,uuid,NO,gen_random_uuid()
+message_templates,org_id,uuid,YES,
+message_templates,channel_scope,ARRAY,YES,ARRAY[]::text[]
+message_templates,language,text,YES,
+message_templates,body,text,YES,
+message_templates,type,text,YES,'text'::text
+message_templates,created_at,timestamp with time zone,YES,now()
+message_templates,updated_at,timestamp with time zone,YES,now()
+message_templates,name,text,YES,
+message_transcripts,id,uuid,NO,gen_random_uuid()
+messages,id,uuid,NO,gen_random_uuid()
+messages,org_id,uuid,YES,
+messages,conversation_id,uuid,YES,
+messages,channel,text,NO,
+messages,direction,text,NO,
+messages,external_message_id,text,YES,
+messages,sender_id,uuid,YES,
+messages,sender_name,text,YES,
+messages,sender_role,text,YES,
+messages,content,text,YES,
+messages,content_type,text,YES,'text'::text
+messages,attachments,jsonb,NO,'[]'::jsonb
+messages,meta,jsonb,NO,'{}'::jsonb
+messages,status,text,NO,'queued'::text
+messages,error,text,YES,
+messages,created_at,timestamp with time zone,NO,now()
+messages,updated_at,timestamp with time zone,NO,now()
+messages,sent_at,timestamp with time zone,YES,
+messages,delivered_at,timestamp with time zone,YES,
+messages,read_at,timestamp with time zone,YES,
+meta_tokens,id,uuid,NO,public.gen_random_uuid()
+meta_tokens,org_id,uuid,NO,
+meta_tokens,token,text,NO,
+meta_tokens,created_at,timestamp with time zone,NO,now()
+nps_responses,id,uuid,NO,gen_random_uuid()
+nps_surveys,id,uuid,NO,gen_random_uuid()
+onboarding_tasks,id,uuid,NO,gen_random_uuid()
+opportunities,${fields.join(',text,YES,
+opportunities,')},text,YES,
+opportunities,[id,text,YES,
+opportunities,cliente,text,YES,
+opportunities,created_at,timestamp with time zone,YES,now()
+opportunities,id,uuid,NO,public.gen_random_uuid()
+opportunities,lead_id,uuid,YES,public.gen_random_uuid()
+opportunities,org_id,uuid,YES,public.gen_random_uuid()
+opportunities,"req.orgId]
+    )",text,YES,
+opportunities,responsavel,text,YES,
+opportunities,sem,text,YES,
+opportunities,status,text,YES,
+opportunities,updated_at,timestamp with time zone,YES,now()
+opportunities,valor_estimado,text,YES,
+opportunities,"values
+    )",text,YES,
+opportunities_view,id,uuid,YES,
+opportunities_view,org_id,uuid,YES,
+opportunities_view,lead_id,uuid,YES,
+opportunities_view,title,text,YES,
+opportunities_view,stage,text,YES,
+opportunities_view,status,text,YES,
+opportunities_view,responsavel,text,YES,
+opportunities_view,valor_estimado,numeric,YES,
+opportunities_view,created_at,timestamp with time zone,YES,now()
+opportunities_view,updated_at,timestamp with time zone,YES,now()
+org_ai_profiles,created_at,timestamp with time zone,YES,now()
+org_ai_profiles,id,uuid,NO,public.gen_random_uuid()
+org_ai_profiles,org_id,uuid,YES,public.gen_random_uuid()
+org_ai_profiles,profile,text,YES,
+org_ai_profiles,updated_at,timestamp with time zone,YES,now()
+org_ai_profiles,updated_by,text,YES,
+org_ai_settings,id,uuid,NO,gen_random_uuid()
+org_ai_settings,org_id,uuid,YES,
+org_credits,created_at,timestamp with time zone,YES,now()
+org_credits,delta,text,YES,
+org_credits,expires_at,text,YES,
+org_credits,feature_code,text,YES,
+org_credits,id,uuid,NO,public.gen_random_uuid()
+org_credits,meta,text,YES,
+org_credits,org_id,uuid,YES,public.gen_random_uuid()
+org_credits,source,text,YES,
+org_credits,updated_at,timestamp with time zone,YES,now()
+org_credits,delta_num,numeric,YES,
+org_credits_usage,id,uuid,NO,gen_random_uuid()
+org_credits_usage,org_id,uuid,NO,
+org_credits_usage,meter,text,NO,
+org_credits_usage,used,integer,NO,0
+org_credits_usage,period_start,date,NO,
+org_credits_usage,period_end,date,NO,
+org_features,created_at,timestamp with time zone,YES,now()
+org_features,id,uuid,NO,public.gen_random_uuid()
+org_features,org_id,uuid,YES,public.gen_random_uuid()
+org_features,updated_at,timestamp with time zone,YES,now()
+org_features,features,jsonb,YES,
+org_features,features_jsonb,jsonb,YES,
+org_integration_logs,created_at,timestamp with time zone,YES,now()
+org_integration_logs,event,text,YES,
+org_integration_logs,id,uuid,NO,public.gen_random_uuid()
+org_integration_logs,ok,text,YES,
+org_integration_logs,org_id,uuid,YES,public.gen_random_uuid()
+org_integration_logs,payload,text,YES,
+org_integration_logs,provider,text,YES,
+org_integration_logs,updated_at,timestamp with time zone,YES,now()
+org_integrations,${fields.join(',text,YES,
+org_integrations,"')}
+     WHERE org_id",uuid,YES,public.gen_random_uuid()
+org_integrations,UNIQUE,text,YES,
+org_integrations,created_at,timestamp with time zone,YES,now()
+org_integrations,creds,text,YES,
+org_integrations,id,uuid,NO,public.gen_random_uuid()
+org_integrations,meta,text,YES,
+org_integrations,org_id,uuid,YES,public.gen_random_uuid()
+org_integrations,provider,text,YES,
+org_integrations,status,text,YES,
+org_integrations,subscribed,text,YES,
+org_integrations,updated_at,timestamp with time zone,YES,now()
+org_integrations_clean,id,uuid,YES,
+org_integrations_clean,org_id,uuid,YES,
+org_integrations_clean,provider,text,YES,
+org_integrations_clean,status,text,YES,
+org_integrations_clean,creds,text,YES,
+org_integrations_clean,meta,text,YES,
+org_integrations_clean,subscribed,text,YES,
+org_integrations_clean,created_at,timestamp with time zone,YES,now()
+org_integrations_clean,updated_at,timestamp with time zone,YES,now()
+org_plan_events,id,uuid,NO,gen_random_uuid()
+org_plan_events,org_id,uuid,NO,
+org_plan_events,event_type,text,NO,
+org_plan_events,data,jsonb,NO,'{}'::jsonb
+org_plan_events,created_at,timestamp with time zone,NO,now()
+org_plan_history,PRIMARY,text,YES,
+org_plan_history,created_at,timestamp with time zone,YES,now()
+org_plan_history,end_at,text,YES,
+org_plan_history,id,uuid,NO,public.gen_random_uuid()
+org_plan_history,meta,text,YES,
+org_plan_history,org_id,uuid,YES,public.gen_random_uuid()
+org_plan_history,plan_id,uuid,YES,public.gen_random_uuid()
+org_plan_history,source,text,YES,
+org_plan_history,start_at,text,YES,
+org_plan_history,status,text,YES,
+org_plan_history,updated_at,timestamp with time zone,YES,now()
+org_settings,),text,YES,
+org_settings,[orgId],text,YES,
+org_settings,[orgId]),text,YES,
+org_settings,ai_enabled,boolean,YES,false
+org_settings,ai_handoff_keywords,text,YES,
+org_settings,ai_max_turns_before_handoff,text,YES,
+org_settings,alert_sound,text,YES,
+org_settings,alert_volume,text,YES,
+org_settings,allow_baileys,text,YES,
+org_settings,business_hours,text,YES,
+org_settings,created_at,timestamp with time zone,YES,now()
+org_settings,id,uuid,NO,public.gen_random_uuid()
+org_settings,org_id,uuid,YES,public.gen_random_uuid()
+org_settings,templates_enabled_channels,text,YES,
+org_settings,updated_at,timestamp with time zone,YES,now()
+org_settings,whatsapp_active_mode,text,YES,
+org_settings_clean,id,uuid,YES,
+org_settings_clean,org_id,uuid,YES,
+org_settings_clean,ai_enabled,boolean,YES,
+org_settings_clean,ai_handoff_keywords,text,YES,
+org_settings_clean,ai_max_turns_before_handoff,text,YES,
+org_settings_clean,alert_sound,text,YES,
+org_settings_clean,alert_volume,text,YES,
+org_settings_clean,allow_baileys,text,YES,
+org_settings_clean,business_hours,text,YES,
+org_settings_clean,templates_enabled_channels,text,YES,
+org_settings_clean,whatsapp_active_mode,text,YES,
+org_settings_clean,created_at,timestamp with time zone,YES,now()
+org_settings_clean,updated_at,timestamp with time zone,YES,now()
+org_subscriptions,created_at,timestamp with time zone,YES,now()
+org_subscriptions,id,uuid,NO,public.gen_random_uuid()
+org_subscriptions,org_id,uuid,YES,public.gen_random_uuid()
+org_subscriptions,period,text,YES,
+org_subscriptions,plan_id,uuid,YES,public.gen_random_uuid()
+org_subscriptions,trial_end,text,YES,
+org_subscriptions,trial_start,text,YES,
+org_subscriptions,updated_at,timestamp with time zone,YES,now()
+org_users,id,uuid,NO,gen_random_uuid()
+org_users,org_id,uuid,YES,
+org_users,user_id,uuid,YES,
+org_users,role,text,YES,'OrgViewer'::text
+organizations,id,uuid,NO,
+organizations,name,text,YES,
+organizations,slug,text,YES,
+organizations,status,text,YES,
+organizations,plan_id,uuid,YES,
+organizations,trial_ends_at,timestamp with time zone,YES,
+organizations,email,text,YES,
+organizations,phone,text,YES,
+organizations,created_at,timestamp with time zone,YES,now()
+organizations,updated_at,timestamp with time zone,YES,now()
+organizations,phone_e164,text,YES,
+organizations,document_value,text,YES,
+organizations,cnpj,text,YES,
+organizations,razao_social,text,YES,
+organizations,nome_fantasia,text,YES,
+organizations,ie,text,YES,
+organizations,ie_isento,boolean,YES,
+organizations,site,text,YES,
+organizations,cep,text,YES,
+organizations,logradouro,text,YES,
+organizations,numero,text,YES,
+organizations,complemento,text,YES,
+organizations,bairro,text,YES,
+organizations,cidade,text,YES,
+organizations,uf,text,YES,
+organizations,country,text,YES,
+organizations,resp_nome,text,YES,
+organizations,resp_cpf,text,YES,
+organizations,resp_email,text,YES,
+organizations,resp_phone_e164,text,YES,
+payments,id,uuid,NO,gen_random_uuid()
+payments,org_id,uuid,YES,
+payments,created_at,timestamp with time zone,YES,now()
+plan_credits,ai_attendance_monthly,text,YES,
+plan_credits,ai_content_monthly,text,YES,
+plan_credits,created_at,timestamp with time zone,YES,now()
+plan_credits,id,uuid,NO,public.gen_random_uuid()
+plan_credits,plan_id,uuid,YES,public.gen_random_uuid()
+plan_credits,updated_at,timestamp with time zone,YES,now()
+plan_credits,ai_attendance_monthly_num,numeric,YES,
+plan_credits,ai_content_monthly_num,numeric,YES,
+plan_features,id,uuid,NO,gen_random_uuid()
+plan_features,feature_code,text,YES,
+plan_features,plan_id,uuid,YES,
+plan_features,value,jsonb,NO,'{}'::jsonb
+plan_features,ai_meter_code,text,YES,
+plan_features,ai_monthly_quota,numeric,YES,
+plan_features,created_at,timestamp with time zone,YES,now()
+plan_features,updated_at,timestamp with time zone,YES,now()
+plans,id,uuid,NO,gen_random_uuid()
+plans,name,text,YES,
+plans,code,text,YES,
+plans,ai_tokens_limit,bigint,NO,0
+plans,is_free,boolean,YES,false
+plans,trial_days,integer,YES,14
+plans,billing_period_months,integer,YES,1
+plans,price_cents,integer,YES,0
+plans,currency,text,YES,'BRL'::text
+plans,is_published,boolean,YES,true
+plans,sort_order,integer,YES,
+plans,modules,jsonb,YES,'[]'::jsonb
+plans,updated_at,timestamp with time zone,YES,now()
+plans,created_at,timestamp with time zone,YES,now()
+plans,monthly_price,numeric,YES,
+plans,id_legacy_text,text,YES,
+plans,label,text,YES,
+plans,is_active,boolean,YES,true
+plans_meta,created_at,timestamp with time zone,YES,now()
+plans_meta,id,uuid,NO,public.gen_random_uuid()
+plans_meta,max_users,text,YES,
+plans_meta,plan_id,uuid,YES,public.gen_random_uuid()
+plans_meta,updated_at,timestamp with time zone,YES,now()
+post_approvals,approver_id,uuid,YES,public.gen_random_uuid()
+post_approvals,created_at,timestamp with time zone,YES,now()
+post_approvals,id,uuid,NO,public.gen_random_uuid()
+post_approvals,notes,text,YES,
+post_approvals,post_id,uuid,YES,public.gen_random_uuid()
+post_approvals,status,text,YES,
+post_approvals,updated_at,timestamp with time zone,YES,now()
+posts,id,uuid,NO,gen_random_uuid()
+purchases,id,uuid,NO,gen_random_uuid()
+purchases,org_id,uuid,YES,
+purchases,created_at,timestamp with time zone,YES,now()
+quick_replies,[title,text,YES,
+quick_replies,body,text,YES,
+quick_replies,company_id,uuid,YES,public.gen_random_uuid()
+quick_replies,created_at,timestamp with time zone,YES,now()
+quick_replies,id,uuid,NO,public.gen_random_uuid()
+quick_replies,"id]
+    )",text,YES,
+quick_replies,title,text,YES,
+quick_replies,updated_at,timestamp with time zone,YES,now()
+quick_replies_clean,id,uuid,YES,
+quick_replies_clean,org_id,uuid,YES,
+quick_replies_clean,title,text,YES,
+quick_replies_clean,body,text,YES,
+quick_replies_clean,created_at,timestamp with time zone,YES,now()
+quick_replies_clean,updated_at,timestamp with time zone,YES,now()
+reminder_logs,channel,text,YES,
+reminder_logs,created_at,timestamp with time zone,YES,now()
+reminder_logs,event_id,uuid,YES,public.gen_random_uuid()
+reminder_logs,hash,text,YES,
+reminder_logs,id,uuid,NO,public.gen_random_uuid()
+reminder_logs,recipient,text,YES,
+reminder_logs,sent_at,timestamp with time zone,YES,now()
+reminder_logs,updated_at,timestamp with time zone,YES,now()
+repurpose_jobs,id,uuid,NO,gen_random_uuid()
+repurpose_jobs,post_id,uuid,YES,
+rewards,id,uuid,NO,gen_random_uuid()
+segments,id,uuid,NO,public.gen_random_uuid()
+segments,company_id,uuid,YES,
+segments,name,text,NO,
+segments,filter,jsonb,NO,
+segments,created_at,timestamp without time zone,NO,now()
+social_posts,id,uuid,NO,gen_random_uuid()
+social_posts,org_id,uuid,YES,
+subscriptions,id,uuid,NO,gen_random_uuid()
+subscriptions,org_id,uuid,YES,
+support_audit_logs,id,uuid,NO,gen_random_uuid()
+support_tickets,created_at,timestamp with time zone,YES,now()
+support_tickets,description,text,YES,
+support_tickets,id,uuid,NO,public.gen_random_uuid()
+support_tickets,org_id,uuid,YES,public.gen_random_uuid()
+support_tickets,status,text,YES,
+support_tickets,subject,text,YES,
+support_tickets,updated_at,timestamp with time zone,YES,now()
+tags,id,uuid,NO,gen_random_uuid()
+tags,name,text,YES,
+tags,org_id,uuid,YES,
+telemetry_events,created_at,timestamp with time zone,YES,now()
+telemetry_events,event_key,text,YES,
+telemetry_events,id,uuid,NO,public.gen_random_uuid()
+telemetry_events,metadata,text,YES,
+telemetry_events,occurred_at,timestamp with time zone,YES,now()
+telemetry_events,org_id,uuid,YES,public.gen_random_uuid()
+telemetry_events,source,text,YES,
+telemetry_events,updated_at,timestamp with time zone,YES,now()
+telemetry_events,user_id,uuid,YES,public.gen_random_uuid()
+telemetry_events,value_num,numeric,YES,
+telemetry_kpis_daily,PRIMARY,text,YES,
+telemetry_kpis_daily,created_at,timestamp with time zone,YES,now()
+telemetry_kpis_daily,day,text,YES,
+telemetry_kpis_daily,id,uuid,NO,public.gen_random_uuid()
+telemetry_kpis_daily,metric,text,YES,
+telemetry_kpis_daily,org_id,uuid,YES,public.gen_random_uuid()
+telemetry_kpis_daily,updated_at,timestamp with time zone,YES,now()
+telemetry_kpis_daily,value,text,YES,
+usage_counters,client_id,uuid,YES,
+usage_counters,id,uuid,NO,gen_random_uuid()
+usage_counters,module_key,text,YES,
+usage_counters,period_end,timestamp with time zone,YES,
+usage_counters,period_start,timestamp with time zone,YES,
+usage_reports,created_at,timestamp with time zone,YES,now()
+usage_reports,id,uuid,NO,public.gen_random_uuid()
+usage_reports,metrics,text,YES,
+usage_reports,org_id,uuid,YES,public.gen_random_uuid()
+usage_reports,period_end,text,YES,
+usage_reports,period_start,text,YES,
+usage_reports,updated_at,timestamp with time zone,YES,now()
+user_orgs,PRIMARY,text,YES,
+user_orgs,created_at,timestamp with time zone,YES,now()
+user_orgs,id,uuid,NO,public.gen_random_uuid()
+user_orgs,org_id,uuid,YES,public.gen_random_uuid()
+user_orgs,role,text,YES,
+user_orgs,updated_at,timestamp with time zone,YES,now()
+user_orgs,user_id,uuid,YES,public.gen_random_uuid()
+users,email,text,NO,
+users,id,uuid,NO,gen_random_uuid()
+users,password_hash,text,YES,
+users,name,text,YES,
+users,is_active,boolean,NO,true
+users,created_at,timestamp with time zone,NO,now()
+users,updated_at,timestamp with time zone,NO,now()
+users,last_login_at,timestamp with time zone,YES,
+users,org_id,uuid,YES,
+users,roles,ARRAY,NO,ARRAY[]::text[]
+users,is_superadmin,boolean,NO,false
+v_ai_credits_status,org_id,uuid,YES,
+v_ai_credits_status,payload,jsonb,YES,
+v_org_integrations_status,org_id,uuid,YES,
+v_org_integrations_status,payload,jsonb,YES,
+v_orgs_me,user_id,uuid,YES,
+v_orgs_me,org_id,uuid,YES,
+v_orgs_me,name,text,YES,
+v_orgs_me,slug,text,YES,
+v_orgs_me,status,text,YES,
+v_orgs_me,plan_id,uuid,YES,
+v_orgs_me,roles,ARRAY,YES,
+v_user_memberships,user_id,uuid,YES,
+v_user_memberships,org_id,uuid,YES,
+v_user_memberships,role_source,text,YES,
+v_user_memberships,source_table,text,YES,
+whatsapp_channels,id,uuid,NO,gen_random_uuid()
+whatsapp_channels,org_id,uuid,YES,
+whatsapp_channels,phone_e164,text,YES,
+whatsapp_channels,status,text,YES,'unknown'::text
+whatsapp_channels,provider,text,YES,'whatsapp_session'::text
+whatsapp_channels,created_at,timestamp with time zone,YES,now()
+whatsapp_channels,updated_at,timestamp with time zone,YES,now()
+whatsapp_channels,connected_at,timestamp with time zone,YES,
+whatsapp_channels,disconnected_at,timestamp with time zone,YES,
+whatsapp_channels,last_qr_at,timestamp with time zone,YES,
+whatsapp_channels,last_qr_data,text,YES,
+whatsapp_channels,session,jsonb,YES,
+whatsapp_channels,settings,jsonb,YES,
+whatsapp_channels,last_error,text,YES,

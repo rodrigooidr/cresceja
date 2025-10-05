@@ -54,6 +54,7 @@ export default function OrgBillingHistory() {
     setChanging(true);
     try {
       await adminPutOrgPlan(orgId, selectedPlan);
+      // recarrega histórico para refletir novo evento de plano
       const hist = await adminGetOrgBillingHistory(orgId);
       setData(hist || { invoices: [], plan_events: [], usage: [] });
       alert('Plano atualizado');
