@@ -457,12 +457,15 @@ export async function getCurrentOrg(options = {}) {
 }
 
 export async function getMyOrgs() {
-  const { data } = await api.get('/orgs/me');
+  const { data } = await api.get('/orgs');
+  if (data && typeof data === 'object' && Array.isArray(data.data)) {
+    return { items: data.data, data: data.data };
+  }
   return data;
 }
 
 export async function switchOrg(orgId) {
-  await api.post('/orgs/switch', { orgId });
+  await api.post('/orgs/select', { orgId });
 }
 
 export async function lookupCNPJ(cnpj) {
