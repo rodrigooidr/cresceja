@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import express from 'express';
 
-const router = Router();
+const router = express.Router();
 
 function safeDraft({ context = [], tone = 'neutro', language = 'pt' } = {}) {
   const lastCustomer = [...context].reverse().find((message) => message?.sender_type === 'customer');

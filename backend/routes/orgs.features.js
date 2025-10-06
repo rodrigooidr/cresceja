@@ -1,27 +1,7 @@
-import { Router } from 'express';
-import { getFeatureAllowance, getUsage } from '../services/features.js';
-import { getOrgFeatures } from '../services/orgFeatures.js';
+// ⚠️ Router mantido apenas para compatibilidade de código.
+// NÃO registrar este arquivo no servidor para evitar rotas duplicadas.
+// Ele reexporta o router canônico de /api/orgs/:orgId/features.
+// Se for importado por engano, o handler e o payload serão idênticos.
 
-const router = Router();
-const isProd = String(process.env.NODE_ENV) === 'production';
-
-router.get('/api/orgs/:id/features', async (req, res) => {
-  if (!req.org?.id && !isProd) {
-    return res.json({ feature_flags: {}, features: {} });
-  }
-  const orgId = req.params.id;
-  const codes = [
-    'whatsapp_numbers','whatsapp_mode_baileys','whatsapp_mode_api',
-    'google_calendar_accounts','facebook_pages','instagram_accounts'
-  ];
-  const out = {};
-  for (const code of codes) {
-    const a = await getFeatureAllowance(orgId, code, req.db);
-    const used = await getUsage(orgId, code, req.db);
-    out[code] = { enabled: !!a.enabled, limit: a.limit, used };
-  }
-  const featureToggles = await getOrgFeatures(req.db, orgId);
-  res.json({ ...out, feature_flags: featureToggles, features: featureToggles });
-});
-
+import router from './org.features.js';
 export default router;

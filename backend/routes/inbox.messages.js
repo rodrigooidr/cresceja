@@ -1,9 +1,9 @@
 // backend/routes/inbox.messages.js
-import { Router } from 'express';
+import express from 'express';
 import { query as rootQuery } from '#db';
 import { withOrg } from '../middleware/withOrg.js';
 
-const router = Router();
+const router = express.Router();
 
 router.get('/messages', async (req, res) => {
   return res.status(200).json({ messages: [], next_cursor: null });

@@ -1,6 +1,7 @@
-const express = require('express');
-const { v4: uuid } = require('uuid');
-const { requireCalendarRole } = require('../middleware/calendar.rbac');
+import express from 'express';
+import { v4 as uuid } from 'uuid';
+import { requireCalendarRole } from '../middleware/calendar.rbac.js';
+
 const router = express.Router();
 
 // GET /api/appointments/reports/overview
@@ -46,4 +47,4 @@ router.post('/api/appointments/webhooks/google', async (req, res) => {
   return res.status(204).send();
 });
 
-module.exports = router;
+export default router;

@@ -1,9 +1,9 @@
 // backend/routes/inbox.conversations.js
-import { Router } from 'express';
+import express from 'express';
 import { query as rootQuery } from '#db';
 import { withOrg } from '../middleware/withOrg.js';
 
-const router = Router();
+const router = express.Router();
 
 const normalizeStatus = (s) => {
   const allowed = new Set(['open', 'closed', 'pending', 'archived', 'all']);
