@@ -2,11 +2,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import inboxApi from "../../../api/inboxApi";
 import useToastFallback from "../../../hooks/useToastFallback";
+import useOrgFeatures from "../../../hooks/useOrgFeatures";
 import UpcomingAppointments from "@/pages/inbox/components/UpcomingAppointments";
 import ScheduleModal from "@/pages/inbox/components/ScheduleModal";
 
 export default function ClientDetailsPanel({ conversation, onApplyTags, addToast: addToastProp, onSchedule }) {
   const addToast = useToastFallback(addToastProp);
+  const { features } = useOrgFeatures();
   const [client, setClient] = useState(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [schedulePrefill, setSchedulePrefill] = useState(null);
@@ -22,8 +24,12 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
   const [tagInput, setTagInput] = useState("");
   const dirtyRef = useRef({ birthdate: false, notes: false, tags: false });
 
+  const contactId = client?.id || conversation?.contact?.id || null;
+  const canCreateAppointment = Boolean(contactId) && features?.calendar_scheduling === true;
+  const scheduleContact = client || conversation?.contact || null;
+
   const handleSchedule = () => {
-    if (!conversation) return;
+    if (!conversation || !canCreateAppointment) return;
     setSchedulePrefill({ personName: "", serviceName: "" });
     setScheduleOpen(true);
     onSchedule?.({ conversation, client });
@@ -44,9 +50,6 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
       }
     })();
   }, [conversation?.id]);
-
-  const contactId = client?.id || conversation?.contact?.id || null;
-  const scheduleContact = client || conversation?.contact || null;
 
   const fullName = useMemo(() => {
     return client?.name || client?.full_name || conversation?.client_name || "Cliente";
@@ -130,14 +133,16 @@ export default function ClientDetailsPanel({ conversation, onApplyTags, addToast
             {channelLabel} • #{conversation?.id || "—"}
           </p>
         </div>
-        <button
-          type="button"
-          className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
-          onClick={handleSchedule}
-          disabled={!conversation}
-        >
-          Agendar
-        </button>
+        {canCreateAppointment ? (
+          <button
+            type="button"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+            onClick={handleSchedule}
+            disabled={!conversation}
+          >
+            Criar Agendamento
+          </button>
+        ) : null}
       </div>
 
       <UpcomingAppointments

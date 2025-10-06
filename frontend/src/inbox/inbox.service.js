@@ -142,7 +142,7 @@ export async function aiClassifyConversation({ conversationId, context }) {
 }
 
 // Templates
-export async function listTemplates({ orgId }) {
+export async function listTemplates({ orgId } = {}) {
   const { data } = await inboxApi.get('/inbox/templates', { params: { org_id: orgId } });
   return data;
 }

@@ -56,7 +56,8 @@
     "sharp": "^0.32.6",
     "slugify": "^1.6.6",
     "socket.io": "^4.8.1",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "google-auth-library": "^9.14.2"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",
