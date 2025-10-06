@@ -1,7 +1,8 @@
-const express = require('express');
+import express from 'express';
+import { requireCalendarRole } from '../middleware/calendar.rbac.js';
+import { freeBusy } from '../services/calendar/googleCalendar.service.js';
+
 const router = express.Router();
-const { requireCalendarRole } = require('../middleware/calendar.rbac');
-const { freeBusy } = require('../services/calendar/googleCalendar.service');
 
 // GET /api/appointments/availability?orgId&professionalId&appointmentTypeId&date=YYYY-MM-DD&period=morning|afternoon|evening
 router.get('/api/appointments/availability', requireCalendarRole(['admin', 'owner', 'operator', 'marketing']), async (req, res) => {
@@ -24,4 +25,4 @@ router.get('/api/appointments/availability', requireCalendarRole(['admin', 'owne
   return res.status(200).json({ slots });
 });
 
-module.exports = router;
+export default router;

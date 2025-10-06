@@ -1,12 +1,12 @@
-const { google } = require('googleapis');
+import { google } from 'googleapis';
 
 // carrega auth e tokens do DB (TODO)
-async function getAuthForProfessional(professionalId) {
+export async function getAuthForProfessional(professionalId) {
   /* ... */
   return null;
 }
 
-async function freeBusy({ professionalId, timeMin, timeMax }) {
+export async function freeBusy({ professionalId, timeMin, timeMax }) {
   const auth = await getAuthForProfessional(professionalId);
   if (!auth) return { busy: [] }; // fallback sem Google
   const calendar = google.calendar({ version: 'v3', auth });
@@ -17,7 +17,7 @@ async function freeBusy({ professionalId, timeMin, timeMax }) {
   return { busy };
 }
 
-async function createEvent({ professionalId, summary, description, start, end, attendees = [], location, extendedPrivate }) {
+export async function createEvent({ professionalId, summary, description, start, end, attendees = [], location, extendedPrivate }) {
   const auth = await getAuthForProfessional(professionalId);
   if (!auth) {
     // fallback local (retorne apenas estrutura)
@@ -38,5 +38,3 @@ async function createEvent({ professionalId, summary, description, start, end, a
   });
   return { id: resp.data.id, google_event_id: resp.data.id, created_local: false };
 }
-
-module.exports = { freeBusy, createEvent };

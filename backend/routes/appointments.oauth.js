@@ -1,7 +1,8 @@
-const express = require('express');
-const { google } = require('googleapis');
-const { requireCalendarRole } = require('../middleware/calendar.rbac');
-const { encrypt } = require('../lib/crypto.util');
+import express from 'express';
+import { google } from 'googleapis';
+import { requireCalendarRole } from '../middleware/calendar.rbac.js';
+import { encrypt } from '../lib/crypto.util.js';
+
 const router = express.Router();
 
 function oauthClient() {
@@ -29,4 +30,4 @@ router.get('/api/appointments/oauth/google/callback', async (req, res) => {
   return res.status(200).send('Google account connected. You can close this window.');
 });
 
-module.exports = router;
+export default router;

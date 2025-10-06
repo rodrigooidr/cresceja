@@ -31,7 +31,6 @@ import uploadsRouter from './routes/uploads.js';
 import webhooksMetaPages from './routes/webhooks/meta.pages.js';
 import organizationsRouter from './routes/organizations.js';
 import orgFeaturesRouter from './routes/org.features.js';
-import orgsFeaturesRouter from './routes/orgs.features.js';
 import inboxTemplatesRouter from './routes/inbox.templates.js';
 import inboxAiRouter from './routes/inbox.ai.js';
 import inboxAlertsRouter from './routes/inbox.alerts.js';
@@ -145,7 +144,6 @@ app.use('/api/inbox', inboxUploadsRouter);
 app.use(inboxAiRouter);
 
 // org features & ai
-app.use('/api/orgs', orgsFeaturesRouter);
 app.use('/api/ai', aiSettingsRouter);
 app.use('/api/ai-credits', aiCreditsStatusRouter);
 

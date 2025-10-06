@@ -1,6 +1,6 @@
-import { Router } from 'express';
+import express from 'express';
 
-const router = Router();
+const router = express.Router();
 
 router.post('/uploads', (req, res) => {
   const now = Date.now();
