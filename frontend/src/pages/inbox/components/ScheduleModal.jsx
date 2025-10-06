@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { authFetch } from "../../../services/session.js";
+import { proposeSlots, createCalendarEvent } from "../../../inbox/inbox.service";
+import { useOrg } from "../../../contexts/OrgContext";
 
 /**
  * Props:
@@ -19,6 +21,8 @@ export default function ScheduleModal({
   conversationId = null,
   onScheduled,
 }) {
+  const { org } = useOrg();
+  const orgId = org?.id || null;
   const [loading, setLoading] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +63,7 @@ export default function ScheduleModal({
 
   // sugestões
   const [suggestions, setSuggestions] = useState([]); // [{ start, end }]
+  const suggestionLabels = ["Mais cedo", "Ideal", "Mais tarde"];
   const [pickedIndex, setPickedIndex] = useState(null);
 
   // mapeamento de alias -> nome
@@ -94,19 +99,6 @@ export default function ScheduleModal({
     });
   }, [open]);
 
-  // util: gerar Idempotency-Key
-  function mkIdem() {
-    try {
-      const arr = new Uint8Array(16);
-      crypto.getRandomValues(arr);
-      return Array.from(arr)
-        .map((x) => x.toString(16).padStart(2, "0"))
-        .join("");
-    } catch {
-      return String(Date.now()) + "-" + Math.random().toString(16).slice(2);
-    }
-  }
-
   // juntar date+time -> ISO com timezone do navegador; backend usa tz 'America/Sao_Paulo'
   function dateTimeToISO(d, t) {
     // d: "YYYY-MM-DD", t: "HH:MM"
@@ -118,22 +110,15 @@ export default function ScheduleModal({
     setError("");
     setPickedIndex(null);
     setSuggestions([]);
-    const skill = selectedService?.defaultSkill || null;
     const fromISO = dateTimeToISO(date, time);
-    const url = new URL("/api/calendar/suggest", window.location.origin);
-    if (personResolved) url.searchParams.set("personName", personResolved);
-    if (skill) url.searchParams.set("skill", skill);
-    url.searchParams.set("fromISO", fromISO);
-    url.searchParams.set("durationMin", String(durationMin || 30));
-
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo';
     setSuggesting(true);
     try {
-      const r = await authFetch(url.toString());
-      const js = await r.json();
-      // o backend retorna { items: { [person]: [{start,end},...] } }
-      const firstList = js?.items && Object.values(js.items)[0];
-      setSuggestions(Array.isArray(firstList) ? firstList : []);
+      const data = await proposeSlots({ duration_min: durationMin || 30, count: 3, tz, start_from: fromISO });
+      const slots = Array.isArray(data?.slots) ? data.slots.slice(0, 3) : [];
+      setSuggestions(slots);
     } catch (e) {
+      console.error('proposeSlots failed', e);
       setError("Falha ao sugerir horários.");
     } finally {
       setSuggesting(false);
@@ -159,44 +144,32 @@ export default function ScheduleModal({
     }
 
     const chosenSummary = selectedService?.name || serviceName || "Atendimento";
-    const payload = {
-      personName: personResolved || personInput,
-      summary: chosenSummary,
-      description: notes || undefined,
-      startISO,
-      endISO,
-      attendeeEmail: contact?.email || undefined,
-      attendeeName: contact?.display_name || undefined,
-      contactId: contact?.id || undefined,
-      conversationId: conversationId || undefined,
-    };
-
     try {
-      const r = await authFetch("/api/calendar/events", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Idempotency-Key": mkIdem(),
-        },
-        body: JSON.stringify(payload),
-      });
-      if (r.status === 409) {
-        setError("Horário indisponível (conflito). Tente outra opção.");
-      } else if (!r.ok) {
-        const txt = await r.text();
-        setError(`Falha ao agendar. ${txt || ""}`);
-      } else {
-        const evt = await r.json();
-        const enriched = {
-          ...evt,
-          __serviceName: selectedService?.name || serviceName || payload.summary || null,
-          __personName: personResolved || personInput || null,
-        };
-        onScheduled?.(enriched);
-        onClose?.();
+      const attendees = [];
+      const attendeeName = contact?.display_name || contact?.name || contact?.full_name || undefined;
+      if (contact?.email) {
+        attendees.push({ email: contact.email, name: attendeeName });
       }
+      const result = await createCalendarEvent({
+        org_id: orgId || undefined,
+        title: chosenSummary,
+        start: startISO,
+        end: endISO,
+        attendees,
+        conversation_id: conversationId || undefined,
+        notes: notes || undefined,
+      });
+      const eventPayload = result?.event || result || {};
+      const enriched = {
+        ...eventPayload,
+        __serviceName: selectedService?.name || serviceName || chosenSummary || null,
+        __personName: personResolved || personInput || null,
+      };
+      onScheduled?.(enriched);
+      onClose?.();
     } catch (e2) {
-      setError("Falha de rede ao agendar.");
+      console.error('createCalendarEvent failed', e2);
+      setError("Falha ao agendar.");
     } finally {
       setLoading(false);
     }
@@ -423,19 +396,12 @@ export default function ScheduleModal({
                       padding: "6px 8px",
                       cursor: "pointer",
                     }}
-                    title={`${new Date(s.start).toLocaleString()} → ${new Date(
-                      s.end
-                    ).toLocaleTimeString()}`}
+                    title={`${new Date(s.start).toLocaleString()} → ${new Date(s.end).toLocaleTimeString()}`}
                   >
-                    {new Date(s.start).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    <div style={{ fontSize: 12, color: '#4b5563' }}>{suggestionLabels[i] || `Opção ${i + 1}`}</div>
+                    <div>{new Date(s.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     {"–"}
-                    {new Date(s.end).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {new Date(s.end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
                   </button>
                 ))}
               </div>

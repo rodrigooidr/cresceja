@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import PopoverPortal from "ui/PopoverPortal";
 import QuickReplyModal from "./QuickReplyModal.jsx";
-import { listTemplates, listQuickReplies } from "../../../inbox/inbox.service";
+import { listTemplates, listQuickReplies, aiDraftMessage } from "../../../inbox/inbox.service";
 import { getDraft, setDraft, clearDraft } from "../../../inbox/drafts.store";
 
 function useOutsideClose(ref, onClose, deps = []) {
@@ -25,6 +25,7 @@ function useOutsideClose(ref, onClose, deps = []) {
 
 export default function MessageComposer({ onSend, sel, onFiles, disabled = false, disabledReason = '' }) {
   const convId = sel?.id || sel?.conversation_id || null;
+  const orgId = sel?.org_id || sel?.orgId || sel?.organization_id || sel?.org?.id || null;
 
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -34,6 +35,7 @@ export default function MessageComposer({ onSend, sel, onFiles, disabled = false
   const [showTemplates, setShowTemplates] = useState(false);
 
   const [quickReplies, setQuickReplies] = useState([]);
+  const [aiLoading, setAiLoading] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [loadingQuick, setLoadingQuick] = useState(false);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
@@ -76,7 +78,7 @@ export default function MessageComposer({ onSend, sel, onFiles, disabled = false
   // Carregar templates e quick replies
   useEffect(() => {
     setLoadingTemplates(true);
-    listTemplates()
+    listTemplates(orgId ? { orgId } : {})
       .then((data) => {
         if (Array.isArray(data)) setTemplates(data);
       })
@@ -90,7 +92,7 @@ export default function MessageComposer({ onSend, sel, onFiles, disabled = false
       })
       .catch(() => {})
       .finally(() => setLoadingQuick(false));
-  }, []);
+  }, [orgId]);
 
   // ---------- Quick replies / Templates / Emojis ----------
   const onSelectQuick = (q) => {
@@ -102,6 +104,23 @@ export default function MessageComposer({ onSend, sel, onFiles, disabled = false
     const content = t?.content || t?.text || "";
     setTextAndDraft((cur) => (cur ? `${cur} ${content}` : content));
     setShowTemplates(false);
+  };
+
+  const handleAIDraft = async () => {
+    if (!convId || aiLoading) return;
+    setAiLoading(true);
+    try {
+      const payload = { conversationId: convId, context: [] };
+      const resp = await aiDraftMessage(payload);
+      const draftText = resp?.draft?.text || resp?.draft || resp?.text || '';
+      if (draftText) {
+        setTextAndDraft(draftText);
+      }
+    } catch (err) {
+      console.error('aiDraftMessage failed', err);
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // ---------- Arquivos, paste e drag ----------
@@ -275,6 +294,16 @@ export default function MessageComposer({ onSend, sel, onFiles, disabled = false
               )}
             </div>
           </PopoverPortal>
+          {/* IA Draft */}
+          <button
+            type="button"
+            className="h-9 w-9 border rounded-lg bg-white grid place-items-center"
+            onClick={handleAIDraft}
+            disabled={!convId || aiLoading}
+            title="IA → Gerar rascunho"
+          >
+            {aiLoading ? '…' : '🤖'}
+          </button>
 
           {/* Anexos */}
           <button
