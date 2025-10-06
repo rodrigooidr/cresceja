@@ -91,16 +91,6 @@ export async function getMessages(conversationId, { limit = 50 } = {}) {
   return { items, total: items.length };
 }
 
-/** Lista templates disponíveis. */
-export async function listTemplates() {
-  try {
-    const { data } = await inboxApi.get('/inbox/templates');
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
 /** Lista respostas rápidas disponíveis. */
 export async function listQuickReplies() {
   try {
@@ -121,5 +111,93 @@ export async function sendMessage({ conversationId, text, file }) {
   if (trimmed) fd.append('message', trimmed);
   if (file) fd.append('file', file);
   const { data } = await inboxApi.post('/inbox/messages', fd, { _skipRewrite: true });
+  return data;
+}
+
+// IA
+export async function aiDraftMessage({ conversationId, context, tone = 'neutro', language = 'pt' }) {
+  const { data } = await inboxApi.post('/inbox/ai/draft', {
+    conversation_id: conversationId,
+    context,
+    tone,
+    language,
+  });
+  return data;
+}
+
+export async function aiSummarizeConversation({ conversationId, context }) {
+  const { data } = await inboxApi.post('/inbox/ai/summarize', {
+    conversation_id: conversationId,
+    context,
+  });
+  return data;
+}
+
+export async function aiClassifyConversation({ conversationId, context }) {
+  const { data } = await inboxApi.post('/inbox/ai/classify', {
+    conversation_id: conversationId,
+    context,
+  });
+  return data;
+}
+
+// Templates
+export async function listTemplates({ orgId }) {
+  const { data } = await inboxApi.get('/inbox/templates', { params: { org_id: orgId } });
+  return data;
+}
+
+export async function createTemplate(payload) {
+  const { data } = await inboxApi.post('/inbox/templates', payload);
+  return data;
+}
+
+export async function updateTemplate(id, payload) {
+  const { data } = await inboxApi.put(`/inbox/templates/${id}`, payload);
+  return data;
+}
+
+export async function deleteTemplate(id) {
+  await inboxApi.delete(`/inbox/templates/${id}`);
+  return true;
+}
+
+// Agenda
+export async function proposeSlots({ duration_min = 30, count = 3, tz = 'America/Sao_Paulo', start_from }) {
+  const { data } = await inboxApi.post('/integrations/google/calendar/propose-slots', {
+    duration_min,
+    count,
+    tz,
+    start_from,
+  });
+  return data;
+}
+
+export async function createCalendarEvent({
+  org_id,
+  title,
+  start,
+  end,
+  attendees = [],
+  conversation_id,
+}) {
+  const { data } = await inboxApi.post('/integrations/google/calendar/events', {
+    org_id,
+    title,
+    start,
+    end,
+    attendees,
+    conversation_id,
+  });
+  return data;
+}
+
+export async function deleteCalendarEvent(id) {
+  await inboxApi.delete(`/integrations/google/calendar/events/${id}`);
+  return true;
+}
+
+export async function listCalendarLogs() {
+  const { data } = await inboxApi.get('/integrations/google/calendar/logs');
   return data;
 }

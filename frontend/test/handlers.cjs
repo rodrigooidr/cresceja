@@ -55,8 +55,34 @@ const handlers = [
   rest.get(api('/inbox/settings'), (_req, res, ctx) => res(ctx.status(200), ctx.json(fixtures.inboxSettings))),
 
   // Inbox: templates / quick-replies
-  rest.get(api('/inbox/templates'), (_req, res, ctx) => res(ctx.status(200), ctx.json({ items: [] }))),
+  rest.get(api('/inbox/templates'), (_req, res, ctx) => res(ctx.status(200), ctx.json({ templates: [] }))),
+  rest.post(api('/inbox/templates'), async (req, res, ctx) => {
+    const body = await req.json().catch(() => ({}));
+    return res(ctx.status(201), ctx.json({ template: { id: rid('tmpl'), ...body, updated_at: new Date().toISOString() } }));
+  }),
+  rest.put(api('/inbox/templates/:id'), async (req, res, ctx) => {
+    const body = await req.json().catch(() => ({}));
+    return res(ctx.status(200), ctx.json({ template: { id: req.params.id, ...body, updated_at: new Date().toISOString() } }));
+  }),
+  rest.delete(api('/inbox/templates/:id'), (_req, res, ctx) => res(ctx.status(204))),
   rest.get(api('/inbox/quick-replies'), (_req, res, ctx) => res(ctx.status(200), ctx.json({ items: [] }))),
+
+  // Inbox: IA segura
+  rest.post(api('/inbox/ai/draft'), async (req, res, ctx) => {
+    const body = await req.json().catch(() => ({}));
+    return res(
+      ctx.status(200),
+      ctx.json({ conversation_id: body?.conversation_id, text: `Rascunho: ${body?.tone || 'neutro'}` })
+    );
+  }),
+  rest.post(api('/inbox/ai/summarize'), async (req, res, ctx) => {
+    const body = await req.json().catch(() => ({}));
+    return res(ctx.status(200), ctx.json({ conversation_id: body?.conversation_id, summary: 'Resumo teste' }));
+  }),
+  rest.post(api('/inbox/ai/classify'), async (req, res, ctx) => {
+    const body = await req.json().catch(() => ({}));
+    return res(ctx.status(200), ctx.json({ conversation_id: body?.conversation_id, tags: ['demo'] }));
+  }),
 
   // Inbox: quick-actions
   rest.get(api('/inbox/quick-actions'), (_req, res, ctx) => res(ctx.status(200), ctx.json({ items: fixtures.quickActions }))),
@@ -146,6 +172,16 @@ const handlers = [
   rest.get(api('/content/posts'), (_req, res, ctx) => res(ctx.status(200), ctx.json(fixtures.posts))),
   rest.post(api('/content/posts'), (_req, res, ctx) => res(ctx.status(201), ctx.json(fixtures.posts.items[0]))),
   rest.post(api('/uploads'), (_req, res, ctx) => res(ctx.status(201), ctx.json({ url: '/uploads/fake.png', mime: 'image/png', name: 'fake.png', size: 1234 }))),
+
+  // Agenda Google Calendar simplificada
+  rest.post(api('/integrations/google/calendar/propose-slots'), (_req, res, ctx) =>
+    res(ctx.status(200), ctx.json({ slots: [] }))
+  ),
+  rest.post(api('/integrations/google/calendar/events'), (_req, res, ctx) =>
+    res(ctx.status(201), ctx.json({ event: { id: rid('evt') } }))
+  ),
+  rest.delete(api('/integrations/google/calendar/events/:id'), (_req, res, ctx) => res(ctx.status(204))),
+  rest.get(api('/integrations/google/calendar/logs'), (_req, res, ctx) => res(ctx.status(200), ctx.json({ logs: [] }))),
 
   rest.get(api('/public/plans'), (_req, res, ctx) => res(ctx.status(200), ctx.json(fixtures.plans))),
 

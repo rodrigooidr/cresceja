@@ -33,6 +33,7 @@ import organizationsRouter from './routes/organizations.js';
 import orgFeaturesRouter from './routes/org.features.js';
 import orgsFeaturesRouter from './routes/orgs.features.js';
 import inboxTemplatesRouter from './routes/inbox.templates.js';
+import inboxAiRouter from './routes/inbox.ai.js';
 import inboxAlertsRouter from './routes/inbox.alerts.js';
 import inboxSettingsRouter from './routes/inbox.settings.js';
 import inboxConversationsRouter from './routes/inbox.conversations.js';
@@ -42,6 +43,7 @@ import inboxUploadsRouter from './routes/inbox.uploads.js';
 import aiSettingsRouter from './routes/ai.settings.js';
 import aiCreditsStatusRouter from './routes/ai.credits.status.js';
 import integrationsRouter from './routes/integrations/index.js';
+import gcalRouter from './routes/integrations/google.calendar.js';
 import debugRouter from './routes/debug.js';
 import adminApp from './app.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
@@ -132,11 +134,12 @@ app.use('/api/uploads', uploadsRouter);
 // inbox
 app.use('/api/inbox', inboxAlertsRouter);
 app.use('/api/inbox', inboxSettingsRouter);
-app.use('/api/inbox', inboxTemplatesRouter);
+app.use(inboxTemplatesRouter);
 app.use('/api/inbox', inboxConversationsRouter);
 app.use('/api/inbox', inboxMessagesRouter);
 app.use('/api/inbox', inboxMiscRouter);
 app.use('/api/inbox', inboxUploadsRouter);
+app.use(inboxAiRouter);
 
 // org features & ai
 app.use('/api/orgs', orgsFeaturesRouter);
@@ -145,6 +148,7 @@ app.use('/api/ai-credits', aiCreditsStatusRouter);
 
 // integrações e outros módulos
 app.use('/api/integrations', integrationsRouter);
+app.use(gcalRouter);
 app.use('/api/calendar', calendarCompatRouter);
 app.use('/api/test-whatsapp', testWhatsappRouter);
 app.use('/api/onboarding', onboardingRouter);
