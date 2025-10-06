@@ -26,8 +26,14 @@ router.get('/templates', (req, res) => {
   return res.json([]);
 });
 
-router.get('/conversations', (_req, res) => {
-  res.status(410).json({ error: 'use /api/inbox/conversations (nova rota)' });
+router.get('/conversations', (req, res) => {
+  return res.status(200).json({
+    conversations: [],
+    meta: {
+      status: req.query?.status || 'open',
+      limit: Number(req.query?.limit || 50),
+    },
+  });
 });
 
 export default router;
