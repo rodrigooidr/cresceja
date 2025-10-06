@@ -37,6 +37,8 @@ import inboxAlertsRouter from './routes/inbox.alerts.js';
 import inboxSettingsRouter from './routes/inbox.settings.js';
 import inboxConversationsRouter from './routes/inbox.conversations.js';
 import inboxMessagesRouter from './routes/inbox.messages.js';
+import inboxMiscRouter from './routes/inbox.misc.js';
+import inboxUploadsRouter from './routes/inbox.uploads.js';
 import aiSettingsRouter from './routes/ai.settings.js';
 import aiCreditsStatusRouter from './routes/ai.credits.status.js';
 import integrationsRouter from './routes/integrations/index.js';
@@ -133,6 +135,8 @@ app.use('/api/inbox', inboxSettingsRouter);
 app.use('/api/inbox', inboxTemplatesRouter);
 app.use('/api/inbox', inboxConversationsRouter);
 app.use('/api/inbox', inboxMessagesRouter);
+app.use('/api/inbox', inboxMiscRouter);
+app.use('/api/inbox', inboxUploadsRouter);
 
 // org features & ai
 app.use('/api/orgs', orgsFeaturesRouter);

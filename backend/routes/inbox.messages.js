@@ -4,6 +4,30 @@ import { query as rootQuery } from '#db';
 import { withOrg } from '../middleware/withOrg.js';
 
 const router = Router();
+
+router.get('/messages', async (req, res) => {
+  return res.status(200).json({ messages: [], next_cursor: null });
+});
+
+router.post('/messages', async (req, res) => {
+  const { conversation_id, text, attachments = [] } = req.body || {};
+  const now = new Date().toISOString();
+  return res.status(201).json({
+    message: {
+      id: `temp-${now}`,
+      conversation_id,
+      org_id: null,
+      sender_type: 'agent',
+      sender_id: null,
+      text,
+      attachments,
+      status: 'sent',
+      created_at: now,
+      updated_at: now,
+    },
+  });
+});
+
 router.use(withOrg);
 
 function q(db) { return (t, p) => (db?.query ? db.query(t, p) : rootQuery(t, p)); }
