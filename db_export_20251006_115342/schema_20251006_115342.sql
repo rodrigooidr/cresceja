@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 2x12MPhmfjFnHgddOqPtieStp85CCeo4tGsdTQXVC0IiMXaq3Bbrv8VE9zPYLIg
+\restrict HR0n9mS21OZiDeVJEcD7FCaNAHDXJsvuZlJjAnnRiwEyJE7gHwsCYBzzZ5KRTL9
 
 -- Dumped from database version 16.10
 -- Dumped by pg_dump version 16.10
@@ -5506,5 +5506,5 @@ GRANT CREATE ON SCHEMA public TO cresceja;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 2x12MPhmfjFnHgddOqPtieStp85CCeo4tGsdTQXVC0IiMXaq3Bbrv8VE9zPYLIg
+\unrestrict HR0n9mS21OZiDeVJEcD7FCaNAHDXJsvuZlJjAnnRiwEyJE7gHwsCYBzzZ5KRTL9
 

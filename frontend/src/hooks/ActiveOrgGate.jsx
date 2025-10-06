@@ -95,9 +95,5 @@ export default function ActiveOrgGate({
 
   // 4) Acesso liberado
   //return <>{children}</>;
-  if (children !== undefined) {
-    return <>{children}</>;
-  }
-
-  return <Outlet />;
+  return React.Children.count(children) > 0 ? <>{children}</> : <Outlet />;
 }
