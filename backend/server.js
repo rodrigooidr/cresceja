@@ -30,6 +30,7 @@ import telemetryRouter from './routes/telemetry.js';
 import uploadsRouter from './routes/uploads.js';
 import webhooksMetaPages from './routes/webhooks/meta.pages.js';
 import organizationsRouter from './routes/organizations.js';
+import orgFeaturesRouter from './routes/org.features.js';
 import orgsFeaturesRouter from './routes/orgs.features.js';
 import inboxTemplatesRouter from './routes/inbox.templates.js';
 import inboxAlertsRouter from './routes/inbox.alerts.js';
@@ -116,6 +117,7 @@ app.use('/api', orgContext);
 
 // Endpoints de /api/orgs que não precisam de withOrg (ex: current, list, select)
 app.use('/api/orgs', orgsRouter);
+app.use(orgFeaturesRouter);
 
 // Se a rota exigir dados da organização ativa, garanta withOrg
 app.use('/api', withOrg);

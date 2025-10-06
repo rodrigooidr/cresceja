@@ -1,19 +1,40 @@
 import { useEffect, useState } from 'react';
-import inboxApi from '../api/inboxApi';
+import api from '../api/inboxApi';
 import { useOrg } from '../contexts/OrgContext';
 
 export default function useOrgFeatures() {
   const { selected } = useOrg();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [features, setFeatures] = useState({});
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!selected) { setData(null); return; }
+    let active = true;
+
+    if (!selected) {
+      setFeatures({});
+      setLoading(false);
+      return () => { active = false; };
+    }
+
     setLoading(true);
-    inboxApi.get(`/orgs/${selected}/features`, { meta:{ scope:'global' } })
-      .then(r => setData(r.data))
-      .finally(() => setLoading(false));
+
+    (async () => {
+      try {
+        const { data } = await api.get(`/orgs/${selected}/features`, { meta: { scope: 'global' } });
+        if (!active) return;
+        setFeatures(data?.features || {});
+      } catch (e) {
+        if (!active) return;
+        setFeatures({});
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
   }, [selected]);
 
-  return { features: data || {}, loading };
+  return { features, loading };
 }

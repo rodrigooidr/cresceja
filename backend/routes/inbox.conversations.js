@@ -4,7 +4,12 @@ import { query as rootQuery } from '#db';
 import { withOrg } from '../middleware/withOrg.js';
 
 const router = Router();
-router.use(withOrg);
+
+const normalizeStatus = (s) => {
+  const allowed = new Set(['open', 'closed', 'pending', 'archived', 'all']);
+  if (!s || !allowed.has(s)) return 'open';
+  return s;
+};
 
 function q(db) {
   return (text, params) => (db?.query ? db.query(text, params) : rootQuery(text, params));
@@ -14,16 +19,31 @@ function q(db) {
  * GET /api/inbox/conversations
  * Filtros: status, channel, accountId|account_id, tag (multi), q, limit, cursor (timestamp ms)
  */
-router.get('/conversations', async (req, res, next) => {
+router.get('/conversations', async (req, res) => {
   try {
     const orgId = req.org?.id || req.headers['x-org-id'] || null;
-    const { status, channel, accountId, account_id, q: term, tag, limit = 50, cursor } = req.query;
+    const { channel, accountId, account_id, q: term, tag, cursor } = req.query;
+    const rawStatus = req.query.status;
+    const status = normalizeStatus(String(rawStatus || 'open'));
     const tags = Array.isArray(tag) ? tag : (tag ? [tag] : []);
+    const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
+
+    if (!orgId) {
+      const meta = { status, limit, org_id: orgId };
+      return res.status(200).json({
+        items: [],
+        conversations: [],
+        meta,
+        cursor: null,
+        next_cursor: null,
+        has_more: false,
+      });
+    }
 
     const params = [];
     const where = [];
     if (orgId) { params.push(orgId); where.push(`c.org_id = $${params.length}`); }
-    if (status) { params.push(status); where.push(`COALESCE(c.status,'open') = $${params.length}`); }
+    if (status !== 'all') { params.push(status); where.push(`COALESCE(c.status,'open') = $${params.length}`); }
     if (channel) { params.push(channel); where.push(`COALESCE(c.channel,'') = $${params.length}`); }
     if (accountId || account_id) { params.push(accountId || account_id); where.push(`c.account_id = $${params.length}`); }
     if (tags.length) { params.push(tags); where.push(`c.tags && $${params.length}::text[]`); }
@@ -31,7 +51,7 @@ router.get('/conversations', async (req, res, next) => {
     if (cursor) { params.push(new Date(Number(cursor))); where.push(`c.last_message_at < $${params.length}`); }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    params.push(Number(limit) || 50);
+    params.push(limit);
 
     const sql = `
       SELECT c.id, c.status, c.channel, c.account_id, c.tags, c.last_message_at,
@@ -44,9 +64,21 @@ router.get('/conversations', async (req, res, next) => {
     `;
     const { rows } = await q(req.db)(sql, params);
     const nextCursor = rows.length ? String(new Date(rows[rows.length - 1].last_message_at).getTime()) : null;
-    res.json({ items: rows, cursor: nextCursor });
-  } catch (err) { next(err); }
+    const meta = { status, limit, org_id: orgId };
+    return res.status(200).json({
+      items: rows,
+      conversations: rows,
+      meta,
+      cursor: nextCursor,
+      next_cursor: nextCursor,
+      has_more: Boolean(nextCursor),
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'inbox_list_failed', detail: String((err && err.message) || err) });
+  }
 });
+
+router.use(withOrg);
 
 /** GET /api/inbox/conversations/:id/messages  (?limit, ?before=epoch_ms) */
 router.get('/conversations/:id/messages', async (req, res, next) => {
