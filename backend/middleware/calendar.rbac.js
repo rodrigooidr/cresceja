@@ -1,4 +1,4 @@
-const ALLOWED_PROFILES = ['admin', 'operator', 'marketing', 'owner'];
+const ALLOWED_PROFILES = ['OrgAgent', 'OrgAdmin', 'OrgOwner', 'Support', 'SuperAdmin'];
 
 function resolveRole(req) {
   const headerRole = (req.get && req.get('x-user-role')) || req.headers?.['x-user-role'];
@@ -7,7 +7,7 @@ function resolveRole(req) {
   return role && ALLOWED_PROFILES.includes(role) ? role : null;
 }
 
-function requireCalendarRole(roles = ['admin', 'owner']) {
+function requireCalendarRole(roles = ['OrgOwner', 'Support', 'SuperAdmin']) {
   const wanted = roles.map((r) => r.toLowerCase());
   return (req, res, next) => {
     const role = resolveRole(req);
