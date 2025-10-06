@@ -8,8 +8,6 @@ import * as socketMod from "../../sockets/socket";
 import { listConversations, getMessages, sendMessage as sendMessageApi } from "../../inbox/inbox.service";
 import { useOrg } from "../../contexts/OrgContext";
 import useOrgRefetch from "../../hooks/useOrgRefetch";
-import useActiveOrgGate from "../../hooks/useActiveOrgGate";
-
 import ConversationList from "./components/ConversationList.jsx";
 import ConversationHeader from "./components/ConversationHeader.jsx";
 import MessageList from "./components/MessageList.jsx";
@@ -26,7 +24,6 @@ import { authFetch } from "../../services/session.js";
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
-  const { allowed } = useActiveOrgGate();
   const { selected: orgId } = useOrg();
   const inboxAlerts = useInboxAlerts();
 
@@ -524,8 +521,6 @@ export default function InboxPage({ addToast: addToastProp }) {
     },
     [selectedId, setMessages, closeScheduleModal, openScheduleModal, selectedConversation]
   );
-
-  if (!allowed) return null;
 
   // ===== UI =====
   return (

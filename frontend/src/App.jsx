@@ -1,3 +1,4 @@
+import { OrgProvider } from "./contexts/OrgContext.jsx";
 import React from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./ui/layout/AppLayout.jsx";
@@ -5,6 +6,7 @@ import RequireAuth from "./auth/RequireAuth.jsx";
 import ActiveOrgGate from "./hooks/ActiveOrgGate.jsx";
 import RoleGate from "./auth/RoleGate.jsx";
 import { canViewOrgPlan, canViewOrganizationsAdmin } from "./auth/roles";
+
 
 // públicas
 import LandingPage from "./pages/LandingPage.jsx";
@@ -31,15 +33,16 @@ import OrgBillingHistory from "./pages/admin/OrgBillingHistory.jsx";
 import PlansAdminPage from "./pages/admin/PlansAdminPage.jsx";
 import OrgPlanPage from "./pages/org/OrgPlanPage.jsx";
 
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        {/* rotas públicas */}
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-
-        {/* rotas autenticadas */}
+      <OrgProvider>
+        <Routes>
+         {/* rotas públicas */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+         {/* rotas autenticadas */}
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             {/* rotas que exigem org ativa selecionada */}
@@ -86,6 +89,7 @@ export default function App() {
         {/* fallback geral: qualquer rota desconhecida volta para a landing */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </OrgProvider>
+    </BrowserRouter >
   );
 }
