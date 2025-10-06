@@ -24,7 +24,19 @@ import { authFetch } from "../../services/session.js";
 export default function InboxPage({ addToast: addToastProp }) {
   const addToast = useToastFallback(addToastProp);
   const [searchParams, setSearchParams] = useSearchParams();
-  const { selected: orgId } = useOrg();
+  const { org, selected } = useOrg();
+  const orgId = React.useMemo(() => {
+    // usa, na ordem: org do contexto → selected → activeOrg/ orgId no storage
+    const byCtx = org?.id || selected || null;
+    if (byCtx) return String(byCtx);
+    try {
+      const fromActive = JSON.parse(localStorage.getItem('activeOrg') || 'null')?.id;
+      const fromLegacy = localStorage.getItem('orgId');
+      return String(fromActive || fromLegacy || '');
+    } catch {
+      return '';
+    }
+  }, [org?.id, selected]);
   const inboxAlerts = useInboxAlerts();
 
   // ===== FILTROS =====

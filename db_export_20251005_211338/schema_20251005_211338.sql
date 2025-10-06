@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 3E8GRt6eb73yvKlujhW1fDmo80fpoRb9ot5ZOjcJFuFyIQ2QnTsTLWAoa9gisPH
+\restrict 2x12MPhmfjFnHgddOqPtieStp85CCeo4tGsdTQXVC0IiMXaq3Bbrv8VE9zPYLIg
 
 -- Dumped from database version 16.10
 -- Dumped by pg_dump version 16.10
@@ -719,23 +719,99 @@ ALTER FUNCTION public.util_br_e164(text) OWNER TO cresceja;
 -- Name: util_digits(text); Type: FUNCTION; Schema: public; Owner: cresceja
 --
 
-CREATE FUNCTION public.util_digits(text) RETURNS text
-    LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
-    AS $_$ SELECT regexp_replace($1, '\D', '', 'g') $_$;
+CREATE FUNCTION public.util_digits(p_text text) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT CASE WHEN p_text IS NULL THEN NULL
+              ELSE regexp_replace(p_text, '[^0-9]+', '', 'g')
+         END;
+$$;
 
 
-ALTER FUNCTION public.util_digits(text) OWNER TO cresceja;
+ALTER FUNCTION public.util_digits(p_text text) OWNER TO cresceja;
 
 --
 -- Name: util_email_lower(text); Type: FUNCTION; Schema: public; Owner: cresceja
 --
 
-CREATE FUNCTION public.util_email_lower(text) RETURNS text
-    LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE
-    AS $_$ SELECT lower($1) $_$;
+CREATE FUNCTION public.util_email_lower(p_email text) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT CASE WHEN p_email IS NULL THEN NULL
+              ELSE lower(trim(p_email))
+         END;
+$$;
 
 
-ALTER FUNCTION public.util_email_lower(text) OWNER TO cresceja;
+ALTER FUNCTION public.util_email_lower(p_email text) OWNER TO cresceja;
+
+--
+-- Name: util_parse_e164(text, text); Type: FUNCTION; Schema: public; Owner: cresceja
+--
+
+CREATE FUNCTION public.util_parse_e164(p_phone text, p_country text DEFAULT NULL::text) RETURNS text
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+  d  text;
+  cc text := NULL;
+BEGIN
+  IF p_phone IS NULL OR length(trim(p_phone)) = 0 THEN
+    RETURN NULL;
+  END IF;
+
+  d := regexp_replace(p_phone, '[^0-9]+', '', 'g');
+
+  IF p_country IS NOT NULL THEN
+    p_country := upper(p_country);
+  END IF;
+
+  IF p_country = 'BR' THEN
+    cc := '55';
+  END IF;
+
+  IF cc IS NOT NULL AND position(cc in d) = 1 THEN
+    RETURN '+' || d;
+  END IF;
+
+  IF d LIKE '00%' THEN
+    RETURN '+' || substr(d, 3);
+  END IF;
+
+  IF cc IS NOT NULL THEN
+    RETURN '+' || cc || d;
+  END IF;
+
+  RETURN '+' || d;
+END;
+$$;
+
+
+ALTER FUNCTION public.util_parse_e164(p_phone text, p_country text) OWNER TO cresceja;
+
+--
+-- Name: util_slugify(text); Type: FUNCTION; Schema: public; Owner: cresceja
+--
+
+CREATE FUNCTION public.util_slugify(p_text text) RETURNS text
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT CASE WHEN p_text IS NULL THEN NULL
+              ELSE
+                trim(both '-' from
+                  regexp_replace(
+                    regexp_replace(
+                      lower(unaccent(p_text)),
+                      '[^a-z0-9]+', '-', 'g'
+                    ),
+                    '-{2,}', '-', 'g'
+                  )
+                )
+         END;
+$$;
+
+
+ALTER FUNCTION public.util_slugify(p_text text) OWNER TO cresceja;
 
 SET default_tablespace = '';
 
@@ -1922,7 +1998,7 @@ CREATE TABLE public.organizations (
     resp_cpf text,
     resp_email text,
     resp_phone_e164 text,
-    CONSTRAINT chk_organizations_status CHECK (((status IS NULL) OR (status = ANY (ARRAY['active'::text, 'trial'::text, 'suspended'::text, 'canceled'::text]))))
+    CONSTRAINT chk_organizations_status CHECK (((status IS NULL) OR (status = ANY (ARRAY['active'::text, 'trial'::text, 'suspended'::text, 'canceled'::text, 'inactive'::text]))))
 );
 
 
@@ -5430,5 +5506,5 @@ GRANT CREATE ON SCHEMA public TO cresceja;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 3E8GRt6eb73yvKlujhW1fDmo80fpoRb9ot5ZOjcJFuFyIQ2QnTsTLWAoa9gisPH
+\unrestrict 2x12MPhmfjFnHgddOqPtieStp85CCeo4tGsdTQXVC0IiMXaq3Bbrv8VE9zPYLIg
 

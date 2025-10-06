@@ -1,5 +1,6 @@
 // src/hooks/ActiveOrgGate.jsx
 import React, { useEffect, useMemo } from "react";
+import { Outlet } from "react-router-dom";
 import { useOrg } from "@/contexts/OrgContext";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -38,7 +39,7 @@ export default function ActiveOrgGate({
   useEffect(() => {
     if (isAuthenticated && !org && !orgLoading) {
       // silencioso; erros serão refletidos em orgError
-      refreshOrg().catch(() => {});
+      refreshOrg().catch(() => { });
     }
   }, [isAuthenticated, org, orgLoading, refreshOrg]);
 
@@ -93,5 +94,10 @@ export default function ActiveOrgGate({
   if (!hasAllowedRole) return fallback;
 
   // 4) Acesso liberado
-  return <>{children}</>;
+  //return <>{children}</>;
+  if (children !== undefined) {
+    return <>{children}</>;
+  }
+
+  return <Outlet />;
 }

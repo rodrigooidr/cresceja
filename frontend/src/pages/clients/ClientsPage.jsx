@@ -19,18 +19,54 @@ export default function ClientsPage() {
   const { user } = useAuth();
   const canEdit = canEditClients(user);
   const { connected } = useWhatsApp();
-  const { selected } = useOrg();
 
-  const [q, setQ] = useState({ name: "", phone: "", email: "", tag: "", stage: "", accountId: "" });
-  const [state, setState] = useState({ loading: true, error: null, items: [] });
+  // vem do contexto; pode demorar para ficar disponível
+  const { org, selected } = useOrg();
+
+  // orgId efetivo: contexto → selected → localStorage(activeOrg/orgId)
+  const orgId = useMemo(() => {
+    const byCtx = org?.id || selected || null;
+    if (byCtx) return String(byCtx);
+    try {
+      const fromActive = JSON.parse(localStorage.getItem("activeOrg") || "null")?.id;
+      const fromLegacy = localStorage.getItem("orgId");
+      const v = fromActive || fromLegacy || "";
+      return v ? String(v) : "";
+    } catch {
+      return "";
+    }
+  }, [org?.id, selected]);
+
+  const [q, setQ] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    tag: "",
+    stage: "",
+    accountId: ""
+  });
+
+  const [state, setState] = useState({
+    loading: true,
+    error: null,
+    items: []
+  });
+
+  // garante header X-Org-Id e storage assim que tivermos orgId
+  useEffect(() => {
+    if (typeof setOrgIdHeaderProvider === "function") {
+      setOrgIdHeaderProvider(() => (orgId || null));
+    }
+    setOrgIdInStorage(orgId || null);
+  }, [orgId]);
 
   const load = useCallback(async () => {
-    if (!selected) {
+    if (!orgId) {
       setState({ loading: false, error: "Selecione uma organização para listar/criar clientes.", items: [] });
       return;
     }
     try {
-      setState(s => ({ ...s, loading: true, error: null }));
+      setState((s) => ({ ...s, loading: true, error: null }));
       const res = await inboxApi.get("/clients", {
         params: { ...q, limit: 50, page: 1 }
       });
@@ -39,14 +75,7 @@ export default function ClientsPage() {
     } catch (err) {
       setState({ loading: false, error: err?.message || "Falha ao carregar", items: [] });
     }
-  }, [q, selected]);
-
-  useEffect(() => {
-    if (typeof setOrgIdHeaderProvider === "function") {
-      setOrgIdHeaderProvider(() => selected || null);
-    }
-    setOrgIdInStorage(selected || null);
-  }, [selected]);
+  }, [q, orgId]);
 
   useEffect(() => {
     load();
@@ -55,12 +84,12 @@ export default function ClientsPage() {
   async function addClient() {
     const name = prompt("Nome do cliente?") || "";
     if (!name.trim()) return;
-    const email = prompt("E-mail do cliente?" ) || undefined;
+    const email = prompt("E-mail do cliente?") || undefined;
     const phone = prompt("Telefone (E.164)?") || undefined;
     const tagsStr = prompt("Tags (separadas por vírgula)?") || "";
-    const tags = tagsStr ? tagsStr.split(",").map(t => t.trim()).filter(Boolean) : undefined;
+    const tags = tagsStr ? tagsStr.split(",").map((t) => t.trim()).filter(Boolean) : undefined;
     try {
-      await inboxApi.post("clients", { name, email, phone_e164: phone, tags });
+      await inboxApi.post("/clients", { name, email, phone_e164: phone, tags });
       await load();
     } catch (e) {
       // eslint-disable-next-line no-console
@@ -68,25 +97,29 @@ export default function ClientsPage() {
     }
   }
 
-  const rows = useMemo(() => state.items.map(c => ({
-    id: c.id || c._id,
-    name: c.name || "—",
-    phone: c.phone || c.whatsapp || "—",
-    email: c.email || "—",
-    tags: Array.isArray(c.tags) ? c.tags : [],
-    stage: c.crmStage || c.stage || "—",
-    hasActiveWhatsapp: !!c.activeWhatsappConversation,
-  })), [state.items]);
+  const rows = useMemo(
+    () =>
+      state.items.map((c) => ({
+        id: c.id || c._id,
+        name: c.name || "—",
+        phone: c.phone || c.whatsapp || "—",
+        email: c.email || "—",
+        tags: Array.isArray(c.tags) ? c.tags : [],
+        stage: c.crmStage || c.stage || "—",
+        hasActiveWhatsapp: !!c.activeWhatsappConversation
+      })),
+    [state.items]
+  );
 
   async function startWhatsapp(id) {
     try {
       await inboxApi.post(`/clients/${id}/start-whatsapp`);
     } catch (e) {
-      // mostrar erro amigável
+      // tratar erro amigável se necessário
     }
   }
 
-  if (!selected) {
+  if (!orgId) {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-semibold mb-4">Clientes</h1>
@@ -108,23 +141,50 @@ export default function ClientsPage() {
             id="accountId"
             name="accountId"
             value={q.accountId}
-            onChange={e=>setQ(s=>({...s,accountId:e.target.value}))}
+            onChange={(e) => setQ((s) => ({ ...s, accountId: e.target.value }))}
             className="select select-bordered"
           >
             <option value="">Conta</option>
           </select>
         </div>
-        <input placeholder="Nome" value={q.name} onChange={e=>setQ(s=>({...s,name:e.target.value}))} className="input input-bordered"/>
-        <input placeholder="Telefone/WhatsApp" value={q.phone} onChange={e=>setQ(s=>({...s,phone:e.target.value}))} className="input input-bordered"/>
-        <input placeholder="E-mail" value={q.email} onChange={e=>setQ(s=>({...s,email:e.target.value}))} className="input input-bordered"/>
-        <input placeholder="Tag" value={q.tag} onChange={e=>setQ(s=>({...s,tag:e.target.value}))} className="input input-bordered"/>
-        <select value={q.stage} onChange={e=>setQ(s=>({...s,stage:e.target.value}))} className="select select-bordered">
+
+        <input
+          placeholder="Nome"
+          value={q.name}
+          onChange={(e) => setQ((s) => ({ ...s, name: e.target.value }))}
+          className="input input-bordered"
+        />
+        <input
+          placeholder="Telefone/WhatsApp"
+          value={q.phone}
+          onChange={(e) => setQ((s) => ({ ...s, phone: e.target.value }))}
+          className="input input-bordered"
+        />
+        <input
+          placeholder="E-mail"
+          value={q.email}
+          onChange={(e) => setQ((s) => ({ ...s, email: e.target.value }))}
+          className="input input-bordered"
+        />
+        <input
+          placeholder="Tag"
+          value={q.tag}
+          onChange={(e) => setQ((s) => ({ ...s, tag: e.target.value }))}
+          className="input input-bordered"
+        />
+        <select
+          value={q.stage}
+          onChange={(e) => setQ((s) => ({ ...s, stage: e.target.value }))}
+          className="select select-bordered"
+        >
           <option value="">Estágio</option>
-          <option>Lead</option><option>Qualificado</option><option>Proposta</option><option>Fechado</option>
+          <option>Lead</option>
+          <option>Qualificado</option>
+          <option>Proposta</option>
+          <option>Fechado</option>
         </select>
       </FilterBar>
 
-      {/* Ações topo */}
       <div className="mb-4 flex gap-2">
         {canEdit && (
           <button className="btn btn-primary" onClick={addClient} data-testid="btn-new-client">
@@ -133,10 +193,10 @@ export default function ClientsPage() {
         )}
       </div>
 
-      {/* Tabela */}
       {state.loading && <div>Carregando…</div>}
       {state.error && <div className="text-red-600">Erro: {state.error}</div>}
       {!state.loading && rows.length === 0 && <div>Nenhum cliente encontrado.</div>}
+
       {rows.length > 0 && (
         <div className="overflow-x-auto rounded border bg-white" data-testid="clients-table">
           <table className="min-w-full text-sm">
@@ -151,7 +211,7 @@ export default function ClientsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map(r=>(
+              {rows.map((r) => (
                 <tr key={r.id} className="border-t">
                   <td className="px-3 py-2">{r.name}</td>
                   <td className="px-3 py-2">{r.phone}</td>
@@ -161,7 +221,7 @@ export default function ClientsPage() {
                   <td className="px-3 py-2 text-right space-x-3">
                     {canEdit && <a className="text-blue-600" href={`/clients/${r.id}`}>Editar</a>}
                     {!r.hasActiveWhatsapp && connected && (
-                      <button className="btn btn-sm" onClick={()=>startWhatsapp(r.id)}>
+                      <button className="btn btn-sm" onClick={() => startWhatsapp(r.id)}>
                         Iniciar conversa WhatsApp
                       </button>
                     )}

@@ -151,7 +151,7 @@ org_users,fk_org_users_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES 
 org_users,fk_org_users_user_id__users,FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE CASCADE
 org_users,fk_org_users_user_id__users_id,FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 org_users,org_users_pkey,PRIMARY KEY (id)
-organizations,chk_organizations_status,"CHECK (((status IS NULL) OR (status = ANY (ARRAY['active'::text, 'trial'::text, 'suspended'::text, 'canceled'::text]))))"
+organizations,chk_organizations_status,"CHECK (((status IS NULL) OR (status = ANY (ARRAY['active'::text, 'trial'::text, 'suspended'::text, 'canceled'::text, 'inactive'::text]))))"
 organizations,organizations_pkey,PRIMARY KEY (id)
 organizations,organizations_slug_key,UNIQUE (slug)
 payments,fk_payments_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE

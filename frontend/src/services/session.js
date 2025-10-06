@@ -58,6 +58,7 @@ function resolveOrgIdFromStorage() {
   const storage = getLocalStorage();
   if (!storage) return null;
 
+  // 1) chaves legadas (se existir, retorna)
   for (const key of ORG_KEYS_LEGACY) {
     try {
       const value = storage.getItem(key);
@@ -65,11 +66,19 @@ function resolveOrgIdFromStorage() {
     } catch {}
   }
 
+  // 2) NOVO: usa o objeto 'activeOrg' salvo pelo app (fallback principal)
+  try {
+    const active = safeParse(storage.getItem('activeOrg'));
+    if (active?.id) return String(active.id);
+  } catch {}
+
+  // 3) fallback: org_id salvo no 'user'
   try {
     const userOrg = safeParse(storage.getItem('user'))?.org_id ?? null;
     if (userOrg) return String(userOrg);
   } catch {}
 
+  // 4) fallback de testes/globais (se existir)
   const fromGlobal = globalScope.__TEST_ORG__?.id || globalScope.__TEST_ORG_ID__;
   return fromGlobal ? String(fromGlobal) : null;
 }
