@@ -37,6 +37,27 @@ const api = axios.create({
   withCredentials: true,
 });
 
+export function getAuthToken() {
+  try {
+    const stored = localStorage.getItem("token");
+    if (stored) return stored;
+  } catch {}
+
+  try {
+    const match = typeof document !== "undefined"
+      ? document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)
+      : null;
+    if (match) return decodeURIComponent(match[1]);
+  } catch {}
+
+  try {
+    const fallback = getToken();
+    if (fallback) return fallback;
+  } catch {}
+
+  return null;
+}
+
 export { api };
 export const client = api; // alias
 export default api;
@@ -83,7 +104,7 @@ function isPublicPath(path = "") {
 }
 
 function ensureAuthorization(headers) {
-  const token = getToken();
+  const token = getAuthToken();
   if (!token) {
     delete headers.Authorization;
     delete headers.authorization;

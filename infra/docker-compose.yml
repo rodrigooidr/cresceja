@@ -44,11 +44,12 @@ services:
     environment:
       NODE_ENV: production
       LOG_PRETTY: "1"
-      DIAG_UNHANDLED: "1"   # <- mostra unhandledRejection/uncaughtException
-      DIAG_SQL: "1"         # <- loga cada SQL do getUsage(features)
+      DIAG_UNHANDLED: "0"   # desligado por padrão; habilite manualmente se precisar
+      DIAG_SQL: "0"
       JWT_SECRET: dev-change-me
       ALLOW_DEV_TOKENS: "1"
       PORT: "4000"
+      RATE_LIMIT_PER_MINUTE: "600"
       # Se o backend faz CORS, mantenha as origins separadas por vírgula
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
