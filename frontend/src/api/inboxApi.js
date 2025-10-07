@@ -172,7 +172,26 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (r) => r,
-  (err) => Promise.reject(err)
+  (err) => {
+    const status = err?.response?.status;
+    if (status === 401) {
+      try {
+        localStorage.removeItem("token");
+      } catch {}
+      try {
+        if (typeof document !== "undefined") {
+          document.cookie = "access_token=; Max-Age=0; path=/";
+        }
+      } catch {}
+      if (
+        typeof window !== "undefined" &&
+        window.location?.pathname !== "/login"
+      ) {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(err);
+  }
 );
 
 // =========================
@@ -194,7 +213,13 @@ export function clearAuthToken() {
 }
 export function getAuthToken() {
   try {
-    return localStorage.getItem("token");
+    const token = localStorage.getItem("token");
+    if (token) return token;
+    const fromCookie =
+      typeof document !== "undefined"
+        ? document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)
+        : null;
+    return fromCookie ? decodeURIComponent(fromCookie[1]) : null;
   } catch {
     return null;
   }
