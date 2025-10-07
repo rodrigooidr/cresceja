@@ -1,5 +1,3 @@
-// services/orgFeatures.js
-
 // Fallback seguro de query caso 'db' não seja fornecido
 import { query as rootQuery } from '#db';
 
@@ -8,14 +6,13 @@ const q = (db) =>
     ? (text, params) => db.query(text, params)
     : (text, params) => rootQuery(text, params);
 
-// Normaliza argumentos para suportar os dois estilos de chamada:
-// getOrgFeatures(orgId, db)  OU  getOrgFeatures(db, orgId)
+// getOrgFeatures(orgId, db) OU getOrgFeatures(db, orgId)
 function parseGetArgs(a, b) {
   if (a && typeof a.query === 'function') return { db: a, orgId: b };
   return { orgId: a, db: b };
 }
 
-// setOrgFeatures(orgId, patch, db)  OU  setOrgFeatures(db, orgId, patch)
+// setOrgFeatures(orgId, patch, db) OU setOrgFeatures(db, orgId, patch)
 function parseSetArgs(...args) {
   if (args[0] && typeof args[0].query === 'function') {
     return { db: args[0], orgId: args[1], patch: args[2] ?? {} };

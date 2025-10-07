@@ -1,0 +1,67 @@
+name: inbox-e2e
+on: [push, pull_request]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cresceja
+          POSTGRES_PASSWORD: cresceja123
+          POSTGRES_DB: cresceja_db
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U cresceja -d cresceja_db"
+          --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd="redis-cli ping || exit 1"
+          --health-interval=5s --health-timeout=3s --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Install backend deps
+        run: |
+          cd backend
+          npm ci
+
+      - name: Apply migrations (psql)
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          psql "postgresql://cresceja:cresceja123@localhost:5432/cresceja_db" -v "ON_ERROR_STOP=1" -f backend/db/migrations/2025_10_07_quotas.sql
+
+      - name: Start backend
+        env:
+          NODE_ENV: production
+          JWT_SECRET: dev-change-me
+          ALLOW_DEV_TOKENS: "1"
+          PORT: "4000"
+          CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+          RATE_LIMIT_PER_MINUTE: "600"
+          DATABASE_URL: "postgresql://cresceja:cresceja123@localhost:5432/cresceja_db"
+          REDIS_URL: "redis://localhost:6379"
+        run: |
+          node backend/server.js & echo $! > server.pid
+          for i in {1..60}; do
+            curl -fsS http://localhost:4000/health && break
+            sleep 1
+          done
+
+      - name: Run E2E (PowerShell Core)
+        shell: pwsh
+        run: |
+          cd infra
+          ./tests-inbox.ps1
+
+      - name: Teardown
+        if: always()
+        run: kill $(cat server.pid) || true
