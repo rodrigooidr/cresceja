@@ -43,7 +43,9 @@ services:
       - ../backend/.env.docker         # defina DATABASE_URL e REDIS_URL aqui
     environment:
       NODE_ENV: production
-      LOG_PRETTY: "0"
+      LOG_PRETTY: "1"
+      DIAG_UNHANDLED: "1"   # <- mostra unhandledRejection/uncaughtException
+      DIAG_SQL: "1"         # <- loga cada SQL do getUsage(features)
       JWT_SECRET: dev-change-me
       ALLOW_DEV_TOKENS: "1"
       PORT: "4000"
