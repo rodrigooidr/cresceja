@@ -17,6 +17,11 @@ import auth from './middleware/auth.js';
 import withOrg from './middleware/withOrg.js';
 import orgContext from './middleware/orgContext.js';
 
+if (process.env.DIAG_UNHANDLED === '1') {
+  process.on('unhandledRejection', (err) => console.error('[diag] unhandledRejection', err));
+  process.on('uncaughtException', (err) => console.error('[diag] uncaughtException', err));
+}
+
 import { healthcheck } from '#db';
 
 // Rotas (somente as existentes no repo)
