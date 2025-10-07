@@ -5,7 +5,7 @@ export function startSocketsSafe(options = {}) {
     const { url, ...rest } = options || {};
     const target = url || getSocketUrl();
     return io(target, {
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling' ],
       reconnection: true,
       ...rest,
     });

@@ -208,7 +208,7 @@ function authFromToken(token) {
 function startSockets(server) {
   io = new IOServer(server, {
     path: '/socket.io',
-    transports: ['polling', 'websocket'],
+    transports: ['websocket', 'polling'],
     cors: { origin: true, credentials: true },
   });
   app.set('io', io);
@@ -252,7 +252,7 @@ export async function start() {
   const port = Number(process.env.PORT || 4000);
   httpServer = http.createServer(app);
   startSockets(httpServer);
-  await new Promise((resolve) => httpServer.listen(port, resolve));
+  await new Promise((resolve) => httpServer.listen(port, '0.0.0.0', () => resolve()));
   logger.info({ port }, 'Server started');
   started = true;
   return { httpServer, io };
