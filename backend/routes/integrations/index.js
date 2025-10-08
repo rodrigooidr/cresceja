@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import { authRequired, orgScope } from '../../middleware/auth.js';
 import whatsappSession from '../integrations/whatsapp.session.js';
+import whatsappCloud from '../integrations/whatsapp.cloud.js';
+import metaOauthRouter from '../integrations/meta.oauth.js';
+import googleCalendarRouter from '../integrations/google.calendar.js';
 import { Pool } from 'pg';
 // Se/quando houver outros provedores, importe aqui
 // import whatsappCloud from '../integrations/whatsapp.cloud.js';
@@ -65,5 +68,27 @@ w.get('/qr/stream', (req, res) => {
 });
 
 r.use('/providers/whatsapp_session', w);
+r.use('/providers/whatsapp-session', w);
+
+// -------- WhatsApp Cloud --------
+r.use('/providers/whatsapp_cloud', whatsappCloud);
+r.use('/providers/whatsapp-cloud', whatsappCloud);
+
+// -------- Meta OAuth (Instagram & Facebook) --------
+r.use('/providers/meta_instagram', metaOauthRouter);
+r.use('/providers/meta-instagram', metaOauthRouter);
+r.use('/providers/meta_facebook', metaOauthRouter);
+r.use('/providers/meta-facebook', metaOauthRouter);
+
+// -------- Google Calendar --------
+const googleCalendarProvidersRouter = Router();
+googleCalendarProvidersRouter.use((req, _res, next) => {
+  req.url = `/integrations/google-calendar${req.url}`;
+  next();
+});
+googleCalendarProvidersRouter.use(googleCalendarRouter);
+
+r.use('/providers/google_calendar', googleCalendarProvidersRouter);
+r.use('/providers/google-calendar', googleCalendarProvidersRouter);
 
 export default r;
