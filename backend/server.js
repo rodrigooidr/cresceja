@@ -58,6 +58,7 @@ import testWhatsappRouter from './routes/testWhatsappRoutes.js';
 import onboardingRouter from './routes/onboarding.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import orgsRouter from './routes/orgs.js';
+import whatsappRouterFactory from './routes/whatsapp.js';
 
 // Util
 const __filename = fileURLToPath(import.meta.url);
@@ -65,6 +66,7 @@ const __dirname = path.dirname(__filename);
 
 // App
 const app = express();
+let io;
 if (process.env.NODE_ENV !== 'production') {
   const mask = (s) => (s ? String(s).slice(0, 3) + '***' : '(unset)');
   console.log('[BOOT] NODE_ENV=', process.env.NODE_ENV, ' JWT_SECRET=', mask(process.env.JWT_SECRET));
@@ -154,6 +156,7 @@ app.use('/api/ai-credits', aiCreditsStatusRouter);
 
 // integrações e outros módulos
 app.use('/api/integrations', integrationsRouter);
+app.use('/api/integrations/whatsapp', whatsappRouterFactory(io));
 app.use(gcalRouter);
 app.use(appointmentsOauthRouter);
 app.use(appointmentsAvailabilityRouter);
@@ -198,7 +201,6 @@ app.use((err, req, res, _next) => {
 });
 
 // ===== Socket.io =====
-let io;
 function authFromToken(token) {
   if (!token) return null;
   if (typeof token === 'string' && token.includes(',')) token = token.split(',')[0];
@@ -211,10 +213,18 @@ function authFromToken(token) {
 }
 
 function startSockets(server) {
+  const origins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   io = new IOServer(server, {
     path: '/socket.io',
     transports: ['websocket', 'polling'],
-    cors: { origin: true, credentials: true },
+    cors: {
+      origin: origins,
+      methods: ['GET', 'POST'],
+    },
   });
   app.set('io', io);
 
