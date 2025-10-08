@@ -202,6 +202,12 @@ export default function WhatsAppBaileysCard() {
     []
   );
 
+  useEffect(() => {
+    if (state.status === 'pending_qr' && !qrOpen) {
+      setQrOpen(true);
+    }
+  }, [state.status, qrOpen]);
+
   const applyIntegration = useCallback((integration) => {
     if (!integration) return;
     setState((prev) => {
@@ -331,7 +337,13 @@ export default function WhatsAppBaileysCard() {
       });
       const integration = response?.integration || response;
       applyIntegration(integration);
-      setState((prev) => ({ ...prev, saving: false }));
+      // força o fluxo de QR imediatamente após conectar
+      setState((prev) => ({
+        ...prev,
+        saving: false,
+        status: 'pending_qr',
+        meta: { ...prev.meta, session_state: 'pending_qr' },
+      }));
 
       if (integration?.requires_qr || integration?.status === 'pending_qr') {
         setQrOpen(true);
