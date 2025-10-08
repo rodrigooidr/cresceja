@@ -15,6 +15,7 @@ import { initSession,
 router.use(authRequired, isOwner);
 
 router.post('/init', canUseWhatsAppWeb, initSession);
+router.post('/connect', initSession);
 router.get('/status', canUseWhatsAppWeb, getSessionStatus);
 router.post('/logout', canUseWhatsAppWeb, logoutSession);
 router.post('/send', canUseWhatsAppWeb, sendMessage);
@@ -23,6 +24,3 @@ router.post('/send-test', sendTestMessage);
 router.post('/receive', receiveMessage);
 
 export default router;
-
-
-
