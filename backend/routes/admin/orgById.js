@@ -219,6 +219,13 @@ router.patch("/", async (req, res, next) => {
 
     return res.json({ ok: true, org: rows[0] || null });
   } catch (e) {
+    if (e?.code === "23505" && /ux_org_phone_e164/i.test(e?.constraint || "")) {
+      return res.status(409).json({
+        error: "conflict",
+        field: "phone_e164",
+        message: "Este telefone já está em uso por outra organização.",
+      });
+    }
     if (e?.name === "ZodError") {
       return res.status(422).json({ error: "validation", issues: e.issues });
     }
