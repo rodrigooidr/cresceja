@@ -1,79 +1,84 @@
+import path from 'path';
+import fs from 'fs';
+import qrcode from 'qrcode';
+import state from './wa.state.js';
+
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   fetchLatestBaileysVersion,
 } from '@whiskeysockets/baileys';
-import qrcode from 'qrcode';
 
-let sock = null;
-let qrDataURL = null;
-let isConnected = false;
-let currentSessionId = 'default';
+let sock;
+let ioRef;
 
-export async function createSession(sessionId = 'default') {
-  currentSessionId = sessionId;
-  const { state, saveCreds } = await useMultiFileAuthState(`./.wpp_auth/${sessionId}`);
+async function ensureDir(dir) {
+  if (!fs.existsSync(dir)) {
+    await fs.promises.mkdir(dir, { recursive: true });
+  }
+}
+
+async function init(io) {
+  ioRef = io;
+  state.setStatus('connecting');
+
+  const authDir = process.env.WPP_SESSION_DIR
+    ? path.resolve(process.cwd(), process.env.WPP_SESSION_DIR)
+    : path.resolve(process.cwd(), '.wpp_auth');
+  await ensureDir(authDir);
+
+  const { state: authState, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
 
   sock = makeWASocket({
     version,
-    auth: state,
+    auth: authState,
     printQRInTerminal: false,
+    syncFullHistory: false,
     browser: ['CresceJa', 'Chrome', '1.0'],
-    syncFullHistory: false
   });
 
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    const { qr, connection, lastDisconnect } = update;
 
     if (qr) {
-      qrDataURL = await qrcode.toDataURL(qr);
+      const dataUrl = await qrcode.toDataURL(qr);
+      state.setQR(dataUrl);
+      ioRef?.emit('wa:session:qr', { dataUrl });
     }
+
     if (connection === 'open') {
-      isConnected = true;
-      qrDataURL = null;
-      console.log('[WPP] Conectado');
+      state.setStatus('connected');
+      state.clearQR();
+      ioRef?.emit('wa:session:status', { status: 'connected' });
     }
+
     if (connection === 'close') {
-      isConnected = false;
-      const code = (lastDisconnect?.error)?.output?.statusCode;
+      const code = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = code !== DisconnectReason.loggedOut;
-      console.log('[WPP] Conexão fechada. Reconnect?', shouldReconnect, 'code=', code);
-      if (shouldReconnect) {
-        setTimeout(() => createSession(sessionId), 2000);
-      }
+      state.setStatus('disconnected');
+      ioRef?.emit('wa:session:status', { status: 'disconnected' });
+      if (shouldReconnect) setTimeout(() => init(ioRef), 2000);
     }
   });
 
   return sock;
 }
 
-export function getStatus() {
-  return { isConnected, hasQR: !!qrDataURL, sessionId: currentSessionId };
-}
-export function getQR() {
-  return qrDataURL;
+function start(io) {
+  if (!sock) return init(io);
+  return sock;
 }
 
-export async function logout() {
-  try {
-    if (sock?.logout) await sock.logout();
-    isConnected = false;
-    qrDataURL = null;
-    return { ok: true };
-  } catch (e) {
-    console.error('logout error', e);
-    return { ok: false, error: 'Falha ao sair' };
-  }
+function status() {
+  return { status: state.getStatus(), hasQR: !!state.getQR() };
 }
 
-export async function sendText(to, message) {
-  if (!sock) throw new Error('Sessão não iniciada');
-  const jid = to.includes('@s.whatsapp.net') ? to : `${to.replace(/\D/g, '')}@s.whatsapp.net`;  
-  await sock.sendMessage(jid, { text: message });
-  return { ok: true };
+function getQR() {
+  return state.getQR();
 }
 
-export default { createSession, getStatus, getQR, logout, sendText };
+export { start, status, getQR };
+export default { start, status, getQR };
