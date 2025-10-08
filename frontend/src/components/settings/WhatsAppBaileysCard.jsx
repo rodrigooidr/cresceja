@@ -57,11 +57,11 @@ export function QRModal({ open, onClose, onConnected }) {
   const startStream = useCallback(async () => {
     try {
       setLoading(true);
-      const { token } = await getBaileysSseToken();
+      const { token, streamPath } = await getBaileysSseToken();
       await startBaileysQr();
 
       const url = buildSseUrl(
-        '/api/integrations/providers/whatsapp_session/qr/stream',
+        streamPath || '/api/integrations/providers/whatsapp_session/qr/stream',
         token,
         org?.id
       );
@@ -355,8 +355,8 @@ export default function WhatsAppBaileysCard() {
             description: 'Sessão iniciada; o QR será exibido.',
           });
           return;
-        } catch (fallbackErr) {
-          // cai para tratamento comum de erro
+        } catch {
+          /* cai no tratamento padrão abaixo */
         }
       }
 

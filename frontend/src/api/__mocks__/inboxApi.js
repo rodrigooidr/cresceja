@@ -3,9 +3,20 @@
 // Cobre endpoints usados nos testes de Settings/AI, Telemetry e Inbox.
 
 let __delayMs = 0;
+export const API_BASE_URL = "/api";
 export const apiUrl = "http://mock.local";
 export const setOrgIdHeaderProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
 export const setTokenProvider = (typeof jest !== "undefined" ? jest.fn(() => {}) : () => {});
+
+export function joinApi(path) {
+  let p = String(path || "");
+  if (/^https?:\/\//i.test(p)) return p;
+  if (!p.startsWith("/")) p = `/${p}`;
+  if (API_BASE_URL.endsWith("/api") && p.startsWith("/api/")) {
+    p = p.slice(4);
+  }
+  return `${API_BASE_URL}${p}`;
+}
 
 export function parseBRLToCents(input) {
   if (typeof input === "number") {

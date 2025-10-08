@@ -21,9 +21,20 @@ const isBrowser = typeof window !== "undefined";
 const isTest = process.env.NODE_ENV === "test";
 const fromEnvCRA = process.env.REACT_APP_API_BASE_URL;
 const fromGlobal = isBrowser ? window.__API_BASE_URL__ : undefined;
+const rawApiBase = fromEnvCRA || fromGlobal || (isTest ? "http://localhost:4000" : "/api");
 
-export const API_BASE_URL =
-  fromEnvCRA || fromGlobal || (isTest ? "http://localhost:4000" : "/api");
+export const API_BASE_URL = String(rawApiBase || "/api").replace(/\/+$/, "");
+
+export function joinApi(path) {
+  let p = String(path || "");
+  if (/^https?:\/\//i.test(p)) return p;
+  if (!p.startsWith("/")) p = `/${p}`;
+  // evita /api/api/...
+  if (API_BASE_URL.endsWith("/api") && p.startsWith("/api/")) {
+    p = p.slice(4);
+  }
+  return `${API_BASE_URL}${p}`;
+}
 
 try {
   if (typeof window !== "undefined") window.__API_BASE_URL__ = API_BASE_URL;
@@ -35,6 +46,34 @@ try {
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
+});
+// após inicialização, evitamos base duplicada pois o joinApi já inclui o prefixo
+api.defaults.baseURL = "";
+
+const HTTP_METHODS_WITH_DATA = new Set(["post", "put", "patch"]);
+const HTTP_METHODS_WITHOUT_DATA = new Set(["get", "delete", "head", "options"]);
+
+function wrapRequestMethod(method) {
+  const original = api[method].bind(api);
+  if (HTTP_METHODS_WITH_DATA.has(method)) {
+    return (path, data, config) => {
+      const url = typeof path === "string" ? joinApi(path) : path;
+      return original(url, data, config);
+    };
+  }
+  if (HTTP_METHODS_WITHOUT_DATA.has(method)) {
+    return (path, config) => {
+      const url = typeof path === "string" ? joinApi(path) : path;
+      return original(url, config);
+    };
+  }
+  return (...args) => original(...args);
+}
+
+[...HTTP_METHODS_WITH_DATA, ...HTTP_METHODS_WITHOUT_DATA].forEach((method) => {
+  if (typeof api[method] === "function") {
+    api[method] = wrapRequestMethod(method);
+  }
 });
 
 export function getAuthToken() {
