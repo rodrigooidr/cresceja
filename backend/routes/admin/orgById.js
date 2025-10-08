@@ -6,6 +6,7 @@ import authRequired from "../../middleware/auth.js";
 import { requireRole, ROLES } from "../../middleware/requireRole.js";
 import { withOrgId } from "../../middleware/withOrgId.js";
 import { startForOrg, stopForOrg } from "../../services/baileysService.js";
+import { setOrgFeatures } from "../../services/orgFeatures.js";
 
 const ADMIN_ROLES = new Set(["SuperAdmin", "Support"]);
 const router = Router({ mergeParams: true });
@@ -17,6 +18,18 @@ router.use(withOrgId);
 function resolveOrgId(req) {
   return req.orgId || req.params.orgId;
 }
+
+const onlyDigits = (s) => String(s || "").replace(/\D+/g, "");
+const normalizeCnpjDigits = (s) => {
+  const d = onlyDigits(s);
+  return d.length ? d : null;
+};
+const normalizeSite = (url) => {
+  if (!url) return null;
+  const s = String(url).trim();
+  if (!s) return null;
+  return /^https?:\/\//i.test(s) ? s : `http://${s}`;
+};
 
 // ---------- helpers defensivos ----------
 async function tableExists(table) {
@@ -74,9 +87,10 @@ const BaseUpdateSchema = z.object({
   email: z.string().email().nullable().optional(),
   phone: z.string().nullable().optional(),
   phone_e164: z.string().nullable().optional(),
+  cnpj: z.string().nullable().optional(),
   razao_social: z.string().nullable().optional(),
   nome_fantasia: z.string().nullable().optional(),
-  site: z.string().url().nullable().optional(),
+  site: z.string().nullable().optional(),
   ie: z.string().nullable().optional(),
   ie_isento: z.boolean().optional(),
   cep: z.string().nullable().optional(),
@@ -109,6 +123,29 @@ router.patch("/", async (req, res, next) => {
   try {
     const orgId = resolveOrgId(req);
     const parsed = OrgUpdateSchema.parse(req.body || {});
+    const rawBody = req.body || {};
+
+    if (Object.prototype.hasOwnProperty.call(rawBody, "cnpj")) {
+      const cnpjDigits = normalizeCnpjDigits(parsed.cnpj);
+      if (cnpjDigits) {
+        const dupe = await db.oneOrNone(
+          `
+        SELECT id
+          FROM organizations
+         WHERE regexp_replace(coalesce(cnpj,''), '\\D', '', 'g') = $1
+           AND id <> $2
+        `,
+          [cnpjDigits, orgId]
+        );
+        if (dupe) {
+          return res.status(409).json({
+            error: "conflict",
+            field: "cnpj",
+            message: "CNPJ já está em uso por outra organização.",
+          });
+        }
+      }
+    }
 
     const roles = Array.isArray(req.user?.roles)
       ? req.user.roles
@@ -119,6 +156,9 @@ router.patch("/", async (req, res, next) => {
 
     const assignString = (v) =>
       v === undefined ? undefined : v === null ? null : String(v).trim() || null;
+
+    const hasSiteField = Object.prototype.hasOwnProperty.call(parsed, "site");
+    const normalizedSite = hasSiteField ? normalizeSite(parsed.site) : undefined;
 
     const baseUpdates = {
       name: parsed.name?.trim(),
@@ -131,9 +171,10 @@ router.patch("/", async (req, res, next) => {
       email: assignString(parsed.email)?.toLowerCase() ?? undefined,
       phone: assignString(parsed.phone),
       phone_e164: assignString(parsed.phone_e164),
+      cnpj: assignString(parsed.cnpj),
       razao_social: assignString(parsed.razao_social),
       nome_fantasia: assignString(parsed.nome_fantasia),
-      site: assignString(parsed.site),
+      site: hasSiteField ? normalizedSite : undefined,
       ie: assignString(parsed.ie),
       ie_isento: parsed.ie_isento === undefined ? undefined : !!parsed.ie_isento,
       cep: assignString(parsed.cep),
@@ -165,7 +206,9 @@ router.patch("/", async (req, res, next) => {
             parsed.whatsapp_baileys_enabled === undefined
               ? undefined
               : !!parsed.whatsapp_baileys_enabled,
-          whatsapp_mode: parsed.whatsapp_mode || "none",
+          whatsapp_mode: Object.prototype.hasOwnProperty.call(parsed, "whatsapp_mode")
+            ? parsed.whatsapp_mode
+            : undefined,
           whatsapp_baileys_status: assignString(parsed.whatsapp_baileys_status),
           whatsapp_baileys_phone: assignString(parsed.whatsapp_baileys_phone),
         }
@@ -200,6 +243,17 @@ router.patch("/", async (req, res, next) => {
         WHERE id=$${params.length}`,
       params
     );
+
+    if (
+      canManageBaileys &&
+      Object.prototype.hasOwnProperty.call(parsed, "whatsapp_baileys_enabled")
+    ) {
+      const enabled = !!parsed.whatsapp_baileys_enabled;
+      await setOrgFeatures(db, orgId, {
+        whatsapp_session_enabled: enabled,
+        whatsapp_session: { enabled },
+      });
+    }
 
     const rows = await safeQuery(
       `SELECT
