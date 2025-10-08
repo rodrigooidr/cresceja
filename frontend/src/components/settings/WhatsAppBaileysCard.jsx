@@ -21,17 +21,17 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildSseUrl(path = '/api/integrations/providers/whatsapp_session/qr/stream', token) {
+function buildSseUrl(path = '/api/integrations/providers/whatsapp_session/qr/stream', token, orgId) {
   const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) || '/api';
-  const url = base.startsWith('http')
-    ? new URL(path, base)
-    : new URL(path, window.location.origin);
-  if (token) url.searchParams.set('access_token', token);
-  return url.toString();
+  const abs = base.startsWith('http') ? new URL(path, base) : new URL(path, window.location.origin);
+  if (token) abs.searchParams.set('access_token', token);
+  if (orgId) abs.searchParams.set('orgId', orgId);
+  return abs.toString();
 }
 
 export function QRModal({ open, onClose, onConnected }) {
   const toast = useToast();
+  const { org } = useOrg();
   const [status, setStatus] = useState('pending');
   const [qr, setQr] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -60,22 +60,32 @@ export function QRModal({ open, onClose, onConnected }) {
       const { token } = await getBaileysSseToken();
       await startBaileysQr();
 
-      const url = buildSseUrl('/api/integrations/providers/whatsapp_session/qr/stream', token);
+      const url = buildSseUrl(
+        '/api/integrations/providers/whatsapp_session/qr/stream',
+        token,
+        org?.id
+      );
       const es = new EventSource(url, { withCredentials: true });
       esRef.current = es;
 
       es.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
-          if (msg.type === 'qr' && msg.qr?.dataUrl) {
-            setQr(msg.qr);
-            setStatus('pending');
+          if (msg.type === 'qr') {
+            const dataUrl = msg?.qr?.dataUrl || msg?.qr || msg?.dataUrl;
+            if (dataUrl) {
+              setQr({ dataUrl });
+              setStatus('pending');
+            }
           }
           if (msg.type === 'status') {
-            if (msg.status === 'connected') {
+            const st = String(msg.status || '').toLowerCase();
+            if (st === 'connected' || st === 'ready') {
               setStatus('connected');
               toast({ title: 'Conectado com sucesso!' });
               onConnected?.();
+              es?.close?.();
+              esRef.current = null;
               handleClose();
             }
           }
@@ -104,7 +114,7 @@ export function QRModal({ open, onClose, onConnected }) {
     } finally {
       setLoading(false);
     }
-  }, [handleClose, onConnected, toast]);
+  }, [handleClose, onConnected, org?.id, toast]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -322,8 +332,34 @@ export default function WhatsAppBaileysCard() {
       const integration = response?.integration || response;
       applyIntegration(integration);
       setState((prev) => ({ ...prev, saving: false }));
-      toast({ title: toastMessages.connect_success || 'Sessão WhatsApp iniciada', description: org?.name });
+
+      if (integration?.requires_qr || integration?.status === 'pending_qr') {
+        setQrOpen(true);
+      } else {
+        toast({
+          title: toastMessages.connect_success || 'Sessão WhatsApp iniciada',
+          description: org?.name,
+        });
+        // atualiza status
+        void refetchStatus();
+      }
     } catch (err) {
+      const notFound = err?.response?.status === 404 || /not[\s_-]?found/i.test(err?.message || '');
+      if (notFound) {
+        try {
+          await startBaileysQr();
+          setQrOpen(true);
+          setState((prev) => ({ ...prev, saving: false }));
+          toast({
+            title: 'Leia o QR para conectar',
+            description: 'Sessão iniciada; o QR será exibido.',
+          });
+          return;
+        } catch (fallbackErr) {
+          // cai para tratamento comum de erro
+        }
+      }
+
       const message = getErrorMessage(err, 'connect');
       setState((prev) => ({
         ...prev,
@@ -331,7 +367,10 @@ export default function WhatsAppBaileysCard() {
         status: 'error',
         lastError: message,
       }));
-      toast({ title: toastMessages.connect_error || 'Erro ao iniciar sessão', description: message });
+      toast({
+        title: toastMessages.connect_error || 'Erro ao iniciar sessão',
+        description: message,
+      });
     }
   };
 

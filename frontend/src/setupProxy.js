@@ -1,24 +1,27 @@
-// frontend/src/setupProxy.js
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
-module.exports = function(app) {
+module.exports = function (app) {
+  const target = process.env.CJ_API_TARGET || 'http://localhost:4000';
+
+  // API HTTP
   app.use(
     '/api',
     createProxyMiddleware({
-      target: 'http://localhost:4000',
+      target,
       changeOrigin: true,
-      ws: true,
-      logLevel: 'warn',
+      ws: false,
+      logLevel: 'silent',
     })
   );
 
+  // Socket.IO WS
   app.use(
     '/socket.io',
     createProxyMiddleware({
-      target: 'http://localhost:4000',
+      target,
       changeOrigin: true,
       ws: true,
-      logLevel: 'warn',
+      logLevel: 'silent',
     })
   );
 };
