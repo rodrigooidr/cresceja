@@ -96,6 +96,13 @@ const maskPhone = (value) => {
   return formatPhoneBR(raw);
 };
 
+const normalizeUrl = (s) => {
+  if (!s) return "";
+  const trimmed = String(s).trim();
+  if (!trimmed) return "";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+};
+
 function mapOrgToForm(org) {
   if (!org) return { ...emptyForm };
   const normalizedStatus =
@@ -490,6 +497,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
     const cnpjDigits = onlyDigits(form.cnpj);
     const cepDigits = onlyDigits(form.endereco.cep);
     const cpfDigits = onlyDigits(form.responsavel.cpf);
+    const normalizedSite = normalizeUrl(form.site);
     const payload = {
       name: form.name.trim(),
       slug: form.slug.trim() || null,
@@ -498,7 +506,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
       nome_fantasia: form.nome_fantasia || form.name,
       ie: form.ie || null,
       ie_isento: !!form.ie_isento,
-      site: form.site || null,
+      site: normalizedSite || null,
       email: form.email || null,
       phone_e164: orgPhoneE164 || null,
       status: form.status || "active",
@@ -541,15 +549,18 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
   const buildUpdatePayload = ({ orgPhoneE164, respPhoneE164 }) => {
     const cepDigits = onlyDigits(form.endereco.cep);
     const cpfDigits = onlyDigits(form.responsavel.cpf);
+    const cnpjDigits = onlyDigits(form.cnpj);
+    const normalizedSite = normalizeUrl(form.site);
     const payload = {
       name: form.name.trim(),
       slug: form.slug.trim() || null,
       status: form.status,
       email: form.email || null,
       phone_e164: orgPhoneE164 || null,
+      cnpj: cnpjDigits || null,
       razao_social: form.razao_social || null,
       nome_fantasia: form.nome_fantasia || null,
-      site: form.site || null,
+      site: normalizedSite || null,
       ie: form.ie || null,
       ie_isento: !!form.ie_isento,
       cep: cepDigits || null,
@@ -634,6 +645,11 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
         onSaved?.();
       }
     } catch (err) {
+      if (err?.response?.status === 409 && err?.response?.data?.field === "cnpj") {
+        setFieldError("cnpj", "CNPJ já está em uso por outra organização.");
+        setGlobalError("");
+        return;
+      }
       const message = err?.response?.data?.error || err?.message || "Falha ao salvar.";
       setGlobalError(message);
     } finally {
@@ -785,6 +801,7 @@ export default function AdminOrgEditModal({ open, mode = "edit", org, onClose, o
                   className="mt-1 w-full rounded border px-3 py-2"
                   value={form.site}
                   onChange={handleInputChange("site")}
+                  onBlur={(event) => setField("site", normalizeUrl(event.target.value))}
                   placeholder="https://"
                 />
               </label>
