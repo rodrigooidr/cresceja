@@ -34,10 +34,12 @@ jobs:
           cd backend
           npm ci
 
-      - name: Apply migrations (psql)
+      - name: Apply migrations
+        env:
+          DATABASE_URL: postgresql://cresceja:cresceja123@localhost:5432/cresceja_db
         run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
-          psql "postgresql://cresceja:cresceja123@localhost:5432/cresceja_db" -v "ON_ERROR_STOP=1" -f backend/db/migrations/2025_10_07_quotas.sql
+          cd backend
+          npm run db:migrate
 
       - name: Start backend
         env:
@@ -58,6 +60,8 @@ jobs:
 
       - name: Run E2E (PowerShell Core)
         shell: pwsh
+        env:
+          BASE: http://localhost:4000
         run: |
           cd infra
           ./tests-inbox.ps1
