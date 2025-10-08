@@ -21,17 +21,24 @@ const isBrowser = typeof window !== "undefined";
 const isTest = process.env.NODE_ENV === "test";
 const fromEnvCRA = process.env.REACT_APP_API_BASE_URL;
 const fromGlobal = isBrowser ? window.__API_BASE_URL__ : undefined;
+
+// Em dev/produção sem variável, usamos '/api'.
+// Em testes, apontamos para http://localhost:4000.
 const rawApiBase = fromEnvCRA || fromGlobal || (isTest ? "http://localhost:4000" : "/api");
 
+// sempre sem barra final
 export const API_BASE_URL = String(rawApiBase || "/api").replace(/\/+$/, "");
 
+/** Junta path com a base, evitando /api/api/... */
 export function joinApi(path) {
   let p = String(path || "");
-  if (/^https?:\/\//i.test(p)) return p;
+  if (/^https?:\/\//i.test(p)) return p; // já é absoluto
+
   if (!p.startsWith("/")) p = `/${p}`;
-  // evita /api/api/...
+
+  // Se a base termina com /api e o path começa com /api, tiramos o /api do path
   if (API_BASE_URL.endsWith("/api") && p.startsWith("/api/")) {
-    p = p.slice(4);
+    p = p.slice(4); // remove o prefixo '/api'
   }
   return `${API_BASE_URL}${p}`;
 }
@@ -41,15 +48,16 @@ try {
 } catch {}
 
 // =========================
-/** Axios client */
+// Axios client
 // =========================
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
 });
-// após inicialização, evitamos base duplicada pois o joinApi já inclui o prefixo
+// Após criarmos o client com baseURL, zeramos para sempre enviar URL completa com joinApi()
 api.defaults.baseURL = "";
 
+// Métodos que recebem body vs. sem body
 const HTTP_METHODS_WITH_DATA = new Set(["post", "put", "patch"]);
 const HTTP_METHODS_WITHOUT_DATA = new Set(["get", "delete", "head", "options"]);
 
@@ -70,25 +78,33 @@ function wrapRequestMethod(method) {
   return (...args) => original(...args);
 }
 
+// Envolve os métodos padrão do axios
 [...HTTP_METHODS_WITH_DATA, ...HTTP_METHODS_WITHOUT_DATA].forEach((method) => {
   if (typeof api[method] === "function") {
     api[method] = wrapRequestMethod(method);
   }
 });
 
+// =========================
+// Auth token helper (ÚNICO)
+// =========================
 export function getAuthToken() {
+  // 1) localStorage
   try {
     const stored = localStorage.getItem("token");
     if (stored) return stored;
   } catch {}
 
+  // 2) cookie 'access_token'
   try {
-    const match = typeof document !== "undefined"
-      ? document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)
-      : null;
+    const match =
+      typeof document !== "undefined"
+        ? document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)
+        : null;
     if (match) return decodeURIComponent(match[1]);
   } catch {}
 
+  // 3) fallback (ex.: mantido em services/session.js)
   try {
     const fallback = getToken();
     if (fallback) return fallback;
@@ -98,7 +114,7 @@ export function getAuthToken() {
 }
 
 export { api };
-export const client = api; // alias
+export const client = api; // alias padrão
 export default api;
 
 // =========================
@@ -131,8 +147,15 @@ export function centsToBRL(cents = 0, currency = "BRL") {
 // =========================
 // Helpers de headers
 // =========================
+/** Remove prefixo '/api' (se houver) para classificar a rota */
+function stripApiPrefix(p) {
+  return p.startsWith("/api/") ? p.slice(4) : p;
+}
+
 function isPublicPath(path = "") {
-  const p = path.startsWith("/") ? path : `/${path}`;
+  const raw = path.startsWith("/") ? path : `/${path}`;
+  const p = stripApiPrefix(raw);
+
   return (
     p.startsWith("/auth/") ||
     p.startsWith("/public/") ||
@@ -159,7 +182,6 @@ function ensureAuthorization(headers) {
 
 function resolveOrgIdForRequest() {
   try {
-    // ordem de prioridade:
     // 1) computeOrgId (pode ler token e storage)
     // 2) getActiveOrgId (storage)
     // 3) activeOrg.id salvo como JSON
@@ -194,7 +216,7 @@ function ensureOrgHeader(headers, path, meta) {
   }
 }
 
-// boot default X-Org-Id (útil para libs que usam defaults)
+// Boot do header X-Org-Id (útil para libs que leem defaults)
 try {
   const savedOrg = getActiveOrgId();
   if (savedOrg) {
@@ -205,7 +227,7 @@ try {
 } catch {}
 
 // =========================
-/** Interceptors */
+// Interceptors
 // =========================
 api.interceptors.request.use((config) => {
   const cfg = config || {};
@@ -268,21 +290,9 @@ export function setAuthToken(token) {
     delete axios.defaults.headers?.common?.Authorization;
   } catch {}
 }
+
 export function clearAuthToken() {
   setAuthToken(null);
-}
-export function getAuthToken() {
-  try {
-    const token = localStorage.getItem("token");
-    if (token) return token;
-    const fromCookie =
-      typeof document !== "undefined"
-        ? document.cookie.match(/(?:^|;\s*)access_token=([^;]+)/)
-        : null;
-    return fromCookie ? decodeURIComponent(fromCookie[1]) : null;
-  } catch {
-    return null;
-  }
 }
 
 // =========================
@@ -310,8 +320,7 @@ export function setImpersonateOrgId(orgId) {
   } catch {}
 }
 
-// Mantemos este helper para rotas PÚBLICAS/ADMIN onde **não** queremos X-Org-Id.
-// Para rotas com contexto de organização (ex.: /orgs/current), **NÃO** use.
+// Mantém este helper para rotas PÚBLICAS/ADMIN onde **não** queremos X-Org-Id.
 function withGlobalScope(options = {}) {
   const next = { ...(options || {}) };
   next.meta = { ...(options?.meta || {}) };
@@ -327,19 +336,12 @@ export { listOrgs as adminListOrgs } from "./admin/orgsApi";
 export async function listAdminOrgs(status = "active", options = {}) {
   const params = { status };
   const q =
-    options?.params?.q ??
-    options?.params?.search ??
-    options?.q ??
-    options?.search ??
-    "";
+    options?.params?.q ?? options?.params?.search ??
+    options?.q ?? options?.search ?? "";
   if (q) params.q = String(q).trim();
   const extras = { ...(options?.params || {}) };
-  delete extras.q;
-  delete extras.search;
-  delete extras.status;
-  Object.entries(extras).forEach(([key, value]) => {
-    if (value != null) params[key] = value;
-  });
+  delete extras.q; delete extras.search; delete extras.status;
+  Object.entries(extras).forEach(([k, v]) => { if (v != null) params[k] = v; });
   return listAdminOrgsBase(params);
 }
 
@@ -374,9 +376,7 @@ export async function getMyOrgs() {
 
 // seleciona org ativa (back pode validar; front salva via setActiveOrg)
 export async function switchOrg(orgId) {
-  // não enviar X-Org-Id nesta rota
   await api.post('/orgs/select', { orgId }, { meta: { noOrgHeader: true } });
-  // manter header/storage imediatos no cliente para UX responsiva
   setActiveOrg(orgId);
 }
 
@@ -384,36 +384,23 @@ export async function switchOrg(orgId) {
 // Utils de busca externa (públicas)
 // =========================
 export async function lookupCNPJ(cnpj) {
-  const { data } = await api.get(
-    `/utils/cnpj/${encodeURIComponent(cnpj)}`,
-    withGlobalScope()
-  );
+  const { data } = await api.get(`/utils/cnpj/${encodeURIComponent(cnpj)}`, withGlobalScope());
   return data;
 }
 export async function lookupCEP(cep) {
-  const { data } = await api.get(
-    `/utils/cep/${encodeURIComponent(cep)}`,
-    withGlobalScope()
-  );
+  const { data } = await api.get(`/utils/cep/${encodeURIComponent(cep)}`, withGlobalScope());
   return data;
 }
 
 // =========================
-/** Plans/Admin (mantidos como "global") */
+// Plans/Admin (escopo global)
 // =========================
 export async function getPlanCredits(planId) {
-  const { data } = await api.get(
-    `/admin/plans/${planId}/credits`,
-    withGlobalScope()
-  );
+  const { data } = await api.get(`/admin/plans/${planId}/credits`, withGlobalScope());
   return data?.data ?? [];
 }
 export async function setPlanCredits(planId, payload) {
-  const { data } = await api.put(
-    `/admin/plans/${planId}/credits`,
-    payload,
-    withGlobalScope()
-  );
+  const { data } = await api.put(`/admin/plans/${planId}/credits`, payload, withGlobalScope());
   return data?.data ?? [];
 }
 export async function putAdminOrgPlan(orgId, payload, options = {}) {
@@ -429,10 +416,7 @@ export async function listAdminPlans(options = {}) {
   return api.get(`/admin/plans`, withGlobalScope(options));
 }
 export async function adminListPlans(options = {}) {
-  const { data: resp, status } = await client.get(
-    "/admin/plans",
-    withGlobalScope(options)
-  );
+  const { data: resp, status } = await client.get("/admin/plans", withGlobalScope(options));
   if (status !== 200) throw new Error(`admin/plans ${status}`);
 
   if (resp?.data && typeof resp.data === "object") {
@@ -475,9 +459,9 @@ export async function adminDeletePlan(planId, options = {}) {
 }
 export async function adminGetPlanFeatures(planId, options = {}) {
   if (!planId) return [];
-  const res = await client.get(`/admin/plans/${planId}/features`, withGlobalScope(options));
-  if (res?.status !== 200) throw new Error(`admin/plans/${planId}/features ${res?.status}`);
-  const data = res?.data;
+  const r = await client.get(`/admin/plans/${planId}/features`, withGlobalScope(options));
+  if (r?.status !== 200) throw new Error(`admin/plans/${planId}/features ${r?.status}`);
+  const data = r?.data;
   if (!Array.isArray(data)) throw new Error("admin/plans features payload inválido");
   return data;
 }
@@ -494,11 +478,7 @@ export async function adminGetPlanCredits(planId, options = {}) {
 export async function adminUpdatePlanCredits(planId, credits, options = {}) {
   if (!planId) return [];
   const payload = Array.isArray(credits) ? credits : [];
-  const r = await api.put(
-    `/admin/plans/${planId}/credits`,
-    { data: payload },
-    withGlobalScope(options)
-  );
+  const r = await api.put(`/admin/plans/${planId}/credits`, { data: payload }, withGlobalScope(options));
   return Array.isArray(r.data?.data) ? r.data.data : [];
 }
 export async function adminGetPlanCreditsSummary(planId, options = {}) {
@@ -517,36 +497,29 @@ export async function adminPutPlanFeatures(planId, features, options = {}) {
 
 // ===== Billing / Histórico =====
 export async function adminGetOrgBillingHistory(orgId) {
-  const { data } = await api.get(`/admin/orgs/${orgId}/billing/history`, {
-    meta: { scope: 'global' },
-  });
+  const { data } = await api.get(`/admin/orgs/${orgId}/billing/history`, { meta: { scope: "global" } });
   if (!data?.ok) throw new Error(JSON.stringify(data || {}));
   return data.data;
 }
-
 export async function getOrgBillingHistory(orgId) {
   const { data } = await api.get(`/orgs/${orgId}/billing/history`);
   if (!data?.ok) throw new Error(JSON.stringify(data || {}));
   return data.data;
 }
 
-// ===== Planos =====
+// ===== Planos (short) =====
 export async function adminListPlansShort() {
-  const { data: resp } = await api.get(`/admin/plans`, { meta: { scope: 'global' } });
+  const { data: resp } = await api.get(`/admin/plans`, { meta: { scope: "global" } });
   const plans =
     (resp?.data?.plans ?? resp?.plans ?? resp?.data ?? (Array.isArray(resp) ? resp : [])).map((p) => ({
       id: p.id ?? p.plan_id ?? p.uuid,
-      name: p.name ?? p.title ?? p.slug ?? 'Plano',
+      name: p.name ?? p.title ?? p.slug ?? "Plano",
     }));
   return plans;
 }
 
 export async function adminPutOrgPlan(orgId, planId) {
-  return api.put(
-    `/admin/orgs/${orgId}/plan`,
-    { plan_id: planId },
-    { meta: { scope: 'global' } }
-  );
+  return api.put(`/admin/orgs/${orgId}/plan`, { plan_id: planId }, { meta: { scope: "global" } });
 }
 
 export {
