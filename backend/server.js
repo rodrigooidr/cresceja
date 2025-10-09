@@ -1,4 +1,6 @@
 // backend/server.js — servidor unificado (Express + Socket.io), ESM
+import providersCompatRouter from './routes/integrations.providers.compat.js';
+import testWhatsappRouterFactory from './routes/testWhatsappRoutes.js';
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -54,7 +56,6 @@ import appointmentsCoreRouter from './routes/appointments.core.js';
 import debugRouter from './routes/debug.js';
 import adminApp from './app.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
-import testWhatsappRouter from './routes/testWhatsappRoutes.js';
 import onboardingRouter from './routes/onboarding.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import orgsRouter from './routes/orgs.js';
@@ -134,6 +135,7 @@ app.use(orgFeaturesRouter);
 
 // Se a rota exigir dados da organização ativa, garanta withOrg
 app.use('/api', withOrg);
+app.use('/api/integrations/providers', providersCompatRouter());
 
 // ==== Rotas autenticadas (com org quando necessário)
 app.use('/api/content', contentRouter);
@@ -156,14 +158,15 @@ app.use('/api/ai-credits', aiCreditsStatusRouter);
 
 // integrações e outros módulos
 app.use('/api/integrations', integrationsRouter);
-app.use('/api/integrations/whatsapp', whatsappRouterFactory(io));
+const getIO = () => app.get('io');                    // <- pega o io atual quando a rota for usada
+app.use('/api/integrations/whatsapp', whatsappRouterFactory(getIO));
 app.use(gcalRouter);
 app.use(appointmentsOauthRouter);
 app.use(appointmentsAvailabilityRouter);
 app.use(appointmentsCoreRouter);
 app.use('/api/calendar', calendarCompatRouter);
-app.use('/api/test-whatsapp', testWhatsappRouter);
 app.use('/api/onboarding', onboardingRouter);
+app.use('/api/test-whatsapp', testWhatsappRouterFactory());
 
 // ==== Rotas admin autenticadas
 app.use('/api/admin/orgs', adminOrgsRouter);
