@@ -1,13 +1,23 @@
 // backend/services/whatsappSession.js
 import path from 'node:path';
 import fs from 'node:fs';
-import makeWASocket, {
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  jidNormalizedUser,
-} from '@whiskeysockets/baileys';
 import qrcode from 'qrcode';
+
+// Import compatível com CJS/ESM e com versões que exportam default ou nomeado
+const baileys = require('@whiskeysockets/baileys');
+
+const makeWASocket =
+  (baileys && (baileys.default || baileys.makeWASocket)) ||
+  (() => {
+    throw new Error('Baileys: makeWASocket export not found');
+  });
+
+const {
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  DisconnectReason,
+  jidNormalizedUser,
+} = baileys;
 
 let sock = null;
 let ioRef = null;

@@ -1,5 +1,15 @@
 import qrcode from 'qrcode';
-import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys';
+
+// Import compatível com CJS/ESM e com versões que exportam default ou nomeado
+const baileys = require('@whiskeysockets/baileys');
+
+const makeWASocket =
+  (baileys && (baileys.default || baileys.makeWASocket)) ||
+  (() => {
+    throw new Error('Baileys: makeWASocket export not found');
+  });
+
+const { useMultiFileAuthState } = baileys;
 
 // List channels
 export async function list(req, res) {
