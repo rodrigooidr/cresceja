@@ -1,7 +1,7 @@
 // backend/routes/integrations.providers.compat.js
 import express from 'express';
 import { authRequired } from '../middleware/auth.js';
-import isOwner from '../middleware/isOwner.js';
+import { requireAnyRole } from '../middlewares/auth.js';
 import canUseWhatsAppWeb from '../middleware/canUseWhatsAppWeb.js';
 import {
   createSession,
@@ -13,7 +13,8 @@ import {
 export default function providersCompatRouter() {
   const router = express.Router();
 
-  router.use(authRequired, isOwner);
+  const requireWhatsAppSessionRole = requireAnyRole(['SuperAdmin', 'OrgOwner']);
+  router.use(authRequired, requireWhatsAppSessionRole);
 
   // === WhatsApp Sessão (Baileys) – endpoints esperados pela UI ===
   router.post('/whatsapp_session/connect', canUseWhatsAppWeb, async (req, res, next) => {

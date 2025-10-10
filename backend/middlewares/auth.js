@@ -1,26 +1,37 @@
 import { authRequired } from '../middleware/auth.js';
 import { getOrgFeatures } from '../services/orgFeatures.js';
 
-export function getUserRoles(req) {
+// backend/middlewares/auth.js
+function getUserRoles(req) {
   const single = req.user?.role ? [String(req.user.role)] : [];
-  const many = Array.isArray(req.user?.roles) ? req.user.roles.map(String) : [];
-  // conjunto único, case-sensitive conforme o que você usa no sistema
+  const many   = Array.isArray(req.user?.roles) ? req.user.roles.map(String) : [];
   return Array.from(new Set([...single, ...many]));
 }
 
-export const ROLE_ORDER = [
-  'OrgViewer',
-  'OrgAgent',
-  'OrgAdmin',
-  'OrgOwner',
-  'Support',
-  'SuperAdmin',
-];
+const ROLE_ORDER = ['OrgViewer','OrgAgent','OrgAdmin','OrgOwner','Support','SuperAdmin'];
+const rank = r => ROLE_ORDER.indexOf(r);
 
-// retorna o “peso” (quanto maior, mais poder)
-function rank(role) {
-  const i = ROLE_ORDER.indexOf(role);
-  return i === -1 ? -1 : i;
+function requireAnyRole(allowed) {
+  return (req, res, next) => {
+    const roles = getUserRoles(req);
+    if (!roles.length) return res.status(401).json({ error: 'unauthorized' });
+    if (!roles.some(r => allowed.includes(r))) {
+      return res.status(403).json({ error: 'forbidden', reason: 'role_mismatch', have: roles, need_any: allowed });
+    }
+    next();
+  };
+}
+
+function requireMinRole(minRole) {
+  return (req, res, next) => {
+    const roles = getUserRoles(req);
+    if (!roles.length) return res.status(401).json({ error: 'unauthorized' });
+    const min = rank(minRole);
+    if (!roles.some(r => rank(r) >= min)) {
+      return res.status(403).json({ error: 'forbidden', reason: 'min_role', have: roles, min: minRole });
+    }
+    next();
+  };
 }
 
 export function requireAuth(req, res, next) {
@@ -31,34 +42,7 @@ export function requireAuth(req, res, next) {
   return res.status(401).json({ error: 'unauthorized' });
 }
 
-export function requireAnyRole(allowed) {
-  return (req, res, next) => {
-    const roles = getUserRoles(req);
-    if (!roles.length) return res.status(401).json({ error: 'unauthorized' });
-    const ok = roles.some((r) => allowed.includes(r));
-    if (!ok) {
-      return res
-        .status(403)
-        .json({ error: 'forbidden', reason: 'role_mismatch', have: roles, need_any: allowed });
-    }
-    next();
-  };
-}
-
-export function requireMinRole(minRole) {
-  return (req, res, next) => {
-    const roles = getUserRoles(req);
-    if (!roles.length) return res.status(401).json({ error: 'unauthorized' });
-    const min = rank(minRole);
-    const ok = roles.some((r) => rank(r) >= min);
-    if (!ok) {
-      return res
-        .status(403)
-        .json({ error: 'forbidden', reason: 'min_role', have: roles, min: minRole });
-    }
-    next();
-  };
-}
+export { getUserRoles, requireAnyRole, requireMinRole, ROLE_ORDER };
 
 export function requireRole(...allowed) {
   const list = allowed.flat ? allowed.flat() : allowed;
@@ -129,12 +113,7 @@ export function requireOrgFeature(feature, { optional = false } = {}) {
         if (optional) return next();
         return res
           .status(403)
-          .json({
-            error: 'forbidden',
-            reason: 'feature_disabled',
-            feature: featureKey,
-            orgId,
-          });
+          .json({ error: 'forbidden', reason: 'feature_disabled', feature: featureKey, orgId });
       }
 
       return next();
@@ -143,4 +122,22 @@ export function requireOrgFeature(feature, { optional = false } = {}) {
       return res.status(500).json({ error: 'feature_check_failed', feature: featureKey });
     }
   };
+}
+
+const defaultExport = {
+  getUserRoles,
+  requireAnyRole,
+  requireMinRole,
+  ROLE_ORDER,
+  requireAuth,
+  requireRole,
+  requireSuperAdmin,
+  requireOrgFeature,
+};
+
+export default defaultExport;
+
+// eslint-disable-next-line no-undef
+if (typeof module !== 'undefined') {
+  module.exports = { getUserRoles, requireAnyRole, requireMinRole, ROLE_ORDER };
 }
