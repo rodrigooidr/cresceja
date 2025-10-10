@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { createRequire } from 'module';
 import { query } from '#db';
 import * as authModule from '../middleware/auth.js';
+import { requireAnyRole } from '../middlewares/auth.js';
 import Audit from '../services/audit.js';
 import { ensureLoaded, cfg } from '../services/inbox/directionSender.meta.js';
 
@@ -23,6 +24,8 @@ const requireAuth =
   authModule?.authRequired ||
   authModule?.default ||
   ((_req, _res, next) => next());
+
+const requireWhatsAppSessionRole = requireAnyRole(['SuperAdmin', 'OrgOwner']);
 
 router.use(requireAuth);
 
@@ -363,7 +366,7 @@ router.post('/whatsapp/cloud/sendMedia', async (req, res, next) => {
   }
 });
 
-router.post('/whatsapp/baileys/send', async (req, res, next) => {
+router.post('/whatsapp/baileys/send', requireWhatsAppSessionRole, async (req, res, next) => {
   try {
     const { to, text, conversationId } = req.body || {};
     const idempotencyKey = req.get('Idempotency-Key') || null;
@@ -384,7 +387,7 @@ router.post('/whatsapp/baileys/send', async (req, res, next) => {
   }
 });
 
-router.post('/whatsapp/baileys/sendMedia', async (req, res, next) => {
+router.post('/whatsapp/baileys/sendMedia', requireWhatsAppSessionRole, async (req, res, next) => {
   try {
     const { to, media, caption, conversationId } = req.body || {};
     const idempotencyKey = req.get('Idempotency-Key') || null;
