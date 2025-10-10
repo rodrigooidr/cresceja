@@ -6,6 +6,7 @@ import { seal as defaultSeal, open as defaultOpen } from '../services/credStore.
 import { HttpClientError, httpClient as defaultHttpClient } from '../utils/httpClient.js';
 import createIntegrationAuditor from '../services/audit.js';
 import { getOrgFeatures } from '../services/orgFeatures.js';
+import { requireAnyRole, requireOrgFeature } from '../middlewares/auth.js';
 import {
   startQrLoop,
   stopQrLoop,
@@ -170,14 +171,16 @@ async function ensureOrgContext(req, db) {
 
 async function ensureWhatsAppSessionEnabled(req, res, orgId) {
   try {
-    const features = await getOrgFeatures(req.db, orgId);
-    if (!features.whatsapp_session_enabled) {
-      res
-        .status(403)
-        .json({
-          error: 'forbidden',
-          message: 'WhatsApp Sessão não habilitado para esta organização.',
-        });
+    const cached = req.orgFeatures;
+    const features =
+      (cached && typeof cached === 'object' ? cached : null) || (await getOrgFeatures(req.db, orgId));
+    req.orgFeatures = features;
+    if (!features?.whatsapp_session_enabled) {
+      res.status(403).json({
+        error: 'forbidden',
+        reason: 'feature_disabled',
+        feature: 'whatsapp_session_enabled',
+      });
       return null;
     }
     return features;
@@ -562,6 +565,29 @@ export function createIntegrationsRouter({
     next();
   });
 
+  const requireWhatsAppSessionRole = requireAnyRole(['SuperAdmin', 'OrgOwner']);
+  const requireWhatsAppSessionFeature = requireOrgFeature('whatsapp_session_enabled');
+
+  const runMiddleware = (middleware, req, res, next) => {
+    try {
+      const maybe = middleware(req, res, next);
+      if (maybe && typeof maybe.then === 'function') {
+        maybe.catch(next);
+      }
+      return maybe;
+    } catch (err) {
+      return next(err);
+    }
+  };
+
+  const guardWhatsAppProvider = (middleware) => (req, res, next) => {
+    if (req.params?.provider !== 'whatsapp_session') return next();
+    return runMiddleware(middleware, req, res, next);
+  };
+
+  const ensureWhatsAppProviderRole = guardWhatsAppProvider(requireWhatsAppSessionRole);
+  const ensureWhatsAppProviderFeature = guardWhatsAppProvider(requireWhatsAppSessionFeature);
+
   router.get('/status', async (req, res, next) => {
     try {
       if (!req.db?.query) throw new Error('db_not_configured');
@@ -577,7 +603,7 @@ export function createIntegrationsRouter({
     }
   });
 
-  router.get('/providers/:provider', async (req, res, next) => {
+  router.get('/providers/:provider', ensureWhatsAppProviderRole, async (req, res, next) => {
     const { provider } = req.params;
     try {
       ensureProvider(provider);
@@ -597,408 +623,479 @@ export function createIntegrationsRouter({
     }
   });
 
-  router.post('/providers/:provider/connect', limiter, async (req, res) => {
-    const { provider } = req.params;
-    let handler;
-    try {
-      handler = ensureProvider(provider);
-    } catch (err) {
-      return res.status(400).json({ error: 'unknown_provider', message: provider });
-    }
-
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-
-    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
-
-    try {
-      if (provider === 'whatsapp_session') {
-        const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-        if (!allowed) return;
+  router.post(
+    '/providers/:provider/connect',
+    ensureWhatsAppProviderRole,
+    ensureWhatsAppProviderFeature,
+    limiter,
+    async (req, res) => {
+      const { provider } = req.params;
+      let handler;
+      try {
+        handler = ensureProvider(provider);
+      } catch (err) {
+        return res.status(400).json({ error: 'unknown_provider', message: provider });
       }
-      const schema = handler.connectSchema || z.object({}).strip();
-      const payload = schema.parse(req.body || {});
-      const existingRow = await getIntegration(req.db, orgId, provider);
-      const existing = existingRow ? { ...existingRow, creds: open(existingRow.creds) } : null;
-      const result = await handler.connect({ req, provider, payload, existing, httpClient });
 
-      const row = await upsertIntegration(
-        req.db,
-        orgId,
-        provider,
-        {
-          status: result.status || existingRow?.status || 'connected',
-          subscribed:
-            typeof result.subscribed === 'boolean' ? result.subscribed : existingRow?.subscribed || false,
-          creds: result.creds || existing?.creds || {},
-          meta: result.meta || existing?.meta || {},
-        },
-        seal
-      );
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+      }
 
-      await audit(orgId, provider, 'connect', 'success', stripSensitive(result.detail || {}));
+      let orgId;
+      try {
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res
+          .status(status)
+          .json({ error: err.code || 'org_context_missing', message: err.message });
+      }
 
-      return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
-    } catch (err) {
-      const validation = mapValidationError(err);
-      if (validation) {
-        await audit(orgId, provider, 'connect', 'error', {
-          message: 'validation_error',
-          issues: validation.issues,
+      const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
+
+      try {
+        if (provider === 'whatsapp_session') {
+          const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+          if (!allowed) return;
+        }
+        const schema = handler.connectSchema || z.object({}).strip();
+        const payload = schema.parse(req.body || {});
+        const existingRow = await getIntegration(req.db, orgId, provider);
+        const existing = existingRow ? { ...existingRow, creds: open(existingRow.creds) } : null;
+        const result = await handler.connect({ req, provider, payload, existing, httpClient });
+
+        const row = await upsertIntegration(
+          req.db,
+          orgId,
+          provider,
+          {
+            status: result.status || existingRow?.status || 'connected',
+            subscribed:
+              typeof result.subscribed === 'boolean'
+                ? result.subscribed
+                : existingRow?.subscribed || false,
+            creds: result.creds || existing?.creds || {},
+            meta: result.meta || existing?.meta || {},
+          },
+          seal,
+        );
+
+        await audit(orgId, provider, 'connect', 'success', stripSensitive(result.detail || {}));
+
+        return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+      } catch (err) {
+        const validation = mapValidationError(err);
+        if (validation) {
+          await audit(orgId, provider, 'connect', 'error', {
+            message: 'validation_error',
+            issues: validation.issues,
+          });
+          return res.status(400).json(validation);
+        }
+        const providerFailure = mapProviderFailure(err);
+        if (providerFailure) {
+          await audit(orgId, provider, 'connect', 'error', {
+            message: providerFailure.body.message,
+          });
+          return res.status(providerFailure.status).json(providerFailure.body);
+        }
+        const status = err.statusCode || 500;
+        await audit(orgId, provider, 'connect', 'error', { message: err.message });
+        return res
+          .status(status)
+          .json({ error: err.code || 'connect_failed', message: err.message });
+      }
+    },
+  );
+
+  router.post(
+    '/providers/:provider/subscribe',
+    ensureWhatsAppProviderRole,
+    limiter,
+    async (req, res) => {
+      const { provider } = req.params;
+      let handler;
+      try {
+        handler = ensureProvider(provider);
+      } catch (err) {
+        return res.status(400).json({ error: 'unknown_provider', message: provider });
+      }
+
+      if (!handler.supportsSubscribe) {
+        return res.status(400).json({
+          error: 'not_supported',
+          message: 'Subscribe indisponível para este provedor.',
         });
-        return res.status(400).json(validation);
       }
-      const providerFailure = mapProviderFailure(err);
-      if (providerFailure) {
-        await audit(orgId, provider, 'connect', 'error', {
-          message: providerFailure.body.message,
-        });
-        return res.status(providerFailure.status).json(providerFailure.body);
+
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
       }
-      const status = err.statusCode || 500;
-      await audit(orgId, provider, 'connect', 'error', { message: err.message });
-      return res.status(status).json({ error: err.code || 'connect_failed', message: err.message });
-    }
-  });
 
-  router.post('/providers/:provider/subscribe', limiter, async (req, res) => {
-    const { provider } = req.params;
-    let handler;
-    try {
-      handler = ensureProvider(provider);
-    } catch (err) {
-      return res.status(400).json({ error: 'unknown_provider', message: provider });
-    }
-
-    if (!handler.supportsSubscribe) {
-      return res.status(400).json({ error: 'not_supported', message: 'Subscribe indisponível para este provedor.' });
-    }
-
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-
-    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
-
-    try {
-      if (provider === 'whatsapp_session') {
-        const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-        if (!allowed) return;
+      let orgId;
+      try {
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res
+          .status(status)
+          .json({ error: err.code || 'org_context_missing', message: err.message });
       }
-      const existingRow = await getIntegration(req.db, orgId, provider);
-      if (!existingRow) {
-        await audit(orgId, provider, 'subscribe', 'error', { message: 'integration_not_connected' });
-        return res.status(400).json({ error: 'integration_not_connected', message: provider });
+
+      const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
+
+      try {
+        if (provider === 'whatsapp_session') {
+          const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+          if (!allowed) return;
+        }
+        const existingRow = await getIntegration(req.db, orgId, provider);
+        if (!existingRow) {
+          await audit(orgId, provider, 'subscribe', 'error', { message: 'integration_not_connected' });
+          return res.status(400).json({ error: 'integration_not_connected', message: provider });
+        }
+        const existing = { ...existingRow, creds: open(existingRow.creds) };
+        const result = await handler.subscribe({ req, provider, existing, httpClient });
+        const row = await upsertIntegration(
+          req.db,
+          orgId,
+          provider,
+          {
+            status: existingRow.status,
+            subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
+            creds: existingRow.creds,
+            meta: result.meta || existing.meta || {},
+          },
+          seal,
+        );
+        await audit(orgId, provider, 'subscribe', 'success', stripSensitive(result.detail || {}));
+        return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+      } catch (err) {
+        const providerFailure = mapProviderFailure(err);
+        if (providerFailure) {
+          await audit(orgId, provider, 'subscribe', 'error', {
+            message: providerFailure.body.message,
+          });
+          return res.status(providerFailure.status).json(providerFailure.body);
+        }
+        const status = err.statusCode || 500;
+        await audit(orgId, provider, 'subscribe', 'error', { message: err.message });
+        return res.status(status).json({ error: 'subscribe_failed', message: err.message });
       }
-      const existing = { ...existingRow, creds: open(existingRow.creds) };
-      const result = await handler.subscribe({ req, provider, existing, httpClient });
-      const row = await upsertIntegration(
-        req.db,
-        orgId,
-        provider,
-        {
-          status: existingRow.status,
-          subscribed: typeof result.subscribed === 'boolean' ? result.subscribed : true,
-          creds: existingRow.creds,
-          meta: result.meta || existing.meta || {},
-        },
-        seal
-      );
-      await audit(orgId, provider, 'subscribe', 'success', stripSensitive(result.detail || {}));
-      return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
-    } catch (err) {
-      const providerFailure = mapProviderFailure(err);
-      if (providerFailure) {
-        await audit(orgId, provider, 'subscribe', 'error', {
-          message: providerFailure.body.message,
-        });
-        return res.status(providerFailure.status).json(providerFailure.body);
+    },
+  );
+
+  router.post(
+    '/providers/:provider/test',
+    ensureWhatsAppProviderRole,
+    limiter,
+    async (req, res) => {
+      const { provider } = req.params;
+      let handler;
+      try {
+        handler = ensureProvider(provider);
+      } catch (err) {
+        return res.status(400).json({ error: 'unknown_provider', message: provider });
       }
-      const status = err.statusCode || 500;
-      await audit(orgId, provider, 'subscribe', 'error', { message: err.message });
-      return res.status(status).json({ error: 'subscribe_failed', message: err.message });
-    }
-  });
 
-  router.post('/providers/:provider/test', limiter, async (req, res) => {
-    const { provider } = req.params;
-    let handler;
-    try {
-      handler = ensureProvider(provider);
-    } catch (err) {
-      return res.status(400).json({ error: 'unknown_provider', message: provider });
-    }
-
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-
-    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
-
-    try {
-      if (provider === 'whatsapp_session') {
-        const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-        if (!allowed) return;
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
       }
-      const schema = handler.testSchema || z.object({}).strip();
-      const payload = schema.parse(req.body || {});
-      const existingRow = await getIntegration(req.db, orgId, provider);
-      if (!existingRow) {
-        await audit(orgId, provider, 'test', 'error', { message: 'integration_not_connected' });
-        return res.status(400).json({ error: 'integration_not_connected', message: provider });
+
+      let orgId;
+      try {
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res
+          .status(status)
+          .json({ error: err.code || 'org_context_missing', message: err.message });
       }
-      const existing = { ...existingRow, creds: open(existingRow.creds) };
-      const result = await handler.test({ req, provider, payload, existing, httpClient });
-      const row = await upsertIntegration(
-        req.db,
-        orgId,
-        provider,
-        {
-          status: existingRow.status,
-          subscribed: existingRow.subscribed,
-          creds: existingRow.creds,
-          meta: result.meta || existing.meta || {},
-        },
-        seal
-      );
-      await audit(orgId, provider, 'test', 'success', stripSensitive(result.detail || {}));
-      return res.json({ ok: true, detail: result.detail || {}, integration: sanitizeIntegration(provider, row) });
-    } catch (err) {
-      const validation = mapValidationError(err);
-      if (validation) {
-        await audit(orgId, provider, 'test', 'error', {
-          message: 'validation_error',
-          issues: validation.issues,
-        });
-        return res.status(400).json(validation);
+
+      const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
+
+      try {
+        if (provider === 'whatsapp_session') {
+          const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+          if (!allowed) return;
+        }
+        const schema = handler.testSchema || z.object({}).strip();
+        const payload = schema.parse(req.body || {});
+        const existingRow = await getIntegration(req.db, orgId, provider);
+        if (!existingRow) {
+          await audit(orgId, provider, 'test', 'error', { message: 'integration_not_connected' });
+          return res.status(400).json({ error: 'integration_not_connected', message: provider });
+        }
+        const existing = { ...existingRow, creds: open(existingRow.creds) };
+        const result = await handler.test({ req, provider, payload, existing, httpClient });
+        const row = await upsertIntegration(
+          req.db,
+          orgId,
+          provider,
+          {
+            status: existingRow.status,
+            subscribed: existingRow.subscribed,
+            creds: existingRow.creds,
+            meta: result.meta || existing.meta || {},
+          },
+          seal,
+        );
+        await audit(orgId, provider, 'test', 'success', stripSensitive(result.detail || {}));
+        return res.json({ ok: true, detail: result.detail || {}, integration: sanitizeIntegration(provider, row) });
+      } catch (err) {
+        const validation = mapValidationError(err);
+        if (validation) {
+          await audit(orgId, provider, 'test', 'error', {
+            message: 'validation_error',
+            issues: validation.issues,
+          });
+          return res.status(400).json(validation);
+        }
+        const providerFailure = mapProviderFailure(err);
+        if (providerFailure) {
+          await audit(orgId, provider, 'test', 'error', {
+            message: providerFailure.body.message,
+          });
+          return res.status(providerFailure.status).json(providerFailure.body);
+        }
+        const status = err.statusCode || 500;
+        await audit(orgId, provider, 'test', 'error', { message: err.message });
+        return res.status(status).json({ error: 'test_failed', message: err.message });
       }
-      const providerFailure = mapProviderFailure(err);
-      if (providerFailure) {
-        await audit(orgId, provider, 'test', 'error', {
-          message: providerFailure.body.message,
-        });
-        return res.status(providerFailure.status).json(providerFailure.body);
+    },
+  );
+
+  router.post(
+    '/providers/:provider/disconnect',
+    ensureWhatsAppProviderRole,
+    limiter,
+    async (req, res) => {
+      const { provider } = req.params;
+      try {
+        ensureProvider(provider);
+      } catch (err) {
+        return res.status(400).json({ error: 'unknown_provider', message: provider });
       }
-      const status = err.statusCode || 500;
-      await audit(orgId, provider, 'test', 'error', { message: err.message });
-      return res.status(status).json({ error: 'test_failed', message: err.message });
-    }
-  });
 
-  router.post('/providers/:provider/disconnect', limiter, async (req, res) => {
-    const { provider } = req.params;
-    try {
-      ensureProvider(provider);
-    } catch (err) {
-      return res.status(400).json({ error: 'unknown_provider', message: provider });
-    }
-
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-
-    const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
-
-    try {
-      if (provider === 'whatsapp_session') {
-        const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-        if (!allowed) return;
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
       }
-      const existingRow = await getIntegration(req.db, orgId, provider);
-      if (!existingRow) {
-        return res.json({ ok: true, integration: sanitizeIntegration(provider, null) });
+
+      let orgId;
+      try {
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res
+          .status(status)
+          .json({ error: err.code || 'org_context_missing', message: err.message });
       }
-      const meta = {
-        ...(isPlainObject(existingRow.meta) ? existingRow.meta : {}),
-        disconnected_at: nowIso(),
-      };
-      const row = await patchIntegration(
-        req.db,
-        orgId,
-        provider,
-        {
-          status: 'disconnected',
-          subscribed: false,
-          creds: {},
-          meta,
-        },
-        seal
-      );
-      await audit(orgId, provider, 'disconnect', 'success', { message: 'Integração desconectada' });
-      return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
-    } catch (err) {
-      await audit(orgId, provider, 'disconnect', 'error', { message: err.message });
-      return res.status(500).json({ error: 'disconnect_failed', message: err.message });
-    }
-  });
 
-  router.post('/providers/whatsapp_session/qr/sse-token', async (req, res) => {
-    const orgId = req.org?.id || req.headers['x-org-id'];
-    const userId = req.user?.id || 'unknown';
-    if (!orgId) {
-      return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
-    }
+      const audit = createIntegrationAuditor({ db: req.db, logger: req.log || logger });
 
-    try {
-      const features = await getOrgFeatures(req.db, orgId);
+      try {
+        if (provider === 'whatsapp_session') {
+          const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+          if (!allowed) return;
+        }
+        const existingRow = await getIntegration(req.db, orgId, provider);
+        if (!existingRow) {
+          return res.json({ ok: true, integration: sanitizeIntegration(provider, null) });
+        }
+        const meta = {
+          ...(isPlainObject(existingRow.meta) ? existingRow.meta : {}),
+          disconnected_at: nowIso(),
+        };
+        const row = await patchIntegration(
+          req.db,
+          orgId,
+          provider,
+          {
+            status: 'disconnected',
+            subscribed: false,
+            creds: {},
+            meta,
+          },
+          seal,
+        );
+        await audit(orgId, provider, 'disconnect', 'success', { message: 'Integração desconectada' });
+        return res.json({ ok: true, integration: sanitizeIntegration(provider, row) });
+      } catch (err) {
+        await audit(orgId, provider, 'disconnect', 'error', { message: err.message });
+        return res.status(500).json({ error: 'disconnect_failed', message: err.message });
+      }
+    },
+  );
+
+  router.post(
+    '/providers/whatsapp_session/qr/sse-token',
+    requireWhatsAppSessionRole,
+    requireWhatsAppSessionFeature,
+    async (req, res) => {
+      const orgId = req.org?.id || req.headers['x-org-id'];
+      const userId = req.user?.id || 'unknown';
+      if (!orgId) {
+        return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
+      }
+
+      try {
+        const cachedFeatures =
+          (req.orgFeatures && typeof req.orgFeatures === 'object' && req.orgFeatures) || null;
+        const features = cachedFeatures || (await getOrgFeatures(req.db, orgId));
+        req.orgFeatures = features;
+        if (!features.whatsapp_session_enabled) {
+          return res.status(403).json({
+            error: 'forbidden',
+            message: 'WhatsApp Sessão não habilitado para esta organização.',
+          });
+        }
+      } catch {}
+
+      const token = signSseToken({ orgId, userId, ttlSec: 60 });
+      return res.json({ ok: true, token, expires_in: 60 });
+    },
+  );
+
+  router.post(
+    '/providers/whatsapp_session/qr/start',
+    requireWhatsAppSessionRole,
+    requireWhatsAppSessionFeature,
+    async (req, res) => {
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+      }
+      let orgId;
+      try {
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+      }
+      const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+      if (!allowed) return;
+      startQrLoop(orgId);
+      return res.json({ ok: true });
+    },
+  );
+
+  router.post(
+    '/providers/whatsapp_session/qr/stop',
+    requireWhatsAppSessionRole,
+    async (req, res) => {
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+      }
+      let orgId;
+      try {
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+      }
+      const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+      if (!allowed) return;
+      stopQrLoop(orgId);
+      return res.json({ ok: true });
+    },
+  );
+
+  router.get(
+    '/providers/whatsapp_session/status',
+    requireWhatsAppSessionRole,
+    async (req, res) => {
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+      }
+      let orgId;
+      try {
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+      }
+      const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+      if (!allowed) return;
+      const statusPayload = getSessionStatus(orgId);
+      return res.json({ ok: true, ...statusPayload });
+    },
+  );
+
+  router.get(
+    '/providers/whatsapp_session/qr/stream',
+    requireWhatsAppSessionRole,
+    requireWhatsAppSessionFeature,
+    async (req, res) => {
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+      }
+
+      let orgId = req.org?.id || req.headers['x-org-id'];
+
+      if (!orgId && req.query?.access_token) {
+        const parsed = verifySseToken(String(req.query.access_token));
+        if (!parsed) {
+          return res
+            .status(401)
+            .json({ error: 'unauthorized', message: 'Token SSE inválido/expirado' });
+        }
+        orgId = parsed.orgId;
+      }
+
+      if (!orgId) {
+        return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
+      }
+
+      let features;
+      try {
+        features =
+          (req.orgFeatures && typeof req.orgFeatures === 'object' && req.orgFeatures) ||
+          (await getOrgFeatures(req.db, orgId));
+        req.orgFeatures = features;
+      } catch (err) {
+        return res.status(500).json({ error: 'features_unavailable', message: err.message });
+      }
       if (!features.whatsapp_session_enabled) {
         return res.status(403).json({
           error: 'forbidden',
           message: 'WhatsApp Sessão não habilitado para esta organização.',
         });
       }
-    } catch {}
 
-    const token = signSseToken({ orgId, userId, ttlSec: 60 });
-    return res.json({ ok: true, token, expires_in: 60 });
-  });
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
 
-  router.post('/providers/whatsapp_session/qr/start', async (req, res) => {
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-    const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-    if (!allowed) return;
-    startQrLoop(orgId);
-    return res.json({ ok: true });
-  });
-
-  router.post('/providers/whatsapp_session/qr/stop', async (req, res) => {
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-    const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-    if (!allowed) return;
-    stopQrLoop(orgId);
-    return res.json({ ok: true });
-  });
-
-  router.get('/providers/whatsapp_session/status', async (req, res) => {
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-    const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-    if (!allowed) return;
-    const statusPayload = getSessionStatus(orgId);
-    return res.json({ ok: true, ...statusPayload });
-  });
-
-  router.get('/providers/whatsapp_session/qr/stream', async (req, res) => {
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-
-    let orgId = req.org?.id || req.headers['x-org-id'];
-
-    if (!orgId && req.query?.access_token) {
-      const parsed = verifySseToken(String(req.query.access_token));
-      if (!parsed) {
-        return res.status(401).json({ error: 'unauthorized', message: 'Token SSE inválido/expirado' });
-      }
-      orgId = parsed.orgId;
-    }
-
-    if (!orgId) {
-      return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
-    }
-
-    let features;
-    try {
-      features = await getOrgFeatures(req.db, orgId);
-    } catch (err) {
-      return res.status(500).json({ error: 'features_unavailable', message: err.message });
-    }
-    if (!features.whatsapp_session_enabled) {
-      return res.status(403).json({
-        error: 'forbidden',
-        message: 'WhatsApp Sessão não habilitado para esta organização.',
+      const unsubscribe = subscribe(orgId, res);
+      req.on('close', () => {
+        unsubscribe();
+        try {
+          res.end();
+        } catch {}
       });
-    }
+    },
+  );
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders?.();
-
-    const unsubscribe = subscribe(orgId, res);
-    req.on('close', () => {
-      unsubscribe();
+  router.post(
+    '/providers/whatsapp_session/mark-connected',
+    requireWhatsAppSessionRole,
+    async (req, res) => {
+      if (!req.db?.query) {
+        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+      }
+      let orgId;
       try {
-        res.end();
-      } catch {}
-    });
-  });
-
-  router.post('/providers/whatsapp_session/mark-connected', async (req, res) => {
-    if (!req.db?.query) {
-      return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-    }
-    let orgId;
-    try {
-      orgId = await ensureOrgContext(req, req.db);
-    } catch (err) {
-      const status = err.statusCode || 500;
-      return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
-    }
-    const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
-    if (!allowed) return;
-    markConnected(orgId);
-    return res.json({ ok: true });
-  });
+        orgId = await ensureOrgContext(req, req.db);
+      } catch (err) {
+        const status = err.statusCode || 500;
+        return res.status(status).json({ error: err.code || 'org_context_missing', message: err.message });
+      }
+      const allowed = await ensureWhatsAppSessionEnabled(req, res, orgId);
+      if (!allowed) return;
+      markConnected(orgId);
+      return res.json({ ok: true });
+    },
+  );
 
   return router;
 }
