@@ -1,21 +1,20 @@
-// backend/services/whatsappSession.js
+// ESM-compatible import (Node 20 + "type":"module")
+// Funciona tanto se o pacote exportar default quanto nomeado.
+import * as baileys from '@whiskeysockets/baileys';
 import path from 'node:path';
 import fs from 'node:fs';
 import qrcode from 'qrcode';
 
-// Import compatível com CJS/ESM e com versões que exportam default ou nomeado
-const baileys = require('@whiskeysockets/baileys');
-
 const makeWASocket =
-  (baileys && (baileys.default || baileys.makeWASocket)) ||
-  (() => {
-    throw new Error('Baileys: makeWASocket export not found');
-  });
+  (baileys?.default ?? baileys?.makeWASocket) ??
+  (() => { throw new Error('Baileys: makeWASocket export not found'); });
 
 const {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   DisconnectReason,
+  makeInMemoryStore,
+  Browsers,
   jidNormalizedUser,
 } = baileys;
 
