@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { authRequired, orgScope } from '../../middleware/auth.js';
+import { requireAnyRole, requireOrgFeature } from '../../middlewares/auth.js';
 import whatsappSession from '../integrations/whatsapp.session.js';
 import whatsappCloud from '../integrations/whatsapp.cloud.js';
 import metaOauthRouter from '../integrations/meta.oauth.js';
 import googleCalendarRouter from '../integrations/google.calendar.js';
 import { Pool } from 'pg';
+import { signQrToken, verifyQrToken } from '../../services/qrToken.js';
 // Se/quando houver outros provedores, importe aqui
 // import whatsappCloud from '../integrations/whatsapp.cloud.js';
 
@@ -46,15 +48,57 @@ const w = Router();
 // ele já implementa: POST /start, GET /status, POST /logout, GET /test
 w.use('/', whatsappSession);
 
-// Endpoints QR (SSE) esperados pelo frontend — stubs de compat:
-// Caso você já tenha a implementação real do QR, substitua aqui.
-w.get('/qr/sse-token', (_req, res) => {
-  // Token efêmero; devolvemos algo meramente identificável
-  return res.json({ token: 'dev-qr-token' });
-});
-w.post('/qr/start', (_req, res) => res.json({ ok: true }));
-w.post('/qr/stop', (_req, res) => res.json({ ok: true }));
-w.get('/qr/stream', (req, res) => {
+const requireWhatsAppSessionRole = requireAnyRole(['SuperAdmin', 'OrgOwner']);
+const requireWhatsAppSessionFeature = requireOrgFeature('whatsapp_session_enabled');
+
+const issueQrToken = (req, res) => {
+  const orgId = req.org?.id || req.orgId || req.headers['x-org-id'];
+  const userId = req.user?.id || req.user?.sub || 'unknown';
+  if (!orgId) {
+    return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
+  }
+  try {
+    const token = signQrToken({ userId, orgId, secret: process.env.JWT_SECRET, ttl: 60 });
+    return res.json({ token, expires_in: 60 });
+  } catch (err) {
+    req.log?.error?.({ err }, 'qr-token-sign-failed');
+    return res.status(500).json({ error: 'token_sign_failed', message: err.message });
+  }
+};
+
+const allowQrTokenForStream = (req, res, next) => {
+  const token = req.query?.access_token;
+  if (!token) {
+    return requireWhatsAppSessionRole(req, res, next);
+  }
+  try {
+    const payload = verifyQrToken(String(token), process.env.JWT_SECRET);
+    req.user = { ...(req.user || {}), id: payload.sub, sub: payload.sub };
+    req.user.roles = Array.isArray(req.user.roles) ? req.user.roles : [];
+    req.org = { ...(req.org || {}), id: payload.org_id };
+    if (!req.orgId) req.orgId = payload.org_id;
+    return next();
+  } catch (err) {
+    req.log?.warn?.({ err }, 'qr-token-invalid');
+    return res.status(401).json({ error: 'unauthorized', message: 'Token QR inválido/expirado' });
+  }
+};
+
+w.get('/qr/token', requireWhatsAppSessionRole, requireWhatsAppSessionFeature, issueQrToken);
+w.get(
+  '/../../../test-whatsapp/qr/token',
+  requireWhatsAppSessionRole,
+  requireWhatsAppSessionFeature,
+  issueQrToken,
+);
+
+w.post('/qr/start', requireWhatsAppSessionRole, requireWhatsAppSessionFeature, (_req, res) =>
+  res.json({ ok: true }),
+);
+w.post('/qr/stop', requireWhatsAppSessionRole, requireWhatsAppSessionFeature, (_req, res) =>
+  res.json({ ok: true }),
+);
+w.get('/qr/stream', allowQrTokenForStream, requireWhatsAppSessionFeature, (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',

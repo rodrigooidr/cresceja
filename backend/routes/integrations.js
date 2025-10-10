@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { seal as defaultSeal, open as defaultOpen } from '../services/credStore.js';
@@ -7,6 +6,7 @@ import { HttpClientError, httpClient as defaultHttpClient } from '../utils/httpC
 import createIntegrationAuditor from '../services/audit.js';
 import { getOrgFeatures } from '../services/orgFeatures.js';
 import { requireAnyRole, requireOrgFeature } from '../middlewares/auth.js';
+import { signQrToken, verifyQrToken } from '../services/qrToken.js';
 import {
   startQrLoop,
   stopQrLoop,
@@ -14,32 +14,6 @@ import {
   getStatus as getSessionStatus,
   setConnected as markConnected,
 } from '../services/baileys.session.js';
-
-// Helpers p/ SSE token curto (60s)
-function signSseToken({ orgId, userId, ttlSec = 60 }) {
-  const secret = process.env.SSE_TOKEN_SECRET || 'dev';
-  const exp = Math.floor(Date.now() / 1000) + ttlSec;
-  const payload = JSON.stringify({ orgId, userId, exp });
-  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
-  return Buffer.from(`${payload}.${sig}`).toString('base64url');
-}
-
-function verifySseToken(tokenB64) {
-  const secret = process.env.SSE_TOKEN_SECRET || 'dev';
-  let raw = '';
-  try {
-    raw = Buffer.from(tokenB64, 'base64url').toString('utf8');
-  } catch {
-    return null;
-  }
-  const [payload, sig] = raw.split('.');
-  if (!payload || !sig) return null;
-  const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
-  if (expected !== sig) return null;
-  const obj = JSON.parse(payload);
-  if (!obj?.exp || obj.exp < Math.floor(Date.now() / 1000)) return null;
-  return obj; // { orgId, userId, exp }
-}
 
 const PROVIDERS = [
   'whatsapp_cloud',
@@ -927,33 +901,34 @@ export function createIntegrationsRouter({
     },
   );
 
-  router.post(
-    '/providers/whatsapp_session/qr/sse-token',
+  const issueQrToken = async (req, res) => {
+    const orgId = req.org?.id || req.orgId || req.headers['x-org-id'];
+    const userId = req.user?.id || req.user?.sub || 'unknown';
+    if (!orgId) {
+      return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
+    }
+    try {
+      const secret = process.env.JWT_SECRET;
+      const token = signQrToken({ userId, orgId, secret, ttl: 60 });
+      return res.json({ token, expires_in: 60 });
+    } catch (err) {
+      req.log?.error?.({ err }, 'whatsapp-session-qr-token-sign-failed');
+      return res.status(500).json({ error: 'token_sign_failed', message: err.message });
+    }
+  };
+
+  router.get(
+    '/providers/whatsapp_session/qr/token',
     requireWhatsAppSessionRole,
     requireWhatsAppSessionFeature,
-    async (req, res) => {
-      const orgId = req.org?.id || req.headers['x-org-id'];
-      const userId = req.user?.id || 'unknown';
-      if (!orgId) {
-        return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
-      }
+    issueQrToken,
+  );
 
-      try {
-        const cachedFeatures =
-          (req.orgFeatures && typeof req.orgFeatures === 'object' && req.orgFeatures) || null;
-        const features = cachedFeatures || (await getOrgFeatures(req.db, orgId));
-        req.orgFeatures = features;
-        if (!features.whatsapp_session_enabled) {
-          return res.status(403).json({
-            error: 'forbidden',
-            message: 'WhatsApp Sessão não habilitado para esta organização.',
-          });
-        }
-      } catch {}
-
-      const token = signSseToken({ orgId, userId, ttlSec: 60 });
-      return res.json({ ok: true, token, expires_in: 60 });
-    },
+  router.get(
+    '/../../../test-whatsapp/qr/token',
+    requireWhatsAppSessionRole,
+    requireWhatsAppSessionFeature,
+    issueQrToken,
   );
 
   router.post(
@@ -1020,9 +995,30 @@ export function createIntegrationsRouter({
     },
   );
 
+  const allowQrTokenForStream = (req, res, next) => {
+    const token = req.query?.access_token;
+    if (!token) {
+      return requireWhatsAppSessionRole(req, res, next);
+    }
+    try {
+      const payload = verifyQrToken(String(token), process.env.JWT_SECRET);
+      req.user = { ...(req.user || {}), id: payload.sub, sub: payload.sub };
+      const roles = Array.isArray(req.user.roles) ? req.user.roles : [];
+      req.user.roles = roles;
+      req.org = { ...(req.org || {}), id: payload.org_id };
+      if (!req.orgId) {
+        req.orgId = payload.org_id;
+      }
+      return next();
+    } catch (err) {
+      req.log?.warn?.({ err }, 'whatsapp-session-qr-token-invalid');
+      return res.status(401).json({ error: 'unauthorized', message: 'Token QR inválido/expirado' });
+    }
+  };
+
   router.get(
     '/providers/whatsapp_session/qr/stream',
-    requireWhatsAppSessionRole,
+    allowQrTokenForStream,
     requireWhatsAppSessionFeature,
     async (req, res) => {
       if (!req.db?.query) {
@@ -1030,16 +1026,6 @@ export function createIntegrationsRouter({
       }
 
       let orgId = req.org?.id || req.headers['x-org-id'];
-
-      if (!orgId && req.query?.access_token) {
-        const parsed = verifySseToken(String(req.query.access_token));
-        if (!parsed) {
-          return res
-            .status(401)
-            .json({ error: 'unauthorized', message: 'Token SSE inválido/expirado' });
-        }
-        orgId = parsed.orgId;
-      }
 
       if (!orgId) {
         return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
