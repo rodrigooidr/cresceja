@@ -1,22 +1,37 @@
-// ESM-compatible import (Node 20 + "type":"module")
-// Funciona tanto se o pacote exportar default quanto nomeado.
-import * as baileys from '@whiskeysockets/baileys';
+// ESM + compat: prioriza export nomeado, depois tenta em default.makeWASocket
+import * as BaileysNS from '@whiskeysockets/baileys';
 import path from 'node:path';
 import fs from 'node:fs';
 import qrcode from 'qrcode';
 
 const makeWASocket =
-  (baileys?.default ?? baileys?.makeWASocket) ??
-  (() => { throw new Error('Baileys: makeWASocket export not found'); });
+  BaileysNS.makeWASocket ?? BaileysNS.default?.makeWASocket;
 
-const {
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion,
-  DisconnectReason,
-  makeInMemoryStore,
-  Browsers,
-  jidNormalizedUser,
-} = baileys;
+const useMultiFileAuthState =
+  BaileysNS.useMultiFileAuthState ?? BaileysNS.default?.useMultiFileAuthState;
+
+const fetchLatestBaileysVersion =
+  BaileysNS.fetchLatestBaileysVersion ?? BaileysNS.default?.fetchLatestBaileysVersion;
+
+const DisconnectReason =
+  BaileysNS.DisconnectReason ?? BaileysNS.default?.DisconnectReason;
+
+const makeInMemoryStore =
+  BaileysNS.makeInMemoryStore ?? BaileysNS.default?.makeInMemoryStore;
+
+const Browsers =
+  BaileysNS.Browsers ?? BaileysNS.default?.Browsers;
+
+if (typeof makeWASocket !== 'function') {
+  const keys = Object.keys(BaileysNS).join(', ');
+  const dKeys = BaileysNS.default ? Object.keys(BaileysNS.default).join(', ') : '(no default)';
+  throw new Error(`Baileys makeWASocket not found. exports=[${keys}] default=[${dKeys}]`);
+}
+
+const jidNormalizedUser =
+  BaileysNS.jidNormalizedUser ??
+  BaileysNS.default?.jidNormalizedUser ??
+  ((jid) => jid);
 
 let sock = null;
 let ioRef = null;
