@@ -6,6 +6,7 @@ import { HttpClientError, httpClient as defaultHttpClient } from '../utils/httpC
 import createIntegrationAuditor from '../services/audit.js';
 import { getOrgFeatures } from '../services/orgFeatures.js';
 import { requireAnyRole, requireOrgFeature } from '../middlewares/auth.js';
+import { attachOrgFromHeader } from '../middlewares/orgContext.js';
 import { signQrToken, verifyQrToken } from '../services/qrToken.js';
 import {
   startQrLoop,
@@ -556,7 +557,10 @@ export function createIntegrationsRouter({
 
   const guardWhatsAppProvider = (middleware) => (req, res, next) => {
     if (req.params?.provider !== 'whatsapp_session') return next();
-    return runMiddleware(middleware, req, res, next);
+    return attachOrgFromHeader(req, res, (err) => {
+      if (err) return next(err);
+      return runMiddleware(middleware, req, res, next);
+    });
   };
 
   const ensureWhatsAppProviderRole = guardWhatsAppProvider(requireWhatsAppSessionRole);
@@ -919,6 +923,7 @@ export function createIntegrationsRouter({
 
   router.get(
     '/providers/whatsapp_session/qr/token',
+    attachOrgFromHeader,
     requireWhatsAppSessionRole,
     requireWhatsAppSessionFeature,
     issueQrToken,
@@ -926,6 +931,7 @@ export function createIntegrationsRouter({
 
   router.get(
     '/../../../test-whatsapp/qr/token',
+    attachOrgFromHeader,
     requireWhatsAppSessionRole,
     requireWhatsAppSessionFeature,
     issueQrToken,
@@ -933,6 +939,7 @@ export function createIntegrationsRouter({
 
   router.post(
     '/providers/whatsapp_session/qr/start',
+    attachOrgFromHeader,
     requireWhatsAppSessionRole,
     requireWhatsAppSessionFeature,
     async (req, res) => {
@@ -955,6 +962,7 @@ export function createIntegrationsRouter({
 
   router.post(
     '/providers/whatsapp_session/qr/stop',
+    attachOrgFromHeader,
     requireWhatsAppSessionRole,
     async (req, res) => {
       if (!req.db?.query) {
@@ -976,6 +984,7 @@ export function createIntegrationsRouter({
 
   router.get(
     '/providers/whatsapp_session/status',
+    attachOrgFromHeader,
     requireWhatsAppSessionRole,
     async (req, res) => {
       if (!req.db?.query) {
@@ -995,75 +1004,105 @@ export function createIntegrationsRouter({
     },
   );
 
-  const allowQrTokenForStream = (req, res, next) => {
-    const token = req.query?.access_token;
-    if (!token) {
-      return requireWhatsAppSessionRole(req, res, next);
-    }
-    try {
-      const payload = verifyQrToken(String(token), process.env.JWT_SECRET);
-      req.user = { ...(req.user || {}), id: payload.sub, sub: payload.sub };
-      const roles = Array.isArray(req.user.roles) ? req.user.roles : [];
-      req.user.roles = roles;
-      req.org = { ...(req.org || {}), id: payload.org_id };
-      if (!req.orgId) {
-        req.orgId = payload.org_id;
-      }
-      return next();
-    } catch (err) {
-      req.log?.warn?.({ err }, 'whatsapp-session-qr-token-invalid');
-      return res.status(401).json({ error: 'unauthorized', message: 'Token QR inválido/expirado' });
-    }
-  };
-
   router.get(
     '/providers/whatsapp_session/qr/stream',
-    allowQrTokenForStream,
-    requireWhatsAppSessionFeature,
-    async (req, res) => {
-      if (!req.db?.query) {
-        return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
-      }
-
-      let orgId = req.org?.id || req.headers['x-org-id'];
-
-      if (!orgId) {
-        return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
-      }
-
-      let features;
-      try {
-        features =
-          (req.orgFeatures && typeof req.orgFeatures === 'object' && req.orgFeatures) ||
-          (await getOrgFeatures(req.db, orgId));
-        req.orgFeatures = features;
-      } catch (err) {
-        return res.status(500).json({ error: 'features_unavailable', message: err.message });
-      }
-      if (!features.whatsapp_session_enabled) {
-        return res.status(403).json({
-          error: 'forbidden',
-          message: 'WhatsApp Sessão não habilitado para esta organização.',
+    attachOrgFromHeader,
+    async (req, res, next) => {
+      const execMiddleware = (middleware) =>
+        new Promise((resolve, reject) => {
+          let finished = false;
+          const done = (err) => {
+            if (finished) return;
+            finished = true;
+            if (err) reject(err);
+            else resolve();
+          };
+          try {
+            const maybe = middleware(req, res, done);
+            if (res.headersSent || res.writableEnded) {
+              finished = true;
+              resolve();
+              return;
+            }
+            if (maybe && typeof maybe.then === 'function') {
+              maybe.then(
+                () => {
+                  if (!finished) {
+                    finished = true;
+                    resolve();
+                  }
+                },
+                (err) => {
+                  if (!finished) {
+                    finished = true;
+                    reject(err);
+                  }
+                },
+              );
+            }
+          } catch (err) {
+            if (!finished) {
+              finished = true;
+              reject(err);
+            }
+          }
         });
+
+      try {
+        const { access_token } = req.query || {};
+
+        if (access_token) {
+          try {
+            const payload = verifyQrToken(String(access_token), process.env.JWT_SECRET);
+            req.user = { ...(req.user || {}), id: payload.sub, sub: payload.sub };
+            const roles = Array.isArray(req.user.roles) ? req.user.roles : [];
+            req.user.roles = roles;
+            req.org = { ...(req.org || {}), id: payload.org_id };
+            if (!req.orgId) req.orgId = payload.org_id;
+          } catch (err) {
+            req.log?.warn?.({ err }, 'whatsapp-session-qr-token-invalid');
+            return res
+              .status(401)
+              .json({ error: 'unauthorized', message: 'Token QR inválido/expirado' });
+          }
+        } else {
+          await execMiddleware(requireWhatsAppSessionRole);
+          if (res.headersSent || res.writableEnded) return;
+        }
+
+        await execMiddleware(requireWhatsAppSessionFeature);
+        if (res.headersSent || res.writableEnded) return;
+
+        if (!req.db?.query) {
+          return res.status(500).json({ error: 'db_not_configured', message: 'db_not_configured' });
+        }
+
+        const orgId = req.org?.id || req.orgId || req.headers['x-org-id'];
+        if (!orgId) {
+          return res.status(400).json({ error: 'invalid_org', message: 'Org ausente' });
+        }
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+
+        const unsubscribe = subscribe(orgId, res);
+        req.on('close', () => {
+          unsubscribe();
+          try {
+            res.end();
+          } catch {}
+        });
+      } catch (err) {
+        next(err);
       }
-
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      res.flushHeaders?.();
-
-      const unsubscribe = subscribe(orgId, res);
-      req.on('close', () => {
-        unsubscribe();
-        try {
-          res.end();
-        } catch {}
-      });
     },
   );
 
   router.post(
     '/providers/whatsapp_session/mark-connected',
+    attachOrgFromHeader,
     requireWhatsAppSessionRole,
     async (req, res) => {
       if (!req.db?.query) {

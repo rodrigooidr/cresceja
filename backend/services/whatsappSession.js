@@ -4,22 +4,22 @@ import path from 'node:path';
 import fs from 'node:fs';
 import qrcode from 'qrcode';
 
-const makeWASocket =
+export const makeWASocket =
   BaileysNS.makeWASocket ?? BaileysNS.default?.makeWASocket;
 
-const useMultiFileAuthState =
+export const useMultiFileAuthState =
   BaileysNS.useMultiFileAuthState ?? BaileysNS.default?.useMultiFileAuthState;
 
-const fetchLatestBaileysVersion =
+export const fetchLatestBaileysVersion =
   BaileysNS.fetchLatestBaileysVersion ?? BaileysNS.default?.fetchLatestBaileysVersion;
 
-const DisconnectReason =
+export const DisconnectReason =
   BaileysNS.DisconnectReason ?? BaileysNS.default?.DisconnectReason;
 
-const makeInMemoryStore =
+export const makeInMemoryStore =
   BaileysNS.makeInMemoryStore ?? BaileysNS.default?.makeInMemoryStore;
 
-const Browsers =
+export const Browsers =
   BaileysNS.Browsers ?? BaileysNS.default?.Browsers;
 
 if (typeof makeWASocket !== 'function') {
