@@ -115,14 +115,14 @@ export async function statusBaileys() {
 export async function getBaileysSseToken() {
   // além do token, informamos qual streamPath deve ser usado
   try {
-    const res = await inboxApi.get(`/integrations/providers/whatsapp_session/qr/token`);
+    const res = await inboxApi.get(`/api/integrations/providers/whatsapp_session/qr/token`);
     const data = unwrap(res) || {};
-    return { token: data?.token, streamPath: `/integrations/providers/whatsapp_session/qr/stream` };
+    return { token: data?.token, streamPath: `/api/integrations/providers/whatsapp_session/qr/stream` };
   } catch (err) {
     if ((err?.response?.status || err?.status) === 404) {
-      const res2 = await inboxApi.get(`/test-whatsapp/qr/token`);
+      const res2 = await inboxApi.get(`/api/test-whatsapp/qr/token`);
       const data2 = unwrap(res2) || {};
-      return { token: data2?.token, streamPath: `/test-whatsapp/qr/stream` };
+      return { token: data2?.token, streamPath: `/api/test-whatsapp/qr/stream` };
     }
     throw err;
   }
