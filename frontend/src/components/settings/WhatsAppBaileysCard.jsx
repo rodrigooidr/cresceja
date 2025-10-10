@@ -21,11 +21,10 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function buildSseUrl(path = '/api/integrations/providers/whatsapp_session/qr/stream', token, orgId) {
+function buildSseUrl(path = '/api/integrations/providers/whatsapp_session/qr/stream', token) {
   const base = (typeof API_BASE_URL === 'string' && API_BASE_URL) || '/api';
   const abs = base.startsWith('http') ? new URL(path, base) : new URL(path, window.location.origin);
   if (token) abs.searchParams.set('access_token', token);
-  if (orgId) abs.searchParams.set('orgId', orgId);
   return abs.toString();
 }
 
@@ -62,8 +61,7 @@ export function QRModal({ open, onClose, onConnected }) {
 
       const url = buildSseUrl(
         streamPath || '/api/integrations/providers/whatsapp_session/qr/stream',
-        token,
-        org?.id
+        token
       );
       const es = new EventSource(url, { withCredentials: true });
       esRef.current = es;
@@ -114,7 +112,7 @@ export function QRModal({ open, onClose, onConnected }) {
     } finally {
       setLoading(false);
     }
-  }, [handleClose, onConnected, org?.id, toast]);
+  }, [handleClose, onConnected, toast]);
 
   useEffect(() => {
     if (!open) return undefined;
