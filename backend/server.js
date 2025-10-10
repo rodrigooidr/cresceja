@@ -55,6 +55,7 @@ import appointmentsAvailabilityRouter from './routes/appointments.availability.j
 import appointmentsCoreRouter from './routes/appointments.core.js';
 import debugRouter from './routes/debug.js';
 import debugWhoamiRouter from './routes/_debug.js';
+import { requireAuth as authMiddleware } from './middlewares/auth.js';
 import adminApp from './app.js';
 import calendarCompatRouter from './routes/calendar.compat.js';
 import onboardingRouter from './routes/onboarding.js';
@@ -130,7 +131,9 @@ app.use('/api', auth);
 // Contexto de organização (lê X-Org-Id / token e injeta em req.org)
 app.use('/api', orgContext);
 
-app.use('/api/_debug', auth, debugWhoamiRouter);
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/_debug', authMiddleware, debugWhoamiRouter);
+}
 
 // Endpoints de /api/orgs que não precisam de withOrg (ex: current, list, select)
 app.use('/api/orgs', orgsRouter);

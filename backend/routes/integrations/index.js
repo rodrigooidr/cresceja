@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authRequired, orgScope } from '../../middleware/auth.js';
 import { requireAnyRole, requireOrgFeature } from '../../middlewares/auth.js';
+import { diagFeatureLog } from '../../middlewares/diagFeatureLog.js';
 import whatsappSession from '../integrations/whatsapp.session.js';
 import whatsappCloud from '../integrations/whatsapp.cloud.js';
 import metaOauthRouter from '../integrations/meta.oauth.js';
@@ -84,10 +85,17 @@ const allowQrTokenForStream = (req, res, next) => {
   }
 };
 
-w.get('/qr/token', requireWhatsAppSessionRole, requireWhatsAppSessionFeature, issueQrToken);
+w.get(
+  '/qr/token',
+  requireWhatsAppSessionRole,
+  diagFeatureLog('whatsapp_session_enabled'),
+  requireWhatsAppSessionFeature,
+  issueQrToken,
+);
 w.get(
   '/../../../test-whatsapp/qr/token',
   requireWhatsAppSessionRole,
+  diagFeatureLog('whatsapp_session_enabled'),
   requireWhatsAppSessionFeature,
   issueQrToken,
 );
@@ -98,7 +106,12 @@ w.post('/qr/start', requireWhatsAppSessionRole, requireWhatsAppSessionFeature, (
 w.post('/qr/stop', requireWhatsAppSessionRole, requireWhatsAppSessionFeature, (_req, res) =>
   res.json({ ok: true }),
 );
-w.get('/qr/stream', allowQrTokenForStream, requireWhatsAppSessionFeature, (req, res) => {
+w.get(
+  '/qr/stream',
+  allowQrTokenForStream,
+  diagFeatureLog('whatsapp_session_enabled'),
+  requireWhatsAppSessionFeature,
+  (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -109,7 +122,8 @@ w.get('/qr/stream', allowQrTokenForStream, requireWhatsAppSessionFeature, (req, 
     res.write(`event: ping\ndata: ${Date.now()}\n\n`);
   }, 15000);
   req.on('close', () => clearInterval(ping));
-});
+  },
+);
 
 r.use('/providers/whatsapp_session', w);
 r.use('/providers/whatsapp-session', w);
