@@ -52,8 +52,7 @@ export function initIO(httpServer, opts = {}) {
   });
 
   io.on('connection', (socket) => {
-    // Diagnóstico opcional
-    // console.log('🔌 connected', socket.id, 'user=', socket.user?.id);
+    console.log('[IO] connection id=%s ua=%s', socket.id, socket.request?.headers?.['user-agent']);
 
     // ====== Convenções de sala ======
     socket.on('inbox:join', (convId) => {
@@ -90,7 +89,7 @@ export function initIO(httpServer, opts = {}) {
     });
 
     socket.on('disconnect', (reason) => {
-      // console.log('❌ disconnected', socket.id, reason);
+      console.log('[IO] disconnect id=%s reason=%s', socket.id, reason);
     });
   });
 
