@@ -69,12 +69,15 @@ export async function startBaileysQrStream(opts: StartOpts) {
       const { connection, lastDisconnect, qr } = u;
 
       if (qr) {
+        const value = typeof qr === "string" ? qr : String(qr);
+        logger.info({ class: "WA", len: value.length }, "QR_ISSUED");
         // Emite SEMPRE que o Baileys renovar o QR
         onQr(qr);
         onStatus?.("qr_issued");
       }
 
       if (connection === "open") {
+        logger.info({ class: "WA" }, "OPEN");
         onStatus?.("connected");
         onConnected?.();
       }
@@ -86,6 +89,7 @@ export async function startBaileysQrStream(opts: StartOpts) {
         // - "QR refs attempts ended": precisamos reiniciar para gerar novo QR
         const msg = (lastDisconnect?.error as Error)?.message ?? String(lastDisconnect?.error);
 
+        logger.info({ class: "WA", msg }, "CLOSE");
         // Regerar sessão/QR sempre que cair, exceto se mandarmos parar
         if (!stopped) {
           logger.info({ class: "baileys", reason, msg }, "connection closed, restarting");
@@ -99,6 +103,7 @@ export async function startBaileysQrStream(opts: StartOpts) {
     // Ao ouvir um erro desses, reiniciamos para emitir novo QR.
     sock.ev.on("connection.error", (err) => {
       const e = err as Error;
+      logger.info({ class: "WA", msg: e?.message }, "ERROR");
       if (e?.message?.includes("QR refs attempts ended")) {
         onStatus?.("qr_attempts_ended_restart");
         return restart();

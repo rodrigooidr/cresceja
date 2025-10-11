@@ -1,5 +1,6 @@
 // routes/integrations/index.js
 import { Router } from "express";
+import pino from "pino";
 import {
   authRequired,
   orgScope,
@@ -18,6 +19,7 @@ import { setConnected as markConnected } from "../../services/baileys.session.js
 import { startBaileysQrStream } from "../../services/whatsapp/baileysSession.js";
 
 const r = Router();
+const log = pino({ level: process.env.WA_LOG_LEVEL ?? "info" });
 
 // ========= Pool e injeta em req.db =========
 const pool = new Pool({
@@ -56,13 +58,15 @@ r.get(
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
+    const sessionId = String(req.query?.sessionId ?? "default");
+    const cid = Math.random().toString(36).slice(2, 8);
+    LOG_QR(`OPEN cid=${cid} org=${orgId} session=${sessionId}`);
+
     let closed = false;
     let stop;
     let pingTimer;
 
     const cleanup = () => {
-      if (closed) return;
-      closed = true;
       if (pingTimer) clearInterval(pingTimer);
       try {
         const maybe = stop?.();
@@ -77,44 +81,72 @@ r.get(
 
     const writeEvent = (event, payload) => {
       if (closed) return;
+      if (
+        process.env.LOG_QR_STREAM === "1" &&
+        event &&
+        !["qr", "status", "connected", "error"].includes(event)
+      ) {
+        LOG_QR(`EMIT ${event} cid=${cid}`);
+      }
       try {
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(payload ?? {})}\n\n`);
       } catch {
-        cleanup();
+        handleClose();
       }
     };
 
     try {
       stop = await startBaileysQrStream({
         orgId: String(orgId),
-        sessionId: String(req.query?.sessionId ?? "default"),
+        sessionId,
         onQr: (qr) => {
           if (!qr) return;
           const value = typeof qr === "string" ? qr : String(qr);
+          if (process.env.LOG_QR_STREAM === "1") {
+            LOG_QR(`EMIT qr len=${value.length} cid=${cid}`);
+          }
           writeEvent("qr", { qr: value });
         },
         onStatus: (status) => {
           if (!status) return;
+          if (process.env.LOG_QR_STREAM === "1") {
+            LOG_QR(`EMIT status=${status} cid=${cid}`);
+          }
           writeEvent("status", { status });
         },
         onError: (err) => {
           const message = err?.message || String(err || "unknown_error");
+          LOG_QR(`EMIT error="${message}" cid=${cid}`);
           writeEvent("error", { message });
         },
         onConnected: () => {
+          if (process.env.LOG_QR_STREAM === "1") {
+            LOG_QR(`EMIT connected cid=${cid}`);
+          }
           writeEvent("connected", {});
         },
       });
     } catch (err) {
       writeEvent("error", { message: err?.message || "failed_to_start_qr_stream" });
-      cleanup();
+      handleClose();
       return;
     }
 
     pingTimer = setInterval(() => writeEvent("ping", { ts: Date.now() }), 15000);
 
-    req.on("close", cleanup);
+    req.on("close", handleClose);
+
+    function handleClose() {
+      if (closed) return;
+      closed = true;
+      LOG_QR(`CLOSE cid=${cid}`);
+      cleanup();
+    }
+
+    function LOG_QR(msg) {
+      log.info({ class: "SSE[QR]" }, msg);
+    }
   }
 );
 

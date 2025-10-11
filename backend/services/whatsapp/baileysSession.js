@@ -78,6 +78,8 @@ export async function startBaileysQrStream(opts) {
       const { connection, lastDisconnect, qr } = update || {};
 
       if (qr) {
+        const value = typeof qr === "string" ? qr : String(qr);
+        logger.info({ class: "WA", len: value.length }, "QR_ISSUED");
         try {
           onQr?.(qr);
           onStatus?.("qr_issued");
@@ -87,6 +89,7 @@ export async function startBaileysQrStream(opts) {
       }
 
       if (connection === "open") {
+        logger.info({ class: "WA" }, "OPEN");
         onStatus?.("connected");
         try {
           onConnected?.();
@@ -100,6 +103,7 @@ export async function startBaileysQrStream(opts) {
         const reason = lastError?.output?.statusCode || lastError?.statusCode;
         const msg = lastError instanceof Error ? lastError.message : String(lastError ?? "");
 
+        logger.info({ class: "WA", msg }, "CLOSE");
         if (!stopped) {
           logger.info({ class: "baileys", reason, msg }, "connection closed, restarting");
           onStatus?.("restarting_after_close");
@@ -110,6 +114,7 @@ export async function startBaileysQrStream(opts) {
 
     sock.ev.on("connection.error", (err) => {
       const error = err instanceof Error ? err : new Error(String(err));
+      logger.info({ class: "WA", msg: error?.message }, "ERROR");
       if (error.message?.includes?.("QR refs attempts ended")) {
         onStatus?.("qr_attempts_ended_restart");
         return restart();
