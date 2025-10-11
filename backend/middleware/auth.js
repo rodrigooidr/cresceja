@@ -16,6 +16,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const DEV_VERIFY_OPTIONS = isProd ? undefined : { ignoreExpiration: true };
 const DEV_BYPASS_TOKENS = new Set(['dev-change-me', 'dev', 'local']);
 const allowDevTokens = String(process.env.ALLOW_DEV_TOKENS || '') === '1';
+const CLOCK_SKEW_SECONDS = 60;
 
 /* ---------- utils ---------- */
 function parseBearer(authz) {
@@ -26,7 +27,40 @@ function parseBearer(authz) {
   return match ? match[1] : null;
 }
 
+function extractToken(req) {
+  const headerAuth =
+    (typeof req.get === 'function' ? req.get('authorization') : undefined) ||
+    req.headers?.authorization ||
+    req.headers?.Authorization;
+  if (typeof headerAuth === 'string' && headerAuth.toLowerCase().startsWith('bearer ')) {
+    const candidate = headerAuth.slice(7).trim();
+    if (candidate) return candidate;
+  }
+
+  const q = req.query || {};
+  const fromQuery = q.access_token || q.token || q.accessToken || null;
+  if (typeof fromQuery === 'string' && fromQuery.trim()) {
+    return fromQuery.trim();
+  }
+
+  const cookieCandidates = [
+    req.cookies?.access_token,
+    req.cookies?.accessToken,
+    req.cookies?.authToken,
+    req.cookies?.token,
+  ];
+  for (const candidate of cookieCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
 function collectToken(req) {
+  const direct = extractToken(req);
+  if (direct) return direct;
+
   const bearer = parseBearer(req.headers?.authorization ?? req.headers?.Authorization);
   const q = req.query || {};
   const fromQuery = q.access_token || q.token || null;
@@ -171,6 +205,108 @@ export function authOptional(req, _res, next) {
       }
     }
   } catch {}
+  return next();
+}
+
+export function authenticate(req, res, next) {
+  const token = extractToken(req);
+  if (!token) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  if (applyDevBypassUser(req, token)) {
+    req.auth = {
+      sub: req.user?.sub || req.user?.id || 'dev-user',
+      org_id: req.orgFromToken || undefined,
+      role: req.user?.role || req.user?.roles || 'SuperAdmin',
+      scope: ['whatsapp_qr'],
+    };
+    return next();
+  }
+
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const payload = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
+
+    if (payload?.exp && now > payload.exp + CLOCK_SKEW_SECONDS) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    if (payload?.iat && now < payload.iat - CLOCK_SKEW_SECONDS) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    req.token = token;
+    req.auth = payload;
+
+    const user = hydrateUserFromPayload(payload);
+    if (user) {
+      applyUser(req, user);
+      if (user.org_id && !req.org) req.org = { id: user.org_id };
+    }
+    if (!req.orgFromToken && payload?.org_id) {
+      req.orgFromToken = String(payload.org_id);
+    }
+    if (!req.orgId && payload?.org_id) {
+      req.orgId = String(payload.org_id);
+    }
+
+    return next();
+  } catch (err) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+}
+
+function hasScope(payload, needed) {
+  if (!payload) return false;
+  const raw = Array.isArray(payload.scope)
+    ? payload.scope
+    : typeof payload.scope === 'string'
+    ? payload.scope.split(/[\s,]+/).filter(Boolean)
+    : [];
+  return raw.includes(needed);
+}
+
+function hasRole(payload, roles) {
+  if (!payload) return false;
+  const direct = Array.isArray(payload.role)
+    ? payload.role
+    : payload.role
+    ? [payload.role]
+    : [];
+  const many = Array.isArray(payload.roles) ? payload.roles : [];
+  const userRoles = Array.from(new Set([...direct, ...many].map((role) => String(role))));
+  return userRoles.some((role) => roles.includes(role));
+}
+
+export function requireWhatsAppQrPermission(req, res, next) {
+  const payload = req.auth;
+  if (!payload) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  if (!hasScope(payload, 'whatsapp_qr')) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  if (!hasRole(payload, ['SuperAdmin', 'OrgOwner'])) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  const orgFromReq =
+    (typeof req.query?.orgId === 'string' && req.query.orgId) ||
+    (typeof req.query?.org_id === 'string' && req.query.org_id) ||
+    req.headers?.['x-org-id'];
+  if (orgFromReq && payload.org_id && String(orgFromReq) !== String(payload.org_id)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+
+  if (payload.org_id && !req.orgId) {
+    req.orgId = String(payload.org_id);
+  }
+  if (payload.org_id && !req.org) {
+    req.org = { id: String(payload.org_id) };
+  }
+
   return next();
 }
 
