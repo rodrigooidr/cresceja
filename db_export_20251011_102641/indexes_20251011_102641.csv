@@ -11,8 +11,15 @@ ai_usage,ai_usage_pkey,CREATE UNIQUE INDEX ai_usage_pkey ON public.ai_usage USIN
 ai_usage,idx_ai_usage_org_id,CREATE INDEX idx_ai_usage_org_id ON public.ai_usage USING btree (org_id)
 ai_usage,idx_ai_usage_org_meter,"CREATE INDEX idx_ai_usage_org_meter ON public.ai_usage USING btree (org_id, meter_code, created_at)"
 ai_usage_logs,ai_usage_logs_pkey,CREATE UNIQUE INDEX ai_usage_logs_pkey ON public.ai_usage_logs USING btree (id)
+appointment_messages,appointment_messages_pkey,CREATE UNIQUE INDEX appointment_messages_pkey ON public.appointment_messages USING btree (id)
+appointment_types,appointment_types_pkey,CREATE UNIQUE INDEX appointment_types_pkey ON public.appointment_types USING btree (id)
+appointments,appointments_pkey,CREATE UNIQUE INDEX appointments_pkey ON public.appointments USING btree (id)
+appointments,idx_appt_contact_start,"CREATE INDEX idx_appt_contact_start ON public.appointments USING btree (contact_id, start_at)"
+appointments,idx_appt_google_event,CREATE INDEX idx_appt_google_event ON public.appointments USING btree (google_event_id)
+appointments,idx_appt_org_prof_start,"CREATE INDEX idx_appt_org_prof_start ON public.appointments USING btree (org_id, professional_id, start_at)"
 assets,assets_pkey,CREATE UNIQUE INDEX assets_pkey ON public.assets USING btree (id)
 audit_logs,audit_logs_pkey,CREATE UNIQUE INDEX audit_logs_pkey ON public.audit_logs USING btree (id)
+calendar_accounts,calendar_accounts_pkey,CREATE UNIQUE INDEX calendar_accounts_pkey ON public.calendar_accounts USING btree (id)
 calendar_events,calendar_events_pkey,CREATE UNIQUE INDEX calendar_events_pkey ON public.calendar_events USING btree (id)
 calendar_events,idx_calendar_events_org_id,CREATE INDEX idx_calendar_events_org_id ON public.calendar_events USING btree (org_id)
 calendar_members,calendar_members_pkey,CREATE UNIQUE INDEX calendar_members_pkey ON public.calendar_members USING btree (id)
@@ -82,7 +89,9 @@ facebook_pages,facebook_pages_org_id_page_id_key,"CREATE UNIQUE INDEX facebook_p
 facebook_pages,facebook_pages_pkey,CREATE UNIQUE INDEX facebook_pages_pkey ON public.facebook_pages USING btree (id)
 facebook_pages,idx_facebook_pages_org_id,CREATE INDEX idx_facebook_pages_org_id ON public.facebook_pages USING btree (org_id)
 facebook_publish_jobs,facebook_publish_jobs_pkey,CREATE UNIQUE INDEX facebook_publish_jobs_pkey ON public.facebook_publish_jobs USING btree (id)
+facebook_publish_jobs,idx_facebook_publish_jobs_created_at,CREATE INDEX idx_facebook_publish_jobs_created_at ON public.facebook_publish_jobs USING btree (created_at)
 facebook_publish_jobs,idx_facebook_publish_jobs_org_id,CREATE INDEX idx_facebook_publish_jobs_org_id ON public.facebook_publish_jobs USING btree (org_id)
+facebook_publish_jobs,idx_facebook_publish_jobs_org_status_created_at,"CREATE INDEX idx_facebook_publish_jobs_org_status_created_at ON public.facebook_publish_jobs USING btree (org_id, status, created_at DESC)"
 facebook_publish_jobs,idx_facebook_publish_jobs_page_id,CREATE INDEX idx_facebook_publish_jobs_page_id ON public.facebook_publish_jobs USING btree (page_id)
 facebook_publish_jobs,idx_fb_jobs_org_sched,"CREATE INDEX idx_fb_jobs_org_sched ON public.facebook_publish_jobs USING btree (org_id, scheduled_at)"
 facebook_publish_jobs,idx_fb_jobs_status,CREATE INDEX idx_fb_jobs_status ON public.facebook_publish_jobs USING btree (status)
@@ -99,6 +108,8 @@ inbox_audit_events,idx_inbox_audit_events_actor_id,CREATE INDEX idx_inbox_audit_
 inbox_audit_events,idx_inbox_audit_events_org_id,CREATE INDEX idx_inbox_audit_events_org_id ON public.inbox_audit_events USING btree (org_id)
 inbox_audit_events,inbox_audit_events_pkey,CREATE UNIQUE INDEX inbox_audit_events_pkey ON public.inbox_audit_events USING btree (id)
 inbox_idempotency,inbox_idempotency_pkey,CREATE UNIQUE INDEX inbox_idempotency_pkey ON public.inbox_idempotency USING btree (id)
+instagram_accounts,idx_instagram_accounts_active,"CREATE INDEX idx_instagram_accounts_active ON public.instagram_accounts USING btree (org_id, is_active)"
+instagram_accounts,idx_instagram_accounts_org_active,CREATE INDEX idx_instagram_accounts_org_active ON public.instagram_accounts USING btree (org_id) WHERE is_active
 instagram_accounts,idx_instagram_accounts_org_id,CREATE INDEX idx_instagram_accounts_org_id ON public.instagram_accounts USING btree (org_id)
 instagram_accounts,instagram_accounts_org_id_ig_user_id_key,"CREATE UNIQUE INDEX instagram_accounts_org_id_ig_user_id_key ON public.instagram_accounts USING btree (org_id, ig_user_id)"
 instagram_accounts,instagram_accounts_pkey,CREATE UNIQUE INDEX instagram_accounts_pkey ON public.instagram_accounts USING btree (id)
@@ -108,7 +119,9 @@ instagram_oauth_tokens,instagram_oauth_tokens_pkey,CREATE UNIQUE INDEX instagram
 instagram_publish_jobs,idx_instagram_jobs_org,CREATE INDEX idx_instagram_jobs_org ON public.instagram_publish_jobs USING btree (org_id)
 instagram_publish_jobs,idx_instagram_jobs_status,CREATE INDEX idx_instagram_jobs_status ON public.instagram_publish_jobs USING btree (status)
 instagram_publish_jobs,idx_instagram_publish_jobs_account_id,CREATE INDEX idx_instagram_publish_jobs_account_id ON public.instagram_publish_jobs USING btree (account_id)
+instagram_publish_jobs,idx_instagram_publish_jobs_created_at,CREATE INDEX idx_instagram_publish_jobs_created_at ON public.instagram_publish_jobs USING btree (created_at)
 instagram_publish_jobs,idx_instagram_publish_jobs_org_id,CREATE INDEX idx_instagram_publish_jobs_org_id ON public.instagram_publish_jobs USING btree (org_id)
+instagram_publish_jobs,idx_instagram_publish_jobs_org_status_created_at,"CREATE INDEX idx_instagram_publish_jobs_org_status_created_at ON public.instagram_publish_jobs USING btree (org_id, status, created_at DESC)"
 instagram_publish_jobs,instagram_publish_jobs_pkey,CREATE UNIQUE INDEX instagram_publish_jobs_pkey ON public.instagram_publish_jobs USING btree (id)
 integration_events,idx_integration_events_org_id,CREATE INDEX idx_integration_events_org_id ON public.integration_events USING btree (org_id)
 integration_events,integration_events_pkey,CREATE UNIQUE INDEX integration_events_pkey ON public.integration_events USING btree (id)
@@ -158,6 +171,7 @@ org_credits,org_credits_pkey,CREATE UNIQUE INDEX org_credits_pkey ON public.org_
 org_credits_usage,org_credits_usage_pkey,CREATE UNIQUE INDEX org_credits_usage_pkey ON public.org_credits_usage USING btree (id)
 org_features,idx_org_features_gin,CREATE INDEX idx_org_features_gin ON public.org_features USING gin (features)
 org_features,idx_org_features_org_id,CREATE INDEX idx_org_features_org_id ON public.org_features USING btree (org_id)
+org_features,org_features_org_id_key,CREATE UNIQUE INDEX org_features_org_id_key ON public.org_features USING btree (org_id)
 org_features,org_features_pkey,CREATE UNIQUE INDEX org_features_pkey ON public.org_features USING btree (id)
 org_integration_logs,idx_org_integration_logs_org_id,CREATE INDEX idx_org_integration_logs_org_id ON public.org_integration_logs USING btree (org_id)
 org_integration_logs,org_integration_logs_pkey,CREATE UNIQUE INDEX org_integration_logs_pkey ON public.org_integration_logs USING btree (id)
@@ -205,6 +219,7 @@ post_approvals,idx_post_approvals_approver_id,CREATE INDEX idx_post_approvals_ap
 post_approvals,idx_post_approvals_post_id,CREATE INDEX idx_post_approvals_post_id ON public.post_approvals USING btree (post_id)
 post_approvals,post_approvals_pkey,CREATE UNIQUE INDEX post_approvals_pkey ON public.post_approvals USING btree (id)
 posts,posts_pkey,CREATE UNIQUE INDEX posts_pkey ON public.posts USING btree (id)
+professionals,professionals_pkey,CREATE UNIQUE INDEX professionals_pkey ON public.professionals USING btree (id)
 purchases,idx_purchases_org_created,"CREATE INDEX idx_purchases_org_created ON public.purchases USING btree (org_id, created_at DESC)"
 purchases,purchases_pkey,CREATE UNIQUE INDEX purchases_pkey ON public.purchases USING btree (id)
 quick_replies,idx_quick_replies_company_id,CREATE INDEX idx_quick_replies_company_id ON public.quick_replies USING btree (company_id)

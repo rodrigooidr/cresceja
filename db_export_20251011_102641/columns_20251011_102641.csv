@@ -41,8 +41,59 @@ ai_usage,category,text,YES,
 ai_usage,user_id,uuid,YES,
 ai_usage,qty_num,numeric,YES,
 ai_usage_logs,id,uuid,NO,gen_random_uuid()
+appointment_messages,id,uuid,NO,
+appointment_messages,appointment_id,uuid,NO,
+appointment_messages,direction,text,NO,
+appointment_messages,message_text,text,YES,
+appointment_messages,channel_message_id,text,YES,
+appointment_messages,created_at,timestamp with time zone,NO,now()
+appointment_types,id,uuid,NO,
+appointment_types,org_id,uuid,NO,
+appointment_types,name,text,NO,
+appointment_types,duration_min,integer,NO,
+appointment_types,buffer_before_min,integer,NO,0
+appointment_types,buffer_after_min,integer,NO,0
+appointment_types,location_type,text,NO,
+appointment_types,price,numeric,YES,
+appointment_types,description,text,YES,
+appointment_types,is_active,boolean,NO,true
+appointments,id,uuid,NO,
+appointments,org_id,uuid,NO,
+appointments,professional_id,uuid,NO,
+appointments,contact_id,uuid,YES,
+appointments,appointment_type_id,uuid,YES,
+appointments,channel_type,text,YES,
+appointments,status,text,NO,'pending'::text
+appointments,start_at,timestamp with time zone,YES,
+appointments,end_at,timestamp with time zone,YES,
+appointments,time_zone,text,NO,'America/Sao_Paulo'::text
+appointments,location_text,text,YES,
+appointments,google_event_id,text,YES,
+appointments,google_calendar_id,text,YES,
+appointments,notes,text,YES,
+appointments,created_by,text,NO,'agent'::text
+appointments,created_via,text,NO,'ui'::text
+appointments,audit_trace,jsonb,NO,'[]'::jsonb
+appointments,conversation_id,uuid,YES,
+appointments,created_at,timestamp with time zone,NO,now()
+appointments,updated_at,timestamp with time zone,NO,now()
 assets,id,uuid,NO,gen_random_uuid()
 audit_logs,id,uuid,NO,gen_random_uuid()
+calendar_accounts,id,uuid,NO,
+calendar_accounts,org_id,uuid,NO,
+calendar_accounts,professional_id,uuid,YES,
+calendar_accounts,provider,text,NO,
+calendar_accounts,google_account_email,text,YES,
+calendar_accounts,oauth_access_token,text,YES,
+calendar_accounts,oauth_refresh_token,text,YES,
+calendar_accounts,oauth_expiry,timestamp with time zone,YES,
+calendar_accounts,scopes,ARRAY,YES,
+calendar_accounts,sync_token,text,YES,
+calendar_accounts,watch_channel_id,text,YES,
+calendar_accounts,watch_resource_id,text,YES,
+calendar_accounts,watch_expiration,timestamp with time zone,YES,
+calendar_accounts,created_at,timestamp with time zone,NO,now()
+calendar_accounts,updated_at,timestamp with time zone,NO,now()
 calendar_events,id,uuid,NO,gen_random_uuid()
 calendar_events,org_id,uuid,YES,
 calendar_members,id,uuid,NO,gen_random_uuid()
@@ -89,6 +140,8 @@ contacts,name,text,YES,
 contacts,birthdate,date,YES,
 contacts,created_at,timestamp with time zone,YES,now()
 contacts,updated_at,timestamp with time zone,YES,now()
+contacts,preferred_period,text,YES,
+contacts,consent_whatsapp,boolean,YES,
 content_assets,id,uuid,NO,gen_random_uuid()
 content_campaigns,id,uuid,NO,gen_random_uuid()
 content_campaigns,org_id,uuid,YES,
@@ -142,6 +195,7 @@ facebook_publish_jobs,org_id,uuid,YES,
 facebook_publish_jobs,page_id,uuid,YES,
 facebook_publish_jobs,status,text,YES,'pending'::text
 facebook_publish_jobs,scheduled_at,timestamp with time zone,YES,
+facebook_publish_jobs,created_at,timestamp with time zone,YES,now()
 feature_defs,code,text,YES,
 feature_defs,id,uuid,NO,gen_random_uuid()
 feature_defs,label,text,YES,
@@ -182,6 +236,7 @@ inbox_idempotency,updated_at,timestamp with time zone,YES,now()
 instagram_accounts,id,uuid,NO,gen_random_uuid()
 instagram_accounts,ig_user_id,uuid,YES,
 instagram_accounts,org_id,uuid,YES,
+instagram_accounts,is_active,boolean,NO,true
 instagram_oauth_tokens,account_id,uuid,YES,
 instagram_oauth_tokens,id,uuid,NO,gen_random_uuid()
 instagram_publish_jobs,account_id,uuid,YES,
@@ -189,6 +244,7 @@ instagram_publish_jobs,client_dedupe_key,text,YES,
 instagram_publish_jobs,id,uuid,NO,public.gen_random_uuid()
 instagram_publish_jobs,org_id,uuid,YES,
 instagram_publish_jobs,status,USER-DEFINED,NO,'pending'::instagram_publish_status
+instagram_publish_jobs,created_at,timestamp with time zone,YES,now()
 integration_events,created_at,timestamp with time zone,YES,now()
 integration_events,event_type,text,YES,
 integration_events,id,uuid,NO,public.gen_random_uuid()
@@ -482,6 +538,16 @@ post_approvals,post_id,uuid,YES,public.gen_random_uuid()
 post_approvals,status,text,YES,
 post_approvals,updated_at,timestamp with time zone,YES,now()
 posts,id,uuid,NO,gen_random_uuid()
+professionals,id,uuid,NO,
+professionals,org_id,uuid,NO,
+professionals,name,text,NO,
+professionals,role,text,YES,
+professionals,active,boolean,NO,true
+professionals,default_event_duration_min,integer,YES,30
+professionals,timezone,text,NO,'America/Sao_Paulo'::text
+professionals,color_tag,text,YES,
+professionals,created_at,timestamp with time zone,NO,now()
+professionals,updated_at,timestamp with time zone,NO,now()
 purchases,id,uuid,NO,gen_random_uuid()
 purchases,org_id,uuid,YES,
 purchases,created_at,timestamp with time zone,YES,now()

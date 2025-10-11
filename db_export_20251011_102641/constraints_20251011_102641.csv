@@ -11,8 +11,20 @@ ai_usage,ai_usage_pkey,PRIMARY KEY (id)
 ai_usage,fk_ai_usage_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
 ai_usage,fk_ai_usage_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 ai_usage_logs,ai_usage_logs_pkey,PRIMARY KEY (id)
+appointment_messages,appointment_messages_appointment_id_fkey,FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE CASCADE
+appointment_messages,appointment_messages_direction_check,"CHECK ((direction = ANY (ARRAY['out'::text, 'in'::text])))"
+appointment_messages,appointment_messages_pkey,PRIMARY KEY (id)
+appointment_types,appointment_types_location_type_check,"CHECK ((location_type = ANY (ARRAY['onsite'::text, 'online'::text])))"
+appointment_types,appointment_types_pkey,PRIMARY KEY (id)
+appointments,appointments_channel_type_check,"CHECK ((channel_type = ANY (ARRAY['whatsapp'::text, 'instagram'::text, 'facebook'::text, 'email'::text, 'other'::text])))"
+appointments,appointments_created_by_check,"CHECK ((created_by = ANY (ARRAY['agent'::text, 'human'::text, 'system'::text])))"
+appointments,appointments_created_via_check,"CHECK ((created_via = ANY (ARRAY['ai'::text, 'ui'::text])))"
+appointments,appointments_pkey,PRIMARY KEY (id)
+appointments,appointments_status_check,"CHECK ((status = ANY (ARRAY['pending'::text, 'proposed'::text, 'booked'::text, 'confirmed'::text, 'rescheduled'::text, 'cancelled'::text, 'no_show'::text])))"
 assets,assets_pkey,PRIMARY KEY (id)
 audit_logs,audit_logs_pkey,PRIMARY KEY (id)
+calendar_accounts,calendar_accounts_pkey,PRIMARY KEY (id)
+calendar_accounts,calendar_accounts_provider_check,CHECK ((provider = 'google'::text))
 calendar_events,calendar_events_pkey,PRIMARY KEY (id)
 calendar_events,fk_calendar_events_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
 calendar_members,calendar_members_pkey,PRIMARY KEY (id)
@@ -37,6 +49,7 @@ contact_tags,fk_contact_tags_contact_id__contacts_id,FOREIGN KEY (contact_id) RE
 contact_tags,fk_contact_tags_tag,FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 contact_tags,fk_contact_tags_tag_id__tags_id,FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
 contacts,contacts_pkey,PRIMARY KEY (id)
+contacts,contacts_preferred_period_check,"CHECK ((preferred_period = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text])))"
 contacts,fk_contacts_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
 contacts,fk_contacts_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 contacts,ux_contacts_phone_per_org,"UNIQUE (org_id, phone_e164)"
@@ -130,6 +143,7 @@ org_credits,fk_org_credits_org_id__organizations,FOREIGN KEY (org_id) REFERENCES
 org_credits,org_credits_pkey,PRIMARY KEY (id)
 org_credits_usage,org_credits_usage_pkey,PRIMARY KEY (id)
 org_features,fk_org_features_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
+org_features,org_features_org_id_key,UNIQUE (org_id)
 org_features,org_features_pkey,PRIMARY KEY (id)
 org_integration_logs,fk_org_integration_logs_org_id__organizations,FOREIGN KEY (org_id) REFERENCES organizations(id) ON UPDATE CASCADE ON DELETE CASCADE
 org_integration_logs,fk_org_integration_logs_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
@@ -170,6 +184,7 @@ post_approvals,fk_post_approvals_approver_id__users_id,FOREIGN KEY (approver_id)
 post_approvals,fk_post_approvals_post_id__posts_id,FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
 post_approvals,post_approvals_pkey,PRIMARY KEY (id)
 posts,posts_pkey,PRIMARY KEY (id)
+professionals,professionals_pkey,PRIMARY KEY (id)
 purchases,fk_purchases_org_id__organizations_id,FOREIGN KEY (org_id) REFERENCES organizations(id) ON DELETE CASCADE
 purchases,purchases_pkey,PRIMARY KEY (id)
 quick_replies,fk_quick_replies_company_id__organizations_id,FOREIGN KEY (company_id) REFERENCES organizations(id) ON DELETE CASCADE

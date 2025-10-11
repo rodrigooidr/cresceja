@@ -1,3 +1,5 @@
+
+// frontend/src/api/integrationsApi.js
 import inboxApi from '@/api/inboxApi';
 
 const unwrap = (response) => (response && typeof response === 'object' ? response.data ?? response : response);

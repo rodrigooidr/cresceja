@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict HR0n9mS21OZiDeVJEcD7FCaNAHDXJsvuZlJjAnnRiwEyJE7gHwsCYBzzZ5KRTL9
+\restrict oBvM7h5IAvIVUCTg4uapTg79PTbHK2MMcJwj0nrpvSpjMUqsKsA1MeDi6uhMJ1L
 
 -- Dumped from database version 16.10
 -- Dumped by pg_dump version 16.10
@@ -910,6 +910,78 @@ CREATE TABLE public.ai_usage_logs (
 ALTER TABLE public.ai_usage_logs OWNER TO cresceja;
 
 --
+-- Name: appointment_messages; Type: TABLE; Schema: public; Owner: cresceja
+--
+
+CREATE TABLE public.appointment_messages (
+    id uuid NOT NULL,
+    appointment_id uuid NOT NULL,
+    direction text NOT NULL,
+    message_text text,
+    channel_message_id text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT appointment_messages_direction_check CHECK ((direction = ANY (ARRAY['out'::text, 'in'::text])))
+);
+
+
+ALTER TABLE public.appointment_messages OWNER TO cresceja;
+
+--
+-- Name: appointment_types; Type: TABLE; Schema: public; Owner: cresceja
+--
+
+CREATE TABLE public.appointment_types (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    name text NOT NULL,
+    duration_min integer NOT NULL,
+    buffer_before_min integer DEFAULT 0 NOT NULL,
+    buffer_after_min integer DEFAULT 0 NOT NULL,
+    location_type text NOT NULL,
+    price numeric(12,2),
+    description text,
+    is_active boolean DEFAULT true NOT NULL,
+    CONSTRAINT appointment_types_location_type_check CHECK ((location_type = ANY (ARRAY['onsite'::text, 'online'::text])))
+);
+
+
+ALTER TABLE public.appointment_types OWNER TO cresceja;
+
+--
+-- Name: appointments; Type: TABLE; Schema: public; Owner: cresceja
+--
+
+CREATE TABLE public.appointments (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    professional_id uuid NOT NULL,
+    contact_id uuid,
+    appointment_type_id uuid,
+    channel_type text,
+    status text DEFAULT 'pending'::text NOT NULL,
+    start_at timestamp with time zone,
+    end_at timestamp with time zone,
+    time_zone text DEFAULT 'America/Sao_Paulo'::text NOT NULL,
+    location_text text,
+    google_event_id text,
+    google_calendar_id text,
+    notes text,
+    created_by text DEFAULT 'agent'::text NOT NULL,
+    created_via text DEFAULT 'ui'::text NOT NULL,
+    audit_trace jsonb DEFAULT '[]'::jsonb NOT NULL,
+    conversation_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT appointments_channel_type_check CHECK ((channel_type = ANY (ARRAY['whatsapp'::text, 'instagram'::text, 'facebook'::text, 'email'::text, 'other'::text]))),
+    CONSTRAINT appointments_created_by_check CHECK ((created_by = ANY (ARRAY['agent'::text, 'human'::text, 'system'::text]))),
+    CONSTRAINT appointments_created_via_check CHECK ((created_via = ANY (ARRAY['ai'::text, 'ui'::text]))),
+    CONSTRAINT appointments_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'proposed'::text, 'booked'::text, 'confirmed'::text, 'rescheduled'::text, 'cancelled'::text, 'no_show'::text])))
+);
+
+
+ALTER TABLE public.appointments OWNER TO cresceja;
+
+--
 -- Name: assets; Type: TABLE; Schema: public; Owner: cresceja
 --
 
@@ -930,6 +1002,32 @@ CREATE TABLE public.audit_logs (
 
 
 ALTER TABLE public.audit_logs OWNER TO cresceja;
+
+--
+-- Name: calendar_accounts; Type: TABLE; Schema: public; Owner: cresceja
+--
+
+CREATE TABLE public.calendar_accounts (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    professional_id uuid,
+    provider text NOT NULL,
+    google_account_email text,
+    oauth_access_token text,
+    oauth_refresh_token text,
+    oauth_expiry timestamp with time zone,
+    scopes text[],
+    sync_token text,
+    watch_channel_id text,
+    watch_resource_id text,
+    watch_expiration timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT calendar_accounts_provider_check CHECK ((provider = 'google'::text))
+);
+
+
+ALTER TABLE public.calendar_accounts OWNER TO cresceja;
 
 --
 -- Name: calendar_events; Type: TABLE; Schema: public; Owner: cresceja
@@ -1071,7 +1169,10 @@ CREATE TABLE public.contacts (
     name text,
     birthdate date,
     created_at timestamp with time zone DEFAULT now(),
-    updated_at timestamp with time zone DEFAULT now()
+    updated_at timestamp with time zone DEFAULT now(),
+    preferred_period text,
+    consent_whatsapp boolean,
+    CONSTRAINT contacts_preferred_period_check CHECK ((preferred_period = ANY (ARRAY['morning'::text, 'afternoon'::text, 'evening'::text])))
 );
 
 
@@ -1295,6 +1396,7 @@ CREATE TABLE public.facebook_publish_jobs (
     page_id uuid,
     status text DEFAULT 'pending'::text,
     scheduled_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
     CONSTRAINT chk_fb_jobs_status_domain CHECK ((status = ANY (ARRAY['pending'::text, 'creating'::text, 'ready'::text, 'publishing'::text, 'done'::text, 'failed'::text, 'canceled'::text])))
 );
 
@@ -1405,7 +1507,8 @@ ALTER TABLE public.inbox_idempotency OWNER TO cresceja;
 CREATE TABLE public.instagram_accounts (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     ig_user_id uuid,
-    org_id uuid
+    org_id uuid,
+    is_active boolean DEFAULT true NOT NULL
 );
 
 
@@ -1432,7 +1535,8 @@ CREATE TABLE public.instagram_publish_jobs (
     client_dedupe_key text,
     id uuid DEFAULT public.gen_random_uuid() NOT NULL,
     org_id uuid,
-    status public.instagram_publish_status DEFAULT 'pending'::public.instagram_publish_status NOT NULL
+    status public.instagram_publish_status DEFAULT 'pending'::public.instagram_publish_status NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
 );
 
 
@@ -2126,6 +2230,26 @@ CREATE TABLE public.posts (
 ALTER TABLE public.posts OWNER TO cresceja;
 
 --
+-- Name: professionals; Type: TABLE; Schema: public; Owner: cresceja
+--
+
+CREATE TABLE public.professionals (
+    id uuid NOT NULL,
+    org_id uuid NOT NULL,
+    name text NOT NULL,
+    role text,
+    active boolean DEFAULT true NOT NULL,
+    default_event_duration_min integer DEFAULT 30,
+    timezone text DEFAULT 'America/Sao_Paulo'::text NOT NULL,
+    color_tag text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.professionals OWNER TO cresceja;
+
+--
 -- Name: purchases; Type: TABLE; Schema: public; Owner: cresceja
 --
 
@@ -2615,6 +2739,30 @@ ALTER TABLE ONLY public.ai_usage
 
 
 --
+-- Name: appointment_messages appointment_messages_pkey; Type: CONSTRAINT; Schema: public; Owner: cresceja
+--
+
+ALTER TABLE ONLY public.appointment_messages
+    ADD CONSTRAINT appointment_messages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: appointment_types appointment_types_pkey; Type: CONSTRAINT; Schema: public; Owner: cresceja
+--
+
+ALTER TABLE ONLY public.appointment_types
+    ADD CONSTRAINT appointment_types_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: appointments appointments_pkey; Type: CONSTRAINT; Schema: public; Owner: cresceja
+--
+
+ALTER TABLE ONLY public.appointments
+    ADD CONSTRAINT appointments_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: assets assets_pkey; Type: CONSTRAINT; Schema: public; Owner: cresceja
 --
 
@@ -2628,6 +2776,14 @@ ALTER TABLE ONLY public.assets
 
 ALTER TABLE ONLY public.audit_logs
     ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: calendar_accounts calendar_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: cresceja
+--
+
+ALTER TABLE ONLY public.calendar_accounts
+    ADD CONSTRAINT calendar_accounts_pkey PRIMARY KEY (id);
 
 
 --
@@ -3087,6 +3243,14 @@ ALTER TABLE ONLY public.org_credits_usage
 
 
 --
+-- Name: org_features org_features_org_id_key; Type: CONSTRAINT; Schema: public; Owner: cresceja
+--
+
+ALTER TABLE ONLY public.org_features
+    ADD CONSTRAINT org_features_org_id_key UNIQUE (org_id);
+
+
+--
 -- Name: org_features org_features_pkey; Type: CONSTRAINT; Schema: public; Owner: cresceja
 --
 
@@ -3228,6 +3392,14 @@ ALTER TABLE ONLY public.post_approvals
 
 ALTER TABLE ONLY public.posts
     ADD CONSTRAINT posts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: professionals professionals_pkey; Type: CONSTRAINT; Schema: public; Owner: cresceja
+--
+
+ALTER TABLE ONLY public.professionals
+    ADD CONSTRAINT professionals_pkey PRIMARY KEY (id);
 
 
 --
@@ -3512,6 +3684,27 @@ CREATE INDEX idx_ai_usage_org_meter ON public.ai_usage USING btree (org_id, mete
 
 
 --
+-- Name: idx_appt_contact_start; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_appt_contact_start ON public.appointments USING btree (contact_id, start_at);
+
+
+--
+-- Name: idx_appt_google_event; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_appt_google_event ON public.appointments USING btree (google_event_id);
+
+
+--
+-- Name: idx_appt_org_prof_start; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_appt_org_prof_start ON public.appointments USING btree (org_id, professional_id, start_at);
+
+
+--
 -- Name: idx_calendar_events_org_id; Type: INDEX; Schema: public; Owner: cresceja
 --
 
@@ -3715,10 +3908,24 @@ CREATE INDEX idx_facebook_pages_org_id ON public.facebook_pages USING btree (org
 
 
 --
+-- Name: idx_facebook_publish_jobs_created_at; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_facebook_publish_jobs_created_at ON public.facebook_publish_jobs USING btree (created_at);
+
+
+--
 -- Name: idx_facebook_publish_jobs_org_id; Type: INDEX; Schema: public; Owner: cresceja
 --
 
 CREATE INDEX idx_facebook_publish_jobs_org_id ON public.facebook_publish_jobs USING btree (org_id);
+
+
+--
+-- Name: idx_facebook_publish_jobs_org_status_created_at; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_facebook_publish_jobs_org_status_created_at ON public.facebook_publish_jobs USING btree (org_id, status, created_at DESC);
 
 
 --
@@ -3778,6 +3985,20 @@ CREATE INDEX idx_inbox_audit_events_org_id ON public.inbox_audit_events USING bt
 
 
 --
+-- Name: idx_instagram_accounts_active; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_instagram_accounts_active ON public.instagram_accounts USING btree (org_id, is_active);
+
+
+--
+-- Name: idx_instagram_accounts_org_active; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_instagram_accounts_org_active ON public.instagram_accounts USING btree (org_id) WHERE is_active;
+
+
+--
 -- Name: idx_instagram_accounts_org_id; Type: INDEX; Schema: public; Owner: cresceja
 --
 
@@ -3813,10 +4034,24 @@ CREATE INDEX idx_instagram_publish_jobs_account_id ON public.instagram_publish_j
 
 
 --
+-- Name: idx_instagram_publish_jobs_created_at; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_instagram_publish_jobs_created_at ON public.instagram_publish_jobs USING btree (created_at);
+
+
+--
 -- Name: idx_instagram_publish_jobs_org_id; Type: INDEX; Schema: public; Owner: cresceja
 --
 
 CREATE INDEX idx_instagram_publish_jobs_org_id ON public.instagram_publish_jobs USING btree (org_id);
+
+
+--
+-- Name: idx_instagram_publish_jobs_org_status_created_at; Type: INDEX; Schema: public; Owner: cresceja
+--
+
+CREATE INDEX idx_instagram_publish_jobs_org_status_created_at ON public.instagram_publish_jobs USING btree (org_id, status, created_at DESC);
 
 
 --
@@ -4688,6 +4923,14 @@ CREATE TRIGGER users_set_updated_at BEFORE UPDATE ON public.users FOR EACH ROW E
 
 
 --
+-- Name: appointment_messages appointment_messages_appointment_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cresceja
+--
+
+ALTER TABLE ONLY public.appointment_messages
+    ADD CONSTRAINT appointment_messages_appointment_id_fkey FOREIGN KEY (appointment_id) REFERENCES public.appointments(id) ON DELETE CASCADE;
+
+
+--
 -- Name: ai_credit_usage fk_ai_credit_usage_org_id__organizations; Type: FK CONSTRAINT; Schema: public; Owner: cresceja
 --
 
@@ -5506,5 +5749,5 @@ GRANT CREATE ON SCHEMA public TO cresceja;
 -- PostgreSQL database dump complete
 --
 
-\unrestrict HR0n9mS21OZiDeVJEcD7FCaNAHDXJsvuZlJjAnnRiwEyJE7gHwsCYBzzZ5KRTL9
+\unrestrict oBvM7h5IAvIVUCTg4uapTg79PTbHK2MMcJwj0nrpvSpjMUqsKsA1MeDi6uhMJ1L
 
