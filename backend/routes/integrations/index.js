@@ -1,6 +1,11 @@
 // routes/integrations/index.js
 import { Router } from "express";
-import { authRequired, orgScope } from "../../middleware/auth.js";
+import {
+  authRequired,
+  orgScope,
+  authenticate,
+  requireWhatsAppQrPermission,
+} from "../../middleware/auth.js";
 import { requireAnyRole, requireOrgFeature } from "../../middlewares/auth.js";
 import { diagFeatureLog } from "../../middlewares/diagFeatureLog.js";
 import { attachOrgFromHeader } from "../../middlewares/orgContext.js";
@@ -8,8 +13,8 @@ import whatsappCloud from "../integrations/whatsapp.cloud.js";
 import metaOauthRouter from "../integrations/meta.oauth.js";
 import googleCalendarRouter from "../integrations/google.calendar.js";
 import { Pool } from "pg";
-import { signQrToken, verifyQrToken } from "../../services/qrToken.js";
-import { subscribe, setConnected as markConnected } from "../../services/baileys.session.js";
+import { signQrToken } from "../../services/qrToken.js";
+import { setConnected as markConnected, startBaileysQrStream } from "../../services/baileys.session.js";
 
 const r = Router();
 
@@ -25,46 +30,22 @@ r.use((req, _res, next) => { if (!req.db) req.db = pool; next(); });
 const requireWhatsAppSessionRole = requireAnyRole(["SuperAdmin", "OrgOwner"]);
 const requireWhatsAppSessionFeature = requireOrgFeature("whatsapp_session_enabled");
 
-function getQrTokenFromReq(req) {
-  const hdrX = req.headers["x-qr-access-token"];
-  const auth = req.headers.authorization || "";
-  const fromAuthQR = auth.startsWith("QR ") ? auth.slice(3).trim() : null;
-  const fromQuery = req.query?.access_token;
-  // permitimos também Authorization: Bearer <QR> como fallback
-  const fromAuthBearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  return String(hdrX || fromAuthQR || fromQuery || fromAuthBearer || "");
-}
-
-const allowQrTokenForStream = (req, res, next) => {
-  const token = getQrTokenFromReq(req);
-
-  // IMPORTANTE: como esta rota é pública (não passa por authRequired),
-  // se não vier token curto, respondemos 401 aqui mesmo.
-  if (!token) {
-    return res.status(401).json({ error: "missing_token", message: "missing token" });
-  }
-
-  try {
-    const payload = verifyQrToken(token, process.env.JWT_SECRET);
-    req.user = { ...(req.user || {}), id: payload.sub, sub: payload.sub, roles: (req.user?.roles || []) };
-    req.org  = { ...(req.org  || {}), id: payload.org_id };
-    if (!req.orgId) req.orgId = payload.org_id;
-    return next();
-  } catch (err) {
-    return res.status(401).json({ error: "unauthorized", message: "Token QR inválido/expirado" });
-  }
-};
-
 // ========= ROTA PÚBLICA (ANTES do authRequired) =========
-// Stream SSE do QR/pings validado apenas pelo QR token curto
+// Stream SSE do QR/pings protegido por JWT com scope whatsapp_qr
 r.get(
   "/providers/whatsapp_session/qr/stream",
-  attachOrgFromHeader,               // resolve orgId de header se vier
-  allowQrTokenForStream,             // valida QR token curto
+  authenticate,
+  requireWhatsAppQrPermission,
   diagFeatureLog("whatsapp_session_enabled"),
-  requireWhatsAppSessionFeature,     // checa flag por orgId injetado pelo token
-  (req, res) => {
-    const orgId = req.org?.id || req.orgId || req.headers["x-org-id"];
+  requireWhatsAppSessionFeature,
+  async (req, res) => {
+    const orgId =
+      req.auth?.org_id ||
+      req.org?.id ||
+      req.orgId ||
+      (typeof req.headers["x-org-id"] === "string" ? req.headers["x-org-id"] : null) ||
+      (typeof req.query?.orgId === "string" ? req.query.orgId : null);
+
     if (!orgId) {
       return res.status(400).json({ error: "invalid_org", message: "Org ausente" });
     }
@@ -74,16 +55,62 @@ r.get(
     res.setHeader("Connection", "keep-alive");
     res.flushHeaders?.();
 
-    const unsubscribe = subscribe(orgId, res);
-    const ping = setInterval(() => {
-      try { res.write(`event: ping\ndata: ${Date.now()}\n\n`); } catch {}
-    }, 15000);
+    let closed = false;
+    let unsubscribe;
+    let pingTimer;
 
-    req.on("close", () => {
-      clearInterval(ping);
-      unsubscribe();
-      try { res.end(); } catch {}
-    });
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      if (pingTimer) clearInterval(pingTimer);
+      try {
+        unsubscribe?.();
+      } catch {}
+      try {
+        res.end();
+      } catch {}
+    };
+
+    const writeEvent = (event, payload) => {
+      if (closed) return;
+      try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(payload ?? {})}\n\n`);
+      } catch {
+        cleanup();
+      }
+    };
+
+    try {
+      unsubscribe = await startBaileysQrStream({
+        orgId: String(orgId),
+        sessionId: String(req.query?.sessionId ?? "default"),
+        onQr: (qr) => {
+          if (!qr) return;
+          const value = typeof qr === "string" ? qr : String(qr);
+          writeEvent("qr", { qr: value });
+        },
+        onStatus: (status) => {
+          if (!status) return;
+          writeEvent("status", { status });
+        },
+        onError: (err) => {
+          const message = err?.message || String(err || "unknown_error");
+          writeEvent("error", { message });
+        },
+        onConnected: () => {
+          writeEvent("connected", {});
+        },
+      });
+    } catch (err) {
+      writeEvent("error", { message: err?.message || "failed_to_start_qr_stream" });
+      cleanup();
+      return;
+    }
+
+    pingTimer = setInterval(() => writeEvent("ping", { ts: Date.now() }), 15000);
+
+    req.on("close", cleanup);
   }
 );
 
@@ -113,7 +140,19 @@ const issueQrToken = (req, res) => {
   const userId = req.user?.id || req.user?.sub || "unknown";
   if (!orgId) return res.status(400).json({ error: "invalid_org", message: "Org ausente" });
   try {
-    const token = signQrToken({ userId, orgId, secret: process.env.JWT_SECRET, ttl: 60 });
+    const primaryRole = req.user?.role ? String(req.user.role) : null;
+    const roleList = Array.isArray(req.user?.roles)
+      ? req.user.roles.map((role) => String(role))
+      : [];
+    const roles = Array.from(new Set([...(primaryRole ? [primaryRole] : []), ...roleList]));
+    const token = signQrToken({
+      userId,
+      orgId,
+      secret: process.env.JWT_SECRET,
+      ttl: 60,
+      role: primaryRole || roles[0],
+      roles: roles.length ? roles : undefined,
+    });
     return res.json({ token, expires_in: 60 });
   } catch (err) {
     req.log?.error?.({ err }, "qr-token-sign-failed");

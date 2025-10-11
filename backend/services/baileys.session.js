@@ -11,7 +11,7 @@ function createSession(orgId) {
     status: 'pending_qr',
     lastQr: null,
     timer: null,
-    subscribers: new Set(),
+    listeners: new Set(),
   };
   sessions.set(orgId, session);
   return session;
@@ -32,14 +32,11 @@ async function generateQrDataUrl(text) {
 function emit(orgId, payload) {
   const session = getSession(orgId);
   if (!session) return;
-  for (const res of session.subscribers) {
+  for (const handler of [...session.listeners]) {
     try {
-      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+      handler(payload);
     } catch (err) {
-      session.subscribers.delete(res);
-      try {
-        res.end();
-      } catch {}
+      session.listeners.delete(handler);
     }
   }
 }
@@ -94,15 +91,105 @@ export function getStatus(orgId) {
   };
 }
 
+function subscribeToSession(orgId, handler) {
+  const session = ensureSession(orgId);
+  session.listeners.add(handler);
+  return () => {
+    session.listeners.delete(handler);
+  };
+}
+
 export function subscribe(orgId, res) {
   const session = ensureSession(orgId);
-  session.subscribers.add(res);
+  let closed = false;
+
+  const send = (payload) => {
+    if (closed) return;
+    try {
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch (err) {
+      closed = true;
+      unsubscribe();
+      try {
+        res.end();
+      } catch {}
+    }
+  };
+
+  const unsubscribe = subscribeToSession(orgId, send);
+
   if (session.lastQr) {
-    res.write(`data: ${JSON.stringify({ type: 'qr', qr: { raw: session.lastQr.raw, dataUrl: session.lastQr.dataUrl } })}\n\n`);
+    send({ type: 'qr', qr: { raw: session.lastQr.raw, dataUrl: session.lastQr.dataUrl } });
   }
-  res.write(`data: ${JSON.stringify({ type: 'status', status: session.status })}\n\n`);
+  send({ type: 'status', status: session.status });
+
   return () => {
-    session.subscribers.delete(res);
+    if (closed) return;
+    closed = true;
+    unsubscribe();
+  };
+}
+
+export async function startBaileysQrStream({
+  orgId,
+  sessionId: _sessionId,
+  onQr,
+  onStatus,
+  onError,
+  onConnected,
+}) {
+  if (!orgId) {
+    throw new Error('org_id_required');
+  }
+
+  const session = ensureSession(orgId);
+  const emitQr = typeof onQr === 'function' ? onQr : null;
+  const emitStatus = typeof onStatus === 'function' ? onStatus : null;
+  const emitError = typeof onError === 'function' ? onError : null;
+  const emitConnected = typeof onConnected === 'function' ? onConnected : null;
+
+  if (session.lastQr && emitQr) {
+    const data = session.lastQr.dataUrl || session.lastQr.raw;
+    if (data) emitQr(data);
+  }
+  if (emitStatus) {
+    emitStatus(session.status);
+  }
+  if (session.status === 'connected' && emitConnected) {
+    emitConnected();
+  }
+
+  const handler = (payload) => {
+    try {
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.type === 'qr' && payload.qr && emitQr) {
+        const value =
+          typeof payload.qr === 'string'
+            ? payload.qr
+            : payload.qr.dataUrl || payload.qr.raw || null;
+        if (value) emitQr(value);
+      } else if (payload.type === 'status' && emitStatus) {
+        emitStatus(payload.status);
+        if (payload.status === 'connected' && emitConnected) {
+          emitConnected();
+        }
+      } else if (payload.type === 'error' && emitError) {
+        const err =
+          payload.error instanceof Error
+            ? payload.error
+            : new Error(payload.message || 'baileys_stream_error');
+        emitError(err);
+      }
+    } catch (err) {
+      if (emitError) {
+        emitError(err instanceof Error ? err : new Error(String(err)));
+      }
+    }
+  };
+
+  const unsubscribe = subscribeToSession(orgId, handler);
+  return () => {
+    unsubscribe();
   };
 }
 
