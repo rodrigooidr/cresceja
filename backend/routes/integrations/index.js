@@ -14,7 +14,8 @@ import metaOauthRouter from "../integrations/meta.oauth.js";
 import googleCalendarRouter from "../integrations/google.calendar.js";
 import { Pool } from "pg";
 import { signQrToken } from "../../services/qrToken.js";
-import { setConnected as markConnected, startBaileysQrStream } from "../../services/baileys.session.js";
+import { setConnected as markConnected } from "../../services/baileys.session.js";
+import { startBaileysQrStream } from "../../services/whatsapp/baileysSession.js";
 
 const r = Router();
 
@@ -56,7 +57,7 @@ r.get(
     res.flushHeaders?.();
 
     let closed = false;
-    let unsubscribe;
+    let stop;
     let pingTimer;
 
     const cleanup = () => {
@@ -64,7 +65,10 @@ r.get(
       closed = true;
       if (pingTimer) clearInterval(pingTimer);
       try {
-        unsubscribe?.();
+        const maybe = stop?.();
+        if (maybe && typeof maybe.then === "function") {
+          maybe.catch(() => {});
+        }
       } catch {}
       try {
         res.end();
@@ -82,7 +86,7 @@ r.get(
     };
 
     try {
-      unsubscribe = await startBaileysQrStream({
+      stop = await startBaileysQrStream({
         orgId: String(orgId),
         sessionId: String(req.query?.sessionId ?? "default"),
         onQr: (qr) => {
