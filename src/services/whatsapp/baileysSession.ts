@@ -1,23 +1,8 @@
-import * as Baileys from "@whiskeysockets/baileys";
 import type { ConnectionState, WASocket } from "@whiskeysockets/baileys";
 import path from "path";
 import fs from "fs/promises";
 import Pino from "pino";
-
-const makeWASocket =
-  // @ts-ignore
-  (Baileys as any).makeWASocket ||
-  // @ts-ignore
-  (Baileys as any).default ||
-  null;
-
-if (typeof makeWASocket !== "function") {
-  throw new Error(
-    "Baileys import error: makeWASocket not found. Check @whiskeysockets/baileys version/build.",
-  );
-}
-
-const { useMultiFileAuthState } = Baileys as any;
+import { loadBaileysUnsafe } from "../../lib/baileys-loader";
 
 export type QrStreamHandlers = {
   onQr: (qr: string) => void;
@@ -35,7 +20,10 @@ const AUTH_BASE = process.env.WA_AUTH_DIR || "/app/data/wa-auth";
 
 const logger = Pino({ level: process.env.WA_LOG_LEVEL ?? "info" });
 
+const baileysPromise = loadBaileysUnsafe();
+
 async function getAuthState(orgId: string, sessionId: string) {
+  const { useMultiFileAuthState } = await baileysPromise;
   const dir = path.join(AUTH_BASE, orgId, sessionId);
   await fs.mkdir(dir, { recursive: true });
   return useMultiFileAuthState(dir);
@@ -47,6 +35,7 @@ const sockets: Record<string, { sock: WASocket; stop: () => Promise<void> }> = {
 export async function startBaileysQrStream(opts: StartOpts) {
   const { orgId, sessionId, onQr, onStatus, onConnected, onError } = opts;
   const key = `${orgId}:${sessionId}`;
+  const { makeWASocket } = await baileysPromise;
 
   // Se já existir, só reaproveite (vai continuar emitindo status/qr)
   if (sockets[key]) {
