@@ -1,7 +1,23 @@
-import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket, ConnectionState } from "@whiskeysockets/baileys";
+import * as Baileys from "@whiskeysockets/baileys";
+import type { ConnectionState, WASocket } from "@whiskeysockets/baileys";
 import path from "path";
 import fs from "fs/promises";
 import Pino from "pino";
+
+const makeWASocket =
+  // @ts-ignore
+  (Baileys as any).makeWASocket ||
+  // @ts-ignore
+  (Baileys as any).default ||
+  null;
+
+if (typeof makeWASocket !== "function") {
+  throw new Error(
+    "Baileys import error: makeWASocket not found. Check @whiskeysockets/baileys version/build.",
+  );
+}
+
+const { useMultiFileAuthState } = Baileys as any;
 
 export type QrStreamHandlers = {
   onQr: (qr: string) => void;
