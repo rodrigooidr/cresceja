@@ -1,8 +1,21 @@
-import type { ConnectionState, WASocket } from "@whiskeysockets/baileys";
 import path from "path";
 import fs from "fs/promises";
 import Pino from "pino";
 import { loadBaileysUnsafe } from "../../lib/baileys-loader";
+
+type ConnectionState = {
+  connection?: string;
+  lastDisconnect?: { error?: unknown };
+  qr?: string | Buffer;
+};
+
+type WASocket = {
+  ev: {
+    on: (event: string, listener: (...args: any[]) => void) => void;
+  };
+  logout?: () => Promise<void>;
+  end?: () => void;
+};
 
 export type QrStreamHandlers = {
   onQr: (qr: string) => void;
@@ -20,10 +33,9 @@ const AUTH_BASE = process.env.WA_AUTH_DIR || "/app/data/wa-auth";
 
 const logger = Pino({ level: process.env.WA_LOG_LEVEL ?? "info" });
 
-const baileysPromise = loadBaileysUnsafe();
+const { makeWASocket, useMultiFileAuthState } = loadBaileysUnsafe();
 
 async function getAuthState(orgId: string, sessionId: string) {
-  const { useMultiFileAuthState } = await baileysPromise;
   const dir = path.join(AUTH_BASE, orgId, sessionId);
   await fs.mkdir(dir, { recursive: true });
   return useMultiFileAuthState(dir);
@@ -35,7 +47,6 @@ const sockets: Record<string, { sock: WASocket; stop: () => Promise<void> }> = {
 export async function startBaileysQrStream(opts: StartOpts) {
   const { orgId, sessionId, onQr, onStatus, onConnected, onError } = opts;
   const key = `${orgId}:${sessionId}`;
-  const { makeWASocket } = await baileysPromise;
 
   // Se já existir, só reaproveite (vai continuar emitindo status/qr)
   if (sockets[key]) {
@@ -61,8 +72,12 @@ export async function startBaileysQrStream(opts: StartOpts) {
 
   const stop = async () => {
     stopped = true;
-    try { await sock?.logout?.(); } catch {}
-    try { sock?.end?.(); } catch {}
+    try {
+      await sock?.logout?.();
+    } catch {}
+    try {
+      sock?.end?.();
+    } catch {}
     delete sockets[key];
   };
 
@@ -70,7 +85,9 @@ export async function startBaileysQrStream(opts: StartOpts) {
 
   const restart = () => {
     if (stopped) return;
-    try { sock?.end?.(); } catch {}
+    try {
+      sock?.end?.();
+    } catch {}
     sock = buildSock();
     sockets[key].sock = sock;
     wire();
@@ -98,7 +115,9 @@ export async function startBaileysQrStream(opts: StartOpts) {
       }
 
       if (connection === "close") {
-        const reason = (lastDisconnect?.error as any)?.output?.statusCode || (lastDisconnect?.error as any)?.statusCode;
+        const reason =
+          (lastDisconnect?.error as any)?.output?.statusCode ||
+          (lastDisconnect?.error as any)?.statusCode;
         // Casos comuns:
         // - 403 / 401 cred invalida
         // - "QR refs attempts ended": precisamos reiniciar para gerar novo QR
