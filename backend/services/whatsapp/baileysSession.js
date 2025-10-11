@@ -1,5 +1,9 @@
 import makeWASocket, { useMultiFileAuthState } from "@whiskeysockets/baileys";
+import path from "path";
+import fs from "fs/promises";
 import Pino from "pino";
+
+const AUTH_BASE = process.env.WA_AUTH_DIR || "/app/data/wa-auth";
 
 const logger = Pino({ level: process.env.WA_LOG_LEVEL ?? "info" });
 
@@ -27,7 +31,9 @@ export async function startBaileysQrStream(opts) {
 
   let stopped = false;
 
-  const { state, saveCreds } = await useMultiFileAuthState(`./.wa-auth/${orgId}/${sessionId}`);
+  const dir = path.join(AUTH_BASE, orgId, sessionId);
+  await fs.mkdir(dir, { recursive: true });
+  const { state, saveCreds } = await useMultiFileAuthState(dir);
 
   const buildSock = () =>
     makeWASocket({

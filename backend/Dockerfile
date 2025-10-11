@@ -20,8 +20,10 @@ RUN npm ci --omit=dev --no-audit --no-fund
 # 4) Copia o restante do código
 COPY . .
 
-# 5) Prepara pasta de uploads com permissão correta
-RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
+# 5) Prepara pastas graváveis com permissão correta
+USER root
+RUN mkdir -p /app/uploads /app/data/wa-auth \
+  && chown -R node:node /app/uploads /app/data
 
 # 6) Usa usuário não-root para rodar o app
 USER node

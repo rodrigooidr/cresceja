@@ -1,4 +1,6 @@
 import makeWASocket, { DisconnectReason, useMultiFileAuthState, WASocket, ConnectionState } from "@whiskeysockets/baileys";
+import path from "path";
+import fs from "fs/promises";
 import Pino from "pino";
 
 export type QrStreamHandlers = {
@@ -13,7 +15,15 @@ type StartOpts = {
   sessionId: string;
 } & QrStreamHandlers;
 
+const AUTH_BASE = process.env.WA_AUTH_DIR || "/app/data/wa-auth";
+
 const logger = Pino({ level: process.env.WA_LOG_LEVEL ?? "info" });
+
+async function getAuthState(orgId: string, sessionId: string) {
+  const dir = path.join(AUTH_BASE, orgId, sessionId);
+  await fs.mkdir(dir, { recursive: true });
+  return useMultiFileAuthState(dir);
+}
 
 // Mantém 1 instância por org/session
 const sockets: Record<string, { sock: WASocket; stop: () => Promise<void> }> = {};
@@ -30,7 +40,7 @@ export async function startBaileysQrStream(opts: StartOpts) {
 
   let stopped = false;
 
-  const { state, saveCreds } = await useMultiFileAuthState(`./.wa-auth/${orgId}/${sessionId}`);
+  const { state, saveCreds } = await getAuthState(orgId, sessionId);
 
   const buildSock = () =>
     makeWASocket({
