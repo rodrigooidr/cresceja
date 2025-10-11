@@ -284,11 +284,22 @@ export function requireWhatsAppQrPermission(req, res, next) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
-  if (!hasScope(payload, 'whatsapp_qr')) {
-    return res.status(403).json({ error: 'forbidden' });
-  }
+  const scopeRaw = payload.scope;
+  const scopeList = Array.isArray(scopeRaw)
+    ? scopeRaw
+    : typeof scopeRaw === 'string'
+    ? scopeRaw.split(/[\s,]+/)
+    : scopeRaw
+    ? [scopeRaw]
+    : [];
+  const scopes = scopeList.filter(Boolean).map((value) => String(value));
+  const scopeDefined = scopeRaw !== undefined && scopeRaw !== null;
 
-  if (!hasRole(payload, ['SuperAdmin', 'OrgOwner'])) {
+  if (scopeDefined) {
+    if (!scopes.includes('whatsapp_qr')) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+  } else if (!hasRole(payload, ['SuperAdmin', 'OrgOwner'])) {
     return res.status(403).json({ error: 'forbidden' });
   }
 
